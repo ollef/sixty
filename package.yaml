@@ -1,0 +1,36 @@
+name:                sixty
+version:             0.1.0.0
+#synopsis:
+#description:
+homepage:            https://github.com/ollef/sixty#readme
+license:             BSD3
+author:              Olle Fredriksson
+maintainer:          fredriksson.olle@gmail.com
+copyright:           2019 Olle Fredriksson
+category:            Web
+extra-source-files:
+- README.md
+
+dependencies:
+  - base >= 4.7 && < 5
+  - bound
+  - protolude
+  - unordered-containers
+
+ghc-options:
+  - -Wall
+  - -Wcompat
+  - -Widentities
+  - -Wincomplete-record-updates
+  - -Wincomplete-uni-patterns
+  - -Wmissing-home-modules
+  - -Wpartial-fields
+  - -Wredundant-constraints
+  - -Wtabs
+  - -funbox-strict-fields
+  - -XNoImplicitPrelude
+
+executables:
+  sixty:
+    source-dirs:      src
+    main:             Main.hs
