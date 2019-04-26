@@ -15,13 +15,13 @@ import Tsil (Tsil)
 import qualified Tsil
 
 data Closure where
-  Closure :: Syntax.Env (M Value) v -> Scope () Syntax.Term v -> Closure
+  Closure :: Syntax.Env (Lazy Value) v -> Scope () Syntax.Term v -> Closure
 
 data Value
   = Neutral Head Spine
   | Lam !Closure
-  | Pi !(M Type) !Closure
-  | Fun !(M Type) !(M Type)
+  | Pi !(Lazy Type) !Closure
+  | Fun !(Lazy Type) !(Lazy Type)
 
 type Type = Value
 
@@ -29,7 +29,7 @@ data Head
   = Var !Var
   | Global !Text
 
-type Spine = Tsil (M Value)
+type Spine = Tsil (Lazy Value)
 
 newtype Var = V Int
   deriving (Eq, Ord, Show, Hashable, Num)

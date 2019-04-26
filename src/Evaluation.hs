@@ -1,7 +1,7 @@
 {-# language OverloadedStrings #-}
 module Evaluation where
 
-import Protolude
+import Protolude hiding (force)
 
 import qualified Bound.Scope.Simple as Bound
 
@@ -10,11 +10,11 @@ import Monad
 import qualified Syntax
 import qualified Tsil
 
-eval :: Syntax.Env (M Domain.Value) v -> Syntax.Term v -> M Domain.Value
+eval :: Syntax.Env (Lazy Domain.Value) v -> Syntax.Term v -> M Domain.Value
 eval env term =
   case term of
     Syntax.Var v ->
-      Syntax.lookupValue env v
+      force $ Syntax.lookupValue env v
 
     Syntax.Global g ->
       pure $ Domain.global g -- TODO
@@ -40,7 +40,7 @@ eval env term =
       t2' <- lazy $ eval env t2
       apply t1' t2'
 
-apply :: Domain.Value -> M Domain.Value -> M Domain.Value
+apply :: Domain.Value -> Lazy Domain.Value -> M Domain.Value
 apply fun arg =
   case fun of
     Domain.Lam closure ->
@@ -52,7 +52,7 @@ apply fun arg =
     _ ->
       panic "applying non-function"
 
-evalClosure :: Domain.Closure -> M Domain.Value -> M Domain.Value
+evalClosure :: Domain.Closure -> Lazy Domain.Value -> M Domain.Value
 evalClosure (Domain.Closure env (Bound.Scope body)) x =
   eval (Syntax.Snoc env x) body
 
@@ -66,12 +66,12 @@ readBack env value =
       Syntax.Lam <$> readBackClosure env closure
 
     Domain.Pi typ closure -> do
-      typ' <- typ
+      typ' <- force typ
       Syntax.Pi <$> readBack env typ' <*> readBackClosure env closure
 
     Domain.Fun source domain -> do
-      source' <- source
-      domain' <- domain
+      source' <- force source
+      domain' <- force domain
       Syntax.Fun <$> readBack env source' <*> readBack env domain'
 
 readBackClosure :: Domain.Env v -> Domain.Closure -> M (Bound.Scope () Syntax.Term v)
@@ -80,7 +80,7 @@ readBackClosure env closure = do
     (env', v) =
       Domain.extend env
 
-  closure' <- evalClosure closure $ pure $ Domain.var v
+  closure' <- evalClosure closure $ Lazy $ pure $ Domain.var v
   Bound.Scope <$> readBack env' closure'
 
 readBackNeutral :: Domain.Env v -> Domain.Head -> Domain.Spine -> M (Syntax.Term v)
@@ -90,7 +90,7 @@ readBackNeutral env hd spine =
       pure $ readBackHead env hd
 
     Tsil.Snoc spine' arg -> do
-      arg' <- arg
+      arg' <- force arg
       Syntax.App <$> readBackNeutral env hd spine' <*> readBack env arg'
 
 readBackHead :: Domain.Env v -> Domain.Head -> Syntax.Term v

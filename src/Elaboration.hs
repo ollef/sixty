@@ -2,10 +2,9 @@
 {-# language GADTs #-}
 module Elaboration where
 
-import Protolude hiding (check)
+import Protolude hiding (force, check)
 
 import qualified Bound.Scope.Simple as Bound
-import qualified Bound.Var as Bound
 
 import qualified Builtin
 import Context (Context)
@@ -17,7 +16,7 @@ import qualified PreSyntax
 import qualified Syntax
 
 data Inferred term
-  = Inferred term !(M Domain.Type)
+  = Inferred term !(Lazy Domain.Type)
   deriving Functor
 
 newtype Checked term
@@ -49,7 +48,7 @@ infer context term =
 inferred
   :: Expected e
   -> Syntax.Term v
-  -> M Domain.Type
+  -> Lazy Domain.Type
   -> M (e (Syntax.Term v))
 inferred expected term typ =
   case expected of
@@ -57,7 +56,7 @@ inferred expected term typ =
       pure $ Inferred term typ
 
     Check expectedType -> do
-      typ' <- typ
+      typ' <- force typ
       unify typ' expectedType
       pure $ Checked term
 
@@ -73,10 +72,11 @@ tc context term expected =
       case Context.lookupName name context of
         Nothing -> do
           type_ <- typeOfGlobal name
+          type' <- lazy $ eval context type_
           inferred
             expected
             (Syntax.Global name)
-            (eval context type_)
+            type'
 
         Just v ->
           inferred
@@ -87,9 +87,10 @@ tc context term expected =
     PreSyntax.Let name term' body -> do
       Inferred term'' typ <- infer context term'
 
+      term''' <- lazy $ eval context term''
       let
         context' =
-          Context.extendValue context name (eval context term'') typ
+          Context.extendValue context name term''' typ
 
       body' <- tc context' body expected
       pure $ Syntax.Let term'' . Bound.Scope <$> body'
@@ -98,14 +99,14 @@ tc context term expected =
       source' <- check context source Builtin.type_
 
       let
-        context' =
-          Context.extend context name $ pure Builtin.type_
+        (context', _) =
+          Context.extend context name $ Lazy $ pure Builtin.type_
 
       domain' <- check context' domain Builtin.type_
       inferred
         expected
         (Syntax.Pi source' $ Bound.Scope domain')
-        (pure Builtin.type_)
+        (Lazy $ pure Builtin.type_)
 
     PreSyntax.Fun source domain -> do
       source' <- check context source Builtin.type_
@@ -113,47 +114,49 @@ tc context term expected =
       inferred
         expected
         (Syntax.Fun source' domain')
-        (pure Builtin.type_)
+        (Lazy $ pure Builtin.type_)
 
     PreSyntax.Lam name body ->
       case expected of
         Infer -> undefined
         Check (Domain.Pi source domainClosure) -> do
           let
-            context' =
+            (context', var) =
               Context.extend context name source
 
           domain <-
             Evaluation.evalClosure
               domainClosure
-              (eval context' $ Syntax.Var $ Bound.B ())
+              (Lazy $ pure $ Domain.var var)
           body' <- check context' body domain
           pure $ Checked (Syntax.Lam (Bound.Scope body'))
 
         Check (Domain.Fun source domain) -> do
           let
-            context' =
+            (context', _) =
               Context.extend context name source
 
-          domain' <- domain
+          domain' <- force domain
           body' <- check context' body domain'
           pure $ Checked (Syntax.Lam (Bound.Scope body'))
 
     PreSyntax.App function argument -> do
       Inferred function' functionType <- infer context function
-      functionType' <- functionType
+      functionType' <- force functionType
 
       case functionType' of
         Domain.Pi argumentType domainClosure -> do
-          argumentType' <- argumentType
+          argumentType' <- force argumentType
           argument' <- check context argument argumentType'
+          argument'' <- lazy $ eval context argument'
+          domain <- lazy $ Evaluation.evalClosure domainClosure argument''
           inferred
             expected
             (Syntax.App function' argument')
-            (Evaluation.evalClosure domainClosure (eval context argument'))
+            domain
 
         Domain.Fun source domain -> do
-          source' <- source
+          source' <- force source
           case expected of
             Check expectedType -> do
               unify expectedType functionType'
