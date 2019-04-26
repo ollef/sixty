@@ -7,15 +7,11 @@ import qualified Bound.Var as Bound
 import qualified Domain
 import qualified Syntax
 
-data Binding = Binding
-  { name :: !Text
-  , value :: Domain.Value
-  , type_ :: Domain.Type
-  }
-
 data Context v = Context
-  { environment :: Syntax.Env Binding v
-  , values :: Domain.Env v
+  { size :: !(Domain.EnvSize v)
+  , names :: Syntax.Env Text v
+  , values :: Syntax.Env Domain.Value v
+  , types :: Syntax.Env Domain.Type v
   }
 
 extend
@@ -23,14 +19,16 @@ extend
   -> Text
   -> Domain.Type
   -> Context (Bound.Var () v)
-extend (Context env vals) n t =
+extend (Context sz ns vs ts) n t =
   let
-    (vals', v) =
-      Domain.extend vals
+    (sz', v) =
+      Domain.extendEnvSize sz
   in
   Context
-    (Syntax.Snoc env (Binding n (Domain.var v) t))
-    vals'
+    sz'
+    (Syntax.Snoc ns n)
+    (Syntax.Snoc vs $ Domain.var v)
+    (Syntax.Snoc ts t)
 
 extendValue
   :: Context v
@@ -38,14 +36,22 @@ extendValue
   -> Domain.Type
   -> Domain.Value
   -> Context (Bound.Var () v)
-extendValue (Context env vals) n v t =
+extendValue (Context sz ns vs ts) n v t =
   let
-    (vals', _) =
-      Domain.extend vals
+    (sz', _) =
+      Domain.extendEnvSize sz
   in
   Context
-    (Syntax.Snoc env (Binding n v t))
-    vals'
+    sz'
+    (Syntax.Snoc ns n)
+    (Syntax.Snoc vs v)
+    (Syntax.Snoc ts t)
 
-lookupName :: Text -> Context v -> Maybe (v, Binding)
-lookupName name (Context env _) = Syntax.lookupIndex env $ \(Binding name' _ _) -> name == name'
+lookupName :: Text -> Context v -> Maybe v
+lookupName name context = fst <$> Syntax.lookupIndex (names context) (== name)
+
+lookupValue :: v -> Context v -> Domain.Value
+lookupValue v context = Syntax.lookupValue (values context) v
+
+lookupType :: v -> Context v -> Domain.Type
+lookupType v context = Syntax.lookupValue (types context) v

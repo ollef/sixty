@@ -1,4 +1,5 @@
-{-# LANGUAGE GADTs #-}
+{-# language DeriveFunctor #-}
+{-# language GADTs #-}
 module Elaboration where
 
 import Protolude hiding (check)
@@ -13,15 +14,17 @@ import qualified Evaluation
 import qualified PreSyntax
 import qualified Syntax
 
-data Expected term result where
-  Infer :: Expected term (term, Domain.Type)
-  Check :: Domain.Type -> Expected term term
+data Inferred term
+  = Inferred term Domain.Type
+  deriving Functor
 
-mapResult :: Expected term result -> (term -> term) -> result -> result
-mapResult expected f result =
-  case expected of
-    Infer -> first f result
-    Check _ -> f result
+newtype Checked term
+  = Checked term
+  deriving Functor
+
+data Expected f where
+  Infer :: Expected Inferred
+  Check :: Domain.Type -> Expected Checked
 
 check
   :: Context v
@@ -29,59 +32,62 @@ check
   -> Domain.Type
   -> Syntax.Term v
 check context term typ =
-  tc context term $ Check typ
+  let
+    Checked result =
+      tc context term $ Check typ
+  in
+  result
 
 infer
   :: Context v
   -> PreSyntax.Term
-  -> (Syntax.Term v, Domain.Type)
+  -> Inferred (Syntax.Term v)
 infer context term =
   tc context term Infer
 
-instantiateExpected
-  :: Expected (Syntax.Term v) result
+inferred
+  :: Expected e
   -> Syntax.Term v
   -> Domain.Type
-  -> result
-instantiateExpected expected term typ =
+  -> e (Syntax.Term v)
+inferred expected term typ =
   case expected of
     Infer ->
-      (term, typ)
+      Inferred term typ
 
     Check expectedType ->
 
       -- unify typ expectedType -- TODO
-      term
+      Checked term
 
 tc
-  :: Context v
+  :: Functor e
+  => Context v
   -> PreSyntax.Term
-  -> Expected (Syntax.Term v) result
-  -> result
+  -> Expected e
+  -> e (Syntax.Term v)
 tc context term expected =
   case term of
     PreSyntax.Var name ->
       case Context.lookupName name context of
         Nothing ->
-          tcGlobal name expected
+          inferred
+            expected
+            (Syntax.Global name)
+            (eval context (typeOfGlobal name))
 
-        Just (v, Context.Binding _ _ t) ->
-          instantiateExpected expected (Syntax.Var v) t
+        Just v ->
+          inferred expected (Syntax.Var v) (Context.lookupType v context)
 
     PreSyntax.Let name term body ->
       let
-        (term', typ) =
+        Inferred term' typ =
           infer context term
 
         context' =
           Context.extendValue context name (eval context term') typ
       in
-      case expected of
-        Infer ->
-          first (Syntax.Let term' . Bound.Scope) $ infer context' body
-
-        Check typ ->
-          Syntax.Let term' $ Bound.Scope $ check context' body typ
+      Syntax.Let term' . Bound.Scope <$> tc context' body expected
 
     PreSyntax.Pi name source domain ->
       let
@@ -94,7 +100,7 @@ tc context term expected =
         domain' =
           check context' domain Builtin.type_
       in
-      instantiateExpected
+      inferred
         expected
         (Syntax.Pi source' $ Bound.Scope domain')
         Builtin.type_
@@ -109,10 +115,10 @@ eval
   :: Context v
   -> Syntax.Term v
   -> Domain.Value
-eval = undefined
+eval context =
+  Evaluation.eval (Context.values context)
 
-tcGlobal
+typeOfGlobal
   :: Text
-  -> Expected (Syntax.Term v) result
-  -> result
-tcGlobal = undefined
+  -> Syntax.Type v
+typeOfGlobal = undefined

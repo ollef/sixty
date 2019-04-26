@@ -16,7 +16,7 @@ eval env term =
       Syntax.lookupValue env v
 
     Syntax.Global g ->
-      Domain.global g
+      Domain.global g -- TODO
 
     Syntax.Let t (Bound.Scope s) ->
       eval (Syntax.Snoc env (eval env t)) s
@@ -59,10 +59,11 @@ readBack env value =
       Syntax.Pi (readBack env typ) (readBackClosure env closure)
 
 readBackClosure :: Domain.Env v -> Domain.Closure -> Bound.Scope () Syntax.Term v
-readBackClosure env closure = do
+readBackClosure env closure =
   let
     (env', v) =
       Domain.extend env
+  in
   Bound.Scope
     $ readBack env'
     $ evalClosure closure $ Domain.var v

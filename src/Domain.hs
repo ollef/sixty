@@ -34,7 +34,7 @@ newtype Var = V Int
 
 data Env val = Env
   { fresh :: !Int
-  , vars :: !(HashMap Var val)
+  , vars :: HashMap Var val
   }
 
 var :: Var -> Value
@@ -52,3 +52,8 @@ extend (Env f vs) =
   (Env (f + 1) (HashMap.insert v (Bound.B ()) $ Bound.F <$> vs), v)
   where
     v = V f
+
+newtype EnvSize v = EnvSize Int
+
+extendEnvSize :: EnvSize v -> (EnvSize (Bound.Var () val), Var)
+extendEnvSize (EnvSize f) = (EnvSize $ f + 1, V f)

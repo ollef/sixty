@@ -14,6 +14,8 @@ data Term v
   | Lam (Scope () Term v)
   | App (Term v) (Term v)
 
+type Type = Term
+
 data Env val v where
   Nil :: Env val Void
   Snoc :: Env val v -> val -> Env val (Var () v)
