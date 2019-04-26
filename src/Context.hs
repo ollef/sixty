@@ -5,19 +5,20 @@ import Protolude
 import qualified Bound.Var as Bound
 
 import qualified Domain
+import Monad
 import qualified Syntax
 
 data Context v = Context
   { size :: !(Domain.EnvSize v)
   , names :: Syntax.Env Text v
-  , values :: Syntax.Env Domain.Value v
-  , types :: Syntax.Env Domain.Type v
+  , values :: Syntax.Env (M Domain.Value) v
+  , types :: Syntax.Env (M Domain.Type) v
   }
 
 extend
   :: Context v
   -> Text
-  -> Domain.Type
+  -> M Domain.Type
   -> Context (Bound.Var () v)
 extend (Context sz ns vs ts) n t =
   let
@@ -27,14 +28,14 @@ extend (Context sz ns vs ts) n t =
   Context
     sz'
     (Syntax.Snoc ns n)
-    (Syntax.Snoc vs $ Domain.var v)
+    (Syntax.Snoc vs $ pure $ Domain.var v)
     (Syntax.Snoc ts t)
 
 extendValue
   :: Context v
   -> Text
-  -> Domain.Type
-  -> Domain.Value
+  -> M Domain.Type
+  -> M Domain.Value
   -> Context (Bound.Var () v)
 extendValue (Context sz ns vs ts) n v t =
   let
@@ -50,8 +51,8 @@ extendValue (Context sz ns vs ts) n v t =
 lookupName :: Text -> Context v -> Maybe v
 lookupName name context = fst <$> Syntax.lookupIndex (names context) (== name)
 
-lookupValue :: v -> Context v -> Domain.Value
+lookupValue :: v -> Context v -> M Domain.Value
 lookupValue v context = Syntax.lookupValue (values context) v
 
-lookupType :: v -> Context v -> Domain.Type
+lookupType :: v -> Context v -> M Domain.Type
 lookupType v context = Syntax.lookupValue (types context) v

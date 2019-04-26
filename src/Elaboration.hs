@@ -12,11 +12,12 @@ import Context (Context)
 import qualified Context
 import qualified Domain
 import qualified Evaluation
+import Monad
 import qualified PreSyntax
 import qualified Syntax
 
 data Inferred term
-  = Inferred term Domain.Type
+  = Inferred term !(M Domain.Type)
   deriving Functor
 
 newtype Checked term
@@ -31,51 +32,51 @@ check
   :: Context v
   -> PreSyntax.Term
   -> Domain.Type
-  -> Syntax.Term v
-check context term typ =
-  let
-    Checked result =
-      tc context term $ Check typ
-  in
-  result
+  -> M (Syntax.Term v)
+check context term typ = do
+  Checked result <-
+    tc context term $ Check typ
+
+  pure result
 
 infer
   :: Context v
   -> PreSyntax.Term
-  -> Inferred (Syntax.Term v)
+  -> M (Inferred (Syntax.Term v))
 infer context term =
   tc context term Infer
 
 inferred
   :: Expected e
   -> Syntax.Term v
-  -> Domain.Type
-  -> e (Syntax.Term v)
+  -> M Domain.Type
+  -> M (e (Syntax.Term v))
 inferred expected term typ =
   case expected of
     Infer ->
-      Inferred term typ
+      pure $ Inferred term typ
 
-    Check expectedType ->
-
-      -- unify typ expectedType -- TODO
-      Checked term
+    Check expectedType -> do
+      typ' <- typ
+      unify typ' expectedType
+      pure $ Checked term
 
 tc
   :: Functor e
   => Context v
   -> PreSyntax.Term
   -> Expected e
-  -> e (Syntax.Term v)
+  -> M (e (Syntax.Term v))
 tc context term expected =
   case term of
     PreSyntax.Var name ->
       case Context.lookupName name context of
-        Nothing ->
+        Nothing -> do
+          type_ <- typeOfGlobal name
           inferred
             expected
             (Syntax.Global name)
-            (eval context (typeOfGlobal name))
+            (eval context type_)
 
         Just v ->
           inferred
@@ -83,116 +84,100 @@ tc context term expected =
             (Syntax.Var v)
             (Context.lookupType v context)
 
-    PreSyntax.Let name term' body ->
-      let
-        Inferred term'' typ =
-          infer context term'
+    PreSyntax.Let name term' body -> do
+      Inferred term'' typ <- infer context term'
 
+      let
         context' =
           Context.extendValue context name (eval context term'') typ
-      in
-      Syntax.Let term'' . Bound.Scope <$> tc context' body expected
 
-    PreSyntax.Pi name source domain ->
+      body' <- tc context' body expected
+      pure $ Syntax.Let term'' . Bound.Scope <$> body'
+
+    PreSyntax.Pi name source domain -> do
+      source' <- check context source Builtin.type_
+
       let
-        source' =
-          check context source Builtin.type_
-
         context' =
-          Context.extend context name Builtin.type_
+          Context.extend context name $ pure Builtin.type_
 
-        domain' =
-          check context' domain Builtin.type_
-      in
+      domain' <- check context' domain Builtin.type_
       inferred
         expected
         (Syntax.Pi source' $ Bound.Scope domain')
-        Builtin.type_
+        (pure Builtin.type_)
 
-    PreSyntax.Fun source domain ->
-      let
-        source' =
-          check context source Builtin.type_
-
-        domain' =
-          check context domain Builtin.type_
-      in
+    PreSyntax.Fun source domain -> do
+      source' <- check context source Builtin.type_
+      domain' <- check context domain Builtin.type_
       inferred
         expected
         (Syntax.Fun source' domain')
-        Builtin.type_
+        (pure Builtin.type_)
 
     PreSyntax.Lam name body ->
       case expected of
         Infer -> undefined
-        Check (Domain.Pi source domainClosure) ->
+        Check (Domain.Pi source domainClosure) -> do
           let
             context' =
               Context.extend context name source
 
-            domain =
-              Evaluation.evalClosure
-                domainClosure
-                (eval context' $ Syntax.Var $ Bound.B ())
+          domain <-
+            Evaluation.evalClosure
+              domainClosure
+              (eval context' $ Syntax.Var $ Bound.B ())
+          body' <- check context' body domain
+          pure $ Checked (Syntax.Lam (Bound.Scope body'))
 
-            body' =
-              check context' body domain
-          in
-          Checked (Syntax.Lam (Bound.Scope body'))
-
-        Check (Domain.Fun source domain) ->
+        Check (Domain.Fun source domain) -> do
           let
             context' =
               Context.extend context name source
 
-            body' =
-              check context' body domain
-          in
-          Checked (Syntax.Lam (Bound.Scope body'))
+          domain' <- domain
+          body' <- check context' body domain'
+          pure $ Checked (Syntax.Lam (Bound.Scope body'))
 
-    PreSyntax.App function argument ->
-      let
-        Inferred function' functionType =
-          infer context function
-      in
-      case functionType of
-        Domain.Pi argumentType domainClosure ->
-          let
-            argument' =
-              check context argument argumentType
-          in
+    PreSyntax.App function argument -> do
+      Inferred function' functionType <- infer context function
+      functionType' <- functionType
+
+      case functionType' of
+        Domain.Pi argumentType domainClosure -> do
+          argumentType' <- argumentType
+          argument' <- check context argument argumentType'
           inferred
             expected
             (Syntax.App function' argument')
             (Evaluation.evalClosure domainClosure (eval context argument'))
 
-        Domain.Fun source domain ->
+        Domain.Fun source domain -> do
+          source' <- source
           case expected of
-            Check expectedType ->
-              let
-                -- TODO
-                -- unify context expectedType functionType
-                argument' =
-                  check context argument source
-              in
-              Checked (Syntax.App function' argument')
+            Check expectedType -> do
+              unify expectedType functionType'
+              argument' <- check context argument source'
+              pure $ Checked (Syntax.App function' argument')
 
-            Infer ->
-              let
-                argument' =
-                  check context argument source
-              in
-              Inferred (Syntax.App function' argument') domain
+            Infer -> do
+              argument' <- check context argument source'
+              pure $ Inferred (Syntax.App function' argument') domain
 
 
 eval
   :: Context v
   -> Syntax.Term v
-  -> Domain.Value
+  -> M Domain.Value
 eval context =
   Evaluation.eval (Context.values context)
 
 typeOfGlobal
   :: Text
-  -> Syntax.Type v
-typeOfGlobal = undefined
+  -> M (Syntax.Type v)
+typeOfGlobal =
+  undefined
+
+unify :: Domain.Value -> Domain.Value -> M ()
+unify =
+  undefined

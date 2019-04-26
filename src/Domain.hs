@@ -9,18 +9,19 @@ import qualified Bound.Var as Bound
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 
+import Monad
 import qualified Syntax
 import Tsil (Tsil)
 import qualified Tsil
 
 data Closure where
-  Closure :: Syntax.Env Value v -> Scope () Syntax.Term v -> Closure
+  Closure :: Syntax.Env (M Value) v -> Scope () Syntax.Term v -> Closure
 
 data Value
   = Neutral Head Spine
   | Lam !Closure
-  | Pi Type !Closure
-  | Fun Type Type
+  | Pi !(M Type) !Closure
+  | Fun !(M Type) !(M Type)
 
 type Type = Value
 
@@ -28,7 +29,7 @@ data Head
   = Var !Var
   | Global !Text
 
-type Spine = Tsil Value
+type Spine = Tsil (M Value)
 
 newtype Var = V Int
   deriving (Eq, Ord, Show, Hashable, Num)
