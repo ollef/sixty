@@ -20,6 +20,7 @@ data Value
   = Neutral Head Spine
   | Lam !Closure
   | Pi Type !Closure
+  | Fun Type Type
 
 type Type = Value
 

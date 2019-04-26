@@ -24,6 +24,9 @@ eval env term =
     Syntax.Pi t s ->
       Domain.Pi (eval env t) (Domain.Closure env s)
 
+    Syntax.Fun t1 t2 ->
+      Domain.Fun (eval env t1) (eval env t2)
+
     Syntax.Lam s ->
       Domain.Lam (Domain.Closure env s)
 
@@ -57,6 +60,9 @@ readBack env value =
 
     Domain.Pi typ closure ->
       Syntax.Pi (readBack env typ) (readBackClosure env closure)
+
+    Domain.Fun source domain ->
+      Syntax.Fun (readBack env source) (readBack env domain)
 
 readBackClosure :: Domain.Env v -> Domain.Closure -> Bound.Scope () Syntax.Term v
 readBackClosure env closure =

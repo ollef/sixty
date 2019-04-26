@@ -5,6 +5,7 @@ module Elaboration where
 import Protolude hiding (check)
 
 import qualified Bound.Scope.Simple as Bound
+import qualified Bound.Var as Bound
 
 import qualified Builtin
 import Context (Context)
@@ -77,17 +78,20 @@ tc context term expected =
             (eval context (typeOfGlobal name))
 
         Just v ->
-          inferred expected (Syntax.Var v) (Context.lookupType v context)
+          inferred
+            expected
+            (Syntax.Var v)
+            (Context.lookupType v context)
 
-    PreSyntax.Let name term body ->
+    PreSyntax.Let name term' body ->
       let
-        Inferred term' typ =
-          infer context term
+        Inferred term'' typ =
+          infer context term'
 
         context' =
-          Context.extendValue context name (eval context term') typ
+          Context.extendValue context name (eval context term'') typ
       in
-      Syntax.Let term' . Bound.Scope <$> tc context' body expected
+      Syntax.Let term'' . Bound.Scope <$> tc context' body expected
 
     PreSyntax.Pi name source domain ->
       let
@@ -105,11 +109,81 @@ tc context term expected =
         (Syntax.Pi source' $ Bound.Scope domain')
         Builtin.type_
 
+    PreSyntax.Fun source domain ->
+      let
+        source' =
+          check context source Builtin.type_
+
+        domain' =
+          check context domain Builtin.type_
+      in
+      inferred
+        expected
+        (Syntax.Fun source' domain')
+        Builtin.type_
+
     PreSyntax.Lam name body ->
-      undefined
+      case expected of
+        Infer -> undefined
+        Check (Domain.Pi source domainClosure) ->
+          let
+            context' =
+              Context.extend context name source
+
+            domain =
+              Evaluation.evalClosure
+                domainClosure
+                (eval context' $ Syntax.Var $ Bound.B ())
+
+            body' =
+              check context' body domain
+          in
+          Checked (Syntax.Lam (Bound.Scope body'))
+
+        Check (Domain.Fun source domain) ->
+          let
+            context' =
+              Context.extend context name source
+
+            body' =
+              check context' body domain
+          in
+          Checked (Syntax.Lam (Bound.Scope body'))
 
     PreSyntax.App function argument ->
-      undefined
+      let
+        Inferred function' functionType =
+          infer context function
+      in
+      case functionType of
+        Domain.Pi argumentType domainClosure ->
+          let
+            argument' =
+              check context argument argumentType
+          in
+          inferred
+            expected
+            (Syntax.App function' argument')
+            (Evaluation.evalClosure domainClosure (eval context argument'))
+
+        Domain.Fun source domain ->
+          case expected of
+            Check expectedType ->
+              let
+                -- TODO
+                -- unify context expectedType functionType
+                argument' =
+                  check context argument source
+              in
+              Checked (Syntax.App function' argument')
+
+            Infer ->
+              let
+                argument' =
+                  check context argument source
+              in
+              Inferred (Syntax.App function' argument') domain
+
 
 eval
   :: Context v

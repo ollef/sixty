@@ -8,5 +8,6 @@ data Term
   = Var !Var
   | Let !Var Term Term
   | Pi Var Term Term
+  | Fun Term Term
   | Lam Var Term
   | App Term Term
