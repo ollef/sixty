@@ -1,5 +1,6 @@
 {-# language DeriveFunctor #-}
 {-# language GADTs #-}
+{-# language OverloadedStrings #-}
 module Elaboration where
 
 import Protolude hiding (force, check, evaluate)
@@ -174,7 +175,12 @@ evaluate context =
 typeOfGlobal
   :: Text
   -> M (Syntax.Type v)
-typeOfGlobal =
+typeOfGlobal global =
+  if global == "Type" then
+    return $ Syntax.Global "Type"
+  else
+    undefined
+
   undefined
 
 unify :: Domain.Value -> Domain.Value -> M ()
