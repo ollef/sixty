@@ -8,6 +8,7 @@ import qualified Bound.Scope.Simple as Bound
 import qualified Domain
 import Monad
 import qualified Syntax
+import Index
 import qualified Tsil
 
 eval :: Syntax.Env (Lazy Domain.Value) v -> Syntax.Term v -> M Domain.Value
@@ -56,48 +57,48 @@ evalClosure :: Domain.Closure -> Lazy Domain.Value -> M Domain.Value
 evalClosure (Domain.Closure env (Bound.Scope body)) x =
   eval (Syntax.Snoc env x) body
 
-readBack :: Domain.Env v -> Domain.Value -> M (Syntax.Term v)
-readBack env value =
+readBack :: Domain.EnvSize v -> Domain.Value -> M (Syntax.Term v)
+readBack size value =
   case value of
     Domain.Neutral hd spine ->
-      readBackNeutral env hd spine
+      readBackNeutral size hd spine
 
     Domain.Lam closure ->
-      Syntax.Lam <$> readBackClosure env closure
+      Syntax.Lam <$> readBackClosure size closure
 
     Domain.Pi typ closure -> do
       typ' <- force typ
-      Syntax.Pi <$> readBack env typ' <*> readBackClosure env closure
+      Syntax.Pi <$> readBack size typ' <*> readBackClosure size closure
 
     Domain.Fun source domain -> do
       source' <- force source
       domain' <- force domain
-      Syntax.Fun <$> readBack env source' <*> readBack env domain'
+      Syntax.Fun <$> readBack size source' <*> readBack size domain'
 
-readBackClosure :: Domain.Env v -> Domain.Closure -> M (Bound.Scope () Syntax.Term v)
-readBackClosure env closure = do
+readBackClosure :: Domain.EnvSize v -> Domain.Closure -> M (Bound.Scope () Syntax.Term v)
+readBackClosure size closure = do
   let
-    (env', v) =
-      Domain.extend env
+    (size', v) =
+      Domain.extendEnvSize size
 
   closure' <- evalClosure closure $ Lazy $ pure $ Domain.var v
-  Bound.Scope <$> readBack env' closure'
+  Bound.Scope <$> readBack size' closure'
 
-readBackNeutral :: Domain.Env v -> Domain.Head -> Domain.Spine -> M (Syntax.Term v)
-readBackNeutral env hd spine =
+readBackNeutral :: Domain.EnvSize v -> Domain.Head -> Domain.Spine -> M (Syntax.Term v)
+readBackNeutral size hd spine =
   case spine of
     Tsil.Nil ->
-      pure $ readBackHead env hd
+      pure $ readBackHead size hd
 
     Tsil.Snoc spine' arg -> do
       arg' <- force arg
-      Syntax.App <$> readBackNeutral env hd spine' <*> readBack env arg'
+      Syntax.App <$> readBackNeutral size hd spine' <*> readBack size arg'
 
-readBackHead :: Domain.Env v -> Domain.Head -> Syntax.Term v
-readBackHead env hd =
+readBackHead :: Domain.EnvSize v -> Domain.Head -> Syntax.Term v
+readBackHead size hd =
   case hd of
     Domain.Var v ->
-      Syntax.Var $ Domain.lookupEnv env v
+      Syntax.Var $ Index.fromLevel v size
 
     Domain.Global g ->
       Syntax.Global g

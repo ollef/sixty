@@ -20,7 +20,7 @@ extend
   :: Context v
   -> Text
   -> Lazy Domain.Type
-  -> (Context (Bound.Var () v), Domain.Var)
+  -> (Context (Bound.Var () v), Level)
 extend (Context sz ns vs ts) n t =
   let
     (sz', v) =
