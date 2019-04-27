@@ -37,8 +37,3 @@ var v = Neutral (Var v) Tsil.Nil
 
 global :: Text -> Value
 global g = Neutral (Global g) Tsil.Nil
-
-type EnvSize v = Index (Bound.Var () v)
-
-extendEnvSize :: EnvSize v -> (EnvSize (Bound.Var () v), Level)
-extendEnvSize f = (Succ f, Index.toLevel Zero $ Succ f)

@@ -35,7 +35,6 @@ check
 check context term typ = do
   Checked result <-
     tc context term $ Check typ
-
   pure result
 
 infer

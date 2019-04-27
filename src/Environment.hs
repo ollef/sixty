@@ -17,3 +17,8 @@ lookup Nil v = absurdIndex v
 lookup (Snoc _ val) Zero = val
 lookup (Snoc env _) (Succ v) = lookup env v
 lookup _ _ = panic "lookupValue"
+
+type Size v = Index (Bound.Var () v)
+
+extendSize :: Size v -> (Size (Bound.Var () v), Level)
+extendSize f = (Succ f, Index.toLevel Zero $ Succ f)

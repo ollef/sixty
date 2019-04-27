@@ -59,7 +59,7 @@ evalClosure :: Domain.Closure -> Lazy Domain.Value -> M Domain.Value
 evalClosure (Domain.Closure env (Bound.Scope body)) x =
   eval (Environment.Snoc env x) body
 
-readBack :: Domain.EnvSize v -> Domain.Value -> M (Syntax.Term v)
+readBack :: Environment.Size v -> Domain.Value -> M (Syntax.Term v)
 readBack size value =
   case value of
     Domain.Neutral hd spine ->
@@ -77,16 +77,16 @@ readBack size value =
       domain' <- force domain
       Syntax.Fun <$> readBack size source' <*> readBack size domain'
 
-readBackClosure :: Domain.EnvSize v -> Domain.Closure -> M (Bound.Scope () Syntax.Term v)
+readBackClosure :: Environment.Size v -> Domain.Closure -> M (Bound.Scope () Syntax.Term v)
 readBackClosure size closure = do
   let
     (size', v) =
-      Domain.extendEnvSize size
+      Environment.extendSize size
 
   closure' <- evalClosure closure $ Lazy $ pure $ Domain.var v
   Bound.Scope <$> readBack size' closure'
 
-readBackNeutral :: Domain.EnvSize v -> Domain.Head -> Domain.Spine -> M (Syntax.Term v)
+readBackNeutral :: Environment.Size v -> Domain.Head -> Domain.Spine -> M (Syntax.Term v)
 readBackNeutral size hd spine =
   case spine of
     Tsil.Nil ->
@@ -96,7 +96,7 @@ readBackNeutral size hd spine =
       arg' <- force arg
       Syntax.App <$> readBackNeutral size hd spine' <*> readBack size arg'
 
-readBackHead :: Domain.EnvSize v -> Domain.Head -> Syntax.Term v
+readBackHead :: Environment.Size v -> Domain.Head -> Syntax.Term v
 readBackHead size hd =
   case hd of
     Domain.Var v ->

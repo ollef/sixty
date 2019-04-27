@@ -13,7 +13,7 @@ import Index
 import Monad
 
 data Context v = Context
-  { size :: !(Domain.EnvSize v)
+  { size :: !(Environment.Size v)
   , names :: HashMap Text Level
   , values :: Environment v (Lazy Domain.Value)
   , types :: Environment v (Lazy Domain.Type)
@@ -27,7 +27,7 @@ extend
 extend (Context sz ns vs ts) name type_ =
   let
     (sz', level) =
-      Domain.extendEnvSize sz
+      Environment.extendSize sz
   in
   ( Context
     sz'
@@ -46,7 +46,7 @@ extendValue
 extendValue (Context sz ns vs ts) name value type_ =
   let
     (sz', level) =
-      Domain.extendEnvSize sz
+      Environment.extendSize sz
   in
   Context
     sz'
