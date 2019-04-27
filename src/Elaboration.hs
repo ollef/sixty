@@ -2,7 +2,7 @@
 {-# language GADTs #-}
 module Elaboration where
 
-import Protolude hiding (force, check)
+import Protolude hiding (force, check, evaluate)
 
 import qualified Builtin
 import Context (Context)
@@ -69,7 +69,7 @@ elaborate context term expected =
       case Context.lookupName name context of
         Nothing -> do
           type_ <- typeOfGlobal name
-          type' <- lazy $ eval context type_
+          type' <- lazy $ evaluate context type_
           inferred
             expected
             (Syntax.Global name)
@@ -84,7 +84,7 @@ elaborate context term expected =
     PreSyntax.Let name term' body -> do
       Inferred term'' typ <- infer context term'
 
-      term''' <- lazy $ eval context term''
+      term''' <- lazy $ evaluate context term''
       let
         context' =
           Context.extendValue context name term''' typ
@@ -122,7 +122,7 @@ elaborate context term expected =
               Context.extend context name source
 
           domain <-
-            Evaluation.evalClosure
+            Evaluation.evaluateClosure
               domainClosure
               (Lazy $ pure $ Domain.var var)
           body' <- check context' body domain
@@ -145,8 +145,8 @@ elaborate context term expected =
         Domain.Pi argumentType domainClosure -> do
           argumentType' <- force argumentType
           argument' <- check context argument argumentType'
-          argument'' <- lazy $ eval context argument'
-          domain <- lazy $ Evaluation.evalClosure domainClosure argument''
+          argument'' <- lazy $ evaluate context argument'
+          domain <- lazy $ Evaluation.evaluateClosure domainClosure argument''
           inferred
             expected
             (Syntax.App function' argument')
@@ -164,12 +164,12 @@ elaborate context term expected =
               argument' <- check context argument source'
               pure $ Inferred (Syntax.App function' argument') domain
 
-eval
+evaluate
   :: Context v
   -> Syntax.Term v
   -> M Domain.Value
-eval context =
-  Evaluation.eval (Context.values context)
+evaluate context =
+  Evaluation.evaluate (Context.values context)
 
 typeOfGlobal
   :: Text

@@ -1,7 +1,7 @@
 {-# language OverloadedStrings #-}
 module Evaluation where
 
-import Protolude hiding (force)
+import Protolude hiding (force, evaluate)
 
 import qualified Domain
 import Environment (Environment)
@@ -11,8 +11,8 @@ import Monad
 import qualified Syntax
 import qualified Tsil
 
-eval :: Environment v (Lazy Domain.Value) -> Syntax.Term v -> M Domain.Value
-eval env term =
+evaluate :: Environment v (Lazy Domain.Value) -> Syntax.Term v -> M Domain.Value
+evaluate env term =
   case term of
     Syntax.Var v ->
       force $ Environment.lookup env v
@@ -21,31 +21,31 @@ eval env term =
       pure $ Domain.global g -- TODO
 
     Syntax.Let t (Scope s) -> do
-      t' <- lazy $ eval env t
-      eval (Environment.Snoc env t') s
+      t' <- lazy $ evaluate env t
+      evaluate (Environment.Snoc env t') s
 
     Syntax.Pi t s -> do
-      t' <- lazy $ eval env t
+      t' <- lazy $ evaluate env t
       pure $ Domain.Pi t' (Domain.Closure env s)
 
     Syntax.Fun t1 t2 -> do
-      t1' <- lazy $ eval env t1
-      t2' <- lazy $ eval env t2
+      t1' <- lazy $ evaluate env t1
+      t2' <- lazy $ evaluate env t2
       pure $ Domain.Fun t1' t2'
 
     Syntax.Lam s ->
       pure $ Domain.Lam (Domain.Closure env s)
 
     Syntax.App t1 t2 -> do
-      t1' <- eval env t1
-      t2' <- lazy $ eval env t2
+      t1' <- evaluate env t1
+      t2' <- lazy $ evaluate env t2
       apply t1' t2'
 
 apply :: Domain.Value -> Lazy Domain.Value -> M Domain.Value
 apply fun arg =
   case fun of
     Domain.Lam closure ->
-      evalClosure closure arg
+      evaluateClosure closure arg
 
     Domain.Neutral hd args ->
       pure $ Domain.Neutral hd (Tsil.Snoc args arg)
@@ -53,9 +53,9 @@ apply fun arg =
     _ ->
       panic "applying non-function"
 
-evalClosure :: Domain.Closure -> Lazy Domain.Value -> M Domain.Value
-evalClosure (Domain.Closure env (Scope body)) x =
-  eval (Environment.Snoc env x) body
+evaluateClosure :: Domain.Closure -> Lazy Domain.Value -> M Domain.Value
+evaluateClosure (Domain.Closure env (Scope body)) x =
+  evaluate (Environment.Snoc env x) body
 
 readBack :: Environment.Size v -> Domain.Value -> M (Syntax.Term v)
 readBack size value =
@@ -81,7 +81,7 @@ readBackClosure size closure = do
     (size', v) =
       Environment.extendSize size
 
-  closure' <- evalClosure closure $ Lazy $ pure $ Domain.var v
+  closure' <- evaluateClosure closure $ Lazy $ pure $ Domain.var v
   Scope <$> readBack size' closure'
 
 readBackNeutral :: Environment.Size v -> Domain.Head -> Domain.Spine -> M (Syntax.Term v)
