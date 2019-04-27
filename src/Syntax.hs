@@ -5,9 +5,10 @@ import Protolude
 
 import Bound.Var
 import Bound.Scope.Simple
+import Index
 
 data Term v
-  = Var !v
+  = Var !(Index v)
   | Global !Text
   | Let (Term v) (Scope () Term v)
   | Pi (Term v) (Scope () Term v)
@@ -21,16 +22,16 @@ data Env val v where
   Nil :: Env val Void
   Snoc :: Env val v -> val -> Env val (Var () v)
 
-lookupValue :: Env val v -> v -> val
-lookupValue Nil v = absurd v
-lookupValue (Snoc _ val) (B ~()) = val
-lookupValue (Snoc env _) (F v) = lookupValue env v
+lookupValue :: Env val v -> Index v -> val
+lookupValue Nil v = absurdIndex v
+lookupValue (Snoc _ val) Zero = val
+lookupValue (Snoc env _) (Succ v) = lookupValue env v
 
 lookupIndex
   :: Env val v
   -> (val -> Bool)
-  -> Maybe (v, val)
+  -> Maybe (Index v, val)
 lookupIndex Nil _ = Nothing
 lookupIndex (Snoc env val) p
-  | p val = Just (B (), val)
-  | otherwise = first F <$> lookupIndex env p
+  | p val = Just (Zero, val)
+  | otherwise = first Succ <$> lookupIndex env p

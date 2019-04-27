@@ -9,6 +9,7 @@ import qualified Bound.Var as Bound
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 
+import Index
 import Monad
 import qualified Syntax
 import Tsil (Tsil)
@@ -34,9 +35,9 @@ type Spine = Tsil (Lazy Value)
 newtype Var = V Int
   deriving (Eq, Ord, Show, Hashable, Num)
 
-data Env val = Env
+data Env v = Env
   { fresh :: !Int
-  , vars :: HashMap Var val
+  , vars :: HashMap Var (Index v)
   }
 
 var :: Var -> Value
@@ -45,13 +46,13 @@ var v = Neutral (Var v) Tsil.Nil
 global :: Text -> Value
 global g = Neutral (Global g) Tsil.Nil
 
-lookupEnv :: Env val -> Var -> val
+lookupEnv :: Env v -> Var -> Index v
 lookupEnv (Env _ vs) v =
   vs HashMap.! v
 
-extend :: Env val -> (Env (Bound.Var () val), Var)
+extend :: Env v -> (Env (Bound.Var () v), Var)
 extend (Env f vs) =
-  (Env (f + 1) (HashMap.insert v (Bound.B ()) $ Bound.F <$> vs), v)
+  (Env (f + 1) (HashMap.insert v Zero $ Succ <$> vs), v)
   where
     v = V f
 

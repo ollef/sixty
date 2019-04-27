@@ -5,6 +5,7 @@ import Protolude
 import qualified Bound.Var as Bound
 
 import qualified Domain
+import Index
 import Monad
 import qualified Syntax
 
@@ -50,11 +51,11 @@ extendValue (Context sz ns vs ts) n v t =
     (Syntax.Snoc vs v)
     (Syntax.Snoc ts t)
 
-lookupName :: Text -> Context v -> Maybe v
+lookupName :: Text -> Context v -> Maybe (Index v)
 lookupName name context = fst <$> Syntax.lookupIndex (names context) (== name)
 
-lookupValue :: v -> Context v -> Lazy Domain.Value
+lookupValue :: Index v -> Context v -> Lazy Domain.Value
 lookupValue v context = Syntax.lookupValue (values context) v
 
-lookupType :: v -> Context v -> Lazy Domain.Type
+lookupType :: Index v -> Context v -> Lazy Domain.Type
 lookupType v context = Syntax.lookupValue (types context) v
