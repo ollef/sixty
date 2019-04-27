@@ -32,8 +32,7 @@ check
   -> Domain.Type
   -> M (Syntax.Term v)
 check context term typ = do
-  Checked result <-
-    tc context term $ Check typ
+  Checked result <- elaborate context term $ Check typ
   pure result
 
 infer
@@ -41,7 +40,7 @@ infer
   -> PreSyntax.Term
   -> M (Inferred (Syntax.Term v))
 infer context term =
-  tc context term Infer
+  elaborate context term Infer
 
 inferred
   :: Expected e
@@ -58,13 +57,13 @@ inferred expected term typ =
       unify typ' expectedType
       pure $ Checked term
 
-tc
+elaborate
   :: Functor e
   => Context v
   -> PreSyntax.Term
   -> Expected e
   -> M (e (Syntax.Term v))
-tc context term expected =
+elaborate context term expected =
   case term of
     PreSyntax.Var name ->
       case Context.lookupName name context of
@@ -90,7 +89,7 @@ tc context term expected =
         context' =
           Context.extendValue context name term''' typ
 
-      body' <- tc context' body expected
+      body' <- elaborate context' body expected
       pure $ Syntax.Let term'' . Scope <$> body'
 
     PreSyntax.Pi name source domain -> do
