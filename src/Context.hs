@@ -18,6 +18,9 @@ data Context v = Context
   , types :: Environment v (Lazy Domain.Type)
   }
 
+empty :: Context Void
+empty = Context Zero mempty Environment.Nil Environment.Nil
+
 extend
   :: Context v
   -> Text
