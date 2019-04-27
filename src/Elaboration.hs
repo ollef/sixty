@@ -165,7 +165,6 @@ tc context term expected =
               argument' <- check context argument source'
               pure $ Inferred (Syntax.App function' argument') domain
 
-
 eval
   :: Context v
   -> Syntax.Term v

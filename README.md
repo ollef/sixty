@@ -24,6 +24,6 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 
 ## Inspiration
 
-* András Kovács' [smalltt](https://github.com/AndrasKovacs/smalltt) and [his work on Dhall](https://discourse.dhall-lang.org/t/nbe-type-checking-conversion-checking/55)
+* András Kovács' [smalltt](https://github.com/AndrasKovacs/smalltt) and [work on Dhall](https://discourse.dhall-lang.org/t/nbe-type-checking-conversion-checking/55)
 * Thierry Coquand's [semantic type checking](http://www.cse.chalmers.se/~coquand/type.ps)
 * Danny Gratzer's [nbe-for-mltt](https://github.com/jozefg/nbe-for-mltt)
