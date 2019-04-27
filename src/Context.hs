@@ -2,7 +2,6 @@ module Context where
 
 import Protolude
 
-import qualified Bound.Var as Bound
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 
@@ -23,7 +22,7 @@ extend
   :: Context v
   -> Text
   -> Lazy Domain.Type
-  -> (Context (Bound.Var () v), Level)
+  -> (Context (Succ v), Level)
 extend (Context sz ns vs ts) name type_ =
   let
     (sz', level) =
@@ -42,7 +41,7 @@ extendValue
   -> Text
   -> Lazy Domain.Value
   -> Lazy Domain.Type
-  -> Context (Bound.Var () v)
+  -> Context (Succ v)
 extendValue (Context sz ns vs ts) name value type_ =
   let
     (sz', level) =

@@ -1,14 +1,9 @@
 {-# language GADTs #-}
-{-# language GeneralizedNewtypeDeriving #-}
 module Domain where
 
 import Protolude hiding (Type)
 
-import Bound.Scope.Simple
-import qualified Bound.Var as Bound
-
 import Environment (Environment)
-import qualified Environment
 import Index
 import Monad
 import qualified Syntax
@@ -16,7 +11,7 @@ import Tsil (Tsil)
 import qualified Tsil
 
 data Closure where
-  Closure :: Environment v (Lazy Value) -> Scope () Syntax.Term v -> Closure
+  Closure :: Environment v (Lazy Value) -> Scope Syntax.Term v -> Closure
 
 data Value
   = Neutral Head Spine

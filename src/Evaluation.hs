@@ -3,8 +3,6 @@ module Evaluation where
 
 import Protolude hiding (force)
 
-import qualified Bound.Scope.Simple as Bound
-
 import qualified Domain
 import Environment (Environment)
 import qualified Environment
@@ -22,7 +20,7 @@ eval env term =
     Syntax.Global g ->
       pure $ Domain.global g -- TODO
 
-    Syntax.Let t (Bound.Scope s) -> do
+    Syntax.Let t (Scope s) -> do
       t' <- lazy $ eval env t
       eval (Environment.Snoc env t') s
 
@@ -56,7 +54,7 @@ apply fun arg =
       panic "applying non-function"
 
 evalClosure :: Domain.Closure -> Lazy Domain.Value -> M Domain.Value
-evalClosure (Domain.Closure env (Bound.Scope body)) x =
+evalClosure (Domain.Closure env (Scope body)) x =
   eval (Environment.Snoc env x) body
 
 readBack :: Environment.Size v -> Domain.Value -> M (Syntax.Term v)
@@ -77,14 +75,14 @@ readBack size value =
       domain' <- force domain
       Syntax.Fun <$> readBack size source' <*> readBack size domain'
 
-readBackClosure :: Environment.Size v -> Domain.Closure -> M (Bound.Scope () Syntax.Term v)
+readBackClosure :: Environment.Size v -> Domain.Closure -> M (Scope Syntax.Term v)
 readBackClosure size closure = do
   let
     (size', v) =
       Environment.extendSize size
 
   closure' <- evalClosure closure $ Lazy $ pure $ Domain.var v
-  Bound.Scope <$> readBack size' closure'
+  Scope <$> readBack size' closure'
 
 readBackNeutral :: Environment.Size v -> Domain.Head -> Domain.Spine -> M (Syntax.Term v)
 readBackNeutral size hd spine =

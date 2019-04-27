@@ -11,3 +11,4 @@ data Term
   | Fun !Term !Term
   | Lam !Var !Term
   | App !Term !Term
+  deriving Show

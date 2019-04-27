@@ -4,13 +4,12 @@ module Elaboration where
 
 import Protolude hiding (force, check)
 
-import qualified Bound.Scope.Simple as Bound
-
 import qualified Builtin
 import Context (Context)
 import qualified Context
 import qualified Domain
 import qualified Evaluation
+import Index
 import Monad
 import qualified PreSyntax
 import qualified Syntax
@@ -92,7 +91,7 @@ tc context term expected =
           Context.extendValue context name term''' typ
 
       body' <- tc context' body expected
-      pure $ Syntax.Let term'' . Bound.Scope <$> body'
+      pure $ Syntax.Let term'' . Scope <$> body'
 
     PreSyntax.Pi name source domain -> do
       source' <- check context source Builtin.type_
@@ -104,7 +103,7 @@ tc context term expected =
       domain' <- check context' domain Builtin.type_
       inferred
         expected
-        (Syntax.Pi source' $ Bound.Scope domain')
+        (Syntax.Pi source' $ Scope domain')
         (Lazy $ pure Builtin.type_)
 
     PreSyntax.Fun source domain -> do
@@ -128,7 +127,7 @@ tc context term expected =
               domainClosure
               (Lazy $ pure $ Domain.var var)
           body' <- check context' body domain
-          pure $ Checked (Syntax.Lam (Bound.Scope body'))
+          pure $ Checked (Syntax.Lam (Scope body'))
 
         Check (Domain.Fun source domain) -> do
           let
@@ -137,7 +136,7 @@ tc context term expected =
 
           domain' <- force domain
           body' <- check context' body domain'
-          pure $ Checked (Syntax.Lam (Bound.Scope body'))
+          pure $ Checked (Syntax.Lam (Scope body'))
 
     PreSyntax.App function argument -> do
       Inferred function' functionType <- infer context function
