@@ -3,6 +3,8 @@ module Context where
 import Protolude
 
 import qualified Bound.Var as Bound
+import Data.HashMap.Lazy (HashMap)
+import qualified Data.HashMap.Lazy as HashMap
 
 import qualified Domain
 import Index
@@ -11,7 +13,7 @@ import qualified Syntax
 
 data Context v = Context
   { size :: !(Domain.EnvSize v)
-  , names :: Syntax.Env Text v
+  , names :: HashMap Text Level
   , values :: Syntax.Env (Lazy Domain.Value) v
   , types :: Syntax.Env (Lazy Domain.Type) v
   }
@@ -21,38 +23,40 @@ extend
   -> Text
   -> Lazy Domain.Type
   -> (Context (Bound.Var () v), Level)
-extend (Context sz ns vs ts) n t =
+extend (Context sz ns vs ts) name type_ =
   let
-    (sz', v) =
+    (sz', level) =
       Domain.extendEnvSize sz
   in
   ( Context
     sz'
-    (Syntax.Snoc ns n)
-    (Syntax.Snoc vs $ Lazy $ pure $ Domain.var v)
-    (Syntax.Snoc ts t)
-  , v
+    (HashMap.insert name level ns)
+    (Syntax.Snoc vs $ Lazy $ pure $ Domain.var level)
+    (Syntax.Snoc ts type_)
+  , level
   )
 
 extendValue
   :: Context v
   -> Text
-  -> Lazy Domain.Type
   -> Lazy Domain.Value
+  -> Lazy Domain.Type
   -> Context (Bound.Var () v)
-extendValue (Context sz ns vs ts) n v t =
+extendValue (Context sz ns vs ts) name value type_ =
   let
-    (sz', _) =
+    (sz', level) =
       Domain.extendEnvSize sz
   in
   Context
     sz'
-    (Syntax.Snoc ns n)
-    (Syntax.Snoc vs v)
-    (Syntax.Snoc ts t)
+    (HashMap.insert name level ns)
+    (Syntax.Snoc vs value)
+    (Syntax.Snoc ts type_)
 
 lookupName :: Text -> Context v -> Maybe (Index v)
-lookupName name context = fst <$> Syntax.lookupIndex (names context) (== name)
+lookupName name context = do
+  level <- HashMap.lookup name (names context)
+  return $ Index.fromLevel level (size context)
 
 lookupValue :: Index v -> Context v -> Lazy Domain.Value
 lookupValue v context = Syntax.lookupValue (values context) v
