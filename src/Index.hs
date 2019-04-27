@@ -44,9 +44,9 @@ absurdIndex = panic "Absurd index"
 
 newtype Scope f v = Scope (f (Succ v))
 
-data Succ v
-
 deriving instance Show (f (Succ v)) => Show (Scope f v)
+
+data Succ v
 
 -------------------------------------------------------------------------------
 -- Levels

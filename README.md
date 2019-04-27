@@ -11,7 +11,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [x] Safe and fast phantom typed De Bruijn indices
 - [x] Evaluation
 - [x] Readback
-- [ ] Parsing
+- [x] Parsing
 - [ ] Pretty printing
 - [ ] Unification and meta variables
 - [ ] Basic type checking

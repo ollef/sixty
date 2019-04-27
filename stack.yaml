@@ -1,3 +1,5 @@
 resolver: lts-13.18
 packages:
 - .
+extra-deps:
+- parsix-0.2.1.0

@@ -12,3 +12,6 @@ data Term
   | Lam !Var !Term
   | App !Term !Term
   deriving Show
+
+apps :: Foldable f => Term -> f Term -> Term
+apps = foldl App
