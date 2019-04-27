@@ -20,10 +20,10 @@ import Data.Coerce
 newtype Index v = Index Int
   deriving (Eq, Show)
 
-pattern Zero :: (v ~ Bound.Var b v') => Index v
+pattern Zero :: Index (Bound.Var b v)
 pattern Zero = Index 0
 
-pattern Succ :: (v ~ (Bound.Var b v')) => Index v' -> Index v
+pattern Succ :: Index v -> Index (Bound.Var b v)
 pattern Succ index <- ((\(Index i) -> Index (i - 1)) -> index)
   where
     Succ (Index v) = Index (v + 1)

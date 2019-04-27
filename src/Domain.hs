@@ -6,9 +6,9 @@ import Protolude hiding (Type)
 
 import Bound.Scope.Simple
 import qualified Bound.Var as Bound
-import Data.HashMap.Lazy (HashMap)
-import qualified Data.HashMap.Lazy as HashMap
 
+import Environment (Environment)
+import qualified Environment
 import Index
 import Monad
 import qualified Syntax
@@ -16,7 +16,7 @@ import Tsil (Tsil)
 import qualified Tsil
 
 data Closure where
-  Closure :: Syntax.Env (Lazy Value) v -> Scope () Syntax.Term v -> Closure
+  Closure :: Environment v (Lazy Value) -> Scope () Syntax.Term v -> Closure
 
 data Value
   = Neutral Head Spine

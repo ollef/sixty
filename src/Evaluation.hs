@@ -6,23 +6,25 @@ import Protolude hiding (force)
 import qualified Bound.Scope.Simple as Bound
 
 import qualified Domain
+import Environment (Environment)
+import qualified Environment
+import Index
 import Monad
 import qualified Syntax
-import Index
 import qualified Tsil
 
-eval :: Syntax.Env (Lazy Domain.Value) v -> Syntax.Term v -> M Domain.Value
+eval :: Environment v (Lazy Domain.Value) -> Syntax.Term v -> M Domain.Value
 eval env term =
   case term of
     Syntax.Var v ->
-      force $ Syntax.lookupValue env v
+      force $ Environment.lookup env v
 
     Syntax.Global g ->
       pure $ Domain.global g -- TODO
 
     Syntax.Let t (Bound.Scope s) -> do
       t' <- lazy $ eval env t
-      eval (Syntax.Snoc env t') s
+      eval (Environment.Snoc env t') s
 
     Syntax.Pi t s -> do
       t' <- lazy $ eval env t
@@ -55,7 +57,7 @@ apply fun arg =
 
 evalClosure :: Domain.Closure -> Lazy Domain.Value -> M Domain.Value
 evalClosure (Domain.Closure env (Bound.Scope body)) x =
-  eval (Syntax.Snoc env x) body
+  eval (Environment.Snoc env x) body
 
 readBack :: Domain.EnvSize v -> Domain.Value -> M (Syntax.Term v)
 readBack size value =

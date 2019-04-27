@@ -7,15 +7,16 @@ import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 
 import qualified Domain
+import qualified Environment
+import Environment (Environment)
 import Index
 import Monad
-import qualified Syntax
 
 data Context v = Context
   { size :: !(Domain.EnvSize v)
   , names :: HashMap Text Level
-  , values :: Syntax.Env (Lazy Domain.Value) v
-  , types :: Syntax.Env (Lazy Domain.Type) v
+  , values :: Environment v (Lazy Domain.Value)
+  , types :: Environment v (Lazy Domain.Type)
   }
 
 extend
@@ -31,8 +32,8 @@ extend (Context sz ns vs ts) name type_ =
   ( Context
     sz'
     (HashMap.insert name level ns)
-    (Syntax.Snoc vs $ Lazy $ pure $ Domain.var level)
-    (Syntax.Snoc ts type_)
+    (Environment.Snoc vs $ Lazy $ pure $ Domain.var level)
+    (Environment.Snoc ts type_)
   , level
   )
 
@@ -50,8 +51,8 @@ extendValue (Context sz ns vs ts) name value type_ =
   Context
     sz'
     (HashMap.insert name level ns)
-    (Syntax.Snoc vs value)
-    (Syntax.Snoc ts type_)
+    (Environment.Snoc vs value)
+    (Environment.Snoc ts type_)
 
 lookupName :: Text -> Context v -> Maybe (Index v)
 lookupName name context = do
@@ -59,7 +60,7 @@ lookupName name context = do
   return $ Index.fromLevel level (size context)
 
 lookupValue :: Index v -> Context v -> Lazy Domain.Value
-lookupValue v context = Syntax.lookupValue (values context) v
+lookupValue v context = Environment.lookup (values context) v
 
 lookupType :: Index v -> Context v -> Lazy Domain.Type
-lookupType v context = Syntax.lookupValue (types context) v
+lookupType v context = Environment.lookup (types context) v
