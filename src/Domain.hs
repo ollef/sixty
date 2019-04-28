@@ -5,6 +5,7 @@ import Protolude hiding (Type)
 
 import Environment (Environment)
 import Index
+import qualified Meta
 import Monad
 import qualified Syntax
 import Tsil (Tsil)
@@ -23,6 +24,7 @@ type Type = Value
 
 data Head
   = Var !Level
+  | Meta !Meta.Index
   | Global !Text
   deriving Eq
 
@@ -33,3 +35,6 @@ var v = Neutral (Var v) Tsil.Nil
 
 global :: Text -> Value
 global g = Neutral (Global g) Tsil.Nil
+
+meta :: Meta.Index -> Value
+meta i = Neutral (Meta i) Tsil.Nil

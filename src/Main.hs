@@ -22,7 +22,8 @@ parseAndTypeCheck :: StringConv s Text => s -> IO ()
 parseAndTypeCheck inputString =
   case Parser.parseText Parser.term (toS inputString) "<command-line>" of
     Parsix.Success preTerm -> do
-      Elaboration.Inferred term typeValue <- Elaboration.infer Context.empty preTerm
+      context <- Context.empty
+      Elaboration.Inferred term typeValue <- Elaboration.infer context preTerm
       print term
       typeValue' <- force typeValue
       type_ <- Evaluation.readBack Zero typeValue'

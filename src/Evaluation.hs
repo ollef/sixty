@@ -17,6 +17,9 @@ evaluate env term =
     Syntax.Var v ->
       force $ Environment.lookup env v
 
+    Syntax.Meta i ->
+      pure $ Domain.meta i
+
     Syntax.Global g ->
       pure $ Domain.global g -- TODO
 
@@ -99,6 +102,9 @@ readBackHead size hd =
   case hd of
     Domain.Var v ->
       Syntax.Var $ Index.fromLevel v size
+
+    Domain.Meta m ->
+      Syntax.Meta m
 
     Domain.Global g ->
       Syntax.Global g

@@ -93,7 +93,7 @@ elaborate context term expected =
       term''' <- lazy $ evaluate context term''
       let
         context' =
-          Context.extendValue context name term''' typ
+          Context.extendDef context name term''' typ
 
       body' <- elaborate context' body expected
       pure $ Syntax.Let term'' . Scope <$> body'
@@ -123,7 +123,20 @@ elaborate context term expected =
 
     Presyntax.Lam name body ->
       case expected of
-        Infer -> undefined
+        Infer -> do
+          source <- Context.newMeta context
+          source' <- lazy $ evaluate context source
+          let
+            (context', _) =
+              Context.extend context name source'
+          Inferred body' domain <- infer context' body
+          type_ <- lazy $ do
+            domain' <- force domain
+            domain'' <- Evaluation.readBack (Context.size context') domain'
+            pure $ Domain.Pi source' $ Domain.Closure (Context.values context) (Scope domain'')
+
+          pure $ Inferred (Syntax.Lam (Scope body')) type_
+
         Check (Domain.Pi source domainClosure) -> do
           let
             (context', var) =
