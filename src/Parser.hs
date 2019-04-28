@@ -13,7 +13,7 @@ import qualified Text.Parser.Token.Highlight as Highlight
 import Text.Parsix ((<?>), symbol, try)
 import qualified Text.Parsix as Parsix
 
-import PreSyntax
+import Presyntax
 
 newtype Parser a = Parser (Parsix.Parser a)
   deriving

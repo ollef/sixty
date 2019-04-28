@@ -1,4 +1,4 @@
-module PreSyntax where
+module Presyntax where
 
 import Protolude
 

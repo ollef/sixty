@@ -12,7 +12,7 @@ import qualified Domain
 import qualified Evaluation
 import Index
 import Monad
-import qualified PreSyntax
+import qualified Presyntax
 import qualified Syntax
 
 data Inferred term
@@ -29,7 +29,7 @@ data Expected f where
 
 check
   :: Context v
-  -> PreSyntax.Term
+  -> Presyntax.Term
   -> Domain.Type
   -> M (Syntax.Term v)
 check context term typ = do
@@ -38,7 +38,7 @@ check context term typ = do
 
 infer
   :: Context v
-  -> PreSyntax.Term
+  -> Presyntax.Term
   -> M (Inferred (Syntax.Term v))
 infer context term =
   elaborate context term Infer
@@ -61,12 +61,12 @@ inferred expected term typ =
 elaborate
   :: Functor e
   => Context v
-  -> PreSyntax.Term
+  -> Presyntax.Term
   -> Expected e
   -> M (e (Syntax.Term v))
 elaborate context term expected =
   case term of
-    PreSyntax.Var name ->
+    Presyntax.Var name ->
       case Context.lookupName name context of
         Nothing -> do
           type_ <- typeOfGlobal name
@@ -82,7 +82,7 @@ elaborate context term expected =
             (Syntax.Var v)
             (Context.lookupType v context)
 
-    PreSyntax.Let name term' body -> do
+    Presyntax.Let name term' body -> do
       Inferred term'' typ <- infer context term'
 
       term''' <- lazy $ evaluate context term''
@@ -93,7 +93,7 @@ elaborate context term expected =
       body' <- elaborate context' body expected
       pure $ Syntax.Let term'' . Scope <$> body'
 
-    PreSyntax.Pi name source domain -> do
+    Presyntax.Pi name source domain -> do
       source' <- check context source Builtin.type_
 
       let
@@ -106,7 +106,7 @@ elaborate context term expected =
         (Syntax.Pi source' $ Scope domain')
         (Lazy $ pure Builtin.type_)
 
-    PreSyntax.Fun source domain -> do
+    Presyntax.Fun source domain -> do
       source' <- check context source Builtin.type_
       domain' <- check context domain Builtin.type_
       inferred
@@ -114,7 +114,7 @@ elaborate context term expected =
         (Syntax.Fun source' domain')
         (Lazy $ pure Builtin.type_)
 
-    PreSyntax.Lam name body ->
+    Presyntax.Lam name body ->
       case expected of
         Infer -> undefined
         Check (Domain.Pi source domainClosure) -> do
@@ -138,7 +138,7 @@ elaborate context term expected =
           body' <- check context' body domain'
           pure $ Checked (Syntax.Lam (Scope body'))
 
-    PreSyntax.App function argument -> do
+    Presyntax.App function argument -> do
       Inferred function' functionType <- infer context function
       functionType' <- force functionType
 
@@ -180,8 +180,6 @@ typeOfGlobal global =
     return $ Syntax.Global "Type"
   else
     undefined
-
-  undefined
 
 unify :: Domain.Value -> Domain.Value -> M ()
 unify =
