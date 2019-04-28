@@ -24,6 +24,7 @@ type Type = Value
 data Head
   = Var !Level
   | Global !Text
+  deriving Eq
 
 type Spine = Tsil (Lazy Value)
 

@@ -9,11 +9,13 @@ import qualified Builtin
 import Context (Context)
 import qualified Context
 import qualified Domain
+import qualified Environment
 import qualified Evaluation
 import Index
 import Monad
 import qualified Presyntax
 import qualified Syntax
+import qualified Tsil
 
 data Inferred term
   = Inferred term !(Lazy Domain.Type)
@@ -44,18 +46,19 @@ infer context term =
   elaborate context term Infer
 
 inferred
-  :: Expected e
+  :: Context v
+  -> Expected e
   -> Syntax.Term v
   -> Lazy Domain.Type
   -> M (e (Syntax.Term v))
-inferred expected term typ =
+inferred context expected term typ =
   case expected of
     Infer ->
       pure $ Inferred term typ
 
     Check expectedType -> do
       typ' <- force typ
-      unify typ' expectedType
+      unify (Context.size context) typ' expectedType
       pure $ Checked term
 
 elaborate
@@ -72,12 +75,14 @@ elaborate context term expected =
           type_ <- typeOfGlobal name
           type' <- lazy $ evaluate context type_
           inferred
+            context
             expected
             (Syntax.Global name)
             type'
 
         Just v ->
           inferred
+            context
             expected
             (Syntax.Var v)
             (Context.lookupType v context)
@@ -102,6 +107,7 @@ elaborate context term expected =
 
       domain' <- check context' domain Builtin.type_
       inferred
+        context
         expected
         (Syntax.Pi source' $ Scope domain')
         (Lazy $ pure Builtin.type_)
@@ -110,6 +116,7 @@ elaborate context term expected =
       source' <- check context source Builtin.type_
       domain' <- check context domain Builtin.type_
       inferred
+        context
         expected
         (Syntax.Fun source' domain')
         (Lazy $ pure Builtin.type_)
@@ -149,6 +156,7 @@ elaborate context term expected =
           argument'' <- lazy $ evaluate context argument'
           domain <- lazy $ Evaluation.evaluateClosure domainClosure argument''
           inferred
+            context
             expected
             (Syntax.App function' argument')
             domain
@@ -157,7 +165,7 @@ elaborate context term expected =
           source' <- force source
           case expected of
             Check expectedType -> do
-              unify expectedType functionType'
+              unify (Context.size context) expectedType functionType'
               argument' <- check context argument source'
               pure $ Checked (Syntax.App function' argument')
 
@@ -181,6 +189,75 @@ typeOfGlobal global =
   else
     undefined
 
-unify :: Domain.Value -> Domain.Value -> M ()
-unify =
-  undefined
+unify :: Environment.Size v -> Domain.Value -> Domain.Value -> M ()
+unify size value1 value2 =
+  case (value1, value2) of
+    -- Same heads
+    (Domain.Neutral head1 spine1, Domain.Neutral head2 spine2)
+      | head1 == head2 ->
+        Tsil.zipWithM_ (unifyForce size) spine1 spine2
+
+    (Domain.Lam closure1, Domain.Lam closure2) -> do
+      let
+        (size', level) =
+          Environment.extendSize size
+        var = Lazy $ pure $ Domain.var level
+
+      body1 <- Evaluation.evaluateClosure closure1 var
+      body2 <- Evaluation.evaluateClosure closure2 var
+      unify size' body1 body2
+
+    (Domain.Pi source1 domainClosure1, Domain.Pi source2 domainClosure2) -> do
+      unifyForce size source2 source1
+
+      let
+        (size', level) =
+          Environment.extendSize size
+        var = Lazy $ pure $ Domain.var level
+
+      domain1 <- Evaluation.evaluateClosure domainClosure1 var
+      domain2 <- Evaluation.evaluateClosure domainClosure2 var
+      unify size' domain1 domain2
+
+    (Domain.Pi source1 domainClosure1, Domain.Fun source2 domain2) -> do
+      unifyForce size source2 source1
+
+      let
+        (size', level) =
+          Environment.extendSize size
+        var = Lazy $ pure $ Domain.var level
+
+      domain1 <- Evaluation.evaluateClosure domainClosure1 var
+      domain2' <- force domain2
+      unify size' domain1 domain2'
+
+    (Domain.Fun source1 domain1, Domain.Pi source2 domainClosure2) -> do
+      unifyForce size source2 source1
+
+      let
+        (size', level) =
+          Environment.extendSize size
+        var = Lazy $ pure $ Domain.var level
+
+      domain1' <- force domain1
+      domain2 <- Evaluation.evaluateClosure domainClosure2 var
+      unify size' domain1' domain2
+
+    (Domain.Fun source1 domain1, Domain.Fun source2 domain2) -> do
+      unifyForce size source2 source1
+      unifyForce size domain1 domain2
+
+    -- Eta expand
+    (Domain.Lam closure1, v2) ->
+      undefined
+
+    (v1, Domain.Lam closure2) ->
+      undefined
+
+    _ ->
+      panic "Can't unify"
+  where
+    unifyForce sz lazyValue1 lazyValue2 = do
+      v1 <- force lazyValue1
+      v2 <- force lazyValue2
+      unify sz v1 v2
