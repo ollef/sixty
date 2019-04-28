@@ -248,11 +248,27 @@ unify size value1 value2 =
       unifyForce size domain1 domain2
 
     -- Eta expand
-    (Domain.Lam closure1, v2) ->
-      undefined
+    (Domain.Lam closure1, v2) -> do
+      let
+        (size', level)
+          = Environment.extendSize size
+        var = Lazy $ pure $ Domain.var level
 
-    (v1, Domain.Lam closure2) ->
-      undefined
+      body1 <- Evaluation.evaluateClosure closure1 var
+      body2 <- Evaluation.apply v2 var
+
+      unify size' body1 body2
+
+    (v1, Domain.Lam closure2) -> do
+      let
+        (size', level)
+          = Environment.extendSize size
+        var = Lazy $ pure $ Domain.var level
+
+      body1 <- Evaluation.apply v1 var
+      body2 <- Evaluation.evaluateClosure closure2 var
+
+      unify size' body1 body2
 
     _ ->
       panic "Can't unify"
