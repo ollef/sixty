@@ -83,15 +83,19 @@ atomicTerm =
   symbol "(" *> term <* symbol ")"
   <|> Var <$> var
   <|> Let <$ reserved "let" <*> var <* symbol "=" <*> term <* reserved "in" <*> term
-  <|> Lam <$ symbol "\\" <*> var <* symbol "." <*> term
+  <|> lams <$ symbol "\\" <*> some var <* symbol "." <*> term
   <?> "term"
+  where
+    lams vs body = foldr Lam body vs
+
 
 term :: Parser Term
 term =
-  Pi <$> try (symbol "(" *> var <* reserved ":") <*> term <* symbol ")" <* symbol "->" <*> term
+  pis <$> try (symbol "(" *> some var <* reserved ":") <*> term <* symbol ")" <* symbol "->" <*> term
   <|> apps <$> atomicTerm <*> many atomicTerm <**> fun
   <?> "term"
   where
+    pis vs src dst = foldr (flip Pi src) dst vs
     fun =
       flip Fun <$ symbol "->" <*> term
       <|> pure identity
