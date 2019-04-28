@@ -64,8 +64,8 @@ zip :: Tsil a -> Tsil b -> Tsil (a, b)
 zip = Tsil.zipWith (,)
 
 zipWith :: (a -> b -> c) -> Tsil a -> Tsil b -> Tsil c
-zipWith f Nil _ = Nil
-zipWith f _ Nil = Nil
+zipWith _ Nil _ = Nil
+zipWith _ _ Nil = Nil
 zipWith f (Snoc as a) (Snoc bs b) = Snoc (Tsil.zipWith f as bs) (f a b)
 
 zipWithM :: Monad m => (a -> b -> m c) -> Tsil a -> Tsil b -> m (Tsil c)
