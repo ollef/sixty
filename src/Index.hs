@@ -32,9 +32,14 @@ pattern Zero :: Index (Succ v)
 pattern Zero = Index 0
 
 pattern Succ :: Index v -> Index (Succ v)
-pattern Succ index <- ((\(Index i) -> Index (i - 1)) -> index)
+pattern Succ index <- (succView -> Just index)
   where
     Succ (Index v) = Index (v + 1)
+
+succView :: Index (Succ v) -> Maybe (Index v)
+succView (Index i)
+  | i > 0 = Just (Index (i - 1))
+  | otherwise = Nothing
 
 absurdIndex :: Index Void -> a
 absurdIndex = panic "Absurd index"
