@@ -163,9 +163,9 @@ elaborate context term expected =
       functionType' <- force functionType
 
       case functionType' of
-        Domain.Pi argumentType domainClosure -> do
-          argumentType' <- force argumentType
-          argument' <- check context argument argumentType'
+        Domain.Pi source domainClosure -> do
+          source' <- force source
+          argument' <- check context argument source'
           argument'' <- lazy $ evaluate context argument'
           domain <- lazy $ Evaluation.evaluateClosure domainClosure argument''
           inferred
