@@ -9,11 +9,12 @@ import qualified Builtin
 import Context (Context)
 import qualified Context
 import qualified Domain
-import qualified Environment
 import qualified Evaluation
 import Index
 import Monad
 import qualified Presyntax
+import qualified Readback
+import Readback (readback)
 import qualified Syntax
 import qualified Tsil
 
@@ -58,7 +59,7 @@ inferred context expected term typ =
 
     Check expectedType -> do
       typ' <- force typ
-      unify (Context.size context) typ' expectedType
+      unify (Context.toReadbackEnvironment context) typ' expectedType
       pure $ Checked term
 
 elaborate
@@ -91,9 +92,7 @@ elaborate context term expected =
       Inferred term'' typ <- infer context term'
 
       term''' <- lazy $ evaluate context term''
-      let
-        context' =
-          Context.extendDef context name term''' typ
+      context' <- Context.extendDef context name term''' typ
 
       body' <- elaborate context' body expected
       pure $ Syntax.Let term'' . Scope <$> body'
@@ -101,9 +100,7 @@ elaborate context term expected =
     Presyntax.Pi name source domain -> do
       source' <- check context source Builtin.type_
 
-      let
-        (context', _) =
-          Context.extend context name $ Lazy $ pure Builtin.type_
+      (context', _) <- Context.extend context name $ Lazy $ pure Builtin.type_
 
       domain' <- check context' domain Builtin.type_
       inferred
@@ -126,21 +123,19 @@ elaborate context term expected =
         Infer -> do
           source <- Context.newMeta context
           source' <- lazy $ evaluate context source
-          let
-            (context', _) =
-              Context.extend context name source'
+          (context', _) <- Context.extend context name source'
           Inferred body' domain <- infer context' body
           type_ <- lazy $ do
             domain' <- force domain
-            domain'' <- Evaluation.readBack (Context.size context') domain'
-            pure $ Domain.Pi source' $ Domain.Closure (Context.values context) (Scope domain'')
+            domain'' <- readback (Context.toReadbackEnvironment context') domain'
+            pure
+              $ Domain.Pi source'
+              $ Evaluation.makeClosure (Context.toEvaluationEnvironment context) (Scope domain'')
 
           pure $ Inferred (Syntax.Lam (Scope body')) type_
 
         Check (Domain.Pi source domainClosure) -> do
-          let
-            (context', var) =
-              Context.extend context name source
+          (context', var) <- Context.extend context name source
 
           domain <-
             Evaluation.evaluateClosure
@@ -150,9 +145,7 @@ elaborate context term expected =
           pure $ Checked (Syntax.Lam (Scope body'))
 
         Check (Domain.Fun source domain) -> do
-          let
-            (context', _) =
-              Context.extend context name source
+          (context', _) <- Context.extend context name source
 
           domain' <- force domain
           body' <- check context' body domain'
@@ -178,7 +171,7 @@ elaborate context term expected =
           source' <- force source
           case expected of
             Check expectedType -> do
-              unify (Context.size context) expectedType functionType'
+              unify (Context.toReadbackEnvironment context) expectedType functionType'
               argument' <- check context argument source'
               pure $ Checked (Syntax.App function' argument')
 
@@ -191,7 +184,7 @@ evaluate
   -> Syntax.Term v
   -> M Domain.Value
 evaluate context =
-  Evaluation.evaluate (Context.values context)
+  Evaluation.evaluate (Context.toEvaluationEnvironment context)
 
 typeOfGlobal
   :: Text
@@ -202,86 +195,80 @@ typeOfGlobal global =
   else
     undefined
 
-unify :: Environment.Size v -> Domain.Value -> Domain.Value -> M ()
-unify size value1 value2 =
+unify :: Readback.Environment v -> Domain.Value -> Domain.Value -> M ()
+unify env value1 value2 =
   case (value1, value2) of
     -- Same heads
     (Domain.Neutral head1 spine1, Domain.Neutral head2 spine2)
       | head1 == head2 ->
-        Tsil.zipWithM_ (unifyForce size) spine1 spine2
+        Tsil.zipWithM_ (unifyForce env) spine1 spine2
 
     (Domain.Lam closure1, Domain.Lam closure2) -> do
+      (env', var) <- Readback.extend env
       let
-        (size', level) =
-          Environment.extendSize size
-        var = Lazy $ pure $ Domain.var level
+        lazyVar = Lazy $ pure $ Domain.var var
 
-      body1 <- Evaluation.evaluateClosure closure1 var
-      body2 <- Evaluation.evaluateClosure closure2 var
-      unify size' body1 body2
+      body1 <- Evaluation.evaluateClosure closure1 lazyVar
+      body2 <- Evaluation.evaluateClosure closure2 lazyVar
+      unify env' body1 body2
 
     (Domain.Pi source1 domainClosure1, Domain.Pi source2 domainClosure2) -> do
-      unifyForce size source2 source1
+      unifyForce env source2 source1
 
+      (env', var) <- Readback.extend env
       let
-        (size', level) =
-          Environment.extendSize size
-        var = Lazy $ pure $ Domain.var level
+        lazyVar = Lazy $ pure $ Domain.var var
 
-      domain1 <- Evaluation.evaluateClosure domainClosure1 var
-      domain2 <- Evaluation.evaluateClosure domainClosure2 var
-      unify size' domain1 domain2
+      domain1 <- Evaluation.evaluateClosure domainClosure1 lazyVar
+      domain2 <- Evaluation.evaluateClosure domainClosure2 lazyVar
+      unify env' domain1 domain2
 
     (Domain.Pi source1 domainClosure1, Domain.Fun source2 domain2) -> do
-      unifyForce size source2 source1
+      unifyForce env source2 source1
 
+      (env', var) <- Readback.extend env
       let
-        (size', level) =
-          Environment.extendSize size
-        var = Lazy $ pure $ Domain.var level
+        lazyVar = Lazy $ pure $ Domain.var var
 
-      domain1 <- Evaluation.evaluateClosure domainClosure1 var
+      domain1 <- Evaluation.evaluateClosure domainClosure1 lazyVar
       domain2' <- force domain2
-      unify size' domain1 domain2'
+      unify env' domain1 domain2'
 
     (Domain.Fun source1 domain1, Domain.Pi source2 domainClosure2) -> do
-      unifyForce size source2 source1
+      unifyForce env source2 source1
 
+      (env', var) <- Readback.extend env
       let
-        (size', level) =
-          Environment.extendSize size
-        var = Lazy $ pure $ Domain.var level
+        lazyVar = Lazy $ pure $ Domain.var var
 
       domain1' <- force domain1
-      domain2 <- Evaluation.evaluateClosure domainClosure2 var
-      unify size' domain1' domain2
+      domain2 <- Evaluation.evaluateClosure domainClosure2 lazyVar
+      unify env' domain1' domain2
 
     (Domain.Fun source1 domain1, Domain.Fun source2 domain2) -> do
-      unifyForce size source2 source1
-      unifyForce size domain1 domain2
+      unifyForce env source2 source1
+      unifyForce env domain1 domain2
 
     -- Eta expand
     (Domain.Lam closure1, v2) -> do
+      (env', var) <- Readback.extend env
       let
-        (size', level)
-          = Environment.extendSize size
-        var = Lazy $ pure $ Domain.var level
+        lazyVar = Lazy $ pure $ Domain.var var
 
-      body1 <- Evaluation.evaluateClosure closure1 var
-      body2 <- Evaluation.apply v2 var
+      body1 <- Evaluation.evaluateClosure closure1 lazyVar
+      body2 <- Evaluation.apply v2 lazyVar
 
-      unify size' body1 body2
+      unify env' body1 body2
 
     (v1, Domain.Lam closure2) -> do
+      (env', var) <- Readback.extend env
       let
-        (size', level)
-          = Environment.extendSize size
-        var = Lazy $ pure $ Domain.var level
+        lazyVar = Lazy $ pure $ Domain.var var
 
-      body1 <- Evaluation.apply v1 var
-      body2 <- Evaluation.evaluateClosure closure2 var
+      body1 <- Evaluation.apply v1 lazyVar
+      body2 <- Evaluation.evaluateClosure closure2 lazyVar
 
-      unify size' body1 body2
+      unify env' body1 body2
 
     _ ->
       panic "Can't unify"

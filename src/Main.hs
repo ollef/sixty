@@ -8,10 +8,9 @@ import qualified Text.Parsix as Parsix
 
 import qualified Context
 import qualified Elaboration
-import qualified Evaluation
-import Index
 import Monad
 import qualified Parser
+import qualified Readback
 
 main :: IO ()
 main = do
@@ -26,7 +25,7 @@ parseAndTypeCheck inputString =
       Elaboration.Inferred term typeValue <- Elaboration.infer context preTerm
       print term
       typeValue' <- force typeValue
-      type_ <- Evaluation.readBack Zero typeValue'
+      type_ <- Readback.readback (Context.toReadbackEnvironment context) typeValue'
       print type_
     Parsix.Failure err -> do
       putText "Parse error"

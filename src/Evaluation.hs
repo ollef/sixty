@@ -3,19 +3,51 @@ module Evaluation where
 
 import Protolude hiding (force, evaluate)
 
+import Data.HashMap.Lazy (HashMap)
+import qualified Data.HashMap.Lazy as HashMap
+import Data.IORef
+import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq
+
 import qualified Domain
-import Environment (Environment)
-import qualified Environment
 import Index
 import Monad
 import qualified Syntax
 import qualified Tsil
+import Var
 
-evaluate :: Environment v (Lazy Domain.Value) -> Syntax.Term v -> M Domain.Value
+-------------------------------------------------------------------------------
+-- Evaluation environments
+
+data Environment v = Environment
+  { nextVar :: !(IORef Var)
+  , vars :: Seq Var
+  , values :: HashMap Var (Lazy Domain.Value)
+  }
+
+extend
+  :: Environment v
+  -> Lazy Domain.Value
+  -> IO (Environment (Succ v))
+extend env value = do
+  var@(Var v) <- readIORef (nextVar env)
+  writeIORef (nextVar env) (Var (v + 1))
+  pure env
+    { vars = vars env Seq.|> var
+    , values = HashMap.insert var value (values env)
+    }
+
+lookupValue :: Index v -> Environment v -> Lazy Domain.Value
+lookupValue (Index i) env =
+  values env HashMap.! Seq.index (vars env) (Seq.length (vars env) - i - 1)
+
+-------------------------------------------------------------------------------
+
+evaluate :: Environment v -> Syntax.Term v -> M Domain.Value
 evaluate env term =
   case term of
     Syntax.Var v ->
-      force $ Environment.lookup env v
+      force $ lookupValue v env
 
     Syntax.Meta i ->
       pure $ Domain.meta i
@@ -25,11 +57,12 @@ evaluate env term =
 
     Syntax.Let t (Scope s) -> do
       t' <- lazy $ evaluate env t
-      evaluate (Environment.Snoc env t') s
+      env' <- extend env t'
+      evaluate env' s
 
     Syntax.Pi t s -> do
       t' <- lazy $ evaluate env t
-      pure $ Domain.Pi t' (Domain.Closure env s)
+      pure $ Domain.Pi t' (makeClosure env s)
 
     Syntax.Fun t1 t2 -> do
       t1' <- lazy $ evaluate env t1
@@ -37,7 +70,7 @@ evaluate env term =
       pure $ Domain.Fun t1' t2'
 
     Syntax.Lam s ->
-      pure $ Domain.Lam (Domain.Closure env s)
+      pure $ Domain.Lam (makeClosure env s)
 
     Syntax.App t1 t2 -> do
       t1' <- evaluate env t1
@@ -57,54 +90,10 @@ apply fun arg =
       panic "applying non-function"
 
 evaluateClosure :: Domain.Closure -> Lazy Domain.Value -> M Domain.Value
-evaluateClosure (Domain.Closure env (Scope body)) x =
-  evaluate (Environment.Snoc env x) body
+evaluateClosure (Domain.Closure f) = f
 
-readBack :: Environment.Size v -> Domain.Value -> M (Syntax.Term v)
-readBack size value =
-  case value of
-    Domain.Neutral hd spine ->
-      readBackNeutral size hd spine
-
-    Domain.Lam closure ->
-      Syntax.Lam <$> readBackClosure size closure
-
-    Domain.Pi typ closure -> do
-      typ' <- force typ
-      Syntax.Pi <$> readBack size typ' <*> readBackClosure size closure
-
-    Domain.Fun source domain -> do
-      source' <- force source
-      domain' <- force domain
-      Syntax.Fun <$> readBack size source' <*> readBack size domain'
-
-readBackClosure :: Environment.Size v -> Domain.Closure -> M (Scope Syntax.Term v)
-readBackClosure size closure = do
-  let
-    (size', v) =
-      Environment.extendSize size
-
-  closure' <- evaluateClosure closure $ Lazy $ pure $ Domain.var v
-  Scope <$> readBack size' closure'
-
-readBackNeutral :: Environment.Size v -> Domain.Head -> Domain.Spine -> M (Syntax.Term v)
-readBackNeutral size hd spine =
-  case spine of
-    Tsil.Nil ->
-      pure $ readBackHead size hd
-
-    Tsil.Snoc spine' arg -> do
-      arg' <- force arg
-      Syntax.App <$> readBackNeutral size hd spine' <*> readBack size arg'
-
-readBackHead :: Environment.Size v -> Domain.Head -> Syntax.Term v
-readBackHead size hd =
-  case hd of
-    Domain.Var v ->
-      Syntax.Var $ Index.fromLevel v size
-
-    Domain.Meta m ->
-      Syntax.Meta m
-
-    Domain.Global g ->
-      Syntax.Global g
+makeClosure :: Environment v -> Scope Syntax.Term v -> Domain.Closure
+makeClosure env (Scope body) =
+  Domain.Closure $ \argument -> do
+    env' <- extend env argument
+    evaluate env' body

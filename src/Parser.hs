@@ -95,7 +95,7 @@ term =
   <|> apps <$> atomicTerm <*> many atomicTerm <**> fun
   <?> "term"
   where
-    pis vs src dst = foldr (flip Pi src) dst vs
+    pis vs src dst = foldr (\v -> Pi v src) dst vs
     fun =
       flip Fun <$ symbol "->" <*> term
       <|> pure identity

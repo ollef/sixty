@@ -1,3 +1,5 @@
+{-# language DuplicateRecordFields #-}
+{-# language OverloadedStrings #-}
 module Context where
 
 import Protolude
@@ -5,35 +7,58 @@ import Protolude
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef
+import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq
 
 import qualified Domain
-import qualified Environment
-import Environment (Environment)
+import qualified Evaluation
 import Index
 import qualified Meta
 import Monad
+import qualified Readback
 import qualified Syntax
-import Tsil (Tsil)
-import qualified Tsil
+import Var
 
 data Context v = Context
-  { size :: !(Environment.Size v)
-  , names :: HashMap Text Level
-  , values :: Environment v (Lazy Domain.Value)
-  , types :: Environment v (Lazy Domain.Type)
-  , boundLevels :: Tsil Level
-  , metas :: !(IORef (Meta.Map Domain.Value))
+  { nextVar :: !(IORef Var)
+  , vars :: Seq Var
+  , names :: HashMap Text Var
+  , values :: HashMap Var (Lazy Domain.Value)
+  , types :: HashMap Var (Lazy Domain.Type)
+  , boundVars :: Seq Var
+  , metas :: !(IORef (Meta.Vars Domain.Value))
   }
+
+toEvaluationEnvironment
+  :: Context v
+  -> Evaluation.Environment v
+toEvaluationEnvironment context =
+  Evaluation.Environment
+    { nextVar = nextVar context
+    , vars = vars context
+    , values = values context
+    }
+
+toReadbackEnvironment
+  :: Context v
+  -> Readback.Environment v
+toReadbackEnvironment context =
+  Readback.Environment
+    { nextVar = nextVar context
+    , vars = vars context
+    }
 
 empty :: M (Context Void)
 empty = do
+  nv <- newIORef (Var 0)
   ms <- newIORef Meta.empty
   pure Context
-    { size = Zero
+    { nextVar = nv
     , names = mempty
-    , values = Environment.Nil
-    , types = Environment.Nil
-    , boundLevels = mempty
+    , vars = mempty
+    , values = mempty
+    , types = mempty
+    , boundVars = mempty
     , metas = ms
     }
 
@@ -41,50 +66,52 @@ extend
   :: Context v
   -> Text
   -> Lazy Domain.Type
-  -> (Context (Succ v), Level)
-extend context name type_ =
-  let
-    (size', level) =
-      Environment.extendSize $ size context
-  in
-  ( context
-    { size = size'
-    , names = HashMap.insert name level $ names context
-    , values = Environment.Snoc (values context) $ Lazy $ pure $ Domain.var level
-    , types = Environment.Snoc (types context) type_
-    , boundLevels = Tsil.Snoc (boundLevels context) level
-    }
-  , level
-  )
+  -> IO (Context (Succ v), Var)
+extend context name type_ = do
+  var@(Var v) <- readIORef (nextVar context)
+  writeIORef (nextVar context) (Var (v + 1))
+  pure
+    ( context
+      { names = HashMap.insert name var $ names context
+      , vars = vars context Seq.|> var
+      , values = HashMap.insert var (Lazy $ pure $ Domain.var var) (values context)
+      , types = HashMap.insert var type_ (types context)
+      , boundVars = boundVars context Seq.|> var
+      }
+    , var
+    )
 
 extendDef
   :: Context v
   -> Text
   -> Lazy Domain.Value
   -> Lazy Domain.Type
-  -> Context (Succ v)
-extendDef context name value type_ =
-  let
-    (size', level) =
-      Environment.extendSize $ size context
-  in
-  context
-    { size = size'
-    , names = HashMap.insert name level $ names context
-    , values = Environment.Snoc (values context) value
-    , types = Environment.Snoc (types context) type_
+  -> IO (Context (Succ v))
+extendDef context name value type_ = do
+  var@(Var v) <- readIORef (nextVar context)
+  writeIORef (nextVar context) (Var (v + 1))
+  pure context
+    { names = HashMap.insert name var $ names context
+    , vars = vars context Seq.|> var
+    , values = HashMap.insert var value (values context)
+    , types = HashMap.insert var type_ (types context)
     }
 
 lookupName :: Text -> Context v -> Maybe (Index v)
 lookupName name context = do
-  level <- HashMap.lookup name (names context)
-  return $ Index.fromLevel level (size context)
+  var <- HashMap.lookup name (names context)
+  pure $ lookupIndex var context
 
-lookupValue :: Index v -> Context v -> Lazy Domain.Value
-lookupValue v context = Environment.lookup (values context) v
+lookupIndex :: Var -> Context v -> Index v
+lookupIndex var context =
+  Index
+    $ Seq.length (vars context)
+    - fromMaybe (panic "Context.lookupIndex") (Seq.elemIndexR var (vars context))
+    - 1
 
 lookupType :: Index v -> Context v -> Lazy Domain.Type
-lookupType v context = Environment.lookup (types context) v
+lookupType (Index i) context =
+  types context HashMap.! Seq.index (vars context) (Seq.length (vars context) - i - 1)
 
 newMeta :: Context v -> M (Syntax.Term v)
 newMeta context = do
@@ -94,10 +121,8 @@ newMeta context = do
   writeIORef (metas context) m'
 
   let
-    toVar level =
-      Syntax.Var (Index.fromLevel level (size context))
-    args =
-      toVar <$> boundLevels context
+    toSyntax var = Syntax.Var (lookupIndex var context)
+    args = toSyntax <$> boundVars context
 
   pure $ Syntax.apps (Syntax.Meta i) args
 

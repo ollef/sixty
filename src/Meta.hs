@@ -1,7 +1,7 @@
 {-# language GeneralizedNewtypeDeriving #-}
 module Meta where
 
-import Protolude hiding (Map)
+import Protolude
 
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
@@ -13,19 +13,19 @@ data Var v
 newtype Index = Index Int
   deriving (Eq, Ord, Show, Hashable)
 
-data Map v = Map
-  { map :: HashMap Index (Meta.Var v)
+data Vars v = Vars
+  { vars :: !(HashMap Index (Meta.Var v))
   , nextIndex :: !Index
   }
 
-empty :: Map v
-empty = Map mempty (Index 0)
+empty :: Vars v
+empty = Vars mempty (Index 0)
 
-lookup :: Index -> Map v -> Var v
-lookup i (Map m _) = m HashMap.! i
+lookup :: Index -> Vars v -> Var v
+lookup i (Vars m _) = m HashMap.! i
 
-insert :: Map v -> (Map v, Index)
-insert (Map m i@(Index n)) = (Map (HashMap.insert i Unsolved m) (Index (n + 1)), i)
+insert :: Vars v -> (Vars v, Index)
+insert (Vars m i@(Index n)) = (Vars (HashMap.insert i Unsolved m) (Index (n + 1)), i)
 
-solve :: Index -> v -> Map v -> Map v
-solve i v (Map m n) = Map (HashMap.insert i (Solved v) m) n
+solve :: Index -> v -> Vars v -> Vars v
+solve i v (Vars m n) = Vars (HashMap.insert i (Solved v) m) n
