@@ -55,7 +55,7 @@ evaluate env term =
     Syntax.Global g ->
       pure $ Domain.global g -- TODO
 
-    Syntax.Let _ t (Scope s) -> do
+    Syntax.Let _ t _ (Scope s) -> do
       t' <- lazy $ evaluate env t
       env' <- extend env t'
       evaluate env' s
@@ -69,8 +69,9 @@ evaluate env term =
       t2' <- lazy $ evaluate env t2
       pure $ Domain.Fun t1' t2'
 
-    Syntax.Lam n s ->
-      pure $ Domain.Lam n (makeClosure env s)
+    Syntax.Lam n t s -> do
+      t' <- lazy $ evaluate env t
+      pure $ Domain.Lam n t' (makeClosure env s)
 
     Syntax.App t1 t2 -> do
       t1' <- evaluate env t1
@@ -80,7 +81,7 @@ evaluate env term =
 apply :: Domain.Value -> Lazy Domain.Value -> M Domain.Value
 apply fun arg =
   case fun of
-    Domain.Lam _ closure ->
+    Domain.Lam _ _ closure ->
       evaluateClosure closure arg
 
     Domain.Neutral hd args ->

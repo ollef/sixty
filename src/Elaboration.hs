@@ -90,12 +90,14 @@ elaborate context term expected =
 
     Presyntax.Let name term' body -> do
       Inferred term'' typ <- infer context term'
+      typ' <- force typ
+      typ'' <- Readback.readback (Context.toReadbackEnvironment context) typ'
 
       term''' <- lazy $ evaluate context term''
       context' <- Context.extendDef context name term''' typ
 
       body' <- elaborate context' body expected
-      pure $ Syntax.Let name term'' . Scope <$> body'
+      pure $ Syntax.Let name term'' typ'' . Scope <$> body'
 
     Presyntax.Pi name source domain -> do
       source' <- check context source Builtin.type_
@@ -122,19 +124,22 @@ elaborate context term expected =
       case expected of
         Infer -> do
           source <- Context.newMeta context
-          source' <- lazy $ evaluate context source
-          (context', _) <- Context.extend context name source'
+          source' <- evaluate context source
+          source'' <- Readback.readback (Context.toReadbackEnvironment context) source'
+          (context', _) <- Context.extend context name (Lazy $ pure source')
           Inferred body' domain <- infer context' body
           type_ <- lazy $ do
             domain' <- force domain
             domain'' <- readback (Context.toReadbackEnvironment context') domain'
             pure
-              $ Domain.Pi name source'
+              $ Domain.Pi name (Lazy $ pure source')
               $ Evaluation.makeClosure (Context.toEvaluationEnvironment context) (Scope domain'')
 
-          pure $ Inferred (Syntax.Lam name (Scope body')) type_
+          pure $ Inferred (Syntax.Lam name source'' (Scope body')) type_
 
         Check (Domain.Pi _ source domainClosure) -> do
+          source' <- force source
+          source'' <- Readback.readback (Context.toReadbackEnvironment context) source'
           (context', var) <- Context.extend context name source
 
           domain <-
@@ -142,14 +147,16 @@ elaborate context term expected =
               domainClosure
               (Lazy $ pure $ Domain.var var)
           body' <- check context' body domain
-          pure $ Checked (Syntax.Lam name (Scope body'))
+          pure $ Checked (Syntax.Lam name source'' (Scope body'))
 
         Check (Domain.Fun source domain) -> do
+          source' <- force source
+          source'' <- Readback.readback (Context.toReadbackEnvironment context) source'
           (context', _) <- Context.extend context name source
 
           domain' <- force domain
           body' <- check context' body domain'
-          pure $ Checked (Syntax.Lam name (Scope body'))
+          pure $ Checked (Syntax.Lam name source'' (Scope body'))
 
     Presyntax.App function argument -> do
       Inferred function' functionType <- infer context function
@@ -192,6 +199,7 @@ typeOfGlobal
 typeOfGlobal global =
   if global == "Type" then
     return $ Syntax.Global "Type"
+
   else
     undefined
 
@@ -203,7 +211,7 @@ unify env value1 value2 =
       | head1 == head2 ->
         Tsil.zipWithM_ (unifyForce env) spine1 spine2
 
-    (Domain.Lam _ closure1, Domain.Lam _ closure2) -> do
+    (Domain.Lam _ _ closure1, Domain.Lam _ _ closure2) -> do
       (env', var) <- Readback.extend env
       let
         lazyVar = Lazy $ pure $ Domain.var var
@@ -250,7 +258,7 @@ unify env value1 value2 =
       unifyForce env domain1 domain2
 
     -- Eta expand
-    (Domain.Lam _ closure1, v2) -> do
+    (Domain.Lam _ _ closure1, v2) -> do
       (env', var) <- Readback.extend env
       let
         lazyVar = Lazy $ pure $ Domain.var var
@@ -260,7 +268,7 @@ unify env value1 value2 =
 
       unify env' body1 body2
 
-    (v1, Domain.Lam _ closure2) -> do
+    (v1, Domain.Lam _ _ closure2) -> do
       (env', var) <- Readback.extend env
       let
         lazyVar = Lazy $ pure $ Domain.var var

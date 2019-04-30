@@ -51,8 +51,9 @@ readback env value =
     Domain.Neutral hd spine ->
       readbackNeutral env hd spine
 
-    Domain.Lam name closure ->
-      Syntax.Lam name <$> readbackClosure env closure
+    Domain.Lam name typ closure -> do
+      typ' <- force typ
+      Syntax.Lam name <$> readback env typ' <*> readbackClosure env closure
 
     Domain.Pi name typ closure -> do
       typ' <- force typ

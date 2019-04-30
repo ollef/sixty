@@ -58,13 +58,16 @@ prettyTerm prec env term = case term of
     pretty
       ("?" <> show i :: Text)
 
-  Syntax.Let name typ (Scope body) ->
+  Syntax.Let name term' typ (Scope body) ->
     prettyParen (prec > letPrec) $
       let
         (env', name') = extend env name
       in
       "let"
-      <> line <> indent 2 (pretty name' <+> "=" <+> prettyTerm 0 env typ)
+      <> line <> indent 2
+        (pretty name' <+> ":" <+> prettyTerm 0 env typ
+        <> line <> pretty name' <+> "=" <+> prettyTerm 0 env term'
+        )
       <> line <> "in"
       <> line <> prettyTerm letPrec env' body
 
@@ -81,12 +84,12 @@ prettyTerm prec env term = case term of
     prettyParen (prec > funPrec) $
       prettyTerm (funPrec + 1) env source <+> "->" <+> prettyTerm funPrec env domain
 
-  Syntax.Lam name (Scope body) ->
+  Syntax.Lam name typ (Scope body) ->
     prettyParen (prec > lamPrec) $
       let
         (env', name') = extend env name
       in
-      "\\" <> pretty name' <> "." <+> prettyTerm lamPrec env' body
+      "\\" <> pretty name' <+> ":" <+> prettyTerm 0 env typ <+> "." <+> prettyTerm lamPrec env' body
 
   Syntax.App t1 t2 ->
     prettyParen (prec > appPrec) $

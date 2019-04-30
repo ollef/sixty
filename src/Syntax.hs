@@ -1,6 +1,6 @@
 module Syntax where
 
-import Protolude
+import Protolude hiding (Type)
 
 import Index
 import qualified Meta
@@ -9,10 +9,10 @@ data Term v
   = Var !(Index v)
   | Global !Text
   | Meta !Meta.Index
-  | Let !Text !(Term v) !(Scope Term v)
-  | Pi !Text !(Term v) !(Scope Term v)
-  | Fun !(Term v) !(Term v)
-  | Lam !Text !(Scope Term v)
+  | Let !Text !(Term v) (Type v) !(Scope Term v)
+  | Pi !Text !(Type v) !(Scope Type v)
+  | Fun !(Type v) !(Type v)
+  | Lam !Text (Type v) !(Scope Term v)
   | App !(Term v) !(Term v)
   deriving Show
 
