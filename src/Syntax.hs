@@ -9,10 +9,10 @@ data Term v
   = Var !(Index v)
   | Global !Text
   | Meta !Meta.Index
-  | Let !(Term v) !(Scope Term v)
-  | Pi !(Term v) !(Scope Term v)
+  | Let !Text !(Term v) !(Scope Term v)
+  | Pi !Text !(Term v) !(Scope Term v)
   | Fun !(Term v) !(Term v)
-  | Lam !(Scope Term v)
+  | Lam !Text !(Scope Term v)
   | App !(Term v) !(Term v)
   deriving Show
 

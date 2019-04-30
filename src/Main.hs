@@ -4,12 +4,15 @@ module Main where
 
 import Protolude hiding (force)
 
+import Data.Text.Prettyprint.Doc
+import Data.Text.Prettyprint.Doc.Render.Text
 import qualified Text.Parsix as Parsix
 
 import qualified Context
 import qualified Elaboration
 import Monad
 import qualified Parser
+import qualified Pretty
 import qualified Readback
 
 main :: IO ()
@@ -23,10 +26,10 @@ parseAndTypeCheck inputString =
     Parsix.Success preTerm -> do
       context <- Context.empty
       Elaboration.Inferred term typeValue <- Elaboration.infer context preTerm
-      print term
+      putDoc $ Pretty.prettyTerm 0 Pretty.empty term <> line
       typeValue' <- force typeValue
       type_ <- Readback.readback (Context.toReadbackEnvironment context) typeValue'
-      print type_
+      putDoc $ Pretty.prettyTerm 0 Pretty.empty type_ <> line
     Parsix.Failure err -> do
       putText "Parse error"
       print $ Parsix.prettyError err

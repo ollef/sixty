@@ -95,7 +95,7 @@ elaborate context term expected =
       context' <- Context.extendDef context name term''' typ
 
       body' <- elaborate context' body expected
-      pure $ Syntax.Let term'' . Scope <$> body'
+      pure $ Syntax.Let name term'' . Scope <$> body'
 
     Presyntax.Pi name source domain -> do
       source' <- check context source Builtin.type_
@@ -106,7 +106,7 @@ elaborate context term expected =
       inferred
         context
         expected
-        (Syntax.Pi source' $ Scope domain')
+        (Syntax.Pi name source' $ Scope domain')
         (Lazy $ pure Builtin.type_)
 
     Presyntax.Fun source domain -> do
@@ -129,12 +129,12 @@ elaborate context term expected =
             domain' <- force domain
             domain'' <- readback (Context.toReadbackEnvironment context') domain'
             pure
-              $ Domain.Pi source'
+              $ Domain.Pi name source'
               $ Evaluation.makeClosure (Context.toEvaluationEnvironment context) (Scope domain'')
 
-          pure $ Inferred (Syntax.Lam (Scope body')) type_
+          pure $ Inferred (Syntax.Lam name (Scope body')) type_
 
-        Check (Domain.Pi source domainClosure) -> do
+        Check (Domain.Pi _ source domainClosure) -> do
           (context', var) <- Context.extend context name source
 
           domain <-
@@ -142,21 +142,21 @@ elaborate context term expected =
               domainClosure
               (Lazy $ pure $ Domain.var var)
           body' <- check context' body domain
-          pure $ Checked (Syntax.Lam (Scope body'))
+          pure $ Checked (Syntax.Lam name (Scope body'))
 
         Check (Domain.Fun source domain) -> do
           (context', _) <- Context.extend context name source
 
           domain' <- force domain
           body' <- check context' body domain'
-          pure $ Checked (Syntax.Lam (Scope body'))
+          pure $ Checked (Syntax.Lam name (Scope body'))
 
     Presyntax.App function argument -> do
       Inferred function' functionType <- infer context function
       functionType' <- force functionType
 
       case functionType' of
-        Domain.Pi source domainClosure -> do
+        Domain.Pi _ source domainClosure -> do
           source' <- force source
           argument' <- check context argument source'
           argument'' <- lazy $ evaluate context argument'
@@ -203,7 +203,7 @@ unify env value1 value2 =
       | head1 == head2 ->
         Tsil.zipWithM_ (unifyForce env) spine1 spine2
 
-    (Domain.Lam closure1, Domain.Lam closure2) -> do
+    (Domain.Lam _ closure1, Domain.Lam _ closure2) -> do
       (env', var) <- Readback.extend env
       let
         lazyVar = Lazy $ pure $ Domain.var var
@@ -212,7 +212,7 @@ unify env value1 value2 =
       body2 <- Evaluation.evaluateClosure closure2 lazyVar
       unify env' body1 body2
 
-    (Domain.Pi source1 domainClosure1, Domain.Pi source2 domainClosure2) -> do
+    (Domain.Pi _ source1 domainClosure1, Domain.Pi _ source2 domainClosure2) -> do
       unifyForce env source2 source1
 
       (env', var) <- Readback.extend env
@@ -223,7 +223,7 @@ unify env value1 value2 =
       domain2 <- Evaluation.evaluateClosure domainClosure2 lazyVar
       unify env' domain1 domain2
 
-    (Domain.Pi source1 domainClosure1, Domain.Fun source2 domain2) -> do
+    (Domain.Pi _ source1 domainClosure1, Domain.Fun source2 domain2) -> do
       unifyForce env source2 source1
 
       (env', var) <- Readback.extend env
@@ -234,7 +234,7 @@ unify env value1 value2 =
       domain2' <- force domain2
       unify env' domain1 domain2'
 
-    (Domain.Fun source1 domain1, Domain.Pi source2 domainClosure2) -> do
+    (Domain.Fun source1 domain1, Domain.Pi _ source2 domainClosure2) -> do
       unifyForce env source2 source1
 
       (env', var) <- Readback.extend env
@@ -250,7 +250,7 @@ unify env value1 value2 =
       unifyForce env domain1 domain2
 
     -- Eta expand
-    (Domain.Lam closure1, v2) -> do
+    (Domain.Lam _ closure1, v2) -> do
       (env', var) <- Readback.extend env
       let
         lazyVar = Lazy $ pure $ Domain.var var
@@ -260,7 +260,7 @@ unify env value1 value2 =
 
       unify env' body1 body2
 
-    (v1, Domain.Lam closure2) -> do
+    (v1, Domain.Lam _ closure2) -> do
       (env', var) <- Readback.extend env
       let
         lazyVar = Lazy $ pure $ Domain.var var

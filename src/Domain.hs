@@ -11,8 +11,8 @@ import Var
 
 data Value
   = Neutral Head Spine
-  | Lam !Closure
-  | Pi !(Lazy Type) !Closure
+  | Lam !Text !Closure
+  | Pi !Text !(Lazy Type) !Closure
   | Fun !(Lazy Type) !(Lazy Type)
 
 type Type = Value

@@ -16,6 +16,7 @@ dependencies:
   - containers
   - parsers
   - parsix
+  - prettyprinter
   - protolude
   - unordered-containers
 

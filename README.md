@@ -12,7 +12,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [x] Evaluation
 - [x] Readback
 - [x] Parsing
-- [ ] Pretty printing
+- [x] Pretty printing
 - [ ] Unification and meta variables
 - [ ] Basic type checking
 - [ ] Implicit arguments
