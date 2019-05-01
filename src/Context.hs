@@ -66,7 +66,7 @@ extend
   :: Context v
   -> Text
   -> Lazy Domain.Type
-  -> IO (Context (Succ v), Var)
+  -> M (Context (Succ v), Var)
 extend context name type_ = do
   var@(Var v) <- readIORef (nextVar context)
   writeIORef (nextVar context) (Var (v + 1))
