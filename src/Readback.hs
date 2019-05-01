@@ -1,16 +1,16 @@
 {-# language OverloadedStrings #-}
 module Readback where
 
-import Protolude hiding (force, evaluate)
+import Protolude hiding (Seq, force, evaluate)
 
 import Data.IORef
-import Data.Sequence (Seq)
-import qualified Data.Sequence as Seq
 
 import qualified Domain
 import qualified Evaluation
 import Index
 import Monad
+import Sequence (Seq)
+import qualified Sequence as Seq
 import qualified Syntax
 import qualified Tsil
 import Var
@@ -40,7 +40,7 @@ lookupIndex :: Var -> Environment v -> Index v
 lookupIndex var context =
   Index
     $ Seq.length (vars context)
-    - fromMaybe (panic "Environment.lookupIndex") (Seq.elemIndexR var (vars context))
+    - fromMaybe (panic "Environment.lookupIndex") (Seq.elemIndex var (vars context))
     - 1
 
 -------------------------------------------------------------------------------

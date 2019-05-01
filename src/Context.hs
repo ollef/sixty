@@ -2,13 +2,11 @@
 {-# language OverloadedStrings #-}
 module Context where
 
-import Protolude
+import Protolude hiding (Seq)
 
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef
-import Data.Sequence (Seq)
-import qualified Data.Sequence as Seq
 
 import qualified Domain
 import qualified Evaluation
@@ -16,6 +14,8 @@ import Index
 import qualified Meta
 import Monad
 import qualified Readback
+import Sequence (Seq)
+import qualified Sequence as Seq
 import qualified Syntax
 import Var
 
@@ -106,7 +106,7 @@ lookupIndex :: Var -> Context v -> Index v
 lookupIndex var context =
   Index
     $ Seq.length (vars context)
-    - fromMaybe (panic "Context.lookupIndex") (Seq.elemIndexR var (vars context))
+    - fromMaybe (panic "Context.lookupIndex") (Seq.elemIndex var (vars context))
     - 1
 
 lookupType :: Index v -> Context v -> Lazy Domain.Type
@@ -126,7 +126,7 @@ newMeta context = do
 
   let
     toSyntax var = Syntax.Var (lookupIndex var context)
-    args = toSyntax <$> boundVars context
+    args = toSyntax <$> toList (boundVars context)
 
   pure $ Syntax.apps (Syntax.Meta i) args
 

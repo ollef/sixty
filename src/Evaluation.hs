@@ -1,13 +1,13 @@
 {-# language OverloadedStrings #-}
 module Evaluation where
 
-import Protolude hiding (force, evaluate)
+import Protolude hiding (Seq, force, evaluate)
 
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef
-import Data.Sequence (Seq)
-import qualified Data.Sequence as Seq
+import Sequence (Seq)
+import qualified Sequence as Seq
 
 import qualified Domain
 import Index
