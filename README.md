@@ -15,7 +15,8 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [x] Pretty printing
 - [ ] Unification and meta variables
 - [ ] Basic type checking
-- [ ] Implicit arguments
+- [ ] Tests
+- [ ] Implicit arguments and subtyping
 - [ ] Source location tracking for error messages
 - [ ] Top-level definitions
 - [ ] Data definitions
