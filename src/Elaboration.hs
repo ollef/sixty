@@ -94,7 +94,7 @@ elaborate context term expected =
       typ'' <- Readback.readback (Context.toReadbackEnvironment context) typ'
 
       term''' <- lazy $ evaluate context term''
-      context' <- Context.extendDef context name term''' typ
+      context' <- Context.extendDef context name term''' $ Lazy $ pure typ'
 
       body' <- elaborate context' body expected
       pure $ Syntax.Let name term'' typ'' . Scope <$> body'
