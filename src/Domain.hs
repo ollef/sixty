@@ -7,7 +7,7 @@ import qualified Meta
 import Monad
 import Tsil (Tsil)
 import qualified Tsil
-import Var
+import Var (Var)
 
 data Value
   = Neutral Head Spine
@@ -35,3 +35,7 @@ global g = Neutral (Global g) Tsil.Nil
 
 meta :: Meta.Index -> Value
 meta i = Neutral (Meta i) Tsil.Nil
+
+singleVarView :: Value -> Maybe Var
+singleVarView (Neutral (Var v) Tsil.Nil) = Just v
+singleVarView _ = Nothing

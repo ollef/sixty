@@ -113,6 +113,10 @@ lookupType :: Index v -> Context v -> Lazy Domain.Type
 lookupType (Index i) context =
   types context HashMap.! Seq.index (vars context) (Seq.length (vars context) - i - 1)
 
+lookupValue :: Var -> Context v -> Maybe (Lazy Domain.Type)
+lookupValue var context =
+  HashMap.lookup var (values context)
+
 newMeta :: Context v -> M (Syntax.Term v)
 newMeta context = do
   m <- readIORef (metas context)

@@ -14,7 +14,7 @@ newtype Index = Index Int
   deriving (Eq, Ord, Show, Hashable)
 
 data Vars v = Vars
-  { vars :: !(HashMap Index (Meta.Var v))
+  { vars :: !(HashMap Index (Var v))
   , nextIndex :: !Index
   }
 

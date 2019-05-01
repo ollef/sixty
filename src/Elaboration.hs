@@ -11,9 +11,9 @@ import qualified Context
 import qualified Domain
 import qualified Evaluation
 import Index
+import qualified Meta
 import Monad
 import qualified Presyntax
-import qualified Readback
 import Readback (readback)
 import qualified Syntax
 import qualified Tsil
@@ -59,7 +59,7 @@ inferred context expected term typ =
 
     Check expectedType -> do
       typ' <- force typ
-      unify (Context.toReadbackEnvironment context) typ' expectedType
+      unify context typ' expectedType
       pure $ Checked term
 
 elaborate
@@ -125,7 +125,7 @@ elaborate context term expected =
         Infer -> do
           source <- Context.newMeta context
           source' <- evaluate context source
-          source'' <- Readback.readback (Context.toReadbackEnvironment context) source'
+          source'' <- readback (Context.toReadbackEnvironment context) source'
           (context', _) <- Context.extend context name (Lazy $ pure source')
           Inferred body' domain <- infer context' body
           type_ <- lazy $ do
@@ -139,7 +139,7 @@ elaborate context term expected =
 
         Check (Domain.Pi _ source domainClosure) -> do
           source' <- force source
-          source'' <- Readback.readback (Context.toReadbackEnvironment context) source'
+          source'' <- readback (Context.toReadbackEnvironment context) source'
           (context', var) <- Context.extend context name source
 
           domain <-
@@ -178,7 +178,7 @@ elaborate context term expected =
           source' <- force source
           case expected of
             Check expectedType -> do
-              unify (Context.toReadbackEnvironment context) expectedType functionType'
+              unify context expectedType functionType'
               argument' <- check context argument source'
               pure $ Checked (Syntax.App function' argument')
 
@@ -203,85 +203,181 @@ typeOfGlobal global =
   else
     undefined
 
-unify :: Readback.Environment v -> Domain.Value -> Domain.Value -> M ()
-unify env value1 value2 =
-  case (value1, value2) of
+unify :: Context v -> Domain.Value -> Domain.Value -> M ()
+unify context value1 value2 = do
+  value1' <- forceHead context value1
+  value2' <- forceHead context value2
+  case (value1', value2') of
+    -- Both metas
+    (Domain.Neutral (Domain.Meta metaIndex1) spine1, Domain.Neutral (Domain.Meta metaIndex2) spine2) -> do
+      spine1' <- mapM (force >=> forceHead context) spine1
+      spine2' <- mapM (force >=> forceHead context) spine2
+      let
+        spine1Vars = traverse Domain.singleVarView spine1'
+        spine2Vars = traverse Domain.singleVarView spine2'
+
+      case (spine1Vars, spine2Vars) of
+        (Just vars1, Just vars2)
+          | metaIndex1 == metaIndex2 -> do
+            -- If the same metavar is applied to two different lists of unknown
+            -- variables its solution must not mention any variables at
+            -- positions where the lists differ.
+            let
+              keep = Tsil.zipWith (==) vars1 vars2
+
+            if and keep then
+              Tsil.zipWithM_ (unify context) spine1' spine2'
+
+            else
+              solve metaIndex1 undefined
+
+          | metaIndex1 < metaIndex2 ->
+            solve metaIndex2 vars2 value1'
+
+          | otherwise ->
+            solve metaIndex1 vars1 value2'
+
+        (Just vars1, Nothing) ->
+          solve metaIndex1 vars1 value2'
+
+        (Nothing, Just vars2) ->
+          solve metaIndex2 vars2 value1'
+
+        (Nothing, Nothing) ->
+          Tsil.zipWithM_ (unify context) spine1' spine2'
+
     -- Same heads
     (Domain.Neutral head1 spine1, Domain.Neutral head2 spine2)
       | head1 == head2 ->
-        Tsil.zipWithM_ (unifyForce env) spine1 spine2
+        Tsil.zipWithM_ (unifyForce context) spine1 spine2
 
-    (Domain.Lam _ _ closure1, Domain.Lam _ _ closure2) -> do
-      (env', var) <- Readback.extend env
+    (Domain.Lam name1 type1 closure1, Domain.Lam _ type2 closure2) -> do
+      unifyForce context type1 type2
+
+      (context', var) <- Context.extend context name1 type1
       let
         lazyVar = Lazy $ pure $ Domain.var var
 
       body1 <- Evaluation.evaluateClosure closure1 lazyVar
       body2 <- Evaluation.evaluateClosure closure2 lazyVar
-      unify env' body1 body2
+      unify context' body1 body2
 
-    (Domain.Pi _ source1 domainClosure1, Domain.Pi _ source2 domainClosure2) -> do
-      unifyForce env source2 source1
+    (Domain.Pi name1 source1 domainClosure1, Domain.Pi _ source2 domainClosure2) -> do
+      unifyForce context source2 source1
 
-      (env', var) <- Readback.extend env
+      (context', var) <- Context.extend context name1 source1
       let
         lazyVar = Lazy $ pure $ Domain.var var
 
       domain1 <- Evaluation.evaluateClosure domainClosure1 lazyVar
       domain2 <- Evaluation.evaluateClosure domainClosure2 lazyVar
-      unify env' domain1 domain2
+      unify context' domain1 domain2
 
-    (Domain.Pi _ source1 domainClosure1, Domain.Fun source2 domain2) -> do
-      unifyForce env source2 source1
+    (Domain.Pi name1 source1 domainClosure1, Domain.Fun source2 domain2) -> do
+      unifyForce context source2 source1
 
-      (env', var) <- Readback.extend env
+      (context', var) <- Context.extend context name1 source1
       let
         lazyVar = Lazy $ pure $ Domain.var var
 
       domain1 <- Evaluation.evaluateClosure domainClosure1 lazyVar
       domain2' <- force domain2
-      unify env' domain1 domain2'
+      unify context' domain1 domain2'
 
-    (Domain.Fun source1 domain1, Domain.Pi _ source2 domainClosure2) -> do
-      unifyForce env source2 source1
+    (Domain.Fun source1 domain1, Domain.Pi name2 source2 domainClosure2) -> do
+      unifyForce context source2 source1
 
-      (env', var) <- Readback.extend env
+      (context', var) <- Context.extend context name2 source1
       let
         lazyVar = Lazy $ pure $ Domain.var var
 
       domain1' <- force domain1
       domain2 <- Evaluation.evaluateClosure domainClosure2 lazyVar
-      unify env' domain1' domain2
+      unify context' domain1' domain2
 
     (Domain.Fun source1 domain1, Domain.Fun source2 domain2) -> do
-      unifyForce env source2 source1
-      unifyForce env domain1 domain2
+      unifyForce context source2 source1
+      unifyForce context domain1 domain2
 
     -- Eta expand
-    (Domain.Lam _ _ closure1, v2) -> do
-      (env', var) <- Readback.extend env
+    (Domain.Lam name1 type1 closure1, v2) -> do
+      (context', var) <- Context.extend context name1 type1
       let
         lazyVar = Lazy $ pure $ Domain.var var
 
       body1 <- Evaluation.evaluateClosure closure1 lazyVar
       body2 <- Evaluation.apply v2 lazyVar
 
-      unify env' body1 body2
+      unify context' body1 body2
 
-    (v1, Domain.Lam _ _ closure2) -> do
-      (env', var) <- Readback.extend env
+    (v1, Domain.Lam name2 type2 closure2) -> do
+      (context', var) <- Context.extend context name2 type2
       let
         lazyVar = Lazy $ pure $ Domain.var var
 
       body1 <- Evaluation.apply v1 lazyVar
       body2 <- Evaluation.evaluateClosure closure2 lazyVar
 
-      unify env' body1 body2
+      unify context' body1 body2
+
+    -- Metas
+    (Domain.Neutral (Domain.Meta metaIndex1) spine1, v2) -> do
+      spine1' <- mapM (force >=> forceHead context) spine1
+      case traverse Domain.singleVarView spine1' of
+        Just vars1 ->
+          solve metaIndex1 vars1 v2
+
+        Nothing ->
+          can'tUnify
+
+    (v1, Domain.Neutral (Domain.Meta metaIndex2) spine2) -> do
+      spine2' <- mapM (force >=> forceHead context) spine2
+      case traverse Domain.singleVarView spine2' of
+        Just vars2 ->
+          solve metaIndex2 vars2 v1
+
+        Nothing ->
+          can'tUnify
 
     _ ->
-      panic "Can't unify"
+      can'tUnify
+
   where
     unifyForce sz lazyValue1 lazyValue2 = do
       v1 <- force lazyValue1
       v2 <- force lazyValue2
       unify sz v1 v2
+
+    can'tUnify =
+      panic "Can't unify"
+
+    solve = undefined
+
+-------------------------------------------------------------------------------
+
+-- | Evaluate the head of a value further, if (now) possible
+forceHead
+  :: Context v
+  -> Domain.Value
+  -> M Domain.Value
+forceHead context value =
+  case value of
+    Domain.Neutral (Domain.Var var) spine
+      | Just headValue <- Context.lookupValue var context -> do
+        headValue' <- force headValue
+        value' <- Evaluation.applySpine headValue' spine
+        forceHead context value'
+
+    Domain.Neutral (Domain.Meta metaIndex) spine -> do
+      meta <- Context.lookupMeta metaIndex context
+
+      case meta of
+        Meta.Solved headValue -> do
+          value' <- Evaluation.applySpine headValue spine
+          forceHead context value'
+
+        Meta.Unsolved ->
+          pure value
+
+    _ ->
+      pure value

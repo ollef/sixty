@@ -90,6 +90,9 @@ apply fun arg =
     _ ->
       panic "applying non-function"
 
+applySpine :: Domain.Value -> Domain.Spine -> M Domain.Value
+applySpine = foldM apply
+
 evaluateClosure :: Domain.Closure -> Lazy Domain.Value -> M Domain.Value
 evaluateClosure (Domain.Closure f) = f
 
