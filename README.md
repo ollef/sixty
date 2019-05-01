@@ -14,6 +14,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [x] Parsing
 - [x] Pretty printing
 - [ ] Unification and meta variables
+  - [ ] Pruning
 - [ ] Basic type checking
 - [ ] Tests
 - [ ] Implicit arguments and subtyping
