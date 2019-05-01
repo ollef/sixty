@@ -43,7 +43,6 @@ empty = Environment
   }
 
 -------------------------------------------------------------------------------
--- Pretty-printing environments
 
 prettyTerm :: Int -> Environment v -> Syntax.Term v -> Doc ann
 prettyTerm prec env term = case term of
@@ -71,29 +70,45 @@ prettyTerm prec env term = case term of
       <> line <> "in"
       <> line <> prettyTerm letPrec env' body
 
-  Syntax.Pi name typ (Scope domain) ->
+  Syntax.Pi {} ->
     prettyParen (prec > funPrec) $
-      let
-        (env', name') = extend env name
-      in
-      lparen <> pretty name' <+> ":" <+> prettyTerm 0 env typ <> rparen
-      <+> "->"
-      <+> prettyTerm funPrec env' domain
+      prettyPiTerm env term
 
   Syntax.Fun source domain ->
     prettyParen (prec > funPrec) $
       prettyTerm (funPrec + 1) env source <+> "->" <+> prettyTerm funPrec env domain
 
-  Syntax.Lam name typ (Scope body) ->
+  Syntax.Lam {} ->
     prettyParen (prec > lamPrec) $
-      let
-        (env', name') = extend env name
-      in
-      "\\" <> pretty name' <+> ":" <+> prettyTerm 0 env typ <+> "." <+> prettyTerm lamPrec env' body
+      "\\" <> prettyLamTerm env term
 
   Syntax.App t1 t2 ->
     prettyParen (prec > appPrec) $
       prettyTerm appPrec env t1 <+> prettyTerm (appPrec + 1) env t2
+
+prettyLamTerm :: Environment v -> Syntax.Term v -> Doc ann
+prettyLamTerm env term = case term of
+  Syntax.Lam name typ (Scope scope) ->
+    let
+      (env', name') = extend env name
+    in
+    lparen <> pretty name' <+> ":" <+> prettyTerm 0 env typ <> rparen
+    <> prettyLamTerm env' scope
+
+  t ->
+    "." <+> prettyTerm lamPrec env t
+
+prettyPiTerm :: Environment v -> Syntax.Term v -> Doc ann
+prettyPiTerm env term = case term of
+  Syntax.Pi name typ (Scope scope) ->
+    let
+      (env', name') = extend env name
+    in
+    lparen <> pretty name' <+> ":" <+> prettyTerm 0 env typ <> rparen
+    <> prettyPiTerm env' scope
+
+  t ->
+    " ->" <+> prettyTerm funPrec env t
 
 prettyParen :: Bool -> Doc a -> Doc a
 prettyParen True doc = lparen <> doc <> rparen
