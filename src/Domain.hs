@@ -10,7 +10,7 @@ import qualified Tsil
 import Var (Var)
 
 data Value
-  = Neutral Head Spine
+  = Neutral !Head Spine
   | Lam !Text !(Lazy Type) !Closure
   | Pi !Text !(Lazy Type) !Closure
   | Fun !(Lazy Type) !(Lazy Type)
