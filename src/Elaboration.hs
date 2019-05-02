@@ -17,7 +17,9 @@ import Monad
 import qualified Presyntax
 import Readback (readback)
 import qualified Syntax
+import Tsil (Tsil)
 import qualified Tsil
+import Var
 
 data Inferred term
   = Inferred term !(Lazy Domain.Type)
@@ -230,24 +232,24 @@ unify context value1 value2 = do
               Tsil.zipWithM_ (unify context) spine1' spine2'
 
             else
-              solve metaIndex1 undefined
+              solve context metaIndex1 undefined undefined
 
           | unique vars1 ->
-            solve metaIndex1 vars1 value2'
+            solve context metaIndex1 vars1 value2'
 
           | unique vars2 ->
-            solve metaIndex2 vars2 value1'
+            solve context metaIndex2 vars2 value1'
 
           | otherwise ->
             Tsil.zipWithM_ (unify context) spine1' spine2'
 
         (Just vars1, _)
           | unique vars1 ->
-          solve metaIndex1 vars1 value2'
+          solve context metaIndex1 vars1 value2'
 
         (_, Just vars2)
           | unique vars2 ->
-          solve metaIndex2 vars2 value1'
+          solve context metaIndex2 vars2 value1'
 
         _ ->
           Tsil.zipWithM_ (unify context) spine1' spine2'
@@ -332,7 +334,7 @@ unify context value1 value2 = do
       case traverse Domain.singleVarView spine1' of
         Just vars1
           | unique vars1 ->
-            solve metaIndex1 vars1 v2
+            solve context metaIndex1 vars1 v2
 
         _ ->
           can'tUnify
@@ -342,7 +344,7 @@ unify context value1 value2 = do
       case traverse Domain.singleVarView spine2' of
         Just vars2
           | unique vars2 ->
-          solve metaIndex2 vars2 v1
+          solve context metaIndex2 vars2 v1
 
         _ ->
           can'tUnify
@@ -359,7 +361,20 @@ unify context value1 value2 = do
     can'tUnify =
       panic "Can't unify"
 
-    solve = undefined
+-- | Solve `meta = \vars. value`, doing pruning
+solve :: Context v -> Meta.Index -> Tsil Var -> Domain.Value -> M ()
+solve context meta vars value = do
+  term <- occurs meta vars value
+  Context.solveMeta context meta term
+
+-- | Occurs check, reading back the solution, and doing pruning at the same time.
+occurs
+  :: Meta.Index
+  -> Tsil Var
+  -> Domain.Value
+  -> M (Syntax.Term Void)
+occurs =
+  undefined
 
 -------------------------------------------------------------------------------
 

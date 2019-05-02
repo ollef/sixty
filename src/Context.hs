@@ -137,3 +137,16 @@ lookupMeta
 lookupMeta i context = do
   m <- readIORef (metas context)
   pure $ Meta.lookup i m
+
+solveMeta
+  :: Context v
+  -> Meta.Index
+  -> Syntax.Term Void
+  -> M ()
+solveMeta context i term = do
+  m <- readIORef (metas context)
+  value <- lazy $
+    Evaluation.evaluate (Evaluation.empty (nextVar context)) term
+  let
+    m' = Meta.solve i (value, term) m
+  writeIORef (metas context) m'

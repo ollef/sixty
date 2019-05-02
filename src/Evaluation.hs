@@ -25,6 +25,14 @@ data Environment v = Environment
   , values :: HashMap Var (Lazy Domain.Value)
   }
 
+empty :: IORef Var -> Environment Void
+empty nextVar =
+  Environment
+    { nextVar = nextVar
+    , vars = mempty
+    , values = mempty
+    }
+
 extend
   :: Environment v
   -> Lazy Domain.Value
