@@ -363,7 +363,8 @@ unify context value1 value2 = do
 
 -------------------------------------------------------------------------------
 
--- | Evaluate the head of a value further, if (now) possible
+-- | Evaluate the head of a value further, if (now) possible due to meta
+-- solutions or new value bindings.
 forceHead
   :: Context v
   -> Domain.Value
