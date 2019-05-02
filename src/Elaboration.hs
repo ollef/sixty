@@ -10,6 +10,7 @@ import Context (Context)
 import qualified Context
 import qualified Domain
 import qualified Evaluation
+import Extra
 import Index
 import qualified Meta
 import Monad
@@ -231,19 +232,24 @@ unify context value1 value2 = do
             else
               solve metaIndex1 undefined
 
-          | metaIndex1 < metaIndex2 ->
+          | unique vars1 ->
+            solve metaIndex1 vars1 value2'
+
+          | unique vars2 ->
             solve metaIndex2 vars2 value1'
 
           | otherwise ->
-            solve metaIndex1 vars1 value2'
+            Tsil.zipWithM_ (unify context) spine1' spine2'
 
-        (Just vars1, Nothing) ->
+        (Just vars1, _)
+          | unique vars1 ->
           solve metaIndex1 vars1 value2'
 
-        (Nothing, Just vars2) ->
+        (_, Just vars2)
+          | unique vars2 ->
           solve metaIndex2 vars2 value1'
 
-        (Nothing, Nothing) ->
+        _ ->
           Tsil.zipWithM_ (unify context) spine1' spine2'
 
     -- Same heads
@@ -324,19 +330,21 @@ unify context value1 value2 = do
     (Domain.Neutral (Domain.Meta metaIndex1) spine1, v2) -> do
       spine1' <- mapM (force >=> forceHead context) spine1
       case traverse Domain.singleVarView spine1' of
-        Just vars1 ->
-          solve metaIndex1 vars1 v2
+        Just vars1
+          | unique vars1 ->
+            solve metaIndex1 vars1 v2
 
-        Nothing ->
+        _ ->
           can'tUnify
 
     (v1, Domain.Neutral (Domain.Meta metaIndex2) spine2) -> do
       spine2' <- mapM (force >=> forceHead context) spine2
       case traverse Domain.singleVarView spine2' of
-        Just vars2 ->
+        Just vars2
+          | unique vars2 ->
           solve metaIndex2 vars2 v1
 
-        Nothing ->
+        _ ->
           can'tUnify
 
     _ ->
