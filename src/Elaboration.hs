@@ -381,8 +381,9 @@ forceHead context value =
       meta <- Context.lookupMeta metaIndex context
 
       case meta of
-        Meta.Solved headValue -> do
-          value' <- Evaluation.applySpine headValue spine
+        Meta.Solved (headValue, _) -> do
+          headValue' <- force headValue
+          value' <- Evaluation.applySpine headValue' spine
           forceHead context value'
 
         Meta.Unsolved ->

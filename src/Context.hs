@@ -26,7 +26,7 @@ data Context v = Context
   , values :: HashMap Var (Lazy Domain.Value)
   , types :: HashMap Var (Lazy Domain.Type)
   , boundVars :: Seq Var
-  , metas :: !(IORef (Meta.Vars Domain.Value))
+  , metas :: !(IORef (Meta.Vars (Lazy Domain.Value, Syntax.Term Void)))
   }
 
 toEvaluationEnvironment
@@ -133,7 +133,7 @@ newMeta context = do
 lookupMeta
   :: Meta.Index
   -> Context v
-  -> M (Meta.Var Domain.Value)
+  -> M (Meta.Var (Lazy Domain.Value, Syntax.Term Void))
 lookupMeta i context = do
   m <- readIORef (metas context)
   pure $ Meta.lookup i m
