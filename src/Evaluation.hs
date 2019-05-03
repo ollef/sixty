@@ -26,9 +26,9 @@ data Environment v = Environment
   }
 
 empty :: IORef Var -> Environment Void
-empty nextVar =
+empty nextVar_ =
   Environment
-    { nextVar = nextVar
+    { nextVar = nextVar_
     , vars = mempty
     , values = mempty
     }
