@@ -76,7 +76,7 @@ elaborate
   -> Presyntax.Term
   -> Expected e
   -> M (e (Syntax.Term v))
-elaborate context term expected = trace ("elaborate" :: Text) $
+elaborate context term expected =
   case term of
     Presyntax.Var name ->
       case Context.lookupNameIndex name context of
@@ -131,7 +131,7 @@ elaborate context term expected = trace ("elaborate" :: Text) $
     Presyntax.Lam name body ->
       case expected of
         Infer -> do
-          source <- Context.newMeta context
+          source <- Context.newMetaType context
           source'' <- readback (Context.toReadbackEnvironment context) source
           (context', _) <- Context.extend context name (Lazy $ pure source)
           Inferred body' domain <- infer context' body
@@ -169,8 +169,8 @@ elaborate context term expected = trace ("elaborate" :: Text) $
               pure $ Checked (Syntax.Lam name source'' body')
 
             _ -> do
-              source <- Context.newMeta context
-              domain <- Context.newMeta context
+              source <- Context.newMetaType context
+              domain <- Context.newMetaType context
               let
                 lazySource = Lazy (pure source)
                 functionType = Domain.Fun lazySource (Lazy (pure domain))
@@ -210,8 +210,8 @@ elaborate context term expected = trace ("elaborate" :: Text) $
               pure $ Inferred (Syntax.App function' argument') domain
 
         _ -> do
-          source <- Context.newMeta context
-          domain <- Context.newMeta context
+          source <- Context.newMetaType context
+          domain <- Context.newMetaType context
           let
             lazySource = Lazy (pure source)
             lazyDomain = Lazy (pure domain)
@@ -248,7 +248,7 @@ typeOfGlobal global =
 -- TODO track rigidness
 
 unify :: Context v -> Domain.Value -> Domain.Value -> M ()
-unify context value1 value2 = trace ("unify" :: Text) $ do
+unify context value1 value2 = do
   value1' <- forceHead context value1
   value2' <- forceHead context value2
   case (value1', value2') of
@@ -404,7 +404,7 @@ unify context value1 value2 = trace ("unify" :: Text) $ do
 
 -- | Solve `meta = \vars. value`.
 solve :: Context v -> Meta.Index -> Tsil Var -> Domain.Value -> M ()
-solve context meta vars value = trace ("solve" :: Text) $ do
+solve context meta vars value = do
   term <- checkSolution context meta (Seq.fromTsil vars) value
   Context.solveMeta context meta term
 
@@ -416,7 +416,7 @@ checkSolution
   -> Seq Var
   -> Domain.Value
   -> M (Syntax.Term Void)
-checkSolution outerContext meta vars value = trace ("checkSolution" :: Text) $ do
+checkSolution outerContext meta vars value = do
   solution <-
     checkInnerSolution
       outerContext
@@ -434,7 +434,7 @@ addAndCheckLambdas
   -> Seq Var
   -> Syntax.Term v'
   -> M (Syntax.Term v')
-addAndCheckLambdas outerContext meta vars term = trace ("addAndCheckLambdas" :: Text) $
+addAndCheckLambdas outerContext meta vars term =
   case vars of
     Seq.Empty ->
       pure term
@@ -465,9 +465,22 @@ checkInnerSolution
   -> Readback.Environment v'
   -> Domain.Value
   -> M (Syntax.Term v')
-checkInnerSolution outerContext occurs env value = trace ("checkInnerSolution" :: Text) $ do
+checkInnerSolution outerContext occurs env value = do
   value' <- forceHead outerContext value
   case value' of
+    Domain.Neutral hd@(Domain.Meta i) spine -> do
+      spine' <- mapM (force >=> forceHead outerContext) spine
+      case traverse Domain.singleVarView spine' of
+        Just vars
+          | allowedVars <- map (\v -> isJust (Readback.lookupIndex v env)) vars
+          , any not allowedVars
+          -> do
+            pruneMeta outerContext i allowedVars
+            checkInnerSolution outerContext occurs env value'
+
+        _ ->
+          checkInnerNeutral outerContext occurs env hd spine
+
     Domain.Neutral hd spine ->
       checkInnerNeutral outerContext occurs env hd spine
 
@@ -496,7 +509,7 @@ checkInnerClosure
   -> Readback.Environment v'
   -> Domain.Closure
   -> M (Scope Syntax.Term v')
-checkInnerClosure outerContext occurs env closure = trace ("checkInnerClosure" :: Text) $ do
+checkInnerClosure outerContext occurs env closure = do
   (env', v) <- Readback.extend env
 
   closure' <- Evaluation.evaluateClosure closure $ Lazy $ pure $ Domain.var v
@@ -509,24 +522,16 @@ checkInnerNeutral
   -> Domain.Head
   -> Domain.Spine
   -> M (Syntax.Term v')
-checkInnerNeutral outerContext occurs env hd spine = trace ("checkInnerNeutral" :: Text) $
-  case hd of
-    Value.Meta i ->
-      spine' <- mapM (force >=> forceHead outerContext) spine
-      case traverse Domain.singleVarView spine' of
-        Just vars ->
-        Nothing ->
+checkInnerNeutral outerContext occurs env hd spine =
+  case spine of
+    Tsil.Nil ->
+      pure $ checkInnerHead occurs env hd
 
-    _ ->
-      case spine of
-        Tsil.Nil ->
-          pure $ checkInnerHead occurs env hd
-
-        Tsil.Snoc spine' arg -> do
-          arg' <- force arg
-          Syntax.App
-            <$> checkInnerNeutral outerContext occurs env hd spine'
-            <*> checkInnerSolution outerContext occurs env arg'
+    Tsil.Snoc spine' arg -> do
+      arg' <- force arg
+      Syntax.App
+        <$> checkInnerNeutral outerContext occurs env hd spine'
+        <*> checkInnerSolution outerContext occurs env arg'
 
 checkInnerHead
   :: Meta.Index
@@ -536,7 +541,7 @@ checkInnerHead
 checkInnerHead occurs env hd =
   case hd of
     Domain.Var v ->
-      case Readback.lookupMaybeIndex v env of
+      case Readback.lookupIndex v env of
         Nothing ->
           panic "Scope check failed"
 
@@ -553,6 +558,56 @@ checkInnerHead occurs env hd =
     Domain.Global g ->
       Syntax.Global g
 
+pruneMeta
+  :: Context v
+  -> Meta.Index
+  -> Tsil Bool
+  -> M ()
+pruneMeta context meta allowedArgs = do
+  solution <- Context.lookupMeta meta context
+  case solution of
+    Meta.Unsolved metaType -> do
+      metaType' <-
+        Evaluation.evaluate
+          (Evaluation.empty (Context.nextVar context))
+          metaType
+      solution' <-
+        go
+          (toList allowedArgs)
+          (Context.emptyFrom context)
+          metaType'
+      solution'' <-
+        Readback.readback
+          (Readback.empty (Context.nextVar context))
+          solution'
+      Context.solveMeta context meta solution''
+
+    Meta.Solved _ ->
+      panic "pruneMeta already solved"
+
+  where
+    go alloweds context' type_ =
+      case alloweds of
+        [] ->
+          Context.newMeta type_ context'
+
+        allowed:alloweds' ->
+          case (allowed, type_) of
+            (True, Domain.Fun source domain) -> do
+              domain' <- force domain
+              Domain.Lam "x" source <$> Closure (\x -> go alloweds' (_ context') domain')
+
+            (True, Domain.Pi name source domainClosure) ->
+              undefined
+
+            (False, Domain.Fun source domain) ->
+              undefined
+
+            (False, Domain.Pi name source domainClosure) ->
+              undefined
+
+            _ -> panic "pruneMeta wrong type"
+
 -------------------------------------------------------------------------------
 
 -- | Evaluate the head of a value further, if (now) possible due to meta
@@ -561,7 +616,7 @@ forceHead
   :: Context v
   -> Domain.Value
   -> M Domain.Value
-forceHead context value = trace ("forceHead" :: Text) $
+forceHead context value =
   case value of
     Domain.Neutral (Domain.Var var) spine
       | Just headValue <- Context.lookupVarValue var context -> do
@@ -573,12 +628,12 @@ forceHead context value = trace ("forceHead" :: Text) $
       meta <- Context.lookupMeta metaIndex context
 
       case meta of
-        Meta.Solved (headValue, _) -> do
-          headValue' <- force headValue
+        Meta.Solved headValue -> do
+          headValue' <- Evaluation.evaluate (Evaluation.empty (Context.nextVar context)) headValue
           value' <- Evaluation.applySpine headValue' spine
           forceHead context value'
 
-        Meta.Unsolved ->
+        Meta.Unsolved _ ->
           pure value
 
     _ ->

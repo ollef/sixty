@@ -2,12 +2,14 @@
 {-# language OverloadedStrings #-}
 module Context where
 
-import Protolude hiding (Seq)
+import Protolude hiding (Seq, force)
 
+import Data.Coerce
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef
 
+import qualified Builtin
 import qualified Domain
 import qualified Evaluation
 import Index
@@ -27,7 +29,7 @@ data Context v = Context
   , values :: HashMap Var (Lazy Domain.Value)
   , types :: HashMap Var (Lazy Domain.Type)
   , boundVars :: Seq Var
-  , metas :: !(IORef (Meta.Vars (Lazy Domain.Value, Syntax.Term Void)))
+  , metas :: !(IORef (Meta.Vars (Syntax.Type Void) (Syntax.Term Void)))
   }
 
 toEvaluationEnvironment
@@ -62,6 +64,19 @@ empty = do
     , types = mempty
     , boundVars = mempty
     , metas = ms
+    }
+
+emptyFrom :: Context v -> Context Void
+emptyFrom context =
+  Context
+    { nextVar = nextVar context
+    , nameVars = mempty
+    , varNames = mempty
+    , vars = mempty
+    , values = mempty
+    , types = mempty
+    , boundVars = mempty
+    , metas = metas context
     }
 
 extend
@@ -128,22 +143,56 @@ lookupVarValue :: Var -> Context v -> Maybe (Lazy Domain.Type)
 lookupVarValue var context =
   HashMap.lookup var (values context)
 
-newMeta :: Context v -> M Domain.Value
-newMeta context = do
+newMeta :: Domain.Type -> Context v -> M Domain.Value
+newMeta type_ context = do
+  closedType <- piBoundVars context type_
   m <- readIORef (metas context)
   let
-    (m', i) = Meta.insert m
+    (m', i) = Meta.insert closedType m
   writeIORef (metas context) m'
 
   pure $ Domain.Neutral (Domain.Meta i) (Lazy . pure . Domain.var <$> Seq.toTsil (boundVars context))
 
+newMetaType :: Context v -> M Domain.Value
+newMetaType =
+  newMeta Builtin.type_
+
+piBoundVars :: Context v -> Domain.Type -> M (Syntax.Type Void)
+piBoundVars context type_ = do
+  type' <-
+    Readback.readback
+      Readback.Environment
+        { nextVar = nextVar context
+        , vars = boundVars context
+        }
+      type_
+
+  pis (boundVars context) type'
+  where
+    pis :: Seq Var -> Syntax.Type v -> M (Syntax.Type v')
+    pis vars_ term =
+      case vars_ of
+        Seq.Empty ->
+          pure $ coerce term
+
+        vars' Seq.:> var -> do
+          varType <- force $ lookupVarType var context
+          varType' <-
+            Readback.readback
+              Readback.Environment
+                { nextVar = nextVar context
+                , vars = vars'
+                }
+              varType
+          Syntax.Pi (lookupVarName var context) varType' <$> pis vars' term
+
 lookupMeta
   :: Meta.Index
   -> Context v
-  -> M (Meta.Var (Lazy Domain.Value, Syntax.Term Void))
+  -> M (Meta.Var (Syntax.Type void) (Syntax.Term void))
 lookupMeta i context = do
   m <- readIORef (metas context)
-  pure $ Meta.lookup i m
+  pure $ coerce $ Meta.lookup i m
 
 solveMeta
   :: Context v
@@ -152,8 +201,6 @@ solveMeta
   -> M ()
 solveMeta context i term = do
   m <- readIORef (metas context)
-  value <- lazy $
-    Evaluation.evaluate (Evaluation.empty (nextVar context)) term
   let
-    m' = Meta.solve i (value, term) m
+    m' = Meta.solve i term m
   writeIORef (metas context) m'

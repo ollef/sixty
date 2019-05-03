@@ -1,4 +1,4 @@
-{-# language OverloadedStrings #-}
+{-# language DeriveAnyClass #-}
 module Readback where
 
 import Protolude hiding (Seq, force, evaluate)
@@ -23,6 +23,12 @@ data Environment v = Environment
   , vars :: Seq Var
   }
 
+empty :: IORef Var -> Environment Void
+empty nextVar_ = Environment
+  { nextVar = nextVar_
+  , vars = mempty
+  }
+
 extend
   :: Environment v
   -> IO (Environment (Succ v), Var)
@@ -36,18 +42,19 @@ extend env = do
     , var
     )
 
-lookupIndex :: Var -> Environment v -> Index v
+lookupIndex :: Var -> Environment v -> Maybe (Index v)
 lookupIndex var context =
-  fromMaybe (panic "Readback.lookupIndex") (lookupMaybeIndex var context)
-
-lookupMaybeIndex :: Var -> Environment v -> Maybe (Index v)
-lookupMaybeIndex var context =
   case Seq.elemIndex var (vars context) of
     Nothing ->
       Nothing
 
     Just i ->
       Just (Index (Seq.length (vars context) - i - 1))
+
+-------------------------------------------------------------------------------
+
+data ScopingException = ScopingException
+  deriving (Eq, Show, Exception)
 
 -------------------------------------------------------------------------------
 
@@ -81,20 +88,25 @@ readbackNeutral :: Environment v -> Domain.Head -> Domain.Spine -> M (Syntax.Ter
 readbackNeutral env hd spine =
   case spine of
     Tsil.Nil ->
-      pure $ readbackHead env hd
+      readbackHead env hd
 
     Tsil.Snoc spine' arg -> do
       arg' <- force arg
       Syntax.App <$> readbackNeutral env hd spine' <*> readback env arg'
 
-readbackHead :: Environment v -> Domain.Head -> Syntax.Term v
+readbackHead :: Environment v -> Domain.Head -> M (Syntax.Term v)
 readbackHead env hd =
   case hd of
     Domain.Var v ->
-      Syntax.Var $ lookupIndex v env
+      case lookupIndex v env of
+        Just i ->
+          pure $ Syntax.Var i
+
+        Nothing ->
+          throwIO ScopingException
 
     Domain.Meta m ->
-      Syntax.Meta m
+      pure $ Syntax.Meta m
 
     Domain.Global g ->
-      Syntax.Global g
+      pure $ Syntax.Global g
