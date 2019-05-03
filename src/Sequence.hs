@@ -13,6 +13,9 @@ import qualified Data.FingerTree as FingerTree
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 
+import Tsil (Tsil)
+import qualified Tsil
+
 data IndexMap a = IndexMap !Int (HashMap a Int)
 
 instance (Eq a, Hashable a) => Semigroup (IndexMap a) where
@@ -72,3 +75,12 @@ index (Seq ft) i =
 
     IndexMapped a FingerTree.:< _ ->
       a
+
+fromTsil :: (Eq a, Hashable a) => Tsil a -> Seq a
+fromTsil tsil =
+  case tsil of
+    Tsil.Nil ->
+      mempty
+
+    Tsil.Snoc as a ->
+      fromTsil as :> a
