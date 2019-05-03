@@ -73,10 +73,10 @@ extend context name type_ = do
   pure
     ( context
       { names = HashMap.insert name var $ names context
-      , vars = vars context Seq.|> var
+      , vars = vars context Seq.:> var
       , values = HashMap.insert var (Lazy $ pure $ Domain.var var) (values context)
       , types = HashMap.insert var type_ (types context)
-      , boundVars = boundVars context Seq.|> var
+      , boundVars = boundVars context Seq.:> var
       }
     , var
     )
@@ -92,7 +92,7 @@ extendDef context name value type_ = do
   writeIORef (nextVar context) (Var (v + 1))
   pure context
     { names = HashMap.insert name var $ names context
-    , vars = vars context Seq.|> var
+    , vars = vars context Seq.:> var
     , values = HashMap.insert var value (values context)
     , types = HashMap.insert var type_ (types context)
     }

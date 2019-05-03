@@ -41,7 +41,7 @@ extend env value = do
   var@(Var v) <- readIORef (nextVar env)
   writeIORef (nextVar env) (Var (v + 1))
   pure env
-    { vars = vars env Seq.|> var
+    { vars = vars env Seq.:> var
     , values = HashMap.insert var value (values env)
     }
 

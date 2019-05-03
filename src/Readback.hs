@@ -31,7 +31,7 @@ extend env = do
   writeIORef (nextVar env) (Var (v + 1))
   pure
     ( env
-      { vars = vars env Seq.|> var
+      { vars = vars env Seq.:> var
       }
     , var
     )

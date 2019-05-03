@@ -1,12 +1,13 @@
 {-# language GeneralizedNewtypeDeriving #-}
 {-# language MultiParamTypeClasses #-}
 {-# language OverloadedStrings #-}
+{-# language PatternSynonyms #-}
+{-# language ViewPatterns #-}
 module Sequence where
 
 import Protolude hiding (Seq)
 
 import Data.Coerce
-
 import Data.FingerTree (FingerTree)
 import qualified Data.FingerTree as FingerTree
 import Data.HashMap.Lazy (HashMap)
@@ -36,8 +37,15 @@ newtype Seq a = Seq (FingerTree (IndexMap a) (IndexMapped a))
 instance Foldable Seq where
   foldMap f (Seq ft) = foldMap (coerce f) ft
 
-(|>) :: (Eq a, Hashable a) => Seq a -> a -> Seq a
-Seq ft |> a = Seq (ft FingerTree.|> IndexMapped a)
+pattern Empty :: (Eq a, Hashable a) => Seq a
+pattern Empty <- Seq (FingerTree.null -> True)
+  where
+    Empty = mempty
+
+pattern (:>) :: (Eq a, Hashable a) => Seq a -> a -> Seq a
+pattern as :> a <- Seq (FingerTree.viewr -> (Seq -> as) FingerTree.:> IndexMapped a)
+  where
+    Seq ft :> a = Seq (ft FingerTree.|> IndexMapped a)
 
 length :: (Eq a, Hashable a) => Seq a -> Int
 length (Seq ft) =
