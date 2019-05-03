@@ -38,10 +38,16 @@ extend env = do
 
 lookupIndex :: Var -> Environment v -> Index v
 lookupIndex var context =
-  Index
-    $ Seq.length (vars context)
-    - fromMaybe (panic "Environment.lookupIndex") (Seq.elemIndex var (vars context))
-    - 1
+  fromMaybe (panic "Readback.lookupIndex") (lookupMaybeIndex var context)
+
+lookupMaybeIndex :: Var -> Environment v -> Maybe (Index v)
+lookupMaybeIndex var context =
+  case Seq.elemIndex var (vars context) of
+    Nothing ->
+      Nothing
+
+    Just i ->
+      Just (Index (Seq.length (vars context) - i - 1))
 
 -------------------------------------------------------------------------------
 
@@ -51,13 +57,13 @@ readback env value =
     Domain.Neutral hd spine ->
       readbackNeutral env hd spine
 
-    Domain.Lam name typ closure -> do
-      typ' <- force typ
-      Syntax.Lam name <$> readback env typ' <*> readbackClosure env closure
+    Domain.Lam name type_ closure -> do
+      type' <- force type_
+      Syntax.Lam name <$> readback env type' <*> readbackClosure env closure
 
-    Domain.Pi name typ closure -> do
-      typ' <- force typ
-      Syntax.Pi name <$> readback env typ' <*> readbackClosure env closure
+    Domain.Pi name type_ closure -> do
+      type' <- force type_
+      Syntax.Pi name <$> readback env type' <*> readbackClosure env closure
 
     Domain.Fun source domain -> do
       source' <- force source
@@ -69,7 +75,7 @@ readbackClosure env closure = do
   (env', v) <- extend env
 
   closure' <- Evaluation.evaluateClosure closure $ Lazy $ pure $ Domain.var v
-  Scope <$> readback env' closure'
+  readback env' closure'
 
 readbackNeutral :: Environment v -> Domain.Head -> Domain.Spine -> M (Syntax.Term v)
 readbackNeutral env hd spine =

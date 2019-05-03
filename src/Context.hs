@@ -22,7 +22,8 @@ import Var
 data Context v = Context
   { nextVar :: !(IORef Var)
   , vars :: Seq Var
-  , names :: HashMap Text Var
+  , nameVars :: HashMap Text Var
+  , varNames :: HashMap Var Text
   , values :: HashMap Var (Lazy Domain.Value)
   , types :: HashMap Var (Lazy Domain.Type)
   , boundVars :: Seq Var
@@ -54,7 +55,8 @@ empty = do
   ms <- newIORef Meta.empty
   pure Context
     { nextVar = nv
-    , names = mempty
+    , nameVars = mempty
+    , varNames = mempty
     , vars = mempty
     , values = mempty
     , types = mempty
@@ -72,9 +74,9 @@ extend context name type_ = do
   writeIORef (nextVar context) (Var (v + 1))
   pure
     ( context
-      { names = HashMap.insert name var $ names context
+      { nameVars = HashMap.insert name var $ nameVars context
+      , varNames = HashMap.insert var name $ varNames context
       , vars = vars context Seq.:> var
-      , values = HashMap.insert var (Lazy $ pure $ Domain.var var) (values context)
       , types = HashMap.insert var type_ (types context)
       , boundVars = boundVars context Seq.:> var
       }
@@ -91,44 +93,49 @@ extendDef context name value type_ = do
   var@(Var v) <- readIORef (nextVar context)
   writeIORef (nextVar context) (Var (v + 1))
   pure context
-    { names = HashMap.insert name var $ names context
+    { nameVars = HashMap.insert name var $ nameVars context
+    , varNames = HashMap.insert var name $ varNames context
     , vars = vars context Seq.:> var
     , values = HashMap.insert var value (values context)
     , types = HashMap.insert var type_ (types context)
     }
 
-lookupName :: Text -> Context v -> Maybe (Index v)
-lookupName name context = do
-  var <- HashMap.lookup name (names context)
-  pure $ lookupIndex var context
+lookupNameIndex :: Text -> Context v -> Maybe (Index v)
+lookupNameIndex name context = do
+  var <- HashMap.lookup name (nameVars context)
+  pure $ lookupVarIndex var context
 
-lookupIndex :: Var -> Context v -> Index v
-lookupIndex var context =
+lookupVarIndex :: Var -> Context v -> Index v
+lookupVarIndex var context =
   Index
     $ Seq.length (vars context)
-    - fromMaybe (panic "Context.lookupIndex") (Seq.elemIndex var (vars context))
+    - fromMaybe (panic "Context.lookupVarIndex") (Seq.elemIndex var (vars context))
     - 1
 
-lookupType :: Index v -> Context v -> Lazy Domain.Type
-lookupType (Index i) context =
-  types context HashMap.! Seq.index (vars context) (Seq.length (vars context) - i - 1)
+lookupVarName :: Var -> Context v -> Text
+lookupVarName var context =
+  varNames context HashMap.! var
 
-lookupValue :: Var -> Context v -> Maybe (Lazy Domain.Type)
-lookupValue var context =
+lookupIndexType :: Index v -> Context v -> Lazy Domain.Type
+lookupIndexType (Index i) context =
+  lookupVarType (Seq.index (vars context) (Seq.length (vars context) - i - 1)) context
+
+lookupVarType :: Var -> Context v -> Lazy Domain.Type
+lookupVarType v context =
+  types context HashMap.! v
+
+lookupVarValue :: Var -> Context v -> Maybe (Lazy Domain.Type)
+lookupVarValue var context =
   HashMap.lookup var (values context)
 
-newMeta :: Context v -> M (Syntax.Term v)
+newMeta :: Context v -> M Domain.Value
 newMeta context = do
   m <- readIORef (metas context)
   let
     (m', i) = Meta.insert m
   writeIORef (metas context) m'
 
-  let
-    toSyntax var = Syntax.Var (lookupIndex var context)
-    args = toSyntax <$> toList (boundVars context)
-
-  pure $ Syntax.apps (Syntax.Meta i) args
+  pure $ Domain.Neutral (Domain.Meta i) (Lazy . pure . Domain.var <$> Seq.toTsil (boundVars context))
 
 lookupMeta
   :: Meta.Index

@@ -13,8 +13,6 @@ newtype Index v = Index Int
 -------------------------------------------------------------------------------
 -- Phantom types
 
-newtype Scope f v = Scope (f (Succ v))
-
-deriving instance Show (f (Succ v)) => Show (Scope f v)
+type Scope f v = f (Succ v)
 
 data Succ v

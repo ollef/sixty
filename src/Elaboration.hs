@@ -1,9 +1,11 @@
 {-# language DeriveFunctor #-}
+{-# language DuplicateRecordFields #-}
 {-# language GADTs #-}
 {-# language OverloadedStrings #-}
+{-# language ScopedTypeVariables #-}
 module Elaboration where
 
-import Protolude hiding (force, check, evaluate)
+import Protolude hiding (Seq, force, check, evaluate)
 
 import qualified Builtin
 import Context (Context)
@@ -15,7 +17,10 @@ import Index
 import qualified Meta
 import Monad
 import qualified Presyntax
+import qualified Readback
 import Readback (readback)
+import Sequence (Seq)
+import qualified Sequence as Seq
 import qualified Syntax
 import Tsil (Tsil)
 import qualified Tsil
@@ -71,10 +76,10 @@ elaborate
   -> Presyntax.Term
   -> Expected e
   -> M (e (Syntax.Term v))
-elaborate context term expected =
+elaborate context term expected = trace ("elaborate" :: Text) $
   case term of
     Presyntax.Var name ->
-      case Context.lookupName name context of
+      case Context.lookupNameIndex name context of
         Nothing -> do
           type_ <- typeOfGlobal name
           type' <- lazy $ evaluate context type_
@@ -84,12 +89,12 @@ elaborate context term expected =
             (Syntax.Global name)
             type'
 
-        Just v ->
+        Just i ->
           inferred
             context
             expected
-            (Syntax.Var v)
-            (Context.lookupType v context)
+            (Syntax.Var i)
+            (Context.lookupIndexType i context)
 
     Presyntax.Let name term' body -> do
       Inferred term'' typ <- infer context term'
@@ -100,7 +105,7 @@ elaborate context term expected =
       context' <- Context.extendDef context name term''' $ Lazy $ pure typ'
 
       body' <- elaborate context' body expected
-      pure $ Syntax.Let name term'' typ'' . Scope <$> body'
+      pure $ Syntax.Let name term'' typ'' <$> body'
 
     Presyntax.Pi name source domain -> do
       source' <- check context source Builtin.type_
@@ -111,7 +116,7 @@ elaborate context term expected =
       inferred
         context
         expected
-        (Syntax.Pi name source' $ Scope domain')
+        (Syntax.Pi name source' domain')
         (Lazy $ pure Builtin.type_)
 
     Presyntax.Fun source domain -> do
@@ -127,45 +132,59 @@ elaborate context term expected =
       case expected of
         Infer -> do
           source <- Context.newMeta context
-          source' <- evaluate context source
-          source'' <- readback (Context.toReadbackEnvironment context) source'
-          (context', _) <- Context.extend context name (Lazy $ pure source')
+          source'' <- readback (Context.toReadbackEnvironment context) source
+          (context', _) <- Context.extend context name (Lazy $ pure source)
           Inferred body' domain <- infer context' body
           type_ <- lazy $ do
             domain' <- force domain
             domain'' <- readback (Context.toReadbackEnvironment context') domain'
             pure
-              $ Domain.Pi name (Lazy $ pure source')
-              $ Evaluation.makeClosure (Context.toEvaluationEnvironment context) (Scope domain'')
+              $ Domain.Pi name (Lazy $ pure source)
+              $ Evaluation.makeClosure (Context.toEvaluationEnvironment context) domain''
 
-          pure $ Inferred (Syntax.Lam name source'' (Scope body')) type_
+          pure $ Inferred (Syntax.Lam name source'' body') type_
 
-        Check (Domain.Pi _ source domainClosure) -> do
-          source' <- force source
-          source'' <- readback (Context.toReadbackEnvironment context) source'
-          (context', var) <- Context.extend context name source
+        Check expectedType -> do
+          expectedType' <- forceHead context expectedType
+          case expectedType' of
+            Domain.Pi _ source domainClosure -> do
+              source' <- force source
+              source'' <- readback (Context.toReadbackEnvironment context) source'
+              (context', var) <- Context.extend context name source
 
-          domain <-
-            Evaluation.evaluateClosure
-              domainClosure
-              (Lazy $ pure $ Domain.var var)
-          body' <- check context' body domain
-          pure $ Checked (Syntax.Lam name source'' (Scope body'))
+              domain <-
+                Evaluation.evaluateClosure
+                  domainClosure
+                  (Lazy $ pure $ Domain.var var)
+              body' <- check context' body domain
+              pure $ Checked (Syntax.Lam name source'' body')
 
-        Check (Domain.Fun source domain) -> do
-          source' <- force source
-          source'' <- Readback.readback (Context.toReadbackEnvironment context) source'
-          (context', _) <- Context.extend context name source
+            Domain.Fun source domain -> do
+              source' <- force source
+              source'' <- Readback.readback (Context.toReadbackEnvironment context) source'
+              (context', _) <- Context.extend context name source
 
-          domain' <- force domain
-          body' <- check context' body domain'
-          pure $ Checked (Syntax.Lam name source'' (Scope body'))
+              domain' <- force domain
+              body' <- check context' body domain'
+              pure $ Checked (Syntax.Lam name source'' body')
+
+            _ -> do
+              source <- Context.newMeta context
+              domain <- Context.newMeta context
+              let
+                lazySource = Lazy (pure source)
+                functionType = Domain.Fun lazySource (Lazy (pure domain))
+
+              unify context expectedType' functionType
+
+              elaborate context term $ Check functionType
 
     Presyntax.App function argument -> do
       Inferred function' functionType <- infer context function
       functionType' <- force functionType
+      functionType'' <- forceHead context functionType'
 
-      case functionType' of
+      case functionType'' of
         Domain.Pi _ source domainClosure -> do
           source' <- force source
           argument' <- check context argument source'
@@ -181,13 +200,33 @@ elaborate context term expected =
           source' <- force source
           case expected of
             Check expectedType -> do
-              unify context expectedType functionType'
+              domain' <- force domain
+              unify context expectedType domain'
               argument' <- check context argument source'
               pure $ Checked (Syntax.App function' argument')
 
             Infer -> do
               argument' <- check context argument source'
               pure $ Inferred (Syntax.App function' argument') domain
+
+        _ -> do
+          source <- Context.newMeta context
+          domain <- Context.newMeta context
+          let
+            lazySource = Lazy (pure source)
+            lazyDomain = Lazy (pure domain)
+            metaFunctionType = Domain.Fun lazySource (Lazy (pure domain))
+
+          unify context functionType'' metaFunctionType
+          case expected of
+            Check expectedType -> do
+              unify context expectedType domain
+              argument' <- check context argument source
+              pure $ Checked (Syntax.App function' argument')
+
+            Infer -> do
+              argument' <- check context argument source
+              pure $ Inferred (Syntax.App function' argument') lazyDomain
 
 evaluate
   :: Context v
@@ -206,8 +245,10 @@ typeOfGlobal global =
   else
     undefined
 
+-- TODO track rigidness
+
 unify :: Context v -> Domain.Value -> Domain.Value -> M ()
-unify context value1 value2 = do
+unify context value1 value2 = trace ("unify" :: Text) $ do
   value1' <- forceHead context value1
   value2' <- forceHead context value2
   case (value1', value2') of
@@ -361,20 +402,156 @@ unify context value1 value2 = do
     can'tUnify =
       panic "Can't unify"
 
--- | Solve `meta = \vars. value`, doing pruning
+-- | Solve `meta = \vars. value`.
 solve :: Context v -> Meta.Index -> Tsil Var -> Domain.Value -> M ()
-solve context meta vars value = do
-  term <- occurs meta vars value
+solve context meta vars value = trace ("solve" :: Text) $ do
+  term <- checkSolution context meta (Seq.fromTsil vars) value
   Context.solveMeta context meta term
 
--- | Occurs check, reading back the solution, and doing pruning at the same time.
-occurs
-  :: Meta.Index
-  -> Tsil Var
+-- | Occurs check, scope check, prune, and read back the solution at the same
+-- time.
+checkSolution
+  :: Context v
+  -> Meta.Index
+  -> Seq Var
   -> Domain.Value
   -> M (Syntax.Term Void)
-occurs =
-  undefined
+checkSolution outerContext meta vars value = trace ("checkSolution" :: Text) $ do
+  solution <-
+    checkInnerSolution
+      outerContext
+      meta
+      Readback.Environment
+        { nextVar = Context.nextVar outerContext
+        , vars = vars
+        }
+      value
+  addAndCheckLambdas outerContext meta vars solution
+
+addAndCheckLambdas
+  :: Context v
+  -> Meta.Index
+  -> Seq Var
+  -> Syntax.Term v'
+  -> M (Syntax.Term v')
+addAndCheckLambdas outerContext meta vars term = trace ("addAndCheckLambdas" :: Text) $
+  case vars of
+    Seq.Empty ->
+      pure term
+
+    vars' Seq.:> var -> do
+      let
+        name =
+          Context.lookupVarName var outerContext
+        type_ =
+          Context.lookupVarType var outerContext
+
+      type' <- force type_
+      type'' <-
+        checkInnerSolution
+          outerContext
+          meta
+          Readback.Environment
+            { nextVar = Context.nextVar outerContext
+            , vars = vars'
+            }
+          type'
+      body <- addAndCheckLambdas outerContext meta vars' term
+      pure $ Syntax.Lam name type'' (Syntax.succ body)
+
+checkInnerSolution
+  :: Context v
+  -> Meta.Index
+  -> Readback.Environment v'
+  -> Domain.Value
+  -> M (Syntax.Term v')
+checkInnerSolution outerContext occurs env value = trace ("checkInnerSolution" :: Text) $ do
+  value' <- forceHead outerContext value
+  case value' of
+    Domain.Neutral hd spine ->
+      checkInnerNeutral outerContext occurs env hd spine
+
+    Domain.Lam name type_ closure -> do
+      type' <- force type_
+      Syntax.Lam name
+        <$> checkInnerSolution outerContext occurs env type'
+        <*> checkInnerClosure outerContext occurs env closure
+
+    Domain.Pi name type_ closure -> do
+      type' <- force type_
+      Syntax.Pi name
+        <$> checkInnerSolution outerContext occurs env type'
+        <*> checkInnerClosure outerContext occurs env closure
+
+    Domain.Fun source domain -> do
+      source' <- force source
+      domain' <- force domain
+      Syntax.Fun
+        <$> checkInnerSolution outerContext occurs env source'
+        <*> checkInnerSolution outerContext occurs env domain'
+
+checkInnerClosure
+  :: Context v
+  -> Meta.Index
+  -> Readback.Environment v'
+  -> Domain.Closure
+  -> M (Scope Syntax.Term v')
+checkInnerClosure outerContext occurs env closure = trace ("checkInnerClosure" :: Text) $ do
+  (env', v) <- Readback.extend env
+
+  closure' <- Evaluation.evaluateClosure closure $ Lazy $ pure $ Domain.var v
+  checkInnerSolution outerContext occurs env' closure'
+
+checkInnerNeutral
+  :: Context v
+  -> Meta.Index
+  -> Readback.Environment v'
+  -> Domain.Head
+  -> Domain.Spine
+  -> M (Syntax.Term v')
+checkInnerNeutral outerContext occurs env hd spine = trace ("checkInnerNeutral" :: Text) $
+  case hd of
+    Value.Meta i ->
+      spine' <- mapM (force >=> forceHead outerContext) spine
+      case traverse Domain.singleVarView spine' of
+        Just vars ->
+        Nothing ->
+
+    _ ->
+      case spine of
+        Tsil.Nil ->
+          pure $ checkInnerHead occurs env hd
+
+        Tsil.Snoc spine' arg -> do
+          arg' <- force arg
+          Syntax.App
+            <$> checkInnerNeutral outerContext occurs env hd spine'
+            <*> checkInnerSolution outerContext occurs env arg'
+
+checkInnerHead
+  :: Meta.Index
+  -> Readback.Environment v
+  -> Domain.Head
+  -> Syntax.Term v
+checkInnerHead occurs env hd =
+  case hd of
+    Domain.Var v ->
+      case Readback.lookupMaybeIndex v env of
+        Nothing ->
+          panic "Scope check failed"
+
+        Just i ->
+          Syntax.Var i
+
+    Domain.Meta m
+      | m == occurs ->
+        panic "Occurs check failed"
+
+      | otherwise ->
+        Syntax.Meta m
+
+    Domain.Global g ->
+      Syntax.Global g
 
 -------------------------------------------------------------------------------
 
@@ -384,10 +561,10 @@ forceHead
   :: Context v
   -> Domain.Value
   -> M Domain.Value
-forceHead context value =
+forceHead context value = trace ("forceHead" :: Text) $
   case value of
     Domain.Neutral (Domain.Var var) spine
-      | Just headValue <- Context.lookupValue var context -> do
+      | Just headValue <- Context.lookupVarValue var context -> do
         headValue' <- force headValue
         value' <- Evaluation.applySpine headValue' spine
         forceHead context value'

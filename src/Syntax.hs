@@ -1,6 +1,9 @@
+{-# language RoleAnnotations #-}
 module Syntax where
 
 import Protolude hiding (Type)
+
+import Data.Coerce
 
 import Index
 import qualified Meta
@@ -20,3 +23,6 @@ type Type = Term
 
 apps :: Foldable f => Term v -> f (Term v) -> Term v
 apps = foldl App
+
+succ :: Term v -> Term (Succ v)
+succ = coerce

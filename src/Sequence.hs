@@ -50,6 +50,8 @@ pattern as :> a <- Seq (FingerTree.viewr -> (Seq -> as) FingerTree.:> IndexMappe
   where
     Seq ft :> a = Seq (ft FingerTree.|> IndexMapped a)
 
+{-# COMPLETE Empty, (:>) #-}
+
 length :: (Eq a, Hashable a) => Seq a -> Int
 length (Seq ft) =
   let
@@ -84,3 +86,12 @@ fromTsil tsil =
 
     Tsil.Snoc as a ->
       fromTsil as :> a
+
+toTsil :: (Eq a, Hashable a) => Seq a -> Tsil a
+toTsil as =
+  case as of
+    Empty ->
+      Tsil.Nil
+
+    as' :> a ->
+      Tsil.Snoc (toTsil as') a

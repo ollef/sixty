@@ -57,7 +57,7 @@ prettyTerm prec env term = case term of
     pretty
       ("?" <> show i :: Text)
 
-  Syntax.Let name term' typ (Scope body) ->
+  Syntax.Let name term' typ body ->
     prettyParen (prec > letPrec) $
       let
         (env', name') = extend env name
@@ -88,7 +88,7 @@ prettyTerm prec env term = case term of
 
 prettyLamTerm :: Environment v -> Syntax.Term v -> Doc ann
 prettyLamTerm env term = case term of
-  Syntax.Lam name typ (Scope scope) ->
+  Syntax.Lam name typ scope ->
     let
       (env', name') = extend env name
     in
@@ -100,7 +100,7 @@ prettyLamTerm env term = case term of
 
 prettyPiTerm :: Environment v -> Syntax.Term v -> Doc ann
 prettyPiTerm env term = case term of
-  Syntax.Pi name typ (Scope scope) ->
+  Syntax.Pi name typ scope ->
     let
       (env', name') = extend env name
     in

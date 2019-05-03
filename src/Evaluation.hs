@@ -63,7 +63,7 @@ evaluate env term =
     Syntax.Global g ->
       pure $ Domain.global g -- TODO
 
-    Syntax.Let _ t _ (Scope s) -> do
+    Syntax.Let _ t _ s -> do
       t' <- lazy $ evaluate env t
       env' <- extend env t'
       evaluate env' s
@@ -105,7 +105,7 @@ evaluateClosure :: Domain.Closure -> Lazy Domain.Value -> M Domain.Value
 evaluateClosure (Domain.Closure f) = f
 
 makeClosure :: Environment v -> Scope Syntax.Term v -> Domain.Closure
-makeClosure env (Scope body) =
+makeClosure env body =
   Domain.Closure $ \argument -> do
     env' <- extend env argument
     evaluate env' body
