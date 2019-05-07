@@ -132,7 +132,7 @@ elaborate context term expected =
       case expected of
         Infer -> do
           source <- Context.newMetaType context
-          source'' <- readback (Context.toReadbackEnvironment context) source
+          source' <- readback (Context.toReadbackEnvironment context) source
           (context', _) <- Context.extend context name (Lazy $ pure source)
           Inferred body' domain <- infer context' body
           type_ <- lazy $ do
@@ -142,7 +142,7 @@ elaborate context term expected =
               $ Domain.Pi name (Lazy $ pure source)
               $ Evaluation.makeClosure (Context.toEvaluationEnvironment context) domain''
 
-          pure $ Inferred (Syntax.Lam name source'' body') type_
+          pure $ Inferred (Syntax.Lam name source' body') type_
 
         Check expectedType -> do
           expectedType' <- forceHead context expectedType
@@ -456,8 +456,8 @@ addAndCheckLambdas outerContext meta vars term =
             , vars = vars'
             }
           type'
-      body <- addAndCheckLambdas outerContext meta vars' term
-      pure $ Syntax.Lam name type'' (Syntax.succ body)
+      body <- addAndCheckLambdas outerContext meta vars' (Syntax.succ term)
+      pure $ Syntax.Lam name type'' body
 
 checkInnerSolution
   :: Context v
@@ -565,8 +565,11 @@ pruneMeta
   -> M ()
 pruneMeta context meta allowedArgs = do
   solution <- Context.lookupMeta meta context
+  putText $ "pruneMeta " <> show meta
+  putText $ "pruneMeta " <> show allowedArgs
   case solution of
     Meta.Unsolved metaType -> do
+      putText $ show metaType
       metaType' <-
         Evaluation.evaluate
           (Evaluation.empty (Context.nextVar context))
@@ -576,35 +579,80 @@ pruneMeta context meta allowedArgs = do
           (toList allowedArgs)
           (Context.emptyFrom context)
           metaType'
-      solution'' <-
-        Readback.readback
-          (Readback.empty (Context.nextVar context))
-          solution'
-      Context.solveMeta context meta solution''
+      Context.solveMeta context meta solution'
 
     Meta.Solved _ ->
       panic "pruneMeta already solved"
 
   where
+    go :: [Bool] -> Context v -> Domain.Type -> M (Syntax.Term v)
     go alloweds context' type_ =
       case alloweds of
-        [] ->
-          Context.newMeta type_ context'
+        [] -> do
+          v <- Context.newMeta type_ context'
+          Readback.readback (Context.toReadbackEnvironment context') v
 
         allowed:alloweds' ->
           case (allowed, type_) of
             (True, Domain.Fun source domain) -> do
+              (context'', _) <- Context.extend context' "x" source
+              source' <- force source
+              source'' <-
+                Readback.readback
+                  (Context.toReadbackEnvironment context')
+                  source'
               domain' <- force domain
-              Domain.Lam "x" source <$> Closure (\x -> go alloweds' (_ context') domain')
+              body <- go alloweds' context'' domain'
+              return $ Syntax.Lam "x" source'' body
 
-            (True, Domain.Pi name source domainClosure) ->
-              undefined
+            (True, Domain.Pi name source domainClosure) -> do
+              (context'', v) <- Context.extend context' name source
+              domain <-
+                Evaluation.evaluateClosure
+                  domainClosure
+                  (Lazy $ pure $ Domain.var v)
+              source' <- force source
+              source'' <-
+                Readback.readback
+                  (Context.toReadbackEnvironment context')
+                  source'
+              body <- go alloweds' context'' domain
+              return $ Syntax.Lam name source'' body
 
-            (False, Domain.Fun source domain) ->
-              undefined
+            (False, Domain.Fun source domain) -> do
+              context'' <-
+                Context.extendDef
+                context'
+                "x"
+                (Lazy $ throwIO Readback.ScopingException)
+                source
+              source' <- force source
+              source'' <-
+                Readback.readback
+                  (Context.toReadbackEnvironment context')
+                  source'
+              domain' <- force domain
+              body <- go alloweds' context'' domain'
+              return $ Syntax.Lam "x" source'' body
 
-            (False, Domain.Pi name source domainClosure) ->
-              undefined
+            (False, Domain.Pi name source domainClosure) -> do
+              context'' <-
+                Context.extendDef
+                context'
+                name
+                (Lazy $ throwIO Readback.ScopingException)
+                source
+              domain <-
+                Evaluation.evaluateClosure
+                  domainClosure
+                  (Lazy $ throwIO Readback.ScopingException)
+              source' <- force source
+              source'' <-
+                Readback.readback
+                  (Context.toReadbackEnvironment context')
+                  source'
+              body <- go alloweds' context'' domain
+              return $ Syntax.Lam name source'' body
 
             _ -> panic "pruneMeta wrong type"
 
