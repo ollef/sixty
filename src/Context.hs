@@ -103,17 +103,20 @@ extendDef
   -> Text
   -> Lazy Domain.Value
   -> Lazy Domain.Type
-  -> IO (Context (Succ v))
+  -> IO (Context (Succ v), Var)
 extendDef context name value type_ = do
   var@(Var v) <- readIORef (nextVar context)
   writeIORef (nextVar context) (Var (v + 1))
-  pure context
-    { nameVars = HashMap.insert name var $ nameVars context
-    , varNames = HashMap.insert var name $ varNames context
-    , vars = vars context Seq.:> var
-    , values = HashMap.insert var value (values context)
-    , types = HashMap.insert var type_ (types context)
-    }
+  pure
+    ( context
+      { nameVars = HashMap.insert name var $ nameVars context
+      , varNames = HashMap.insert var name $ varNames context
+      , vars = vars context Seq.:> var
+      , values = HashMap.insert var value (values context)
+      , types = HashMap.insert var type_ (types context)
+      }
+    , var
+    )
 
 lookupNameIndex :: Text -> Context v -> Maybe (Index v)
 lookupNameIndex name context = do
@@ -129,15 +132,19 @@ lookupVarIndex var context =
 
 lookupVarName :: Var -> Context v -> Text
 lookupVarName var context =
-  varNames context HashMap.! var
+  fromMaybe (panic "Context.lookupVarName")
+    $ HashMap.lookup var
+    $ varNames context
 
 lookupIndexType :: Index v -> Context v -> Lazy Domain.Type
 lookupIndexType (Index i) context =
   lookupVarType (Seq.index (vars context) (Seq.length (vars context) - i - 1)) context
 
 lookupVarType :: Var -> Context v -> Lazy Domain.Type
-lookupVarType v context =
-  types context HashMap.! v
+lookupVarType var context =
+  fromMaybe (panic "Context.lookupVarType")
+    $ HashMap.lookup var
+    $ types context
 
 lookupVarValue :: Var -> Context v -> Maybe (Lazy Domain.Type)
 lookupVarValue var context =
@@ -184,7 +191,9 @@ piBoundVars context type_ = do
                 , vars = vars'
                 }
               varType
-          Syntax.Pi (lookupVarName var context) varType' <$> pis vars' term
+          let
+            term' = Syntax.Pi (lookupVarName var context) varType' $ coerce term
+          pis vars' term'
 
 lookupMeta
   :: Meta.Index

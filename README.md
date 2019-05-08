@@ -13,8 +13,8 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [x] Readback
 - [x] Parsing
 - [x] Pretty printing
-- [ ] Unification and meta variables
-  - [ ] Pruning
+- [x] Unification and meta variables
+  - [x] Pruning
 - [ ] Basic type checking
 - [ ] Tests
 - [ ] Implicit arguments and subtyping

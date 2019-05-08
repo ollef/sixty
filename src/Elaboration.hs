@@ -76,7 +76,7 @@ elaborate
   -> Presyntax.Term
   -> Expected e
   -> M (e (Syntax.Term v))
-elaborate context term expected =
+elaborate context term expected = trace ("elaborate " <> show term :: Text) $
   case term of
     Presyntax.Var name ->
       case Context.lookupNameIndex name context of
@@ -102,7 +102,7 @@ elaborate context term expected =
       typ'' <- Readback.readback (Context.toReadbackEnvironment context) typ'
 
       term''' <- lazy $ evaluate context term''
-      context' <- Context.extendDef context name term''' $ Lazy $ pure typ'
+      (context', _) <- Context.extendDef context name term''' $ Lazy $ pure typ'
 
       body' <- elaborate context' body expected
       pure $ Syntax.Let name term'' typ'' <$> body'
@@ -248,7 +248,7 @@ typeOfGlobal global =
 -- TODO track rigidness
 
 unify :: Context v -> Domain.Value -> Domain.Value -> M ()
-unify context value1 value2 = do
+unify context value1 value2 = trace ("unify" :: Text) $ do
   value1' <- forceHead context value1
   value2' <- forceHead context value2
   case (value1', value2') of
@@ -465,7 +465,7 @@ checkInnerSolution
   -> Readback.Environment v'
   -> Domain.Value
   -> M (Syntax.Term v')
-checkInnerSolution outerContext occurs env value = do
+checkInnerSolution outerContext occurs env value = trace ("checkInnerSolution" :: Text) $ do
   value' <- forceHead outerContext value
   case value' of
     Domain.Neutral hd@(Domain.Meta i) spine -> do
@@ -620,7 +620,7 @@ pruneMeta context meta allowedArgs = do
               return $ Syntax.Lam name source'' body
 
             (False, Domain.Fun source domain) -> do
-              context'' <-
+              (context'', _) <-
                 Context.extendDef
                 context'
                 "x"
@@ -636,7 +636,7 @@ pruneMeta context meta allowedArgs = do
               return $ Syntax.Lam "x" source'' body
 
             (False, Domain.Pi name source domainClosure) -> do
-              context'' <-
+              (context'', v) <-
                 Context.extendDef
                 context'
                 name
@@ -645,7 +645,7 @@ pruneMeta context meta allowedArgs = do
               domain <-
                 Evaluation.evaluateClosure
                   domainClosure
-                  (Lazy $ throwIO Readback.ScopingException)
+                  (Lazy $ pure $ Domain.var v)
               source' <- force source
               source'' <-
                 Readback.readback

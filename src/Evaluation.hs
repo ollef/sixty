@@ -47,7 +47,12 @@ extend env value = do
 
 lookupValue :: Index v -> Environment v -> Lazy Domain.Value
 lookupValue (Index i) env =
-  values env HashMap.! Seq.index (vars env) (Seq.length (vars env) - i - 1)
+  let
+    var = Seq.index (vars env) (Seq.length (vars env) - i - 1)
+  in
+  fromMaybe
+    (Lazy $ pure $ Domain.var var)
+    (HashMap.lookup var $ values env)
 
 -------------------------------------------------------------------------------
 
