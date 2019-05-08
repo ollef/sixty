@@ -213,3 +213,34 @@ solveMeta context i term = do
   let
     m' = Meta.solve i term m
   writeIORef (metas context) m'
+
+-------------------------------------------------------------------------------
+
+-- | Evaluate the head of a value further, if (now) possible due to meta
+-- solutions or new value bindings.
+forceHead
+  :: Context v
+  -> Domain.Value
+  -> M Domain.Value
+forceHead context value =
+  case value of
+    Domain.Neutral (Domain.Var var) spine
+      | Just headValue <- Context.lookupVarValue var context -> do
+        headValue' <- force headValue
+        value' <- Evaluation.applySpine headValue' spine
+        forceHead context value'
+
+    Domain.Neutral (Domain.Meta metaIndex) spine -> do
+      meta <- Context.lookupMeta metaIndex context
+
+      case meta of
+        Meta.Solved headValue -> do
+          headValue' <- Evaluation.evaluate (Evaluation.empty (Context.nextVar context)) headValue
+          value' <- Evaluation.applySpine headValue' spine
+          forceHead context value'
+
+        Meta.Unsolved _ ->
+          pure value
+
+    _ ->
+      pure value
