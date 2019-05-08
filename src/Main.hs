@@ -4,12 +4,15 @@ module Main where
 
 import Protolude hiding (force)
 
+import qualified Data.HashMap.Lazy as HashMap
+import Data.IORef
 import Data.Text.Prettyprint.Doc
 import Data.Text.Prettyprint.Doc.Render.Text
 import qualified Text.Parsix as Parsix
 
 import qualified Context
 import qualified Elaboration
+import qualified Meta
 import Monad
 import qualified Parser
 import qualified Pretty
@@ -26,10 +29,28 @@ parseAndTypeCheck inputString =
     Parsix.Success preTerm -> do
       context <- Context.empty
       Elaboration.Inferred term typeValue <- Elaboration.infer context preTerm
+      putText "Term:"
       putDoc $ Pretty.prettyTerm 0 Pretty.empty term <> line
       typeValue' <- force typeValue
       type_ <- Readback.readback (Context.toReadbackEnvironment context) typeValue'
+      putText "Type:"
       putDoc $ Pretty.prettyTerm 0 Pretty.empty type_ <> line
+      putText "Metas:"
+      metas <- readIORef (Context.metas context)
+      forM_ (HashMap.toList $ Meta.vars metas) $ \(Meta.Index i, metaSolution) ->
+        case metaSolution of
+          Meta.Unsolved metaType ->
+            putDoc
+              $ "?" <> pretty i
+              <> " : "
+              <> Pretty.prettyTerm 0 Pretty.empty metaType <> line
+
+          Meta.Solved solution ->
+            putDoc
+              $ "?" <> pretty i
+              <> " = "
+              <> Pretty.prettyTerm 0 Pretty.empty solution <> line
+
     Parsix.Failure err -> do
       putText "Parse error"
       print $ Parsix.prettyError err
