@@ -404,7 +404,7 @@ unify context value1 value2 = trace ("unify" :: Text) $ do
 
 -- | Solve `meta = \vars. value`.
 solve :: Context v -> Meta.Index -> Tsil Var -> Domain.Value -> M ()
-solve context meta vars value = do
+solve context meta vars value = trace ("solve " <> show meta :: Text) $ do
   term <- checkSolution context meta (Seq.fromTsil vars) value
   Context.solveMeta context meta term
 
@@ -456,8 +456,9 @@ addAndCheckLambdas outerContext meta vars term =
             , vars = vars'
             }
           type'
-      body <- addAndCheckLambdas outerContext meta vars' (Syntax.succ term)
-      pure $ Syntax.Lam name type'' body
+      let
+        term' = Syntax.Lam name type'' (Syntax.succ term)
+      addAndCheckLambdas outerContext meta vars' term'
 
 checkInnerSolution
   :: Context v
