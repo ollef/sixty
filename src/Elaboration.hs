@@ -129,8 +129,8 @@ elaborate context term expected = trace ("elaborate " <> show term :: Text) $
         (Lazy $ pure Builtin.type_)
 
     Presyntax.Lam name body ->
-      case expected of
-        Infer -> do
+      let
+        inferIt = do
           source <- Context.newMetaType context
           source' <- readback (Context.toReadbackEnvironment context) source
           (context', _) <- Context.extend context name (Lazy $ pure source)
@@ -142,7 +142,15 @@ elaborate context term expected = trace ("elaborate " <> show term :: Text) $
               $ Domain.Pi name (Lazy $ pure source)
               $ Evaluation.makeClosure (Context.toEvaluationEnvironment context) domain''
 
-          pure $ Inferred (Syntax.Lam name source' body') type_
+          inferred
+            context
+            expected
+            (Syntax.Lam name source' body')
+            type_
+      in
+      case expected of
+        Infer ->
+          inferIt
 
         Check expectedType -> do
           expectedType' <- forceHead context expectedType
@@ -168,16 +176,8 @@ elaborate context term expected = trace ("elaborate " <> show term :: Text) $
               body' <- check context' body domain'
               pure $ Checked (Syntax.Lam name source'' body')
 
-            _ -> do
-              source <- Context.newMetaType context
-              domain <- Context.newMetaType context
-              let
-                lazySource = Lazy (pure source)
-                functionType = Domain.Fun lazySource (Lazy (pure domain))
-
-              unify context expectedType' functionType
-
-              elaborate context term $ Check functionType
+            _ ->
+              inferIt
 
     Presyntax.App function argument -> do
       Inferred function' functionType <- infer context function
