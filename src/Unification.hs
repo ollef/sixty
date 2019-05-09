@@ -46,20 +46,8 @@ unify context value1 value2 = trace ("unify" :: Text) $ do
             let
               keep = Tsil.zipWith (==) vars1 vars2
 
-            if and keep then
-              Tsil.zipWithM_ (unify context) spine1' spine2'
-
-            else
-              solve context metaIndex1 undefined undefined
-
-          | unique vars1 ->
-            solve context metaIndex1 vars1 value2'
-
-          | unique vars2 ->
-            solve context metaIndex2 vars2 value1'
-
-          | otherwise ->
-            Tsil.zipWithM_ (unify context) spine1' spine2'
+            unless (and keep) $
+              pruneMeta context metaIndex1 keep
 
         (Just vars1, _)
           | unique vars1 ->
