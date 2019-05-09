@@ -88,7 +88,6 @@ atomicTerm =
   where
     lams vs body = foldr Lam body vs
 
-
 term :: Parser Term
 term =
   pis <$> try (symbol "(" *> some var <* reserved ":") <*> term <* symbol ")" <* symbol "->" <*> term

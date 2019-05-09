@@ -63,27 +63,11 @@ unify context value1 value2 = trace ("unify" :: Text) $ do
       | head1 == head2 ->
         Tsil.zipWithM_ (unifyForce context) spine1 spine2
 
-    (Domain.Lam name1 type1 closure1, Domain.Lam _ type2 closure2) -> do
-      unifyForce context type1 type2
+    (Domain.Lam name1 type1 closure1, Domain.Lam _ type2 closure2) ->
+      unifyAbstraction name1 type1 closure1 type2 closure2
 
-      (context', var) <- Context.extend context name1 type1
-      let
-        lazyVar = Lazy $ pure $ Domain.var var
-
-      body1 <- Evaluation.evaluateClosure closure1 lazyVar
-      body2 <- Evaluation.evaluateClosure closure2 lazyVar
-      unify context' body1 body2
-
-    (Domain.Pi name1 source1 domainClosure1, Domain.Pi _ source2 domainClosure2) -> do
-      unifyForce context source2 source1
-
-      (context', var) <- Context.extend context name1 source1
-      let
-        lazyVar = Lazy $ pure $ Domain.var var
-
-      domain1 <- Evaluation.evaluateClosure domainClosure1 lazyVar
-      domain2 <- Evaluation.evaluateClosure domainClosure2 lazyVar
-      unify context' domain1 domain2
+    (Domain.Pi name1 source1 domainClosure1, Domain.Pi _ source2 domainClosure2) ->
+      unifyAbstraction name1 source1 domainClosure1 source2 domainClosure2
 
     (Domain.Pi name1 source1 domainClosure1, Domain.Fun source2 domain2) -> do
       unifyForce context source2 source1
@@ -99,7 +83,7 @@ unify context value1 value2 = trace ("unify" :: Text) $ do
     (Domain.Fun source1 domain1, Domain.Pi name2 source2 domainClosure2) -> do
       unifyForce context source2 source1
 
-      (context', var) <- Context.extend context name2 source1
+      (context', var) <- Context.extend context name2 source2
       let
         lazyVar = Lazy $ pure $ Domain.var var
 
@@ -161,6 +145,17 @@ unify context value1 value2 = trace ("unify" :: Text) $ do
       v1 <- force lazyValue1
       v2 <- force lazyValue2
       unify sz v1 v2
+
+    unifyAbstraction name type1 closure1 type2 closure2 = do
+      unifyForce context type1 type2
+
+      (context', var) <- Context.extend context name type1
+      let
+        lazyVar = Lazy $ pure $ Domain.var var
+
+      body1 <- Evaluation.evaluateClosure closure1 lazyVar
+      body2 <- Evaluation.evaluateClosure closure2 lazyVar
+      unify context' body1 body2
 
     can'tUnify =
       panic "Can't unify"
@@ -357,55 +352,36 @@ pruneMeta context meta allowedArgs = do
           Readback.readback (Context.toReadbackEnvironment context') v
 
         allowed:alloweds' ->
-          case (allowed, type_) of
-            (True, Domain.Fun source domain) -> do
-              (context'', _) <- Context.extend context' "x" source
+          case type_ of
+            Domain.Fun source domain -> do
               source' <- force source
               source'' <-
                 Readback.readback
                   (Context.toReadbackEnvironment context')
                   source'
-              domain' <- force domain
-              body <- go alloweds' context'' domain'
-              return $ Syntax.Lam "x" source'' body
-
-            (True, Domain.Pi name source domainClosure) -> do
-              (context'', v) <- Context.extend context' name source
-              domain <-
-                Evaluation.evaluateClosure
-                  domainClosure
-                  (Lazy $ pure $ Domain.var v)
-              source' <- force source
-              source'' <-
-                Readback.readback
-                  (Context.toReadbackEnvironment context')
-                  source'
-              body <- go alloweds' context'' domain
-              return $ Syntax.Lam name source'' body
-
-            (False, Domain.Fun source domain) -> do
               (context'', _) <-
-                Context.extendDef
-                context'
-                "x"
-                (Lazy $ throwIO Readback.ScopingException)
-                source
-              source' <- force source
-              source'' <-
-                Readback.readback
-                  (Context.toReadbackEnvironment context')
-                  source'
+                if allowed then
+                  Context.extend context' "x" source
+                else
+                  Context.extendDef
+                    context'
+                    "x"
+                    (Lazy $ throwIO Readback.ScopingException)
+                    source
               domain' <- force domain
               body <- go alloweds' context'' domain'
               return $ Syntax.Lam "x" source'' body
 
-            (False, Domain.Pi name source domainClosure) -> do
+            Domain.Pi name source domainClosure -> do
               (context'', v) <-
-                Context.extendDef
-                context'
-                name
-                (Lazy $ throwIO Readback.ScopingException)
-                source
+                if allowed then
+                  Context.extend context' name source
+                else
+                  Context.extendDef
+                    context'
+                    name
+                    (Lazy $ throwIO Readback.ScopingException)
+                    source
               domain <-
                 Evaluation.evaluateClosure
                   domainClosure
