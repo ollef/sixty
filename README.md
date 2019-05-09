@@ -15,13 +15,18 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [x] Pretty printing
 - [x] Unification and meta variables
   - [x] Pruning
-- [ ] Basic type checking
+  - [x] The "same meta variable" rule
+  - [ ] Rigidity tracking
+  - [ ] Solution inlining
+- [x] Basic type checking
 - [ ] Tests
 - [ ] Implicit arguments and subtyping
+  - [ ] Deep skolemisation
 - [ ] Source location tracking for error messages
 - [ ] Top-level definitions
 - [ ] Data definitions
 - [ ] Pattern matching elaboration
+- [ ] Generalisation?
 - [ ] Glued evaluation
 
 ## Inspiration

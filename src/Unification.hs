@@ -22,8 +22,6 @@ import Tsil (Tsil)
 import qualified Tsil
 import Var
 
--- TODO track rigidness
-
 unify :: Context v -> Domain.Value -> Domain.Value -> M ()
 unify context value1 value2 = trace ("unify" :: Text) $ do
   value1' <- Context.forceHead context value1
