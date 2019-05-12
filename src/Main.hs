@@ -26,30 +26,31 @@ main = do
 parseAndTypeCheck :: StringConv s Text => s -> IO ()
 parseAndTypeCheck inputString =
   case Parser.parseText Parser.term (toS inputString) "<command-line>" of
-    Parsix.Success preTerm -> do
-      context <- Context.empty
-      Elaboration.Inferred term typeValue <- Elaboration.infer context preTerm
-      putText "Term:"
-      putDoc $ Pretty.prettyTerm 0 Pretty.empty term <> line
-      typeValue' <- force typeValue
-      type_ <- Readback.readback (Context.toReadbackEnvironment context) typeValue'
-      putText "Type:"
-      putDoc $ Pretty.prettyTerm 0 Pretty.empty type_ <> line
-      putText "Metas:"
-      metas <- readIORef (Context.metas context)
-      forM_ (HashMap.toList $ Meta.vars metas) $ \(Meta.Index i, metaSolution) ->
-        case metaSolution of
-          Meta.Unsolved metaType ->
-            putDoc
-              $ "?" <> pretty i
-              <> " : "
-              <> Pretty.prettyTerm 0 Pretty.empty metaType <> line
+    Parsix.Success preTerm ->
+      runM $ do
+        context <- Context.empty
+        Elaboration.Inferred term typeValue <- Elaboration.infer context preTerm
+        putText "Term:"
+        liftIO $ putDoc $ Pretty.prettyTerm 0 Pretty.empty term <> line
+        typeValue' <- force typeValue
+        type_ <- Readback.readback (Context.toReadbackEnvironment context) typeValue'
+        putText "Type:"
+        liftIO $ putDoc $ Pretty.prettyTerm 0 Pretty.empty type_ <> line
+        putText "Metas:"
+        metas <- liftIO $ readIORef (Context.metas context)
+        liftIO $ forM_ (HashMap.toList $ Meta.vars metas) $ \(Meta.Index i, metaSolution) ->
+          case metaSolution of
+            Meta.Unsolved metaType ->
+              putDoc
+                $ "?" <> pretty i
+                <> " : "
+                <> Pretty.prettyTerm 0 Pretty.empty metaType <> line
 
-          Meta.Solved solution ->
-            putDoc
-              $ "?" <> pretty i
-              <> " = "
-              <> Pretty.prettyTerm 0 Pretty.empty solution <> line
+            Meta.Solved solution ->
+              putDoc
+                $ "?" <> pretty i
+                <> " = "
+                <> Pretty.prettyTerm 0 Pretty.empty solution <> line
 
     Parsix.Failure err -> do
       putText "Parse error"

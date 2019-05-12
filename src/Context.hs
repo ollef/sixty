@@ -22,8 +22,7 @@ import qualified Syntax
 import Var
 
 data Context v = Context
-  { nextVar :: !(IORef Var)
-  , vars :: Seq Var
+  { vars :: Seq Var
   , nameVars :: HashMap Text Var
   , varNames :: HashMap Var Text
   , values :: HashMap Var (Lazy Domain.Value)
@@ -37,8 +36,7 @@ toEvaluationEnvironment
   -> Evaluation.Environment v
 toEvaluationEnvironment context =
   Evaluation.Environment
-    { nextVar = nextVar context
-    , vars = vars context
+    { vars = vars context
     , values = values context
     }
 
@@ -47,17 +45,14 @@ toReadbackEnvironment
   -> Readback.Environment v
 toReadbackEnvironment context =
   Readback.Environment
-    { nextVar = nextVar context
-    , vars = vars context
+    { vars = vars context
     }
 
 empty :: M (Context Void)
 empty = do
-  nv <- newIORef (Var 0)
-  ms <- newIORef Meta.empty
+  ms <- liftIO $ newIORef Meta.empty
   pure Context
-    { nextVar = nv
-    , nameVars = mempty
+    { nameVars = mempty
     , varNames = mempty
     , vars = mempty
     , values = mempty
@@ -69,8 +64,7 @@ empty = do
 emptyFrom :: Context v -> Context Void
 emptyFrom context =
   Context
-    { nextVar = nextVar context
-    , nameVars = mempty
+    { nameVars = mempty
     , varNames = mempty
     , vars = mempty
     , values = mempty
@@ -85,8 +79,7 @@ extend
   -> Lazy Domain.Type
   -> M (Context (Succ v), Var)
 extend context name type_ = do
-  var@(Var v) <- readIORef (nextVar context)
-  writeIORef (nextVar context) (Var (v + 1))
+  var <- freshVar
   pure
     ( context
       { nameVars = HashMap.insert name var $ nameVars context
@@ -103,10 +96,9 @@ extendDef
   -> Text
   -> Lazy Domain.Value
   -> Lazy Domain.Type
-  -> IO (Context (Succ v), Var)
+  -> M (Context (Succ v), Var)
 extendDef context name value type_ = do
-  var@(Var v) <- readIORef (nextVar context)
-  writeIORef (nextVar context) (Var (v + 1))
+  var <- freshVar
   pure
     ( context
       { nameVars = HashMap.insert name var $ nameVars context
@@ -153,12 +145,12 @@ lookupVarValue var context =
 newMeta :: Domain.Type -> Context v -> M Domain.Value
 newMeta type_ context = do
   closedType <- piBoundVars context type_
-  m <- readIORef (metas context)
-  let
-    (m', i) = Meta.insert closedType m
-  writeIORef (metas context) m'
-
-  pure $ Domain.Neutral (Domain.Meta i) (Lazy . pure . Domain.var <$> Seq.toTsil (boundVars context))
+  liftIO $ do
+    m <- readIORef (metas context)
+    let
+      (m', i) = Meta.insert closedType m
+    writeIORef (metas context) m'
+    pure $ Domain.Neutral (Domain.Meta i) (Lazy . pure . Domain.var <$> Seq.toTsil (boundVars context))
 
 newMetaType :: Context v -> M Domain.Value
 newMetaType =
@@ -169,8 +161,7 @@ piBoundVars context type_ = do
   type' <-
     Readback.readback
       Readback.Environment
-        { nextVar = nextVar context
-        , vars = boundVars context
+        { vars = boundVars context
         }
       type_
 
@@ -187,8 +178,7 @@ piBoundVars context type_ = do
           varType' <-
             Readback.readback
               Readback.Environment
-                { nextVar = nextVar context
-                , vars = vars'
+                { vars = vars'
                 }
               varType
           let
@@ -199,20 +189,22 @@ lookupMeta
   :: Meta.Index
   -> Context v
   -> M (Meta.Var (Syntax.Type void) (Syntax.Term void))
-lookupMeta i context = do
-  m <- readIORef (metas context)
-  pure $ coerce $ Meta.lookup i m
+lookupMeta i context =
+  liftIO $ do
+    m <- readIORef (metas context)
+    pure $ coerce $ Meta.lookup i m
 
 solveMeta
   :: Context v
   -> Meta.Index
   -> Syntax.Term Void
   -> M ()
-solveMeta context i term = do
-  m <- readIORef (metas context)
-  let
-    m' = Meta.solve i term m
-  writeIORef (metas context) m'
+solveMeta context i term =
+  liftIO $ do
+    m <- readIORef (metas context)
+    let
+      m' = Meta.solve i term m
+    writeIORef (metas context) m'
 
 -------------------------------------------------------------------------------
 
@@ -235,7 +227,7 @@ forceHead context value =
 
       case meta of
         Meta.Solved headValue -> do
-          headValue' <- Evaluation.evaluate (Evaluation.empty (Context.nextVar context)) headValue
+          headValue' <- Evaluation.evaluate Evaluation.empty headValue
           value' <- Evaluation.applySpine headValue' spine
           forceHead context value'
 

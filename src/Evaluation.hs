@@ -5,7 +5,6 @@ import Protolude hiding (Seq, force, evaluate)
 
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
-import Data.IORef
 import Sequence (Seq)
 import qualified Sequence as Seq
 
@@ -20,26 +19,23 @@ import Var
 -- Evaluation environments
 
 data Environment v = Environment
-  { nextVar :: !(IORef Var)
-  , vars :: Seq Var
+  { vars :: Seq Var
   , values :: HashMap Var (Lazy Domain.Value)
   }
 
-empty :: IORef Var -> Environment Void
-empty nextVar_ =
+empty :: Environment Void
+empty =
   Environment
-    { nextVar = nextVar_
-    , vars = mempty
+    { vars = mempty
     , values = mempty
     }
 
 extend
   :: Environment v
   -> Lazy Domain.Value
-  -> IO (Environment (Succ v))
+  -> M (Environment (Succ v))
 extend env value = do
-  var@(Var v) <- readIORef (nextVar env)
-  writeIORef (nextVar env) (Var (v + 1))
+  var <- freshVar
   pure env
     { vars = vars env Seq.:> var
     , values = HashMap.insert var value (values env)

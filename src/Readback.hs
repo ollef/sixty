@@ -3,8 +3,6 @@ module Readback where
 
 import Protolude hiding (Seq, force, evaluate)
 
-import Data.IORef
-
 import qualified Domain
 import qualified Evaluation
 import Index
@@ -18,23 +16,20 @@ import Var
 -------------------------------------------------------------------------------
 -- Readback environments
 
-data Environment v = Environment
-  { nextVar :: !(IORef Var)
-  , vars :: Seq Var
+newtype Environment v = Environment
+  { vars :: Seq Var
   }
 
-empty :: IORef Var -> Environment Void
-empty nextVar_ = Environment
-  { nextVar = nextVar_
-  , vars = mempty
+empty :: Environment Void
+empty = Environment
+  { vars = mempty
   }
 
 extend
   :: Environment v
-  -> IO (Environment (Succ v), Var)
+  -> M (Environment (Succ v), Var)
 extend env = do
-  var@(Var v) <- readIORef (nextVar env)
-  writeIORef (nextVar env) (Var (v + 1))
+  var <- freshVar
   pure
     ( env
       { vars = vars env Seq.:> var

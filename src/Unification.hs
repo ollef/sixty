@@ -180,8 +180,7 @@ checkSolution outerContext meta vars value = do
       outerContext
       meta
       Readback.Environment
-        { nextVar = Context.nextVar outerContext
-        , vars = vars
+        { vars = vars
         }
       value
   addAndCheckLambdas outerContext meta vars solution
@@ -210,8 +209,7 @@ addAndCheckLambdas outerContext meta vars term =
           outerContext
           meta
           Readback.Environment
-            { nextVar = Context.nextVar outerContext
-            , vars = vars'
+            { vars = vars'
             }
           type'
       let
@@ -331,7 +329,7 @@ pruneMeta context meta allowedArgs = do
       putText $ show metaType
       metaType' <-
         Evaluation.evaluate
-          (Evaluation.empty (Context.nextVar context))
+          Evaluation.empty
           metaType
       solution' <-
         go
