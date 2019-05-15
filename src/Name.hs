@@ -31,9 +31,11 @@ data Qualified = Qualified !Module !Name
 instance IsString Qualified where
   fromString s =
     let
-      t = fromString s
+      t =
+        fromString s
 
-      (moduleDot, name) = Text.breakOnEnd "." t
+      (moduleDot, name) =
+        Text.breakOnEnd "." t
     in
     case Text.stripSuffix "." moduleDot of
       Nothing ->
