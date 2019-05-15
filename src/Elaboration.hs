@@ -13,6 +13,7 @@ import qualified Context
 import qualified Domain
 import qualified Evaluation
 import Monad
+import qualified Name
 import qualified Presyntax
 import Readback (readback)
 import qualified Syntax
@@ -73,12 +74,15 @@ elaborate context term expected = trace ("elaborate " <> show term :: Text) $
     Presyntax.Var name ->
       case Context.lookupNameIndex name context of
         Nothing -> do
-          type_ <- typeOfGlobal name
+          let
+            -- TODO do name resolution
+            qualifiedName = Name.Qualified (Name.Module mempty) name
+          type_ <- typeOfGlobal qualifiedName
           type' <- lazy $ evaluate context type_
           inferred
             context
             expected
-            (Syntax.Global name)
+            (Syntax.Global qualifiedName)
             type'
 
         Just i ->
@@ -228,11 +232,11 @@ evaluate context =
   Evaluation.evaluate (Context.toEvaluationEnvironment context)
 
 typeOfGlobal
-  :: Text
+  :: Name.Qualified
   -> M (Syntax.Type v)
 typeOfGlobal global =
-  if global == "Type" then
-    return $ Syntax.Global "Type"
+  if global == "Builtin.Type" then
+    return $ Syntax.Global "Builtin.Type"
 
   else
     undefined

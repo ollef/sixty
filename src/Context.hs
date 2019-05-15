@@ -15,6 +15,7 @@ import qualified Evaluation
 import Index
 import qualified Meta
 import Monad
+import Name (Name)
 import qualified Readback
 import Sequence (Seq)
 import qualified Sequence as Seq
@@ -23,8 +24,8 @@ import Var
 
 data Context v = Context
   { vars :: Seq Var
-  , nameVars :: HashMap Text Var
-  , varNames :: HashMap Var Text
+  , nameVars :: HashMap Name Var
+  , varNames :: HashMap Var Name
   , values :: HashMap Var (Lazy Domain.Value)
   , types :: HashMap Var (Lazy Domain.Type)
   , boundVars :: Seq Var
@@ -75,7 +76,7 @@ emptyFrom context =
 
 extend
   :: Context v
-  -> Text
+  -> Name
   -> Lazy Domain.Type
   -> M (Context (Succ v), Var)
 extend context name type_ = do
@@ -93,7 +94,7 @@ extend context name type_ = do
 
 extendDef
   :: Context v
-  -> Text
+  -> Name
   -> Lazy Domain.Value
   -> Lazy Domain.Type
   -> M (Context (Succ v), Var)
@@ -110,7 +111,7 @@ extendDef context name value type_ = do
     , var
     )
 
-lookupNameIndex :: Text -> Context v -> Maybe (Index v)
+lookupNameIndex :: Name -> Context v -> Maybe (Index v)
 lookupNameIndex name context = do
   var <- HashMap.lookup name (nameVars context)
   pure $ lookupVarIndex var context
@@ -122,7 +123,7 @@ lookupVarIndex var context =
     - fromMaybe (panic "Context.lookupVarIndex") (Seq.elemIndex var (vars context))
     - 1
 
-lookupVarName :: Var -> Context v -> Text
+lookupVarName :: Var -> Context v -> Name
 lookupVarName var context =
   fromMaybe (panic "Context.lookupVarName")
     $ HashMap.lookup var

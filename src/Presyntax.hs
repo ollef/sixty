@@ -1,17 +1,19 @@
 module Presyntax where
 
-import Protolude
+import Protolude hiding (Type)
 
-type Var = Text
+import Name (Name)
 
 data Term
-  = Var !Var
-  | Let !Var !Term !Term
-  | Pi !Var !Term !Term
-  | Fun !Term !Term
-  | Lam !Var !Term
+  = Var !Name
+  | Let !Name !Term !Term
+  | Pi !Name !Type !Type
+  | Fun !Type !Type
+  | Lam !Name !Term
   | App !Term !Term
   deriving Show
+
+type Type = Term
 
 apps :: Foldable f => Term -> f Term -> Term
 apps = foldl App

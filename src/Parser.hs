@@ -13,6 +13,7 @@ import qualified Text.Parser.Token.Highlight as Highlight
 import Text.Parsix ((<?>), symbol, try)
 import qualified Text.Parsix as Parsix
 
+import Name (Name)
 import Presyntax
 
 newtype Parser a = Parser (Parsix.Parser a)
@@ -72,8 +73,8 @@ multilineComment =
 reserved :: Text -> Parser ()
 reserved = Parsix.reserveText idStyle
 
-var :: Parser Var
-var = Parsix.ident idStyle
+name :: Parser Name
+name = Parsix.ident idStyle
 
 -------------------------------------------------------------------------------
 -- Terms
@@ -81,16 +82,16 @@ var = Parsix.ident idStyle
 atomicTerm :: Parser Term
 atomicTerm =
   symbol "(" *> term <* symbol ")"
-  <|> Var <$> var
-  <|> Let <$ reserved "let" <*> var <* symbol "=" <*> term <* reserved "in" <*> term
-  <|> lams <$ symbol "\\" <*> some var <* symbol "." <*> term
+  <|> Var <$> name
+  <|> Let <$ reserved "let" <*> name <* symbol "=" <*> term <* reserved "in" <*> term
+  <|> lams <$ symbol "\\" <*> some name <* symbol "." <*> term
   <?> "term"
   where
     lams vs body = foldr Lam body vs
 
 term :: Parser Term
 term =
-  pis <$> try (symbol "(" *> some var <* reserved ":") <*> term <* symbol ")" <* symbol "->" <*> term
+  pis <$> try (symbol "(" *> some name <* reserved ":") <*> term <* symbol ")" <* symbol "->" <*> term
   <|> apps <$> atomicTerm <*> many atomicTerm <**> fun
   <?> "term"
   where

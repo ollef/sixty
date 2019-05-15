@@ -7,15 +7,17 @@ import Data.Coerce
 
 import Index
 import qualified Meta
+import Name (Name)
+import qualified Name
 
 data Term v
   = Var !(Index v)
-  | Global !Text
+  | Global !Name.Qualified
   | Meta !Meta.Index
-  | Let !Text !(Term v) !(Type v) !(Scope Term v)
-  | Pi !Text !(Type v) !(Scope Type v)
+  | Let !Name !(Term v) !(Type v) !(Scope Term v)
+  | Pi !Name !(Type v) !(Scope Type v)
   | Fun !(Type v) !(Type v)
-  | Lam !Text !(Type v) !(Scope Term v)
+  | Lam !Name !(Type v) !(Scope Term v)
   | App !(Term v) !(Term v)
   deriving Show
 

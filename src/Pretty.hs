@@ -11,18 +11,20 @@ import Data.Text.Prettyprint.Doc
 
 import Index
 import qualified Meta
+import Name (Name(Name))
 import qualified Syntax
 
 -------------------------------------------------------------------------------
 -- Pretty-printing environments
 
 data Environment v = Environment
-  { varNames :: Seq Text
-  , usedNames :: HashSet Text
+  { varNames :: Seq Name
+  , usedNames :: HashSet Name
   }
 
-extend :: Environment v -> Text -> (Environment (Succ v), Text)
-extend env name = go (name : [name <> show (i :: Int) | i <- [0..]])
+extend :: Environment v -> Name -> (Environment (Succ v), Name)
+extend env name@(Name text) =
+  go (name : [Name $ text <> show (i :: Int) | i <- [0..]])
   where
     go (name':names)
       | name' `HashSet.member` usedNames env =

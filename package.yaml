@@ -19,6 +19,8 @@ dependencies:
   - parsix
   - prettyprinter
   - protolude
+  - text
+  - vector
   - unordered-containers
 
 ghc-options:
