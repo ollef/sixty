@@ -68,17 +68,17 @@ rules (Writer query) =
 
     -- TODO
     ResolvedName _ _ name
-      | name == "Type" -> pure (Builtin.typeName, mempty)
+      | name == "Type" -> pure (Just Builtin.typeName, mempty)
 
-    ResolvedName module_ key prename@(Presyntax.Name name) -> do
-      visibility <- fetch $ Query.Visibility module_ key prename
-      case visibility of
-        Nothing ->
-          -- TODO error
-          panic $ "Not in scope: " <> show name
+    ResolvedName module_ key prename@(Presyntax.Name name) ->
+      noError $ do
+        visibility <- fetch $ Query.Visibility module_ key prename
+        case visibility of
+          Nothing ->
+            pure Nothing
 
-        Just _ ->
-          pure (Name.Qualified module_ (Name name), mempty)
+          Just _ ->
+            pure $ Just $ Name.Qualified module_ (Name name)
 
     ElaboratedType qualifiedName@(Name.Qualified module_ name)
       | qualifiedName == Builtin.typeName ->

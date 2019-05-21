@@ -76,19 +76,24 @@ elaborate context term expected = -- trace ("elaborate " <> show term :: Text) $
     Presyntax.Var name ->
       case Context.lookupNameIndex name context of
         Nothing -> do
-          qualifiedName <-
+          maybeQualifiedName <-
             fetch $
               Query.ResolvedName
                 (Context.module_ context)
                 (Context.resolutionKey context)
                 name
-          type_ <- fetch $ Query.ElaboratedType qualifiedName
-          type' <- lazy $ evaluate context $ Syntax.fromVoid type_
-          elaborated
-            context
-            expected
-            (Syntax.Global qualifiedName)
-            type'
+          case maybeQualifiedName of
+            Nothing ->
+              panic $ "Not in scope" <> show name
+
+            Just qualifiedName -> do
+              type_ <- fetch $ Query.ElaboratedType qualifiedName
+              type' <- lazy $ evaluate context $ Syntax.fromVoid type_
+              elaborated
+                context
+                expected
+                (Syntax.Global qualifiedName)
+                type'
 
         Just i ->
           elaborated

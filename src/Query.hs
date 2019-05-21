@@ -20,7 +20,7 @@ data Query a where
   ParsedDefinition :: Name.Module -> Resolution.Key -> Query (Maybe Presyntax.Term)
   Scopes :: Name.Module -> Query Resolution.Scopes
   Visibility :: Name.Module -> Resolution.Key -> Presyntax.Name -> Query (Maybe Resolution.Visibility)
-  ResolvedName :: Name.Module -> Resolution.Key -> Presyntax.Name -> Query Name.Qualified
+  ResolvedName :: Name.Module -> Resolution.Key -> Presyntax.Name -> Query (Maybe Name.Qualified)
   ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void)
   ElaboratedDefinition :: Name.Qualified -> Query (Maybe (Syntax.Term Void, Syntax.Type Void))
 
