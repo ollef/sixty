@@ -5,58 +5,21 @@ import Protolude hiding (Seq, force, evaluate)
 
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
-import Sequence (Seq)
-import qualified Sequence as Seq
 
 import qualified Domain
 import Index
 import Monad
+import Sequence (Seq)
+import qualified Sequence as Seq
 import qualified Syntax
 import qualified Tsil
 import Var
 
--------------------------------------------------------------------------------
--- Evaluation environments
-
-data Environment v = Environment
-  { vars :: Seq Var
-  , values :: HashMap Var (Lazy Domain.Value)
-  }
-
-empty :: Environment Void
-empty =
-  Environment
-    { vars = mempty
-    , values = mempty
-    }
-
-extend
-  :: Environment v
-  -> Lazy Domain.Value
-  -> M (Environment (Succ v))
-extend env value = do
-  var <- freshVar
-  pure env
-    { vars = vars env Seq.:> var
-    , values = HashMap.insert var value (values env)
-    }
-
-lookupValue :: Index v -> Environment v -> Lazy Domain.Value
-lookupValue (Index i) env =
-  let
-    var = Seq.index (vars env) (Seq.length (vars env) - i - 1)
-  in
-  fromMaybe
-    (Lazy $ pure $ Domain.var var)
-    (HashMap.lookup var $ values env)
-
--------------------------------------------------------------------------------
-
-evaluate :: Environment v -> Syntax.Term v -> M Domain.Value
+evaluate :: Domain.Environment v -> Syntax.Term v -> M Domain.Value
 evaluate env term =
   case term of
     Syntax.Var v ->
-      force $ lookupValue v env
+      force $ Domain.lookupValue v env
 
     Syntax.Meta i ->
       pure $ Domain.meta i
@@ -66,12 +29,12 @@ evaluate env term =
 
     Syntax.Let _ t _ s -> do
       t' <- lazy $ evaluate env t
-      env' <- extend env t'
+      env' <- Domain.extend env t'
       evaluate env' s
 
     Syntax.Pi n t s -> do
       t' <- lazy $ evaluate env t
-      pure $ Domain.Pi n t' (makeClosure env s)
+      pure $ Domain.Pi n t' (Domain.Closure env s)
 
     Syntax.Fun t1 t2 -> do
       t1' <- lazy $ evaluate env t1
@@ -80,7 +43,7 @@ evaluate env term =
 
     Syntax.Lam n t s -> do
       t' <- lazy $ evaluate env t
-      pure $ Domain.Lam n t' (makeClosure env s)
+      pure $ Domain.Lam n t' (Domain.Closure env s)
 
     Syntax.App t1 t2 -> do
       t1' <- evaluate env t1
@@ -103,10 +66,6 @@ applySpine :: Domain.Value -> Domain.Spine -> M Domain.Value
 applySpine = foldM apply
 
 evaluateClosure :: Domain.Closure -> Lazy Domain.Value -> M Domain.Value
-evaluateClosure (Domain.Closure f) = f
-
-makeClosure :: Environment v -> Scope Syntax.Term v -> Domain.Closure
-makeClosure env body =
-  Domain.Closure $ \argument -> do
-    env' <- extend env argument
-    evaluate env' body
+evaluateClosure (Domain.Closure env body) argument = do
+  env' <- Domain.extend env argument
+  evaluate env' body

@@ -1,15 +1,22 @@
 {-# language GADTs #-}
 module Domain where
 
-import Protolude hiding (Type)
+import Protolude hiding (Type, Seq)
 
+import Data.HashMap.Lazy (HashMap)
+import qualified Data.HashMap.Lazy as HashMap
+
+import Index
 import qualified Meta
 import Monad
+import Name (Name)
+import qualified Name
+import Sequence (Seq)
+import qualified Sequence as Seq
+import qualified Syntax
 import Tsil (Tsil)
 import qualified Tsil
 import Var (Var)
-import Name (Name)
-import qualified Name
 
 data Value
   = Neutral !Head Spine
@@ -27,7 +34,8 @@ data Head
 
 type Spine = Tsil (Lazy Value)
 
-newtype Closure = Closure (Lazy Value -> M Value)
+data Closure where
+  Closure :: Environment v -> Scope Syntax.Term v -> Closure
 
 var :: Var -> Value
 var v = Neutral (Domain.Var v) Tsil.Nil
@@ -41,3 +49,38 @@ meta i = Neutral (Meta i) Tsil.Nil
 singleVarView :: Value -> Maybe Var
 singleVarView (Neutral (Var v) Tsil.Nil) = Just v
 singleVarView _ = Nothing
+
+-------------------------------------------------------------------------------
+-- Evaluation environments
+
+data Environment v = Environment
+  { vars :: Seq Var
+  , values :: HashMap Var (Lazy Domain.Value)
+  }
+
+empty :: Environment Void
+empty =
+  Environment
+    { vars = mempty
+    , values = mempty
+    }
+
+extend
+  :: Environment v
+  -> Lazy Domain.Value
+  -> M (Environment (Succ v))
+extend env value = do
+  var <- freshVar
+  pure env
+    { vars = vars env Seq.:> var
+    , values = HashMap.insert var value (values env)
+    }
+
+lookupValue :: Index v -> Environment v -> Lazy Domain.Value
+lookupValue (Index i) env =
+  let
+    var = Seq.index (vars env) (Seq.length (vars env) - i - 1)
+  in
+  fromMaybe
+    (Lazy $ pure $ Domain.var var)
+    (HashMap.lookup var $ values env)

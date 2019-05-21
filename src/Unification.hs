@@ -329,7 +329,7 @@ pruneMeta context meta allowedArgs = do
       putText $ show metaType
       metaType' <-
         Evaluation.evaluate
-          Evaluation.empty
+          Domain.empty
           metaType
       solution' <-
         go

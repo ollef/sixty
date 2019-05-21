@@ -39,9 +39,9 @@ data Context v = Context
 
 toEvaluationEnvironment
   :: Context v
-  -> Evaluation.Environment v
+  -> Domain.Environment v
 toEvaluationEnvironment context =
-  Evaluation.Environment
+  Domain.Environment
     { vars = vars context
     , values = values context
     }
@@ -237,7 +237,7 @@ forceHead context value =
 
       case meta of
         Meta.Solved headValue -> do
-          headValue' <- Evaluation.evaluate Evaluation.empty headValue
+          headValue' <- Evaluation.evaluate Domain.empty headValue
           value' <- Evaluation.applySpine headValue' spine
           forceHead context value'
 

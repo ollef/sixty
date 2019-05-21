@@ -141,7 +141,7 @@ elaborate context term expected = trace ("elaborate " <> show term :: Text) $
             domain'' <- readback (Context.toReadbackEnvironment context') domain'
             pure
               $ Domain.Pi name (Lazy $ pure source)
-              $ Evaluation.makeClosure (Context.toEvaluationEnvironment context) domain''
+              $ Domain.Closure (Context.toEvaluationEnvironment context) domain''
 
           inferred
             context
