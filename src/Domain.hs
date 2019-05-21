@@ -70,17 +70,17 @@ extend
   -> Lazy Domain.Value
   -> M (Environment (Succ v))
 extend env value = do
-  var <- freshVar
+  v <- freshVar
   pure env
-    { vars = vars env Seq.:> var
-    , values = HashMap.insert var value (values env)
+    { vars = vars env Seq.:> v
+    , values = HashMap.insert v value (values env)
     }
 
 lookupValue :: Index v -> Environment v -> Lazy Domain.Value
 lookupValue (Index i) env =
   let
-    var = Seq.index (vars env) (Seq.length (vars env) - i - 1)
+    v = Seq.index (vars env) (Seq.length (vars env) - i - 1)
   in
   fromMaybe
-    (Lazy $ pure $ Domain.var var)
-    (HashMap.lookup var $ values env)
+    (Lazy $ pure $ var v)
+    (HashMap.lookup v $ values env)

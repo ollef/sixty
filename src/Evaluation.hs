@@ -3,17 +3,10 @@ module Evaluation where
 
 import Protolude hiding (Seq, force, evaluate)
 
-import Data.HashMap.Lazy (HashMap)
-import qualified Data.HashMap.Lazy as HashMap
-
 import qualified Domain
-import Index
 import Monad
-import Sequence (Seq)
-import qualified Sequence as Seq
 import qualified Syntax
 import qualified Tsil
-import Var
 
 evaluate :: Domain.Environment v -> Syntax.Term v -> M Domain.Value
 evaluate env term =
