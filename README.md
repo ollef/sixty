@@ -25,6 +25,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [ ] Simple modules
   - [x] Top-level definitions
   - [x] Name resolution
+  - [ ] Error for circular values
   - [ ] Elaboration of meta variable solutions to top-level
   - [ ] Imports
 - [ ] Tests
