@@ -32,6 +32,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [ ] Implicit arguments and subtyping
   - [ ] Deep skolemisation
 - [ ] Source location tracking for error messages
+- [ ] Recursive let bindings
 - [ ] Error recovery during
   - [ ] Parsing
   - [ ] Elaboration
