@@ -49,13 +49,13 @@ infer
 infer context term =
   elaborate context term Infer
 
-inferred
+elaborated
   :: Context v
   -> Expected e
   -> Syntax.Term v
   -> Lazy Domain.Type
   -> M (e (Syntax.Term v))
-inferred context expected term typ =
+elaborated context expected term typ =
   case expected of
     Infer ->
       pure $ Inferred term typ
@@ -84,14 +84,14 @@ elaborate context term expected = trace ("elaborate " <> show term :: Text) $
                 name
           type_ <- fetch $ Query.ElaboratedType qualifiedName
           type' <- lazy $ evaluate context $ Syntax.fromVoid type_
-          inferred
+          elaborated
             context
             expected
             (Syntax.Global qualifiedName)
             type'
 
         Just i ->
-          inferred
+          elaborated
             context
             expected
             (Syntax.Var i)
@@ -114,7 +114,7 @@ elaborate context term expected = trace ("elaborate " <> show term :: Text) $
       (context', _) <- Context.extend context name $ Lazy $ pure Builtin.type_
 
       domain' <- check context' domain Builtin.type_
-      inferred
+      elaborated
         context
         expected
         (Syntax.Pi name source' domain')
@@ -123,7 +123,7 @@ elaborate context term expected = trace ("elaborate " <> show term :: Text) $
     Presyntax.Fun source domain -> do
       source' <- check context source Builtin.type_
       domain' <- check context domain Builtin.type_
-      inferred
+      elaborated
         context
         expected
         (Syntax.Fun source' domain')
@@ -143,7 +143,7 @@ elaborate context term expected = trace ("elaborate " <> show term :: Text) $
               $ Domain.Pi name (Lazy $ pure source)
               $ Domain.Closure (Context.toEvaluationEnvironment context) domain''
 
-          inferred
+          elaborated
             context
             expected
             (Syntax.Lam name source' body')
@@ -191,7 +191,7 @@ elaborate context term expected = trace ("elaborate " <> show term :: Text) $
           argument' <- check context argument source'
           argument'' <- lazy $ evaluate context argument'
           domain <- lazy $ Evaluation.evaluateClosure domainClosure argument''
-          inferred
+          elaborated
             context
             expected
             (Syntax.App function' argument')
