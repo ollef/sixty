@@ -12,18 +12,29 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [x] Evaluation
 - [x] Readback
 - [x] Parsing
+  - [ ] Indentation-sensitivity
 - [x] Pretty printing
+  - [ ] Scope-aware name printing
 - [x] Unification and meta variables
   - [x] Pruning
   - [x] The "same meta variable" rule
   - [ ] Rigidity tracking
   - [ ] Solution inlining
 - [x] Basic type checking
+- [x] Query architecture
+- [ ] Simple modules
+  - [x] Top-level definitions
+  - [x] Name resolution
+  - [ ] Elaboration of meta variable solutions to top-level
+  - [ ] Imports
 - [ ] Tests
 - [ ] Implicit arguments and subtyping
   - [ ] Deep skolemisation
 - [ ] Source location tracking for error messages
-- [ ] Top-level definitions
+- [ ] Error recovery during
+  - [ ] Parsing
+  - [ ] Elaboration
+  - [ ] Unification
 - [ ] Data definitions
 - [ ] Pattern matching elaboration
 - [ ] Generalisation?

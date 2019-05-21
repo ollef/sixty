@@ -1,3 +1,5 @@
+{-# language DeriveAnyClass #-}
+{-# language DeriveGeneric #-}
 {-# language RoleAnnotations #-}
 module Syntax where
 
@@ -19,7 +21,7 @@ data Term v
   | Fun !(Type v) !(Type v)
   | Lam !Name !(Type v) !(Scope Term v)
   | App !(Term v) !(Term v)
-  deriving Show
+  deriving (Show, Generic, Hashable)
 
 type Type = Term
 
@@ -28,3 +30,6 @@ apps = foldl App
 
 succ :: Term v -> Term (Succ v)
 succ = coerce
+
+fromVoid :: Term Void -> Term v
+fromVoid = coerce

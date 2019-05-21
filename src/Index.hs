@@ -1,5 +1,4 @@
-{-# language StandaloneDeriving #-}
-{-# language UndecidableInstances #-}
+{-# language GeneralizedNewtypeDeriving #-}
 module Index where
 
 import Protolude
@@ -8,7 +7,7 @@ import Protolude
 -- Indices
 
 newtype Index v = Index Int
-  deriving (Eq, Show)
+  deriving (Eq, Show, Hashable)
 
 -------------------------------------------------------------------------------
 -- Phantom types

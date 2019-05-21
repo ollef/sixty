@@ -15,15 +15,20 @@ import qualified Evaluation
 import Index
 import qualified Meta
 import Monad
-import Name (Name)
+import Name (Name(Name))
+import qualified Name
+import qualified Presyntax
 import qualified Readback
+import qualified Resolution
 import Sequence (Seq)
 import qualified Sequence as Seq
 import qualified Syntax
 import Var
 
 data Context v = Context
-  { vars :: Seq Var
+  { module_ :: !Name.Module
+  , resolutionKey :: !Resolution.Key
+  , vars :: Seq Var
   , nameVars :: HashMap Name Var
   , varNames :: HashMap Var Name
   , values :: HashMap Var (Lazy Domain.Value)
@@ -49,11 +54,13 @@ toReadbackEnvironment context =
     { vars = vars context
     }
 
-empty :: M (Context Void)
-empty = do
+empty :: Name.Module -> Resolution.Key -> M (Context Void)
+empty m key = do
   ms <- liftIO $ newIORef Meta.empty
   pure Context
-    { nameVars = mempty
+    { module_ = m
+    , resolutionKey = key
+    , nameVars = mempty
     , varNames = mempty
     , vars = mempty
     , values = mempty
@@ -65,7 +72,9 @@ empty = do
 emptyFrom :: Context v -> Context Void
 emptyFrom context =
   Context
-    { nameVars = mempty
+    { module_ = module_ context
+    , resolutionKey = resolutionKey context
+    , nameVars = mempty
     , varNames = mempty
     , vars = mempty
     , values = mempty
@@ -111,9 +120,9 @@ extendDef context name value type_ = do
     , var
     )
 
-lookupNameIndex :: Name -> Context v -> Maybe (Index v)
-lookupNameIndex name context = do
-  var <- HashMap.lookup name (nameVars context)
+lookupNameIndex :: Presyntax.Name -> Context v -> Maybe (Index v)
+lookupNameIndex (Presyntax.Name name) context = do
+  var <- HashMap.lookup (Name name) (nameVars context)
   pure $ lookupVarIndex var context
 
 lookupVarIndex :: Var -> Context v -> Index v

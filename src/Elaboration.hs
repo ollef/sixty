@@ -7,14 +7,16 @@ module Elaboration where
 
 import Protolude hiding (Seq, force, check, evaluate)
 
+import Rock
+
 import qualified Builtin
 import Context (Context)
 import qualified Context
 import qualified Domain
 import qualified Evaluation
 import Monad
-import qualified Name
 import qualified Presyntax
+import qualified Query
 import Readback (readback)
 import qualified Syntax
 import qualified Unification
@@ -74,11 +76,14 @@ elaborate context term expected = trace ("elaborate " <> show term :: Text) $
     Presyntax.Var name ->
       case Context.lookupNameIndex name context of
         Nothing -> do
-          let
-            -- TODO do name resolution
-            qualifiedName = Name.Qualified (Name.Module mempty) name
-          type_ <- typeOfGlobal qualifiedName
-          type' <- lazy $ evaluate context type_
+          qualifiedName <-
+            fetch $
+              Query.ResolvedName
+                (Context.module_ context)
+                (Context.resolutionKey context)
+                name
+          type_ <- fetch $ Query.ElaboratedType qualifiedName
+          type' <- lazy $ evaluate context $ Syntax.fromVoid type_
           inferred
             context
             expected
@@ -230,13 +235,3 @@ evaluate
   -> M Domain.Value
 evaluate context =
   Evaluation.evaluate (Context.toEvaluationEnvironment context)
-
-typeOfGlobal
-  :: Name.Qualified
-  -> M (Syntax.Type v)
-typeOfGlobal global =
-  if global == "Builtin.Type" then
-    return $ Syntax.Global "Builtin.Type"
-
-  else
-    undefined

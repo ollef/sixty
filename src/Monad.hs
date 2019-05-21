@@ -4,10 +4,12 @@ module Monad where
 import Protolude
 
 import Data.IORef
+import Rock
+import Query (Query)
 
 import Var
 
-type M = ReaderT (IORef Var) IO
+type M = ReaderT (IORef Var) (Task Query)
 
 newtype Lazy a = Lazy { force :: M a }
 
@@ -28,7 +30,7 @@ freshVar = do
     writeIORef ref $ Var $ i + 1
     pure var
 
-runM :: M a -> IO a
+runM :: M a -> Task Query a
 runM r = do
-  ref <- newIORef $ Var 0
+  ref <- liftIO $ newIORef $ Var 0
   runReaderT r ref

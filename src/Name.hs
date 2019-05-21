@@ -10,8 +10,6 @@ import Protolude
 import Data.String
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
-import Data.Vector (Vector)
-import qualified Data.Vector as Vector
 
 import Orphans ()
 

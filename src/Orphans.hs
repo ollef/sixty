@@ -1,3 +1,4 @@
+{-# options_ghc -fno-warn-orphans #-}
 module Orphans where
 
 import Protolude
