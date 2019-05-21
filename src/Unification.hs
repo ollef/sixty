@@ -23,7 +23,7 @@ import qualified Tsil
 import Var
 
 unify :: Context v -> Domain.Value -> Domain.Value -> M ()
-unify context value1 value2 = trace ("unify" :: Text) $ do
+unify context value1 value2 = do
   value1' <- Context.forceHead context value1
   value2' <- Context.forceHead context value2
   case (value1', value2') of
@@ -162,7 +162,7 @@ unify context value1 value2 = trace ("unify" :: Text) $ do
 
 -- | Solve `meta = \vars. value`.
 solve :: Context v -> Meta.Index -> Tsil Var -> Domain.Value -> M ()
-solve context meta vars value = trace ("solve " <> show meta :: Text) $ do
+solve context meta vars value = do
   term <- checkSolution context meta (Seq.fromTsil vars) value
   Context.solveMeta context meta term
 
@@ -222,7 +222,7 @@ checkInnerSolution
   -> Readback.Environment v'
   -> Domain.Value
   -> M (Syntax.Term v')
-checkInnerSolution outerContext occurs env value = trace ("checkInnerSolution" :: Text) $ do
+checkInnerSolution outerContext occurs env value = do
   value' <- Context.forceHead outerContext value
   case value' of
     Domain.Neutral hd@(Domain.Meta i) spine -> do

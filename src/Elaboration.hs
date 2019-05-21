@@ -71,7 +71,7 @@ elaborate
   -> Presyntax.Term
   -> Expected e
   -> M (e (Syntax.Term v))
-elaborate context term expected = trace ("elaborate " <> show term :: Text) $
+elaborate context term expected = -- trace ("elaborate " <> show term :: Text) $
   case term of
     Presyntax.Var name ->
       case Context.lookupNameIndex name context of
