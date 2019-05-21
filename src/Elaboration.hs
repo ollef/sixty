@@ -17,7 +17,7 @@ import qualified Evaluation
 import Monad
 import qualified Presyntax
 import qualified Query
-import Readback (readback)
+import Readback
 import qualified Syntax
 import qualified Unification
 
@@ -228,6 +228,12 @@ elaborate context term expected = trace ("elaborate " <> show term :: Text) $
             Infer -> do
               argument' <- check context argument source
               pure $ Inferred (Syntax.App function' argument') lazyDomain
+
+    Presyntax.Wildcard -> do
+      type_ <- Context.newMetaType context
+      term' <- Context.newMeta type_ context
+      term'' <- Readback.readback (Context.toReadbackEnvironment context) term'
+      elaborated context expected term'' $ Lazy $ pure type_
 
 evaluate
   :: Context v

@@ -45,7 +45,7 @@ qidLetter = idLetter
 
 reservedIds :: HashSet String
 reservedIds =
-  HashSet.fromList ["let", "in"]
+  HashSet.fromList ["let", "in", "_"]
 
 idStyle :: Parsix.IdentifierStyle Parser
 idStyle
@@ -101,6 +101,7 @@ prename =
 atomicTerm :: Parser Term
 atomicTerm =
   symbol "(" *> term <* symbol ")"
+  <|> Wildcard <$ reserved "_"
   <|> Var <$> prename
   <|> Let <$ reserved "let" <*> name <* symbol "=" <*> term <* reserved "in" <*> term
   <|> lams <$ symbol "\\" <*> some name <* symbol "." <*> term

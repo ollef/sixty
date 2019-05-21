@@ -19,6 +19,7 @@ data Term
   | Fun !Type !Type
   | Lam !Name.Name !Term
   | App !Term !Term
+  | Wildcard
   deriving (Show, Generic, Hashable)
 
 type Type = Term
