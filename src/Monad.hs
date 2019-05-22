@@ -5,8 +5,9 @@ import Protolude
 
 import Data.IORef
 import Rock
-import Query (Query)
 
+import Error (Error)
+import Query (Query)
 import Var
 
 type M = ReaderT (IORef Var) (Task Query)
@@ -34,3 +35,6 @@ runM :: M a -> Task Query a
 runM r = do
   ref <- liftIO $ newIORef $ Var 0
   runReaderT r ref
+
+report :: Error -> M ()
+report = undefined

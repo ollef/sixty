@@ -12,6 +12,7 @@ import qualified Builtin
 import Context (Context)
 import qualified Context
 import qualified Domain
+import qualified Error
 import qualified Evaluation
 import Monad
 import qualified Presyntax
@@ -82,8 +83,15 @@ elaborate context term expected = -- trace ("elaborate " <> show term :: Text) $
                 (Context.resolutionKey context)
                 name
           case maybeQualifiedName of
-            Nothing ->
-              panic $ "Not in scope" <> show name
+            Nothing -> do
+              report $ Error.NotInScope name
+              resultType <- Context.newMetaType context
+              resultType' <- readback context resultType
+              elaborated
+                context
+                expected
+                (Syntax.App (Syntax.Global Builtin.fail) resultType')
+                (Lazy $ pure resultType)
 
             Just qualifiedName -> do
               type_ <- fetch $ Query.ElaboratedType qualifiedName

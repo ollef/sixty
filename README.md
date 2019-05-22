@@ -35,7 +35,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [ ] Recursive let bindings
 - [ ] Error recovery during
   - [ ] Parsing
-  - [ ] Elaboration
+  - [x] Elaboration
   - [ ] Unification
 - [ ] Data definitions
 - [ ] Pattern matching elaboration
