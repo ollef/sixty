@@ -17,7 +17,7 @@ import qualified Evaluation
 import Monad
 import qualified Presyntax
 import qualified Query
-import Readback
+import qualified Readback
 import qualified Syntax
 import qualified Unification
 
@@ -105,7 +105,7 @@ elaborate context term expected = -- trace ("elaborate " <> show term :: Text) $
     Presyntax.Let name term' body -> do
       Inferred term'' typ <- infer context term'
       typ' <- force typ
-      typ'' <- Readback.readback (Context.toReadbackEnvironment context) typ'
+      typ'' <- readback context typ'
 
       term''' <- lazy $ evaluate context term''
       (context', _) <- Context.extendDef context name term''' $ Lazy $ pure typ'
@@ -138,12 +138,12 @@ elaborate context term expected = -- trace ("elaborate " <> show term :: Text) $
       let
         inferIt = do
           source <- Context.newMetaType context
-          source' <- readback (Context.toReadbackEnvironment context) source
+          source' <- readback context source
           (context', _) <- Context.extend context name (Lazy $ pure source)
           Inferred body' domain <- infer context' body
           type_ <- lazy $ do
             domain' <- force domain
-            domain'' <- readback (Context.toReadbackEnvironment context') domain'
+            domain'' <- readback context' domain'
             pure
               $ Domain.Pi name (Lazy $ pure source)
               $ Domain.Closure (Context.toEvaluationEnvironment context) domain''
@@ -163,7 +163,7 @@ elaborate context term expected = -- trace ("elaborate " <> show term :: Text) $
           case expectedType' of
             Domain.Pi _ source domainClosure -> do
               source' <- force source
-              source'' <- readback (Context.toReadbackEnvironment context) source'
+              source'' <- readback context source'
               (context', var) <- Context.extend context name source
 
               domain <-
@@ -175,7 +175,7 @@ elaborate context term expected = -- trace ("elaborate " <> show term :: Text) $
 
             Domain.Fun source domain -> do
               source' <- force source
-              source'' <- Readback.readback (Context.toReadbackEnvironment context) source'
+              source'' <- readback context source'
               (context', _) <- Context.extend context name source
 
               domain' <- force domain
@@ -237,7 +237,7 @@ elaborate context term expected = -- trace ("elaborate " <> show term :: Text) $
     Presyntax.Wildcard -> do
       type_ <- Context.newMetaType context
       term' <- Context.newMeta type_ context
-      term'' <- Readback.readback (Context.toReadbackEnvironment context) term'
+      term'' <- readback context term'
       elaborated context expected term'' $ Lazy $ pure type_
 
 evaluate
@@ -246,3 +246,6 @@ evaluate
   -> M Domain.Value
 evaluate context =
   Evaluation.evaluate (Context.toEvaluationEnvironment context)
+
+readback :: Context v -> Domain.Value -> M (Syntax.Term v)
+readback context = Readback.readback (Context.toReadbackEnvironment context)
