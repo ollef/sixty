@@ -1,7 +1,6 @@
 {-# language DeriveFunctor #-}
 {-# language DuplicateRecordFields #-}
 {-# language GADTs #-}
-{-# language OverloadedStrings #-}
 {-# language ScopedTypeVariables #-}
 module Elaboration where
 
