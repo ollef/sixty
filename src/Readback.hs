@@ -1,4 +1,4 @@
-{-# language DeriveAnyClass #-}
+{-# language OverloadedStrings #-}
 module Readback where
 
 import Protolude hiding (Seq, force, evaluate)
@@ -48,11 +48,6 @@ lookupIndex var context =
 
 -------------------------------------------------------------------------------
 
-data ScopingException = ScopingException
-  deriving (Eq, Show, Exception)
-
--------------------------------------------------------------------------------
-
 readback :: Environment v -> Domain.Value -> M (Syntax.Term v)
 readback env value =
   case value of
@@ -98,7 +93,7 @@ readbackHead env hd =
           pure $ Syntax.Var i
 
         Nothing ->
-          throwIO ScopingException
+          panic "readbackHead: Scoping error"
 
     Domain.Meta m ->
       pure $ Syntax.Meta m

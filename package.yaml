@@ -23,6 +23,7 @@ dependencies:
   - protolude
   - rock
   - text
+  - transformers
   - vector
   - unordered-containers
 

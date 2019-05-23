@@ -14,14 +14,12 @@ import qualified Context
 import qualified Elaboration
 import Error (Error)
 import qualified Error
-import qualified Evaluation
 import Monad
 import Name (Name(Name))
 import qualified Name
 import qualified Parser
 import qualified Presyntax
 import Query
-import qualified Readback
 import qualified Resolution
 import qualified Syntax
 
@@ -84,59 +82,62 @@ rules (Writer query) =
       | qualifiedName == Builtin.typeName ->
         pure (Syntax.Global Builtin.typeName, mempty)
 
-      | otherwise ->
-        noError $ do
-          mtype <- fetch $ ParsedDefinition module_ $ Resolution.TypeDeclaration name
-          case mtype of
-            Nothing -> do
-              mdef <- fetch $ ElaboratedDefinition qualifiedName
-              case mdef of
-                Nothing ->
-                  panic "ElaboratedType: No type or definition"
+      | otherwise -> do
+        mtype <- fetch $ ParsedDefinition module_ $ Resolution.TypeDeclaration name
+        case mtype of
+          Nothing -> do
+            mdef <- fetch $ ElaboratedDefinition qualifiedName
+            case mdef of
+              Nothing ->
+                panic "ElaboratedType: No type or definition"
 
-                Just (_, type_) ->
-                  pure type_
+              Just (_, type_) ->
+                pure (type_, mempty)
 
-            Just type_ ->
+          Just type_ -> do
+            (maybeResult, errs) <-
               runM $ do
                 context <- Context.empty module_ $ Resolution.TypeDeclaration name
                 Elaboration.check context type_ Builtin.type_
+            case maybeResult of
+              Nothing ->
+                pure
+                  ( Syntax.App
+                    (Syntax.Global Builtin.fail)
+                    (Syntax.Global Builtin.typeName)
+                  , errs
+                  )
+
+              Just result ->
+                pure (result, errs)
 
     ElaboratedDefinition qualifiedName@(Name.Qualified module_ name)
       | qualifiedName == Builtin.typeName ->
         pure (Nothing, mempty)
-      | otherwise ->
-        noError $ do
-          mdef <- fetch $ ParsedDefinition module_ $ Resolution.ConstantDefinition name
-          case mdef of
-            Nothing ->
-              pure Nothing
+      | otherwise -> do
+        mdef <- fetch $ ParsedDefinition module_ $ Resolution.ConstantDefinition name
+        case mdef of
+          Nothing ->
+            pure (Nothing, mempty)
 
-            Just def -> do
-              mtype <- fetch $ ParsedDefinition module_ $ Resolution.TypeDeclaration name
-              case mtype of
-                Nothing ->
-                  runM $ do
-                    context <- Context.empty module_ $ Resolution.ConstantDefinition name
-                    Elaboration.Inferred def' typeValue <-
-                      Elaboration.infer context def
-                    typeValue' <- force typeValue
-                    type_ <-
-                      Readback.readback
-                        (Context.toReadbackEnvironment context)
-                        typeValue'
-                    pure $ Just (def', type_)
+          Just def -> do
+            mtype <- fetch $ ParsedDefinition module_ $ Resolution.TypeDeclaration name
+            case mtype of
+              Nothing ->
+                fmap (first join) $ runM $ do
+                  context <- Context.empty module_ $ Resolution.ConstantDefinition name
+                  Elaboration.Inferred def' typeValue <- Elaboration.infer context def
+                  typeValue' <- force typeValue
+                  type_ <- Elaboration.readback context typeValue'
+                  pure $ Just (def', type_)
 
-                Just _ -> do
-                  type_ <- fetch $ ElaboratedType qualifiedName
-                  runM $ do
-                    context <- Context.empty module_ $ Resolution.ConstantDefinition name
-                    typeValue <-
-                      Evaluation.evaluate
-                        (Context.toEvaluationEnvironment context)
-                        type_
-                    def' <- Elaboration.check context def typeValue
-                    pure $ Just (def', type_)
+              Just _ -> do
+                type_ <- fetch $ ElaboratedType qualifiedName
+                fmap (first join) $ runM $ do
+                  context <- Context.empty module_ $ Resolution.ConstantDefinition name
+                  typeValue <- Elaboration.evaluate context type_
+                  def' <- Elaboration.check context def typeValue
+                  pure $ Just (def', type_)
 
   where
     noError :: Functor m => m a -> m (a, [Error])

@@ -8,6 +8,7 @@ import Protolude hiding (Seq, force, check, evaluate)
 import Context (Context)
 import qualified Context
 import qualified Domain
+import qualified Error
 import qualified Evaluation
 import Extra
 import Index
@@ -158,7 +159,7 @@ unify context value1 value2 = do
       unify context' body1 body2
 
     can'tUnify =
-      panic "Can't unify"
+      throwError Error.TypeMismatch
 
 -- | Solve `meta = \vars. value`.
 solve :: Context v -> Meta.Index -> Tsil Var -> Domain.Value -> M ()
@@ -282,7 +283,7 @@ checkInnerNeutral
 checkInnerNeutral outerContext occurs env hd spine =
   case spine of
     Tsil.Nil ->
-      pure $ checkInnerHead occurs env hd
+      checkInnerHead occurs env hd
 
     Tsil.Snoc spine' arg -> do
       arg' <- force arg
@@ -294,26 +295,26 @@ checkInnerHead
   :: Meta.Index
   -> Readback.Environment v
   -> Domain.Head
-  -> Syntax.Term v
+  -> M (Syntax.Term v)
 checkInnerHead occurs env hd =
   case hd of
     Domain.Var v ->
       case Readback.lookupIndex v env of
         Nothing ->
-          panic "Scope check failed"
+          throwError Error.TypeMismatch
 
         Just i ->
-          Syntax.Var i
+          pure $ Syntax.Var i
 
     Domain.Meta m
       | m == occurs ->
-        panic "Occurs check failed"
+        throwError Error.OccursCheck
 
       | otherwise ->
-        Syntax.Meta m
+        pure $ Syntax.Meta m
 
     Domain.Global g ->
-      Syntax.Global g
+      pure $ Syntax.Global g
 
 pruneMeta
   :: Context v
@@ -364,7 +365,7 @@ pruneMeta context meta allowedArgs = do
                   Context.extendDef
                     context'
                     "x"
-                    (Lazy $ throwIO Readback.ScopingException)
+                    (Lazy $ throwError Error.TypeMismatch)
                     source
               domain' <- force domain
               body <- go alloweds' context'' domain'
@@ -378,7 +379,7 @@ pruneMeta context meta allowedArgs = do
                   Context.extendDef
                     context'
                     name
-                    (Lazy $ throwIO Readback.ScopingException)
+                    (Lazy $ throwError Error.TypeMismatch)
                     source
               domain <-
                 Evaluation.evaluateClosure

@@ -11,4 +11,6 @@ data Error
   = Parse !Parsix.Error
   | DuplicateName !Name
   | NotInScope !Presyntax.Name
+  | TypeMismatch
+  | OccursCheck
   deriving Show
