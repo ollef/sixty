@@ -49,9 +49,18 @@ inferTopLevel key term = do
   type_ <- readback context typeValue'
   metaSolutions <- checkMetaSolutions context
   let
-    def'' = globaliseMetas (Resolution.unkeyed key) def'
-    type' = globaliseMetas (Resolution.unkeyed key) type_
-  pure (def'', type', metaSolutions)
+    name =
+      Resolution.unkeyed key
+
+    def'' =
+      globaliseMetas name def'
+
+    type' =
+      globaliseMetas name type_
+
+    metaSolutions' =
+      globaliseMetaSolutions name metaSolutions
+  pure (def'', type', metaSolutions')
 
 checkTopLevel
   :: Resolution.KeyedName
@@ -63,8 +72,15 @@ checkTopLevel key term type_ = do
   term' <- check context term type_
   metaSolutions <- checkMetaSolutions context
   let
-    term'' = globaliseMetas (Resolution.unkeyed key) term'
-  pure (term'', metaSolutions)
+    name =
+      Resolution.unkeyed key
+
+    term'' =
+      globaliseMetas name term'
+
+    metaSolutions' =
+      globaliseMetaSolutions name metaSolutions
+  pure (term'', metaSolutions')
 
 check
   :: Context v
@@ -298,6 +314,14 @@ checkMetaSolutions context = do
 
       Meta.Solved solution type_ ->
         pure (solution, type_)
+
+globaliseMetaSolutions
+  :: Name.Qualified
+  -> Syntax.MetaSolutions
+  -> Syntax.MetaSolutions
+globaliseMetaSolutions global metas =
+  foreach metas $ \(term, type_) ->
+    (globaliseMetas global term, globaliseMetas global type_)
 
 globaliseMetas
   :: Name.Qualified
