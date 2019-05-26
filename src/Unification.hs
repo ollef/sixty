@@ -339,7 +339,7 @@ pruneMeta context meta allowedArgs = do
           metaType'
       Context.solveMeta context meta solution'
 
-    Meta.Solved _ ->
+    Meta.Solved {} ->
       panic "pruneMeta already solved"
 
   where

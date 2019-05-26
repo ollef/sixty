@@ -10,6 +10,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [x] Core syntax
 - [x] Safe and fast phantom typed De Bruijn indices
 - [x] Evaluation
+  - [ ] Inlining of globals
 - [x] Readback
 - [x] Parsing
   - [ ] Indentation-sensitivity
@@ -25,8 +26,8 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [ ] Simple modules
   - [x] Top-level definitions
   - [x] Name resolution
+  - [x] Elaboration of meta variable solutions to top-level
   - [ ] Error for circular values
-  - [ ] Elaboration of meta variable solutions to top-level
   - [ ] Imports
 - [ ] Tests
 - [ ] Implicit arguments and subtyping

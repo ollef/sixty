@@ -5,8 +5,8 @@ module Query where
 import Protolude
 
 import Data.GADT.Compare.TH
-import Rock.HashTag
 import Data.HashMap.Lazy (HashMap)
+import Rock.HashTag
 
 import qualified Name
 import qualified Presyntax
@@ -21,8 +21,8 @@ data Query a where
   Scopes :: Name.Module -> Query Resolution.Scopes
   Visibility :: Name.Module -> Resolution.Key -> Presyntax.Name -> Query (Maybe Resolution.Visibility)
   ResolvedName :: Name.Module -> Resolution.Key -> Presyntax.Name -> Query (Maybe Name.Qualified)
-  ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void)
-  ElaboratedDefinition :: Name.Qualified -> Query (Maybe (Syntax.Term Void, Syntax.Type Void))
+  ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void, Syntax.MetaSolutions)
+  ElaboratedDefinition :: Name.Qualified -> Query (Maybe (Syntax.Term Void, Syntax.Type Void, Syntax.MetaSolutions))
 
 deriveGEq ''Query
 deriveGCompare ''Query

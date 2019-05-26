@@ -18,6 +18,15 @@ data Key
   | ConstantDefinition !Name
   deriving (Eq, Ord, Show, Generic, Hashable)
 
+keyName :: Key -> Name
+keyName key =
+  case key of
+    TypeDeclaration name ->
+      name
+
+    ConstantDefinition name ->
+      name
+
 data Visibility
   = Type
   | Definition

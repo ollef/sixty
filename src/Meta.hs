@@ -1,4 +1,5 @@
 {-# language GeneralizedNewtypeDeriving #-}
+{-# language OverloadedStrings #-}
 module Meta where
 
 import Protolude
@@ -6,26 +7,34 @@ import Protolude
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 
-data Var unsolved solved
-  = Unsolved unsolved
-  | Solved solved
+data Var term
+  = Unsolved term
+  | Solved term term
 
 newtype Index = Index Int
   deriving (Eq, Ord, Show, Hashable)
 
-data Vars unsolved solved = Vars
-  { vars :: !(HashMap Index (Var unsolved solved))
+data Vars term = Vars
+  { vars :: !(HashMap Index (Var term))
   , nextIndex :: !Index
   }
 
-empty :: Vars unsolved solved
+empty :: Vars term
 empty = Vars mempty (Index 0)
 
-lookup :: Index -> Vars unsolved solved -> Var unsolved solved
-lookup i (Vars m _) = m HashMap.! i
+lookup :: Index -> Vars term -> Var term
+lookup index (Vars m _) = m HashMap.! index
 
-insert :: unsolved -> Vars unsolved solved -> (Vars unsolved solved, Index)
-insert unsolved (Vars m i@(Index n)) = (Vars (HashMap.insert i (Unsolved unsolved) m) (Index (n + 1)), i)
+insert :: term -> Vars term -> (Vars term, Index)
+insert unsolved (Vars m index@(Index n)) = (Vars (HashMap.insert index (Unsolved unsolved) m) (Index (n + 1)), index)
 
-solve :: Index -> solved -> Vars unsolved solved -> Vars unsolved solved
-solve i v (Vars m n) = Vars (HashMap.insert i (Solved v) m) n
+solve :: Index -> term -> Vars term -> Vars term
+solve index term (Vars m n) = Vars (HashMap.adjust adjust index m) n
+  where
+    adjust var =
+      case var of
+        Unsolved typ ->
+          Solved term typ
+
+        Solved _ _ ->
+          panic "Solving an already solved meta variable"

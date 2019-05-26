@@ -6,6 +6,7 @@ module Syntax where
 import Protolude hiding (Type)
 
 import Data.Coerce
+import Data.HashMap.Lazy (HashMap)
 
 import Index
 import qualified Meta
@@ -14,7 +15,7 @@ import qualified Name
 
 data Term v
   = Var !(Index v)
-  | Global !Name.Qualified
+  | Global !Name.Elaborated
   | Meta !Meta.Index
   | Let !Name !(Term v) !(Type v) !(Scope Term v)
   | Pi !Name !(Type v) !(Scope Type v)
@@ -33,3 +34,6 @@ succ = coerce
 
 fromVoid :: Term Void -> Term v
 fromVoid = coerce
+
+type MetaSolutions =
+  HashMap Meta.Index (Syntax.Term Void, Syntax.Type Void)

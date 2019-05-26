@@ -10,10 +10,11 @@ import Rock
 import qualified Text.Parsix as Parsix
 
 import qualified Builtin
-import qualified Context
+import qualified Domain
 import qualified Elaboration
 import Error (Error)
 import qualified Error
+import qualified Evaluation
 import Monad
 import Name (Name(Name))
 import qualified Name
@@ -80,7 +81,7 @@ rules (Writer query) =
 
     ElaboratedType qualifiedName@(Name.Qualified module_ name)
       | qualifiedName == Builtin.typeName ->
-        pure (Syntax.Global Builtin.typeName, mempty)
+        pure ((Syntax.Global Builtin.typeName, mempty), mempty)
 
       | otherwise -> do
         mtype <- fetch $ ParsedDefinition module_ $ Resolution.TypeDeclaration name
@@ -91,25 +92,30 @@ rules (Writer query) =
               Nothing ->
                 panic "ElaboratedType: No type or definition"
 
-              Just (_, type_) ->
-                pure (type_, mempty)
+              Just (_, type_, metas) ->
+                pure ((type_, metas), mempty)
 
           Just type_ -> do
             (maybeResult, errs) <-
-              runM $ do
-                context <- Context.empty module_ $ Resolution.TypeDeclaration name
-                Elaboration.check context type_ Builtin.type_
+              runM $
+                Elaboration.checkTopLevel
+                  module_
+                  (Resolution.TypeDeclaration name)
+                  type_
+                  Builtin.type_
             case maybeResult of
               Nothing ->
                 pure
-                  ( Syntax.App
-                    (Syntax.Global Builtin.fail)
-                    (Syntax.Global Builtin.typeName)
+                  ( ( Syntax.App
+                      (Syntax.Global Builtin.fail)
+                      (Syntax.Global Builtin.typeName)
+                    , mempty
+                    )
                   , errs
                   )
 
               Just result ->
-                pure (result, errs)
+                pure (result, errs) -- TODO metas
 
     ElaboratedDefinition qualifiedName@(Name.Qualified module_ name)
       | qualifiedName == Builtin.typeName ->
@@ -124,20 +130,19 @@ rules (Writer query) =
             mtype <- fetch $ ParsedDefinition module_ $ Resolution.TypeDeclaration name
             case mtype of
               Nothing ->
-                fmap (first join) $ runM $ do
-                  context <- Context.empty module_ $ Resolution.ConstantDefinition name
-                  Elaboration.Inferred def' typeValue <- Elaboration.infer context def
-                  typeValue' <- force typeValue
-                  type_ <- Elaboration.readback context typeValue'
-                  pure $ Just (def', type_)
+                runM $ Elaboration.inferTopLevel module_ name def
 
               Just _ -> do
-                type_ <- fetch $ ElaboratedType qualifiedName
-                fmap (first join) $ runM $ do
-                  context <- Context.empty module_ $ Resolution.ConstantDefinition name
-                  typeValue <- Elaboration.evaluate context type_
-                  def' <- Elaboration.check context def typeValue
-                  pure $ Just (def', type_)
+                (type_, typeMetas) <- fetch $ ElaboratedType qualifiedName
+                runM $ do
+                  typeValue <- Evaluation.evaluate Domain.empty type_
+                  (def', defMetas) <-
+                    Elaboration.checkTopLevel
+                      module_
+                      (Resolution.ConstantDefinition name)
+                      def
+                      typeValue
+                  pure (def', type_, defMetas <> typeMetas) -- TODO metas
 
   where
     noError :: Functor m => m a -> m (a, [Error])

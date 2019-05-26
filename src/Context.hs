@@ -34,7 +34,7 @@ data Context v = Context
   , values :: HashMap Var (Lazy Domain.Value)
   , types :: HashMap Var (Lazy Domain.Type)
   , boundVars :: Seq Var
-  , metas :: !(IORef (Meta.Vars (Syntax.Type Void) (Syntax.Term Void)))
+  , metas :: !(IORef (Meta.Vars (Syntax.Term Void)))
   }
 
 toEvaluationEnvironment
@@ -198,7 +198,7 @@ piBoundVars context type_ = do
 lookupMeta
   :: Meta.Index
   -> Context v
-  -> M (Meta.Var (Syntax.Type void) (Syntax.Term void))
+  -> M (Meta.Var (Syntax.Term void))
 lookupMeta i context =
   liftIO $ do
     m <- readIORef (metas context)
@@ -236,7 +236,7 @@ forceHead context value =
       meta <- Context.lookupMeta metaIndex context
 
       case meta of
-        Meta.Solved headValue -> do
+        Meta.Solved headValue _ -> do
           headValue' <- Evaluation.evaluate Domain.empty headValue
           value' <- Evaluation.applySpine headValue' spine
           forceHead context value'

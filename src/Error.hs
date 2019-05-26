@@ -4,7 +4,9 @@ import Protolude
 
 import qualified Text.Parsix as Parsix
 
+import qualified Meta
 import Name (Name)
+import qualified Name
 import qualified Presyntax
 
 data Error
@@ -13,4 +15,5 @@ data Error
   | NotInScope !Presyntax.Name
   | TypeMismatch
   | OccursCheck
+  | UnsolvedMetaVariable !Name.Qualified !Meta.Index
   deriving Show

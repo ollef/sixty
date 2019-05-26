@@ -6,6 +6,8 @@ module Elaboration where
 
 import Protolude hiding (Seq, force, check, evaluate)
 
+import qualified Data.HashMap.Lazy as HashMap
+import Data.IORef
 import Rock
 
 import qualified Builtin
@@ -14,10 +16,14 @@ import qualified Context
 import qualified Domain
 import qualified Error
 import qualified Evaluation
+import qualified Meta
 import Monad
+import Name (Name)
+import qualified Name
 import qualified Presyntax
 import qualified Query
 import qualified Readback
+import qualified Resolution
 import qualified Syntax
 import qualified Unification
 
@@ -32,6 +38,36 @@ newtype Checked term
 data Expected f where
   Infer :: Expected Inferred
   Check :: Domain.Type -> Expected Checked
+
+inferTopLevel
+  :: Name.Module
+  -> Name
+  -> Presyntax.Term
+  -> M (Syntax.Term Void, Syntax.Type Void, Syntax.MetaSolutions)
+inferTopLevel module_ name term = do
+  context <- Context.empty module_ $ Resolution.ConstantDefinition name
+  Inferred def' typeValue <- Elaboration.infer context term
+  typeValue' <- force typeValue
+  type_ <- readback context typeValue'
+  metaSolutions <- checkMetaSolutions context
+  let
+    def'' = globaliseMetas (Name.Qualified module_ name) def'
+    type' = globaliseMetas (Name.Qualified module_ name) type_
+  pure (def'', type', metaSolutions)
+
+checkTopLevel
+  :: Name.Module
+  -> Resolution.Key
+  -> Presyntax.Term
+  -> Domain.Type
+  -> M (Syntax.Term Void, Syntax.MetaSolutions)
+checkTopLevel module_ key term type_ = do
+  context <- Context.empty module_ key
+  term' <- check context term type_
+  metaSolutions <- checkMetaSolutions context
+  let
+    term'' = globaliseMetas (Name.Qualified module_ $ Resolution.keyName key) term'
+  pure (term'', metaSolutions)
 
 check
   :: Context v
@@ -94,12 +130,12 @@ elaborate context term expected = -- trace ("elaborate " <> show term :: Text) $
                 (Lazy $ pure resultType)
 
             Just qualifiedName -> do
-              type_ <- fetch $ Query.ElaboratedType qualifiedName
+              (type_, _) <- fetch $ Query.ElaboratedType qualifiedName
               type' <- lazy $ evaluate context $ Syntax.fromVoid type_
               elaborated
                 context
                 expected
-                (Syntax.Global qualifiedName)
+                (Syntax.Global $ Name.Elaborated qualifiedName)
                 type'
 
         Just i ->
@@ -247,6 +283,58 @@ elaborate context term expected = -- trace ("elaborate " <> show term :: Text) $
       term'' <- readback context term'
       elaborated context expected term'' $ Lazy $ pure type_
 
+-------------------------------------------------------------------------------
+-- Meta solutions
+
+checkMetaSolutions
+  :: Context v
+  -> M Syntax.MetaSolutions
+checkMetaSolutions context = do
+  metaVars <- liftIO $ readIORef $ Context.metas context
+  flip HashMap.traverseWithKey (Meta.vars metaVars) $ \index var ->
+    case var of
+      Meta.Unsolved type_ -> do
+        report $ Error.UnsolvedMetaVariable (Name.Qualified (Context.module_ context) (Resolution.keyName (Context.resolutionKey context))) index
+        pure (Syntax.App (Syntax.Global Builtin.fail) type_, type_)
+
+      Meta.Solved solution type_ ->
+        pure (solution, type_)
+
+globaliseMetas
+  :: Name.Qualified
+  -> Syntax.Term v
+  -> Syntax.Term v
+globaliseMetas global term = case term of
+  Syntax.Var _ ->
+    term
+
+  Syntax.Global _ ->
+    term
+
+  Syntax.Meta index ->
+    Syntax.Global $ Name.Meta global index
+
+  Syntax.Let name term' type_ body ->
+    Syntax.Let
+      name
+      (globaliseMetas global term')
+      (globaliseMetas global type_)
+      (globaliseMetas global body)
+
+  Syntax.Pi name source domain ->
+    Syntax.Pi name (globaliseMetas global source) (globaliseMetas global domain)
+
+  Syntax.Fun source domain ->
+    Syntax.Fun (globaliseMetas global source) (globaliseMetas global domain)
+
+  Syntax.Lam name argType body ->
+    Syntax.Lam name (globaliseMetas global argType) (globaliseMetas global body)
+
+  Syntax.App function argument ->
+    Syntax.App (globaliseMetas global function) (globaliseMetas global argument)
+
+-------------------------------------------------------------------------------
+
 evaluate
   :: Context v
   -> Syntax.Term v
@@ -255,4 +343,5 @@ evaluate context =
   Evaluation.evaluate (Context.toEvaluationEnvironment context)
 
 readback :: Context v -> Domain.Value -> M (Syntax.Term v)
-readback context = Readback.readback (Context.toReadbackEnvironment context)
+readback context =
+  Readback.readback (Context.toReadbackEnvironment context)

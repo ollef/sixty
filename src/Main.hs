@@ -6,6 +6,7 @@ module Main where
 import Protolude hiding (force)
 
 import qualified Data.Dependent.Map as DMap
+import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.String
 import Data.Text.Prettyprint.Doc
@@ -13,6 +14,7 @@ import Data.Text.Prettyprint.Doc.Render.Text
 import Rock
 
 import Error (Error)
+import qualified Meta
 import qualified Name
 import qualified Presyntax
 import qualified Pretty
@@ -56,9 +58,12 @@ parseAndTypeCheck module_ = do
         HashSet.fromList $
           Name.Qualified module_ . Presyntax.definitionName <$> defs
     forM_ names $ \name -> do
-      type_ <- fetch $ Query.ElaboratedType name
+      (type_, _) <- fetch $ Query.ElaboratedType name
       liftIO $ putDoc $ pretty name <> " : " <> Pretty.prettyTerm 0 Pretty.empty type_ <> line
       maybeDef <- fetch $ Query.ElaboratedDefinition name
-      forM_ maybeDef $ \(def, _) ->
-        liftIO $ putDoc $ pretty name <> " = " <> Pretty.prettyTerm 0 Pretty.empty def <> line
+      liftIO $ forM_ maybeDef $ \(def, _, metas) -> do
+        putDoc $ pretty name <> " = " <> Pretty.prettyTerm 0 Pretty.empty def <> line
+        forM_ (sortOn fst $ HashMap.toList metas) $ \(Meta.Index index, (metaDef, metaType)) -> do
+          putDoc $ "  ?" <> pretty index <> " : " <> Pretty.prettyTerm 0 Pretty.empty metaType <> line
+          putDoc $ "  ?" <> pretty index <> " = " <> Pretty.prettyTerm 0 Pretty.empty metaDef <> line
   print errs

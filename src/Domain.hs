@@ -29,7 +29,7 @@ type Type = Value
 data Head
   = Var !Var
   | Meta !Meta.Index
-  | Global !Name.Qualified
+  | Global !Name.Elaborated
   deriving Eq
 
 type Spine = Tsil (Lazy Value)
@@ -40,7 +40,7 @@ data Closure where
 var :: Var -> Value
 var v = Neutral (Domain.Var v) Tsil.Nil
 
-global :: Name.Qualified -> Value
+global :: Name.Elaborated -> Value
 global g = Neutral (Global g) Tsil.Nil
 
 meta :: Meta.Index -> Value

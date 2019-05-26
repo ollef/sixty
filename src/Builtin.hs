@@ -1,14 +1,15 @@
 {-# language OverloadedStrings #-}
 module Builtin where
 
-import qualified Domain
-import qualified Name
+import Protolude
 
-typeName :: Name.Qualified
+import qualified Domain
+
+typeName :: IsString s => s
 typeName = "Builtin.Type"
 
 type_ :: Domain.Value
 type_ = Domain.global typeName
 
-fail :: Name.Qualified
+fail :: IsString s => s
 fail = "Builtin.fail"
