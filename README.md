@@ -10,7 +10,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [x] Core syntax
 - [x] Safe and fast phantom typed De Bruijn indices
 - [x] Evaluation
-  - [ ] Inlining of globals
+  - [x] Inlining of globals
 - [x] Readback
 - [x] Parsing
   - [ ] Indentation-sensitivity
