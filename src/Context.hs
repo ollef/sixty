@@ -16,7 +16,6 @@ import Index
 import qualified Meta
 import Monad
 import Name (Name(Name))
-import qualified Name
 import qualified Presyntax
 import qualified Readback
 import qualified Resolution
@@ -26,8 +25,7 @@ import qualified Syntax
 import Var
 
 data Context v = Context
-  { module_ :: !Name.Module
-  , resolutionKey :: !Resolution.Key
+  { resolutionKey :: !Resolution.KeyedName
   , vars :: Seq Var
   , nameVars :: HashMap Name Var
   , varNames :: HashMap Var Name
@@ -54,12 +52,11 @@ toReadbackEnvironment context =
     { vars = vars context
     }
 
-empty :: Name.Module -> Resolution.Key -> M (Context Void)
-empty m key = do
+empty :: Resolution.KeyedName -> M (Context Void)
+empty key = do
   ms <- liftIO $ newIORef Meta.empty
   pure Context
-    { module_ = m
-    , resolutionKey = key
+    { resolutionKey = key
     , nameVars = mempty
     , varNames = mempty
     , vars = mempty
@@ -72,8 +69,7 @@ empty m key = do
 emptyFrom :: Context v -> Context Void
 emptyFrom context =
   Context
-    { module_ = module_ context
-    , resolutionKey = resolutionKey context
+    { resolutionKey = resolutionKey context
     , nameVars = mempty
     , varNames = mempty
     , vars = mempty

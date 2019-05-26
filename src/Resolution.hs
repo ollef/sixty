@@ -11,21 +11,19 @@ import qualified Data.HashMap.Lazy as HashMap
 import Error (Error)
 import qualified Error
 import Name (Name)
+import qualified Name
 import qualified Presyntax
 
 data Key
-  = TypeDeclaration !Name
-  | ConstantDefinition !Name
+  = TypeDeclaration
+  | ConstantDefinition
   deriving (Eq, Ord, Show, Generic, Hashable)
 
-keyName :: Key -> Name
-keyName key =
-  case key of
-    TypeDeclaration name ->
-      name
+data KeyedName = KeyedName !Name.Qualified !Key
+  deriving (Eq, Ord, Show, Generic, Hashable)
 
-    ConstantDefinition name ->
-      name
+unkeyed :: KeyedName -> Name.Qualified
+unkeyed (KeyedName name _) = name
 
 data Visibility
   = Type
@@ -36,7 +34,7 @@ type Scope =
   HashMap Name Visibility
 
 type Scopes =
-  HashMap Key Scope
+  HashMap (Name, Key) Scope
 
 moduleScopes
   :: [Presyntax.Definition]
@@ -54,7 +52,7 @@ moduleScopes definitions =
           case HashMap.lookup name scope of
             Nothing ->
               ( HashMap.insert name Type scope
-              , HashMap.insert (TypeDeclaration name) scope scopes
+              , HashMap.insert (name, TypeDeclaration) scope scopes
               , errs
               )
 
@@ -66,7 +64,7 @@ moduleScopes definitions =
 
             Just Definition ->
               ( scope
-              , HashMap.insert (TypeDeclaration name) scope scopes
+              , HashMap.insert (name, TypeDeclaration) scope scopes
               , Error.DuplicateName name : errs
               )
 
@@ -74,13 +72,13 @@ moduleScopes definitions =
           case HashMap.lookup name scope of
             Nothing ->
               ( HashMap.insert name Definition scope
-              , HashMap.insert (ConstantDefinition name) scope scopes
+              , HashMap.insert (name, ConstantDefinition) scope scopes
               , errs
               )
 
             Just Type ->
               ( HashMap.insert name Definition scope
-              , HashMap.insert (ConstantDefinition name) scope scopes
+              , HashMap.insert (name, ConstantDefinition) scope scopes
               , errs
               )
 
@@ -90,11 +88,11 @@ moduleScopes definitions =
               , Error.DuplicateName name : errs
               )
 
-keyed :: Presyntax.Definition -> (Key, Presyntax.Term)
+keyed :: Presyntax.Definition -> ((Name, Key), Presyntax.Term)
 keyed def =
   case def of
     Presyntax.ConstantDefinition name term ->
-      (ConstantDefinition name, term)
+      ((name, ConstantDefinition), term)
 
     Presyntax.TypeDeclaration name type_ ->
-      (TypeDeclaration name, type_)
+      ((name, TypeDeclaration), type_)

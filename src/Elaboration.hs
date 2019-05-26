@@ -18,7 +18,6 @@ import qualified Error
 import qualified Evaluation
 import qualified Meta
 import Monad
-import Name (Name)
 import qualified Name
 import qualified Presyntax
 import qualified Query
@@ -40,33 +39,31 @@ data Expected f where
   Check :: Domain.Type -> Expected Checked
 
 inferTopLevel
-  :: Name.Module
-  -> Name
+  :: Resolution.KeyedName
   -> Presyntax.Term
   -> M (Syntax.Term Void, Syntax.Type Void, Syntax.MetaSolutions)
-inferTopLevel module_ name term = do
-  context <- Context.empty module_ $ Resolution.ConstantDefinition name
+inferTopLevel key term = do
+  context <- Context.empty key
   Inferred def' typeValue <- Elaboration.infer context term
   typeValue' <- force typeValue
   type_ <- readback context typeValue'
   metaSolutions <- checkMetaSolutions context
   let
-    def'' = globaliseMetas (Name.Qualified module_ name) def'
-    type' = globaliseMetas (Name.Qualified module_ name) type_
+    def'' = globaliseMetas (Resolution.unkeyed key) def'
+    type' = globaliseMetas (Resolution.unkeyed key) type_
   pure (def'', type', metaSolutions)
 
 checkTopLevel
-  :: Name.Module
-  -> Resolution.Key
+  :: Resolution.KeyedName
   -> Presyntax.Term
   -> Domain.Type
   -> M (Syntax.Term Void, Syntax.MetaSolutions)
-checkTopLevel module_ key term type_ = do
-  context <- Context.empty module_ key
+checkTopLevel key term type_ = do
+  context <- Context.empty key
   term' <- check context term type_
   metaSolutions <- checkMetaSolutions context
   let
-    term'' = globaliseMetas (Name.Qualified module_ $ Resolution.keyName key) term'
+    term'' = globaliseMetas (Resolution.unkeyed key) term'
   pure (term'', metaSolutions)
 
 check
@@ -115,7 +112,6 @@ elaborate context term expected = -- trace ("elaborate " <> show term :: Text) $
           maybeQualifiedName <-
             fetch $
               Query.ResolvedName
-                (Context.module_ context)
                 (Context.resolutionKey context)
                 name
           case maybeQualifiedName of
@@ -294,7 +290,10 @@ checkMetaSolutions context = do
   flip HashMap.traverseWithKey (Meta.vars metaVars) $ \index var ->
     case var of
       Meta.Unsolved type_ -> do
-        report $ Error.UnsolvedMetaVariable (Name.Qualified (Context.module_ context) (Resolution.keyName (Context.resolutionKey context))) index
+        report $
+          Error.UnsolvedMetaVariable
+            (Resolution.unkeyed $ Context.resolutionKey context)
+            index
         pure (Syntax.App (Syntax.Global Builtin.fail) type_, type_)
 
       Meta.Solved solution type_ ->

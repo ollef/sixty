@@ -48,30 +48,30 @@ rules (Writer query) =
         defs <- fetch $ ParsedModule module_
         pure $ HashMap.fromList $ Resolution.keyed <$> defs
 
-    ParsedDefinition module_ key ->
+    ParsedDefinition (Resolution.KeyedName (Name.Qualified module_ name) key) ->
       noError $ do
         defs <- fetch $ ParsedModuleMap module_
-        pure $ HashMap.lookup key defs
+        pure $ HashMap.lookup (name, key) defs
 
     Scopes module_ -> do
       defs <- fetch $ ParsedModule module_
       pure $ Resolution.moduleScopes defs
 
-    Visibility module_ key (Presyntax.Name name) ->
+    Visibility (Resolution.KeyedName (Name.Qualified module_ keyName) key) (Presyntax.Name name) ->
       noError $ do
         scopes <- fetch $ Scopes module_
         let
-          scope = scopes HashMap.! key
+          scope = scopes HashMap.! (keyName, key)
 
         pure $ HashMap.lookup (Name name) scope
 
     -- TODO
-    ResolvedName _ _ name
+    ResolvedName _ name
       | name == "Type" -> pure (Just Builtin.typeName, mempty)
 
-    ResolvedName module_ key prename@(Presyntax.Name name) ->
+    ResolvedName key@(Resolution.KeyedName (Name.Qualified module_ _) _) prename@(Presyntax.Name name) ->
       noError $ do
-        visibility <- fetch $ Query.Visibility module_ key prename
+        visibility <- fetch $ Query.Visibility key prename
         case visibility of
           Nothing ->
             pure Nothing
@@ -79,15 +79,18 @@ rules (Writer query) =
           Just _ ->
             pure $ Just $ Name.Qualified module_ (Name name)
 
-    ElaboratedType qualifiedName@(Name.Qualified module_ name)
-      | qualifiedName == Builtin.typeName ->
+    ElaboratedType name
+      | name == Builtin.typeName ->
         pure ((Syntax.Global Builtin.typeName, mempty), mempty)
 
       | otherwise -> do
-        mtype <- fetch $ ParsedDefinition module_ $ Resolution.TypeDeclaration name
+        let
+          key =
+            Resolution.KeyedName name Resolution.TypeDeclaration
+        mtype <- fetch $ ParsedDefinition key
         case mtype of
           Nothing -> do
-            mdef <- fetch $ ElaboratedDefinition qualifiedName
+            mdef <- fetch $ ElaboratedDefinition name
             case mdef of
               Nothing ->
                 panic "ElaboratedType: No type or definition"
@@ -96,13 +99,8 @@ rules (Writer query) =
                 pure ((type_, metas), mempty)
 
           Just type_ -> do
-            (maybeResult, errs) <-
-              runM $
-                Elaboration.checkTopLevel
-                  module_
-                  (Resolution.TypeDeclaration name)
-                  type_
-                  Builtin.type_
+            (maybeResult, errs) <- runM $
+              Elaboration.checkTopLevel key type_ Builtin.type_
             case maybeResult of
               Nothing ->
                 pure
@@ -117,32 +115,33 @@ rules (Writer query) =
               Just result ->
                 pure (result, errs) -- TODO metas
 
-    ElaboratedDefinition qualifiedName@(Name.Qualified module_ name)
-      | qualifiedName == Builtin.typeName ->
+    ElaboratedDefinition name
+      | name == Builtin.typeName ->
         pure (Nothing, mempty)
       | otherwise -> do
-        mdef <- fetch $ ParsedDefinition module_ $ Resolution.ConstantDefinition name
+        let
+          defKey =
+            Resolution.KeyedName name Resolution.ConstantDefinition
+        mdef <- fetch $ ParsedDefinition defKey
         case mdef of
           Nothing ->
             pure (Nothing, mempty)
 
           Just def -> do
-            mtype <- fetch $ ParsedDefinition module_ $ Resolution.TypeDeclaration name
+            let
+              typeKey =
+                Resolution.KeyedName name Resolution.TypeDeclaration
+            mtype <- fetch $ ParsedDefinition typeKey
             case mtype of
               Nothing ->
-                runM $ Elaboration.inferTopLevel module_ name def
+                runM $ Elaboration.inferTopLevel defKey def
 
               Just _ -> do
-                (type_, typeMetas) <- fetch $ ElaboratedType qualifiedName
+                (type_, typeMetas) <- fetch $ ElaboratedType name
                 runM $ do
                   typeValue <- Evaluation.evaluate Domain.empty type_
-                  (def', defMetas) <-
-                    Elaboration.checkTopLevel
-                      module_
-                      (Resolution.ConstantDefinition name)
-                      def
-                      typeValue
-                  pure (def', type_, defMetas <> typeMetas) -- TODO metas
+                  (def', defMetas) <- Elaboration.checkTopLevel defKey def typeValue
+                  pure (def', type_, defMetas <> typeMetas)
 
   where
     noError :: Functor m => m a -> m (a, [Error])
