@@ -31,19 +31,23 @@ evaluate env term =
         Nothing ->
           pure $ Domain.global elaboratedName
 
-    Syntax.Global elaboratedName@(Name.Meta qualifiedName index) -> do
-      maybeDefinition <- fetch $ Query.ElaboratedDefinition qualifiedName
-      case maybeDefinition of
+    Syntax.Global (Name.Meta qualifiedName index) -> do
+      metas <- do
+        maybeDefinition <- fetch $ Query.ElaboratedDefinition qualifiedName
+        case maybeDefinition of
+          Nothing -> do
+            (_, metas) <- fetch $ Query.ElaboratedType qualifiedName
+            pure metas
+
+          Just (_, _, metas) ->
+            pure metas
+
+      case HashMap.lookup index metas of
         Nothing ->
-          pure $ Domain.global elaboratedName
+          panic "Evaluation: Missing meta"
 
-        Just (_, _, metas) ->
-          case HashMap.lookup index metas of
-            Nothing ->
-              panic "Evaluation: Missing meta"
-
-            Just (term', _) ->
-              evaluate Domain.empty term'
+        Just (term', _) ->
+          evaluate Domain.empty term'
 
     Syntax.Let _ t _ s -> do
       t' <- lazy $ evaluate env t
