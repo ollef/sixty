@@ -30,7 +30,7 @@ data Head
   = Var !Var
   | Meta !Meta.Index
   | Global !Name.Elaborated
-  deriving Eq
+  deriving (Eq, Show)
 
 type Spine = Tsil (Lazy Value)
 
@@ -67,9 +67,18 @@ empty =
 
 extend
   :: Environment v
+  -> M (Environment (Succ v))
+extend env = do
+  v <- freshVar
+  pure env
+    { vars = vars env Seq.:> v
+    }
+
+extendValue
+  :: Environment v
   -> Lazy Domain.Value
   -> M (Environment (Succ v))
-extend env value = do
+extendValue env value = do
   v <- freshVar
   pure env
     { vars = vars env Seq.:> v

@@ -152,10 +152,7 @@ newMeta :: Domain.Type -> Context v -> M Domain.Value
 newMeta type_ context = do
   closedType <- piBoundVars context type_
   liftIO $ do
-    m <- readIORef (metas context)
-    let
-      (m', i) = Meta.insert closedType m
-    writeIORef (metas context) m'
+    i <- atomicModifyIORef (metas context) $ Meta.insert closedType
     pure $ Domain.Neutral (Domain.Meta i) (Lazy . pure . Domain.var <$> Seq.toTsil (boundVars context))
 
 newMetaType :: Context v -> M Domain.Value
@@ -206,11 +203,9 @@ solveMeta
   -> Syntax.Term Void
   -> M ()
 solveMeta context i term =
-  liftIO $ do
-    m <- readIORef (metas context)
-    let
-      m' = Meta.solve i term m
-    writeIORef (metas context) m'
+  liftIO $
+    atomicModifyIORef (metas context) $ \m ->
+      (Meta.solve i term m, ())
 
 -------------------------------------------------------------------------------
 

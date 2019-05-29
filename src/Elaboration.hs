@@ -1,11 +1,16 @@
 {-# language DeriveFunctor #-}
 {-# language DuplicateRecordFields #-}
 {-# language GADTs #-}
+{-# language OverloadedStrings #-}
+{-# language RecursiveDo #-}
 {-# language ScopedTypeVariables #-}
+{-# language ViewPatterns #-}
 module Elaboration where
 
 import Protolude hiding (Seq, force, check, evaluate)
 
+import Data.Bifoldable
+import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef
 import Rock
@@ -44,23 +49,35 @@ inferTopLevel
   -> M (Syntax.Term Void, Syntax.Type Void, Syntax.MetaSolutions)
 inferTopLevel key term = do
   context <- Context.empty key
-  Inferred def' typeValue <- Elaboration.infer context term
+  Inferred term' typeValue <- Elaboration.infer context term
   typeValue' <- force typeValue
   type_ <- readback context typeValue'
-  metaSolutions <- checkMetaSolutions context
+  metas <- checkMetaSolutions context
+  let
+    metaOccs =
+      metaOccurrences term' <>
+      metaOccurrences type_ <>
+      foldMap (bifoldMap metaOccurrences metaOccurrences) metas
+
+  (inlinableMetas, nonInlinableMetas) <- inlineMetaSolutions metas metaOccs
+  term'' <- inlineMetas inlinableMetas term'
+  type' <- inlineMetas inlinableMetas type_
+
   let
     name =
       Resolution.unkeyed key
 
-    def'' =
-      globaliseMetas name def'
+    nonInlinableMetas' =
+      foreach nonInlinableMetas $ \(metaTerm, metaType) ->
+        (globaliseMetas name metaTerm, globaliseMetas name metaType)
 
-    type' =
-      globaliseMetas name type_
+    term''' =
+      globaliseMetas name term''
 
-    metaSolutions' =
-      globaliseMetaSolutions name metaSolutions
-  pure (def'', type', metaSolutions')
+    type'' =
+      globaliseMetas name type'
+
+  pure (term''', type'', nonInlinableMetas')
 
 checkTopLevel
   :: Resolution.KeyedName
@@ -70,17 +87,27 @@ checkTopLevel
 checkTopLevel key term type_ = do
   context <- Context.empty key
   term' <- check context term type_
-  metaSolutions <- checkMetaSolutions context
+  metas <- checkMetaSolutions context
+  let
+    metaOccs =
+      metaOccurrences term' <>
+      foldMap (bifoldMap metaOccurrences metaOccurrences) metas
+
+  (inlinableMetas, nonInlinableMetas) <- inlineMetaSolutions metas metaOccs
+  term'' <- inlineMetas inlinableMetas term'
+
   let
     name =
       Resolution.unkeyed key
 
-    term'' =
-      globaliseMetas name term'
+    nonInlinableMetas' =
+      foreach nonInlinableMetas $ \(metaTerm, metaType) ->
+        (globaliseMetas name metaTerm, globaliseMetas name metaType)
 
-    metaSolutions' =
-      globaliseMetaSolutions name metaSolutions
-  pure (term'', metaSolutions')
+    term''' =
+      globaliseMetas name term''
+
+  pure (term''', nonInlinableMetas')
 
 check
   :: Context v
@@ -315,46 +342,191 @@ checkMetaSolutions context = do
       Meta.Solved solution type_ ->
         pure (solution, type_)
 
-globaliseMetaSolutions
-  :: Name.Qualified
-  -> Syntax.MetaSolutions
-  -> Syntax.MetaSolutions
-globaliseMetaSolutions global metas =
-  foreach metas $ \(term, type_) ->
-    (globaliseMetas global term, globaliseMetas global type_)
+newtype MetaOccurrences = MetaOccurrences (HashMap Meta.Index Int)
+  deriving Show
 
-globaliseMetas
-  :: Name.Qualified
-  -> Syntax.Term v
-  -> Syntax.Term v
-globaliseMetas global term = case term of
-  Syntax.Var _ ->
-    term
+instance Semigroup MetaOccurrences where
+  MetaOccurrences m1 <> MetaOccurrences m2 =
+    MetaOccurrences $ HashMap.unionWith (+) m1 m2
 
-  Syntax.Global _ ->
-    term
+instance Monoid MetaOccurrences where
+  mempty = MetaOccurrences mempty
 
-  Syntax.Meta index ->
-    Syntax.Global $ Name.Meta global index
+metaOccurrences
+  :: Syntax.Term v
+  -> MetaOccurrences
+metaOccurrences term =
+  case term of
+    Syntax.Var _ ->
+      mempty
 
-  Syntax.Let name term' type_ body ->
-    Syntax.Let
-      name
-      (globaliseMetas global term')
-      (globaliseMetas global type_)
-      (globaliseMetas global body)
+    Syntax.Global _ ->
+      mempty
 
-  Syntax.Pi name source domain ->
-    Syntax.Pi name (globaliseMetas global source) (globaliseMetas global domain)
+    Syntax.Meta index ->
+      MetaOccurrences $ HashMap.singleton index 1
 
-  Syntax.Fun source domain ->
-    Syntax.Fun (globaliseMetas global source) (globaliseMetas global domain)
+    Syntax.Let _name term' type_ body ->
+      metaOccurrences term' <>
+      metaOccurrences type_ <>
+      metaOccurrences body
 
-  Syntax.Lam name argType body ->
-    Syntax.Lam name (globaliseMetas global argType) (globaliseMetas global body)
+    Syntax.Pi _name source domain ->
+      metaOccurrences source <> metaOccurrences domain
 
-  Syntax.App function argument ->
-    Syntax.App (globaliseMetas global function) (globaliseMetas global argument)
+    Syntax.Fun source domain ->
+      metaOccurrences source <> metaOccurrences domain
+
+    Syntax.Lam _name argType body ->
+      metaOccurrences argType <> metaOccurrences body
+
+    Syntax.App function argument ->
+      metaOccurrences function <> metaOccurrences argument
+
+inlineMetaSolutions
+  :: Syntax.MetaSolutions
+  -> MetaOccurrences
+  -> M
+    ( HashMap Meta.Index (Lazy (Syntax.Term Void))
+    , Syntax.MetaSolutions
+    )
+inlineMetaSolutions metas (MetaOccurrences occurrences) = do
+  let
+    inlinable =
+      HashMap.differenceWith keepInlinable metas occurrences
+
+    nonInlinable =
+      HashMap.difference metas inlinable
+
+  inlinedInlinable <- liftIO $ mdo
+    inlinedInlinable <- forM inlinable $ \(term, _) ->
+      lazy $ inlineMetas inlinedInlinable term
+    pure inlinedInlinable
+
+  inlinedNonInlinable <- forM nonInlinable $ \(term, type_) -> do
+    term' <- inlineMetas inlinedInlinable term
+    type' <- inlineMetas inlinedInlinable type_
+    pure (term', type')
+
+  pure (inlinedInlinable, inlinedNonInlinable)
+  where
+    keepInlinable
+      :: (Syntax.Term Void, Syntax.Term Void)
+      -> Int
+      -> Maybe (Syntax.Term Void, Syntax.Term Void)
+    keepInlinable (term, type_) numOccs
+      | numOccs <= 1 || duplicable term =
+        Just (term, type_)
+
+      | otherwise =
+        Nothing
+
+    duplicable :: Syntax.Term v -> Bool
+    duplicable term =
+      case term of
+        Syntax.Var _ ->
+          True
+
+        Syntax.Global _ ->
+          True
+
+        Syntax.Meta _ ->
+          True
+
+        Syntax.Lam _ _ s ->
+          duplicable s
+
+        _ ->
+          False
+
+inlineMetas
+  :: HashMap Meta.Index (Lazy (Syntax.Term Void))
+  -> Syntax.Term Void
+  -> M (Syntax.Term Void)
+inlineMetas inlinable =
+  go Domain.empty
+  where
+    go :: Domain.Environment v -> Syntax.Term v -> M (Syntax.Term v)
+    go env term =
+      case term of
+      Syntax.Var _ ->
+        pure term
+
+      Syntax.Global _ ->
+        pure term
+
+      Syntax.Let name term' type_ body -> do
+        termValue <- lazy $ Evaluation.evaluate env term'
+        env' <- Domain.extendValue env termValue
+        Syntax.Let name <$> go env term' <*> go env type_ <*> go env' body
+
+      Syntax.Pi name source domain -> do
+        env' <- Domain.extend env
+        Syntax.Pi name <$> go env source <*> go env' domain
+
+      Syntax.Fun source domain ->
+        Syntax.Fun <$> go env source <*> go env domain
+
+      Syntax.Lam name argType body -> do
+        env' <- Domain.extend env
+        Syntax.Lam name <$> go env argType <*> go env' body
+
+      (Syntax.appsView -> (Syntax.Meta index, args)) ->
+        case HashMap.lookup index inlinable of
+          Nothing -> do
+            args' <- mapM (go env) args
+            pure $
+              Syntax.apps
+                (Syntax.Meta index)
+                args'
+
+          Just solution -> do
+            solution' <- force solution
+            value <-
+              Evaluation.evaluate env $
+                Syntax.apps (Syntax.fromVoid solution') args
+            result <- Readback.readback (Readback.fromEvaluationEnvironment env) value
+            go env result
+
+      (Syntax.appsView -> (function, args@(_:_))) ->
+        Syntax.apps <$> go env function <*> mapM (go env) args
+
+      Syntax.Meta _ ->
+        panic "inlineMetas Meta"
+
+      Syntax.App _ _ ->
+        panic "inlineMetas App"
+
+globaliseMetas :: Name.Qualified -> Syntax.Term v -> Syntax.Term v
+globaliseMetas global term =
+  case term of
+    Syntax.Var _ ->
+      term
+
+    Syntax.Meta index ->
+      Syntax.Global (Name.Meta global index)
+
+    Syntax.Global _ ->
+      term
+
+    Syntax.Let name term' type_ body ->
+      Syntax.Let
+        name
+        (globaliseMetas global term')
+        (globaliseMetas global type_)
+        (globaliseMetas global body)
+
+    Syntax.Pi name source domain ->
+      Syntax.Pi name (globaliseMetas global source) (globaliseMetas global domain)
+
+    Syntax.Fun source domain ->
+      Syntax.Fun (globaliseMetas global source) (globaliseMetas global domain)
+
+    Syntax.Lam name argType body ->
+      Syntax.Lam name (globaliseMetas global argType) (globaliseMetas global body)
+
+    Syntax.App function argument ->
+      Syntax.App (globaliseMetas global function) (globaliseMetas global argument)
 
 -------------------------------------------------------------------------------
 

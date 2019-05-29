@@ -46,6 +46,12 @@ lookupIndex var context =
     Just i ->
       Just (Index (Seq.length (vars context) - i - 1))
 
+fromEvaluationEnvironment :: Domain.Environment v -> Environment v
+fromEvaluationEnvironment env =
+  Environment
+    { vars = Domain.vars env
+    }
+
 -------------------------------------------------------------------------------
 
 readback :: Environment v -> Domain.Value -> M (Syntax.Term v)

@@ -51,7 +51,7 @@ evaluate env term =
 
     Syntax.Let _ t _ s -> do
       t' <- lazy $ evaluate env t
-      env' <- Domain.extend env t'
+      env' <- Domain.extendValue env t'
       evaluate env' s
 
     Syntax.Pi n t s -> do
@@ -89,5 +89,5 @@ applySpine = foldM apply
 
 evaluateClosure :: Domain.Closure -> Lazy Domain.Value -> M Domain.Value
 evaluateClosure (Domain.Closure env body) argument = do
-  env' <- Domain.extend env argument
+  env' <- Domain.extendValue env argument
   evaluate env' body

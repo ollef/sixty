@@ -22,7 +22,7 @@ data State = State
 
 newtype Lazy a = Lazy { force :: M a }
 
-lazy :: M a -> M (Lazy a)
+lazy :: MonadIO m => M a -> m (Lazy a)
 lazy m = liftIO $ do
   ref <- newIORef $ panic "Can't happen, I promise!"
   writeIORef ref $ do

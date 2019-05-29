@@ -19,8 +19,8 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [x] Unification and meta variables
   - [x] Pruning
   - [x] The "same meta variable" rule
+  - [x] Solution inlining
   - [ ] Rigidity tracking
-  - [ ] Solution inlining
 - [x] Basic type checking
 - [x] Query architecture
 - [ ] Simple modules
