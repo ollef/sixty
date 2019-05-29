@@ -19,14 +19,15 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [x] Unification and meta variables
   - [x] Pruning
   - [x] The "same meta variable" rule
+  - [x] Elaboration of meta variable solutions to top-level
   - [x] Solution inlining
+  - [ ] Elaboration of meta variable solutions to local definitions
   - [ ] Rigidity tracking
 - [x] Basic type checking
 - [x] Query architecture
 - [ ] Simple modules
   - [x] Top-level definitions
   - [x] Name resolution
-  - [x] Elaboration of meta variable solutions to top-level
   - [ ] Error for circular values
   - [ ] Imports
 - [ ] Tests
