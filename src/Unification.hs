@@ -3,7 +3,7 @@
 {-# language ScopedTypeVariables #-}
 module Unification where
 
-import Protolude hiding (Seq, force, check, evaluate)
+import Protolude hiding (force, check, evaluate)
 
 import Context (Context)
 import qualified Context
@@ -16,8 +16,8 @@ import qualified Meta
 import Monad
 import qualified Readback
 import Readback (readback)
-import Sequence (Seq)
-import qualified Sequence as Seq
+import IntSequence (IntSeq)
+import qualified IntSequence as IntSeq
 import qualified Syntax
 import Tsil (Tsil)
 import qualified Tsil
@@ -164,7 +164,7 @@ unify context value1 value2 = do
 -- | Solve `meta = \vars. value`.
 solve :: Context v -> Meta.Index -> Tsil Var -> Domain.Value -> M ()
 solve context meta vars value = do
-  term <- checkSolution context meta (Seq.fromTsil vars) value
+  term <- checkSolution context meta (IntSeq.fromTsil vars) value
   Context.solveMeta context meta term
 
 -- | Occurs check, scope check, prune, and read back the solution at the same
@@ -172,7 +172,7 @@ solve context meta vars value = do
 checkSolution
   :: Context v
   -> Meta.Index
-  -> Seq Var
+  -> IntSeq Var
   -> Domain.Value
   -> M (Syntax.Term Void)
 checkSolution outerContext meta vars value = do
@@ -189,15 +189,15 @@ checkSolution outerContext meta vars value = do
 addAndCheckLambdas
   :: Context v
   -> Meta.Index
-  -> Seq Var
+  -> IntSeq Var
   -> Syntax.Term v'
   -> M (Syntax.Term v')
 addAndCheckLambdas outerContext meta vars term =
   case vars of
-    Seq.Empty ->
+    IntSeq.Empty ->
       pure term
 
-    vars' Seq.:> var -> do
+    vars' IntSeq.:> var -> do
       let
         name =
           Context.lookupVarName var outerContext

@@ -2,7 +2,7 @@
 {-# language OverloadedStrings #-}
 module Context where
 
-import Protolude hiding (Seq, force)
+import Protolude hiding (IntMap, force)
 
 import Data.Coerce
 import Data.HashMap.Lazy (HashMap)
@@ -19,19 +19,21 @@ import Name (Name(Name))
 import qualified Presyntax
 import qualified Readback
 import qualified Resolution
-import Sequence (Seq)
-import qualified Sequence as Seq
+import IntSequence (IntSeq)
+import qualified IntSequence as IntSeq
 import qualified Syntax
 import Var
+import IntMap (IntMap)
+import qualified IntMap
 
 data Context v = Context
   { resolutionKey :: !Resolution.KeyedName
-  , vars :: Seq Var
+  , vars :: IntSeq Var
   , nameVars :: HashMap Name Var
-  , varNames :: HashMap Var Name
-  , values :: HashMap Var (Lazy Domain.Value)
-  , types :: HashMap Var (Lazy Domain.Type)
-  , boundVars :: Seq Var
+  , varNames :: IntMap Var Name
+  , values :: IntMap Var (Lazy Domain.Value)
+  , types :: IntMap Var (Lazy Domain.Type)
+  , boundVars :: IntSeq Var
   , metas :: !(IORef (Meta.Vars (Syntax.Term Void)))
   }
 
@@ -89,10 +91,10 @@ extend context name type_ = do
   pure
     ( context
       { nameVars = HashMap.insert name var $ nameVars context
-      , varNames = HashMap.insert var name $ varNames context
-      , vars = vars context Seq.:> var
-      , types = HashMap.insert var type_ (types context)
-      , boundVars = boundVars context Seq.:> var
+      , varNames = IntMap.insert var name $ varNames context
+      , vars = vars context IntSeq.:> var
+      , types = IntMap.insert var type_ (types context)
+      , boundVars = boundVars context IntSeq.:> var
       }
     , var
     )
@@ -108,10 +110,10 @@ extendDef context name value type_ = do
   pure
     ( context
       { nameVars = HashMap.insert name var $ nameVars context
-      , varNames = HashMap.insert var name $ varNames context
-      , vars = vars context Seq.:> var
-      , values = HashMap.insert var value (values context)
-      , types = HashMap.insert var type_ (types context)
+      , varNames = IntMap.insert var name $ varNames context
+      , vars = vars context IntSeq.:> var
+      , values = IntMap.insert var value (values context)
+      , types = IntMap.insert var type_ (types context)
       }
     , var
     )
@@ -124,36 +126,36 @@ lookupNameIndex (Presyntax.Name name) context = do
 lookupVarIndex :: Var -> Context v -> Index v
 lookupVarIndex var context =
   Index
-    $ Seq.length (vars context)
-    - fromMaybe (panic "Context.lookupVarIndex") (Seq.elemIndex var (vars context))
+    $ IntSeq.length (vars context)
+    - fromMaybe (panic "Context.lookupVarIndex") (IntSeq.elemIndex var (vars context))
     - 1
 
 lookupVarName :: Var -> Context v -> Name
 lookupVarName var context =
   fromMaybe (panic "Context.lookupVarName")
-    $ HashMap.lookup var
+    $ IntMap.lookup var
     $ varNames context
 
 lookupIndexType :: Index v -> Context v -> Lazy Domain.Type
 lookupIndexType (Index i) context =
-  lookupVarType (Seq.index (vars context) (Seq.length (vars context) - i - 1)) context
+  lookupVarType (IntSeq.index (vars context) (IntSeq.length (vars context) - i - 1)) context
 
 lookupVarType :: Var -> Context v -> Lazy Domain.Type
 lookupVarType var context =
   fromMaybe (panic "Context.lookupVarType")
-    $ HashMap.lookup var
+    $ IntMap.lookup var
     $ types context
 
 lookupVarValue :: Var -> Context v -> Maybe (Lazy Domain.Type)
 lookupVarValue var context =
-  HashMap.lookup var (values context)
+  IntMap.lookup var (values context)
 
 newMeta :: Domain.Type -> Context v -> M Domain.Value
 newMeta type_ context = do
   closedType <- piBoundVars context type_
   liftIO $ do
     i <- atomicModifyIORef (metas context) $ Meta.insert closedType
-    pure $ Domain.Neutral (Domain.Meta i) (Lazy . pure . Domain.var <$> Seq.toTsil (boundVars context))
+    pure $ Domain.Neutral (Domain.Meta i) (Lazy . pure . Domain.var <$> IntSeq.toTsil (boundVars context))
 
 newMetaType :: Context v -> M Domain.Value
 newMetaType =
@@ -170,13 +172,13 @@ piBoundVars context type_ = do
 
   pis (boundVars context) type'
   where
-    pis :: Seq Var -> Syntax.Type v -> M (Syntax.Type v')
+    pis :: IntSeq Var -> Syntax.Type v -> M (Syntax.Type v')
     pis vars_ term =
       case vars_ of
-        Seq.Empty ->
+        IntSeq.Empty ->
           pure $ coerce term
 
-        vars' Seq.:> var -> do
+        vars' IntSeq.:> var -> do
           varType <- force $ lookupVarType var context
           varType' <-
             Readback.readback

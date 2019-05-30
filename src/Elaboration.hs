@@ -6,7 +6,6 @@ module Elaboration where
 
 import Protolude hiding (Seq, force, check, evaluate)
 
-import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef
 import Rock
 
@@ -17,6 +16,7 @@ import qualified Domain
 import qualified Elaboration.Metas as Metas
 import qualified Error
 import qualified Evaluation
+import qualified IntMap
 import qualified Meta
 import Monad
 import qualified Presyntax
@@ -48,8 +48,7 @@ inferTopLevel key term = do
   typeValue' <- force typeValue
   type_ <- readback context typeValue'
   metas <- checkMetaSolutions context
-  term'' <- Metas.inlineSolutions metas term'
-  type' <- Metas.inlineSolutions metas type_
+  (term'', type') <- Metas.inlineSolutions metas term' type_
   pure (term'', type', mempty)
 
 checkTopLevel
@@ -61,7 +60,7 @@ checkTopLevel key term type_ = do
   context <- Context.empty key
   term' <- check context term type_
   metas <- checkMetaSolutions context
-  term'' <- Metas.inlineSolutions metas term'
+  (term'', _) <- Metas.inlineSolutions metas term' $ Syntax.Global Builtin.fail
   pure (term'', mempty)
 
 check
@@ -285,7 +284,7 @@ checkMetaSolutions
   -> M Syntax.MetaSolutions
 checkMetaSolutions context = do
   metaVars <- liftIO $ readIORef $ Context.metas context
-  flip HashMap.traverseWithKey (Meta.vars metaVars) $ \index var ->
+  flip IntMap.traverseWithKey (Meta.vars metaVars) $ \index var ->
     case var of
       Meta.Unsolved type_ -> do
         report $

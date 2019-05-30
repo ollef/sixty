@@ -8,6 +8,7 @@ import Data.GADT.Compare.TH
 import Data.HashMap.Lazy (HashMap)
 import Rock.HashTag
 
+import qualified Meta
 import Name (Name)
 import qualified Name
 import qualified Presyntax

@@ -7,8 +7,8 @@ import qualified Domain
 import qualified Evaluation
 import Index
 import Monad
-import Sequence (Seq)
-import qualified Sequence as Seq
+import IntSequence (IntSeq)
+import qualified IntSequence as IntSeq
 import qualified Syntax
 import qualified Tsil
 import Var
@@ -17,7 +17,7 @@ import Var
 -- Readback environments
 
 newtype Environment v = Environment
-  { vars :: Seq Var
+  { vars :: IntSeq Var
   } deriving Show
 
 empty :: Environment Void
@@ -41,21 +41,21 @@ extendVar
   -> Environment (Succ v)
 extendVar env var =
   env
-    { vars = vars env Seq.:> var
+    { vars = vars env IntSeq.:> var
     }
 
 lookupVarIndex :: Var -> Environment v -> Maybe (Index v)
 lookupVarIndex var context =
-  case Seq.elemIndex var (vars context) of
+  case IntSeq.elemIndex var (vars context) of
     Nothing ->
       Nothing
 
     Just i ->
-      Just (Index (Seq.length (vars context) - i - 1))
+      Just (Index (IntSeq.length (vars context) - i - 1))
 
 lookupIndexVar :: Index v -> Environment v -> Var
 lookupIndexVar (Index i) context =
-  Seq.index (vars context) (Seq.length (vars context) - i - 1)
+  IntSeq.index (vars context) (IntSeq.length (vars context) - i - 1)
 
 fromEvaluationEnvironment :: Domain.Environment v -> Environment v
 fromEvaluationEnvironment env =

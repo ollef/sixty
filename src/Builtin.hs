@@ -4,6 +4,7 @@ module Builtin where
 import Protolude
 
 import qualified Domain
+import qualified Name
 
 typeName :: IsString s => s
 typeName = "Builtin.Type"
@@ -11,5 +12,5 @@ typeName = "Builtin.Type"
 type_ :: Domain.Value
 type_ = Domain.global typeName
 
-fail :: IsString s => s
+fail :: Name.Qualified
 fail = "Builtin.fail"

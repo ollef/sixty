@@ -2,14 +2,13 @@
 module Elaboration.Metas where
 
 import Prelude (Show (showsPrec))
-import Protolude hiding (Type, evaluate)
+import Protolude hiding (Type, IntMap, evaluate)
 
 import Data.Graph
-import qualified Data.HashMap.Lazy as HashMap
-import Data.HashMap.Lazy (HashMap)
-import qualified Data.HashSet as HashSet
 
 import Extra
+import IntMap (IntMap)
+import qualified IntMap
 import qualified Meta
 import Monad
 import Name (Name)
@@ -19,12 +18,14 @@ import qualified Syntax
 import Tsil (Tsil)
 import qualified Tsil
 import Var (Var)
+import qualified Var
 
 inlineSolutions
   :: Syntax.MetaSolutions
   -> Syntax.Term Void
-  -> M (Syntax.Term Void)
-inlineSolutions solutions term = do
+  -> Syntax.Type Void
+  -> M (Syntax.Term Void, Syntax.Type Void)
+inlineSolutions solutions term type_ = do
   solutionValues <- forM solutions $ \(metaTerm, metaType) -> do
     metaValue <- evaluate Readback.empty metaTerm
     metaType' <- evaluate Readback.empty metaType
@@ -35,37 +36,40 @@ inlineSolutions solutions term = do
       acyclic <$>
       topoSortWith
         fst
-        (\(_, (metaValue, metaType)) -> HashSet.fromMap (void $ unoccurrences $ occurrences metaValue <> occurrences metaType))
-        (HashMap.toList solutionValues)
+        (\(_, (metaValue, metaType)) -> fst <$> IntMap.toList (void $ unoccurrences $ occurrences metaValue <> occurrences metaType))
+        (IntMap.toList solutionValues)
 
   value <- evaluate Readback.empty term
-  (inlinedResult, metaVars) <-
-    foldrM
-      (\(index, meta) (value', metaVars) -> do
-        (result, maybeSolution) <- inlineIndex index meta value'
-        let
-          metaVars' =
-            case maybeSolution of
-              Nothing ->
-                metaVars
-
-              Just solution ->
-                HashMap.insert index solution metaVars
-
-        pure (result, metaVars')
-      )
-      (value, mempty)
-      sortedSolutions
+  typeValue <- evaluate Readback.empty type_
 
   let
-    lookupMetaIndex index =
-      HashMap.lookupDefault
+    go (index, meta) (value', metaVars) = do
+      (result, maybeSolution) <- inlineIndex index meta value'
+      let
+        metaVars' =
+          case maybeSolution of
+            Nothing ->
+              metaVars
+
+            Just solution ->
+              IntMap.insert index solution metaVars
+
+      pure (result, metaVars')
+
+  (inlinedValue, metaVars) <- foldrM go (value, mempty) sortedSolutions
+  (inlinedType, typeMetaVars) <- foldrM go (typeValue, mempty) sortedSolutions
+
+  let
+    lookupMetaIndex metas index =
+      IntMap.lookupDefault
         (panic "Elaboration.Metas.inlineSolutions: unknown index")
         index
-        metaVars
+        metas
 
-  pure $
-    readback Readback.empty lookupMetaIndex inlinedResult
+  pure
+    ( readback Readback.empty (lookupMetaIndex metaVars) inlinedValue
+    , readback Readback.empty (lookupMetaIndex typeMetaVars) inlinedType
+    )
 
   where
     acyclic (AcyclicSCC x) = x
@@ -82,12 +86,12 @@ data InnerValue
   | App !Value !Value
   deriving Show
 
-newtype Occurrences = Occurrences { unoccurrences :: HashMap Meta.Index (Tsil (Maybe Var)) }
+newtype Occurrences = Occurrences { unoccurrences :: IntMap Meta.Index (Tsil (Maybe Var)) }
 
 instance Semigroup Occurrences where
   Occurrences occs1 <> Occurrences occs2 =
     Occurrences $
-      HashMap.unionWith
+      IntMap.unionWith
         (Tsil.zipWith (\arg1 arg2 -> if arg1 == arg2 then arg1 else Nothing))
         occs1
         occs2
@@ -112,7 +116,7 @@ instance Show Value where
 occurrences :: Value -> Occurrences
 occurrences (Value _ occs) = occs
 
-occurrencesMap :: Value -> HashMap Meta.Index (Tsil (Maybe Var))
+occurrencesMap :: Value -> IntMap Meta.Index (Tsil (Maybe Var))
 occurrencesMap = unoccurrences . occurrences
 
 type Type = Value
@@ -134,7 +138,7 @@ makeValue innerValue =
               _ ->
                 Nothing
         in
-        Occurrences (HashMap.singleton index (varView <$> arguments)) <>
+        Occurrences (IntMap.singleton index (varView <$> arguments)) <>
         foldMap occurrences arguments
 
       Global _ ->
@@ -257,7 +261,7 @@ inlineArguments
   :: Value
   -> Value
   -> [Maybe Var]
-  -> HashMap Var Value
+  -> IntMap Var Value
   -> (Value, Value)
 inlineArguments value@(Value innerValue _) type_@(Value innerType _) args subst =
   case args of
@@ -269,8 +273,8 @@ inlineArguments value@(Value innerValue _) type_@(Value innerType _) args subst 
         (Lam _ var _ body, Pi _ var' _ domain) ->
           let
             subst' =
-              HashMap.insert var (makeValue $ Var argVar) $
-              HashMap.insert var' (makeValue $ Var argVar) subst
+              IntMap.insert var (makeValue $ Var argVar) $
+              IntMap.insert var' (makeValue $ Var argVar) subst
           in
           inlineArguments body domain args' subst'
 
@@ -297,16 +301,16 @@ inlineArguments value@(Value innerValue _) type_@(Value innerType _) args subst 
         _ ->
           (substitute subst value, substitute subst type_)
 
-substitute :: HashMap Var Value -> Value -> Value
+substitute :: IntMap Var Value -> Value -> Value
 substitute subst
-  | HashMap.null subst =
+  | IntMap.null subst =
     identity
   | otherwise = go
   where
     go value@(Value innerValue _) =
       case innerValue of
         Var var ->
-          HashMap.lookupDefault value var subst
+          IntMap.lookupDefault value var subst
 
         Meta index args ->
           makeValue $ Meta index $ go <$> args
@@ -341,7 +345,7 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
 
     Meta index' args
       | index == index' ->
-        case HashMap.lookup index $ occurrencesMap value of
+        case IntMap.lookup index $ occurrencesMap value of
           Just varArgs ->
             let
               varArgsList =
@@ -365,7 +369,7 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
             panic "Elaboration.Metas.inlineIndex Nothing"
 
       | otherwise ->
-        case Tsil.filter ((index `HashMap.member`) . occurrencesMap) args of
+        case Tsil.filter ((index `IntMap.member`) . occurrencesMap) args of
           Tsil.Nil ->
             pure
               ( foldl' (\v1 v2 -> makeValue $ app v1 v2) value args
@@ -404,7 +408,7 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
       inline2 app function argument
   where
     letSolution =
-      case HashMap.lookup index $ occurrencesMap value of
+      case IntMap.lookup index $ occurrencesMap value of
         Nothing ->
           pure (value, Nothing)
 
@@ -423,8 +427,8 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
 
     inline2 con value1 value2 =
       case
-        ( index `HashMap.member` occurrencesMap value1
-        , index `HashMap.member` occurrencesMap value2
+        ( index `IntMap.member` occurrencesMap value1
+        , index `IntMap.member` occurrencesMap value2
         ) of
         (False, False) ->
           pure (value, Nothing)
@@ -448,9 +452,9 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
 
     inline3 con value1 value2 value3 =
       case
-        ( index `HashMap.member` occurrencesMap value1
-        , index `HashMap.member` occurrencesMap value2
-        , index `HashMap.member` occurrencesMap value3
+        ( index `IntMap.member` occurrencesMap value1
+        , index `IntMap.member` occurrencesMap value2
+        , index `IntMap.member` occurrencesMap value3
         ) of
         (False, False, False) ->
           pure (value, Nothing)

@@ -21,10 +21,10 @@ unique = go mempty . toList
             go (HashSet.insert a seen) as'
 
 topoSortWith
-  :: (Foldable t, Foldable t', Ord name)
+  :: (Foldable t, Ord name)
   => (a -> name)
-  -> (a -> t' name)
+  -> (a -> [name])
   -> t a
   -> [SCC a]
 topoSortWith name deps as
-  = stronglyConnComp [(a, name a, toList $ deps a) | a <- toList as]
+  = stronglyConnComp [(a, name a, deps a) | a <- toList as]

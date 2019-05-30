@@ -3,12 +3,12 @@
 {-# language RoleAnnotations #-}
 module Syntax where
 
-import Protolude hiding (Type)
+import Protolude hiding (Type, IntMap)
 
 import Data.Coerce
-import Data.HashMap.Lazy (HashMap)
 
 import Index
+import IntMap (IntMap)
 import qualified Meta
 import Name (Name)
 import qualified Name
@@ -42,4 +42,4 @@ fromVoid :: Term Void -> Term v
 fromVoid = coerce
 
 type MetaSolutions =
-  HashMap Meta.Index (Syntax.Term Void, Syntax.Type Void)
+  IntMap Meta.Index (Syntax.Term Void, Syntax.Type Void)

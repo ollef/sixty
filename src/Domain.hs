@@ -1,22 +1,22 @@
 {-# language GADTs #-}
 module Domain where
 
-import Protolude hiding (Type, Seq)
-
-import Data.HashMap.Lazy (HashMap)
-import qualified Data.HashMap.Lazy as HashMap
+import Protolude hiding (Type, Seq, IntMap)
 
 import Index
 import qualified Meta
 import Monad
+import IntMap (IntMap)
+import qualified IntMap
 import Name (Name)
 import qualified Name
-import Sequence (Seq)
-import qualified Sequence as Seq
+import IntSequence (IntSeq)
+import qualified IntSequence as IntSeq
 import qualified Syntax
 import Tsil (Tsil)
 import qualified Tsil
 import Var (Var)
+import qualified Var
 
 data Value
   = Neutral !Head Spine
@@ -54,8 +54,8 @@ singleVarView _ = Nothing
 -- Evaluation environments
 
 data Environment v = Environment
-  { vars :: Seq Var
-  , values :: HashMap Var (Lazy Domain.Value)
+  { vars :: IntSeq Var
+  , values :: IntMap Var (Lazy Domain.Value)
   }
 
 empty :: Environment Void
@@ -71,7 +71,7 @@ extend
 extend env = do
   v <- freshVar
   pure env
-    { vars = vars env Seq.:> v
+    { vars = vars env IntSeq.:> v
     }
 
 extendValue
@@ -81,15 +81,15 @@ extendValue
 extendValue env value = do
   v <- freshVar
   pure env
-    { vars = vars env Seq.:> v
-    , values = HashMap.insert v value (values env)
+    { vars = vars env IntSeq.:> v
+    , values = IntMap.insert v value (values env)
     }
 
 lookupValue :: Index v -> Environment v -> Lazy Domain.Value
 lookupValue (Index i) env =
   let
-    v = Seq.index (vars env) (Seq.length (vars env) - i - 1)
+    v = IntSeq.index (vars env) (IntSeq.length (vars env) - i - 1)
   in
   fromMaybe
     (Lazy $ pure $ var v)
-    (HashMap.lookup v $ values env)
+    (IntMap.lookup v $ values env)
