@@ -15,7 +15,7 @@ import qualified Name
 
 data Term v
   = Var !(Index v)
-  | Global !Name.Elaborated
+  | Global !Name.Qualified
   | Meta !Meta.Index
   | Let !Name !(Term v) !(Type v) !(Scope Term v)
   | Pi !Name !(Type v) !(Scope Type v)

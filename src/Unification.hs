@@ -230,7 +230,7 @@ checkInnerSolution outerContext occurs env value = do
       spine' <- mapM (force >=> Context.forceHead outerContext) spine
       case traverse Domain.singleVarView spine' of
         Just vars
-          | allowedVars <- map (\v -> isJust (Readback.lookupIndex v env)) vars
+          | allowedVars <- map (\v -> isJust (Readback.lookupVarIndex v env)) vars
           , any not allowedVars
           -> do
             pruneMeta outerContext i allowedVars
@@ -299,7 +299,7 @@ checkInnerHead
 checkInnerHead occurs env hd =
   case hd of
     Domain.Var v ->
-      case Readback.lookupIndex v env of
+      case Readback.lookupVarIndex v env of
         Nothing ->
           throwError Error.TypeMismatch
 

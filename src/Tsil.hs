@@ -73,3 +73,9 @@ zipWithM f as bs = sequenceA (Tsil.zipWith f as bs)
 
 zipWithM_ :: Monad m => (a -> b -> m c) -> Tsil a -> Tsil b -> m ()
 zipWithM_ f as bs = sequenceA_ (Tsil.zipWith f as bs)
+
+unzip :: Tsil (a, b) -> (Tsil a, Tsil b)
+unzip Nil = (Nil, Nil)
+unzip (Snoc as (a, b)) = (Snoc as' a, Snoc bs' b)
+  where
+    (as', bs') = Tsil.unzip as

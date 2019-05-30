@@ -6,6 +6,7 @@
 module Sequence where
 
 import Protolude hiding (Seq)
+import Prelude (Show(showsPrec), showParen, showString, shows)
 
 import Data.Coerce
 import Data.FingerTree (FingerTree)
@@ -39,6 +40,10 @@ newtype Seq a = Seq (FingerTree (IndexMap a) (IndexMapped a))
 
 instance Foldable Seq where
   foldMap f (Seq ft) = foldMap (coerce f) ft
+
+instance Show a => Show (Seq a) where
+    showsPrec p xs = showParen (p > 10) $
+        showString "fromList " . shows (toList xs)
 
 pattern Empty :: (Eq a, Hashable a) => Seq a
 pattern Empty <- Seq (FingerTree.null -> True)

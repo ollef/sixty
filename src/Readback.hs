@@ -18,7 +18,7 @@ import Var
 
 newtype Environment v = Environment
   { vars :: Seq Var
-  }
+  } deriving Show
 
 empty :: Environment Void
 empty = Environment
@@ -31,20 +31,31 @@ extend
 extend env = do
   var <- freshVar
   pure
-    ( env
-      { vars = vars env Seq.:> var
-      }
+    ( extendVar env var
     , var
     )
 
-lookupIndex :: Var -> Environment v -> Maybe (Index v)
-lookupIndex var context =
+extendVar
+  :: Environment v
+  -> Var
+  -> Environment (Succ v)
+extendVar env var =
+  env
+    { vars = vars env Seq.:> var
+    }
+
+lookupVarIndex :: Var -> Environment v -> Maybe (Index v)
+lookupVarIndex var context =
   case Seq.elemIndex var (vars context) of
     Nothing ->
       Nothing
 
     Just i ->
       Just (Index (Seq.length (vars context) - i - 1))
+
+lookupIndexVar :: Index v -> Environment v -> Var
+lookupIndexVar (Index i) context =
+  Seq.index (vars context) (Seq.length (vars context) - i - 1)
 
 fromEvaluationEnvironment :: Domain.Environment v -> Environment v
 fromEvaluationEnvironment env =
@@ -94,7 +105,7 @@ readbackHead :: Environment v -> Domain.Head -> M (Syntax.Term v)
 readbackHead env hd =
   case hd of
     Domain.Var v ->
-      case lookupIndex v env of
+      case lookupVarIndex v env of
         Just i ->
           pure $ Syntax.Var i
 

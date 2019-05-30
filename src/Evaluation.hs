@@ -4,11 +4,9 @@ module Evaluation where
 import Protolude hiding (Seq, force, evaluate)
 
 import Rock
-import qualified Data.HashMap.Lazy as HashMap
 
 import qualified Domain
 import Monad
-import qualified Name
 import qualified Query
 import qualified Syntax
 import qualified Tsil
@@ -22,32 +20,14 @@ evaluate env term =
     Syntax.Meta i ->
       pure $ Domain.meta i
 
-    Syntax.Global elaboratedName@(Name.Elaborated qualifiedName) -> do
-      maybeDefinition <- fetch $ Query.ElaboratedDefinition qualifiedName
+    Syntax.Global name -> do
+      maybeDefinition <- fetch $ Query.ElaboratedDefinition name
       case maybeDefinition of
         Just (term', _, _) ->
           evaluate Domain.empty term'
 
         Nothing ->
-          pure $ Domain.global elaboratedName
-
-    Syntax.Global (Name.Meta qualifiedName index) -> do
-      metas <- do
-        maybeDefinition <- fetch $ Query.ElaboratedDefinition qualifiedName
-        case maybeDefinition of
-          Nothing -> do
-            (_, metas) <- fetch $ Query.ElaboratedType qualifiedName
-            pure metas
-
-          Just (_, _, metas) ->
-            pure metas
-
-      case HashMap.lookup index metas of
-        Nothing ->
-          panic "Evaluation: Missing meta"
-
-        Just (term', _) ->
-          evaluate Domain.empty term'
+          pure $ Domain.global name
 
     Syntax.Let _ t _ s -> do
       t' <- lazy $ evaluate env t
