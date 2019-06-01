@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE PackageImports #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 module Main where
@@ -13,11 +14,11 @@ import Data.Text.Prettyprint.Doc.Render.Text
 import Rock
 
 import Error (Error)
-import qualified IntMap
 import qualified Meta
 import qualified Name
 import qualified Presyntax
 import qualified Pretty
+import qualified "this" Data.IntMap as IntMap
 import Query (Query)
 import qualified Query
 import qualified Rules

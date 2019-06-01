@@ -1,5 +1,6 @@
 {-# language DuplicateRecordFields #-}
 {-# language OverloadedStrings #-}
+{-# language PackageImports #-}
 module Context where
 
 import Protolude hiding (IntMap, force)
@@ -9,22 +10,22 @@ import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef
 
+import "this" Data.IntMap (IntMap)
 import qualified Builtin
 import qualified Domain
 import qualified Evaluation
 import Index
+import IntSequence (IntSeq)
+import qualified IntSequence as IntSeq
 import qualified Meta
 import Monad
 import Name (Name(Name))
 import qualified Presyntax
+import qualified "this" Data.IntMap as IntMap
 import qualified Readback
 import qualified Resolution
-import IntSequence (IntSeq)
-import qualified IntSequence as IntSeq
 import qualified Syntax
 import Var
-import IntMap (IntMap)
-import qualified IntMap
 
 data Context v = Context
   { resolutionKey :: !Resolution.KeyedName

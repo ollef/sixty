@@ -1,17 +1,18 @@
 {-# language GADTs #-}
+{-# language PackageImports #-}
 module Domain where
 
 import Protolude hiding (Type, Seq, IntMap)
 
+import "this" Data.IntMap (IntMap)
 import Index
-import qualified Meta
-import Monad
-import IntMap (IntMap)
-import qualified IntMap
-import Name (Name)
-import qualified Name
 import IntSequence (IntSeq)
 import qualified IntSequence as IntSeq
+import qualified Meta
+import Monad
+import Name (Name)
+import qualified Name
+import qualified "this" Data.IntMap as IntMap
 import qualified Syntax
 import Tsil (Tsil)
 import qualified Tsil

@@ -1,5 +1,6 @@
 {-# language DeriveAnyClass #-}
 {-# language DeriveGeneric #-}
+{-# language PackageImports #-}
 {-# language RoleAnnotations #-}
 module Syntax where
 
@@ -7,8 +8,8 @@ import Protolude hiding (Type, IntMap)
 
 import Data.Coerce
 
+import "this" Data.IntMap (IntMap)
 import Index
-import IntMap (IntMap)
 import qualified Meta
 import Name (Name)
 import qualified Name

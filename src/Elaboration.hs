@@ -1,6 +1,7 @@
 {-# language DeriveFunctor #-}
 {-# language DuplicateRecordFields #-}
 {-# language GADTs #-}
+{-# language PackageImports #-}
 {-# language ScopedTypeVariables #-}
 module Elaboration where
 
@@ -16,7 +17,7 @@ import qualified Domain
 import qualified Elaboration.Metas as Metas
 import qualified Error
 import qualified Evaluation
-import qualified IntMap
+import qualified "this" Data.IntMap as IntMap
 import qualified Meta
 import Monad
 import qualified Presyntax

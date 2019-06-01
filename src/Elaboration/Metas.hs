@@ -1,4 +1,5 @@
 {-# language OverloadedStrings #-}
+{-# language PackageImports #-}
 module Elaboration.Metas where
 
 import Prelude (Show (showsPrec))
@@ -6,13 +7,13 @@ import Protolude hiding (Type, IntMap, evaluate)
 
 import Data.Graph
 
+import "this" Data.IntMap (IntMap)
 import Extra
-import IntMap (IntMap)
-import qualified IntMap
 import qualified Meta
 import Monad
 import Name (Name)
 import qualified Name
+import qualified "this" Data.IntMap as IntMap
 import qualified Readback
 import qualified Syntax
 import Tsil (Tsil)

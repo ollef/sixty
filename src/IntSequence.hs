@@ -2,6 +2,7 @@
 {-# language GeneralizedNewtypeDeriving #-}
 {-# language MultiParamTypeClasses #-}
 {-# language OverloadedStrings #-}
+{-# language PackageImports #-}
 {-# language PatternSynonyms #-}
 {-# language StandaloneDeriving #-}
 {-# language ViewPatterns #-}
@@ -13,10 +14,10 @@ import Protolude hiding (IntMap)
 import Data.Coerce
 import Data.FingerTree (FingerTree)
 import qualified Data.FingerTree as FingerTree
-import qualified Data.IntMap
+import qualified "containers" Data.IntMap
 
-import IntMap (IntMap)
-import qualified IntMap
+import "this" Data.IntMap (IntMap)
+import qualified "this" Data.IntMap as IntMap
 import Tsil (Tsil)
 import qualified Tsil
 

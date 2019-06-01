@@ -1,11 +1,12 @@
 {-# language GeneralizedNewtypeDeriving #-}
 {-# language OverloadedStrings #-}
+{-# language PackageImports #-}
 module Meta where
 
 import Protolude hiding (IntMap)
 
-import IntMap (IntMap)
-import qualified IntMap
+import "this" Data.IntMap (IntMap)
+import qualified "this" Data.IntMap as IntMap
 
 data Var term
   = Unsolved term
