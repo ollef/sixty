@@ -19,8 +19,8 @@ import Readback (readback)
 import IntSequence (IntSeq)
 import qualified IntSequence as IntSeq
 import qualified Syntax
-import Tsil (Tsil)
-import qualified Tsil
+import Data.Tsil (Tsil)
+import qualified Data.Tsil as Tsil
 import Var
 
 unify :: Context v -> Domain.Value -> Domain.Value -> M ()

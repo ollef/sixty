@@ -10,7 +10,7 @@ import Monad
 import IntSequence (IntSeq)
 import qualified IntSequence as IntSeq
 import qualified Syntax
-import qualified Tsil
+import qualified Data.Tsil as Tsil
 import Var
 
 -------------------------------------------------------------------------------

@@ -9,7 +9,7 @@ import qualified Domain
 import Monad
 import qualified Query
 import qualified Syntax
-import qualified Tsil
+import qualified Data.Tsil as Tsil
 
 evaluate :: Domain.Environment v -> Syntax.Term v -> M Domain.Value
 evaluate env term =

@@ -9,8 +9,8 @@ import Rock
 
 import Error (Error)
 import Query (Query)
-import qualified Tsil
-import Tsil (Tsil)
+import qualified Data.Tsil as Tsil
+import Data.Tsil (Tsil)
 import Var
 
 type M = ExceptT Error (ReaderT State (Task Query))

@@ -1,6 +1,6 @@
 {-# language DeriveFunctor #-}
 {-# language DeriveTraversable #-}
-module Tsil where
+module Data.Tsil where
 
 import Protolude
 
@@ -46,13 +46,13 @@ lookup :: Eq a => a -> Tsil (a, b) -> Maybe b
 lookup _ Nil = Nothing
 lookup a (Snoc as (a', b))
   | a == a' = Just b
-  | otherwise = Tsil.lookup a as
+  | otherwise = Data.Tsil.lookup a as
 
 filter :: (a -> Bool) -> Tsil a -> Tsil a
 filter _ Nil = Nil
 filter f (Snoc xs x)
-  | f x = Snoc (Tsil.filter f xs) x
-  | otherwise = Tsil.filter f xs
+  | f x = Snoc (Data.Tsil.filter f xs) x
+  | otherwise = Data.Tsil.filter f xs
 
 span :: (a -> Bool) -> Tsil a -> (Tsil a, Tsil a)
 span _ Nil = (Nil, Nil)
@@ -61,21 +61,21 @@ span p as@(Snoc as' a)
   | otherwise = (as, Nil)
 
 zip :: Tsil a -> Tsil b -> Tsil (a, b)
-zip = Tsil.zipWith (,)
+zip = Data.Tsil.zipWith (,)
 
 zipWith :: (a -> b -> c) -> Tsil a -> Tsil b -> Tsil c
 zipWith _ Nil _ = Nil
 zipWith _ _ Nil = Nil
-zipWith f (Snoc as a) (Snoc bs b) = Snoc (Tsil.zipWith f as bs) (f a b)
+zipWith f (Snoc as a) (Snoc bs b) = Snoc (Data.Tsil.zipWith f as bs) (f a b)
 
 zipWithM :: Monad m => (a -> b -> m c) -> Tsil a -> Tsil b -> m (Tsil c)
-zipWithM f as bs = sequenceA (Tsil.zipWith f as bs)
+zipWithM f as bs = sequenceA (Data.Tsil.zipWith f as bs)
 
 zipWithM_ :: Monad m => (a -> b -> m c) -> Tsil a -> Tsil b -> m ()
-zipWithM_ f as bs = sequenceA_ (Tsil.zipWith f as bs)
+zipWithM_ f as bs = sequenceA_ (Data.Tsil.zipWith f as bs)
 
 unzip :: Tsil (a, b) -> (Tsil a, Tsil b)
 unzip Nil = (Nil, Nil)
 unzip (Snoc as (a, b)) = (Snoc as' a, Snoc bs' b)
   where
-    (as', bs') = Tsil.unzip as
+    (as', bs') = Data.Tsil.unzip as

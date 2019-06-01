@@ -18,8 +18,8 @@ import qualified "containers" Data.IntMap
 
 import "this" Data.IntMap (IntMap)
 import qualified "this" Data.IntMap as IntMap
-import Tsil (Tsil)
-import qualified Tsil
+import Data.Tsil (Tsil)
+import qualified Data.Tsil as Tsil
 
 data IndexMap a = IndexMap !Int (IntMap a Int)
 
