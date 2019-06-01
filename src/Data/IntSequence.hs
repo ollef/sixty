@@ -6,7 +6,7 @@
 {-# language PatternSynonyms #-}
 {-# language StandaloneDeriving #-}
 {-# language ViewPatterns #-}
-module IntSequence where
+module Data.IntSequence where
 
 import Prelude (Show(showsPrec), showParen, showString, shows)
 import Protolude hiding (IntMap)

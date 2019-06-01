@@ -16,8 +16,8 @@ import qualified Meta
 import Monad
 import qualified Readback
 import Readback (readback)
-import IntSequence (IntSeq)
-import qualified IntSequence as IntSeq
+import Data.IntSequence (IntSeq)
+import qualified Data.IntSequence as IntSeq
 import qualified Syntax
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil

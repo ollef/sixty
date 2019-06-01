@@ -7,8 +7,8 @@ import qualified Domain
 import qualified Evaluation
 import Index
 import Monad
-import IntSequence (IntSeq)
-import qualified IntSequence as IntSeq
+import Data.IntSequence (IntSeq)
+import qualified Data.IntSequence as IntSeq
 import qualified Syntax
 import qualified Data.Tsil as Tsil
 import Var

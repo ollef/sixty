@@ -6,8 +6,8 @@ import Protolude hiding (Type, Seq, IntMap)
 
 import "this" Data.IntMap (IntMap)
 import Index
-import IntSequence (IntSeq)
-import qualified IntSequence as IntSeq
+import Data.IntSequence (IntSeq)
+import qualified Data.IntSequence as IntSeq
 import qualified Meta
 import Monad
 import Name (Name)
