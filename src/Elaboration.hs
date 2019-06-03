@@ -15,15 +15,16 @@ import Context (Context)
 import qualified Context
 import qualified Domain
 import qualified Elaboration.Metas as Metas
+import Error (Error)
 import qualified Error
 import qualified Evaluation
-import qualified "this" Data.IntMap as IntMap
 import qualified Meta
 import Monad
 import qualified Presyntax
+import qualified "this" Data.IntMap as IntMap
 import qualified Query
 import qualified Readback
-import qualified Resolution
+import qualified Scope
 import qualified Syntax
 import qualified Unification
 
@@ -40,29 +41,31 @@ data Expected f where
   Check :: Domain.Type -> Expected Checked
 
 inferTopLevel
-  :: Resolution.KeyedName
+  :: Scope.KeyedName
   -> Presyntax.Term
-  -> M (Syntax.Term Void, Syntax.Type Void, Syntax.MetaSolutions)
+  -> M ((Syntax.Term Void, Syntax.Type Void), [Error])
 inferTopLevel key term = do
   context <- Context.empty key
   Inferred term' typeValue <- Elaboration.infer context term
   typeValue' <- force typeValue
   type_ <- readback context typeValue'
   metas <- checkMetaSolutions context
-  (term'', type') <- Metas.inlineSolutions metas term' type_
-  pure (term'', type', mempty)
+  result <- Metas.inlineSolutions metas term' type_
+  errors <- liftIO $ readIORef (Context.errors context)
+  pure (result, toList errors)
 
 checkTopLevel
-  :: Resolution.KeyedName
+  :: Scope.KeyedName
   -> Presyntax.Term
   -> Domain.Type
-  -> M (Syntax.Term Void, Syntax.MetaSolutions)
+  -> M (Syntax.Term Void, [Error])
 checkTopLevel key term type_ = do
   context <- Context.empty key
   term' <- check context term type_
   metas <- checkMetaSolutions context
   (term'', _) <- Metas.inlineSolutions metas term' $ Syntax.Global Builtin.fail
-  pure (term'', mempty)
+  errors <- liftIO $ readIORef (Context.errors context)
+  pure (term'', toList errors)
 
 check
   :: Context v
@@ -102,7 +105,16 @@ elaborate
   -> Presyntax.Term
   -> Expected e
   -> M (e (Syntax.Term v))
-elaborate context term expected = -- trace ("elaborate " <> show term :: Text) $
+elaborate context (Presyntax.Term span term) =
+  elaborateUnspanned (Context.spanned span context) term
+
+elaborateUnspanned
+  :: Functor e
+  => Context v
+  -> Presyntax.UnspannedTerm
+  -> Expected e
+  -> M (e (Syntax.Term v))
+elaborateUnspanned context term expected = -- trace ("elaborate " <> show term :: Text) $
   case term of
     Presyntax.Var name ->
       case Context.lookupNameIndex name context of
@@ -110,11 +122,11 @@ elaborate context term expected = -- trace ("elaborate " <> show term :: Text) $
           maybeQualifiedName <-
             fetch $
               Query.ResolvedName
-                (Context.resolutionKey context)
+                (Context.scopeKey context)
                 name
           case maybeQualifiedName of
             Nothing -> do
-              report $ Error.NotInScope name
+              Context.report context $ Error.NotInScope name
               resultType <- Context.newMetaType context
               resultType' <- readback context resultType
               elaborated
@@ -124,7 +136,7 @@ elaborate context term expected = -- trace ("elaborate " <> show term :: Text) $
                 (Lazy $ pure resultType)
 
             Just qualifiedName -> do
-              (type_, _) <- fetch $ Query.ElaboratedType qualifiedName
+              type_ <- fetch $ Query.ElaboratedType qualifiedName
               type' <- lazy $ evaluate context $ Syntax.fromVoid type_
               elaborated
                 context
@@ -288,10 +300,8 @@ checkMetaSolutions context = do
   flip IntMap.traverseWithKey (Meta.vars metaVars) $ \index var ->
     case var of
       Meta.Unsolved type_ -> do
-        report $
-          Error.UnsolvedMetaVariable
-            (Resolution.unkeyed $ Context.resolutionKey context)
-            index
+        Context.report context $
+          Error.UnsolvedMetaVariable index
         pure (Syntax.App (Syntax.Global Builtin.fail) type_, type_)
 
       Meta.Solved solution type_ ->

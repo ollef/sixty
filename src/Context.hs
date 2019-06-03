@@ -12,23 +12,29 @@ import Data.IORef
 
 import "this" Data.IntMap (IntMap)
 import qualified Builtin
-import qualified Domain
-import qualified Evaluation
-import Index
 import Data.IntSequence (IntSeq)
 import qualified Data.IntSequence as IntSeq
+import Data.Tsil (Tsil)
+import qualified Data.Tsil as Tsil
+import qualified Domain
+import Error (Error)
+import qualified Error
+import qualified Evaluation
+import Index
 import qualified Meta
 import Monad
 import Name (Name(Name))
 import qualified Presyntax
 import qualified "this" Data.IntMap as IntMap
 import qualified Readback
-import qualified Resolution
+import qualified Scope
+import qualified Span
 import qualified Syntax
 import Var
 
 data Context v = Context
-  { resolutionKey :: !Resolution.KeyedName
+  { scopeKey :: !Scope.KeyedName
+  , span :: !Span.Relative
   , vars :: IntSeq Var
   , nameVars :: HashMap Name Var
   , varNames :: IntMap Var Name
@@ -36,6 +42,7 @@ data Context v = Context
   , types :: IntMap Var (Lazy Domain.Type)
   , boundVars :: IntSeq Var
   , metas :: !(IORef (Meta.Vars (Syntax.Term Void)))
+  , errors :: !(IORef (Tsil Error))
   }
 
 toEvaluationEnvironment
@@ -55,11 +62,13 @@ toReadbackEnvironment context =
     { vars = vars context
     }
 
-empty :: Resolution.KeyedName -> M (Context Void)
+empty :: Scope.KeyedName -> M (Context Void)
 empty key = do
   ms <- liftIO $ newIORef Meta.empty
+  es <- liftIO $ newIORef mempty
   pure Context
-    { resolutionKey = key
+    { scopeKey = key
+    , span = Span.Relative 0 0
     , nameVars = mempty
     , varNames = mempty
     , vars = mempty
@@ -67,12 +76,14 @@ empty key = do
     , types = mempty
     , boundVars = mempty
     , metas = ms
+    , errors = es
     }
 
 emptyFrom :: Context v -> Context Void
 emptyFrom context =
   Context
-    { resolutionKey = resolutionKey context
+    { scopeKey = scopeKey context
+    , span = span context
     , nameVars = mempty
     , varNames = mempty
     , vars = mempty
@@ -80,6 +91,7 @@ emptyFrom context =
     , types = mempty
     , boundVars = mempty
     , metas = metas context
+    , errors = errors context
     }
 
 extend
@@ -210,6 +222,12 @@ solveMeta context i term =
     atomicModifyIORef (metas context) $ \m ->
       (Meta.solve i term m, ())
 
+spanned :: Span.Relative -> Context v -> Context v
+spanned s context =
+  context
+    { span = s
+    }
+
 -------------------------------------------------------------------------------
 
 -- | Evaluate the head of a value further, if (now) possible due to meta
@@ -240,3 +258,28 @@ forceHead context value =
 
     _ ->
       pure value
+
+-------------------------------------------------------------------------------
+-- Error reporting
+
+report :: Context v -> Error.Elaboration -> M ()
+report context err =
+  let
+    err' =
+      Error.Elaboration (scopeKey context) $
+      Error.Spanned (span context) err
+  in
+  liftIO $ atomicModifyIORef (errors context) $ \errs ->
+    (Tsil.Snoc errs err', ())
+
+try :: Context v -> M a -> M (Maybe a)
+try context m =
+  (Just <$> m) `catchError` \err -> do
+    report context err
+    pure Nothing
+
+try_ :: Context v -> M () -> M Bool
+try_ context m =
+  (True <$ m) `catchError` \err -> do
+    report context err
+    pure False

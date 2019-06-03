@@ -23,7 +23,7 @@ evaluate env term =
     Syntax.Global name -> do
       maybeDefinition <- fetch $ Query.ElaboratedDefinition name
       case maybeDefinition of
-        Just (term', _, _) ->
+        Just (term', _) ->
           evaluate Domain.empty term'
 
         Nothing ->

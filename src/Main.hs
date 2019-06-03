@@ -14,11 +14,9 @@ import Data.Text.Prettyprint.Doc.Render.Text
 import Rock
 
 import Error (Error)
-import qualified Meta
 import qualified Name
 import qualified Presyntax
 import qualified Pretty
-import qualified "this" Data.IntMap as IntMap
 import Query (Query)
 import qualified Query
 import qualified Rules
@@ -59,12 +57,9 @@ parseAndTypeCheck module_ = do
         HashSet.fromList $
           Name.Qualified module_ . Presyntax.definitionName <$> defs
     forM_ names $ \name -> do
-      (type_, _) <- fetch $ Query.ElaboratedType name
+      type_ <- fetch $ Query.ElaboratedType name
       liftIO $ putDoc $ pretty name <> " : " <> Pretty.prettyTerm 0 Pretty.empty type_ <> line
       maybeDef <- fetch $ Query.ElaboratedDefinition name
-      liftIO $ forM_ maybeDef $ \(def, _, metas) -> do
+      liftIO $ forM_ maybeDef $ \(def, _) -> do
         putDoc $ pretty name <> " = " <> Pretty.prettyTerm 0 Pretty.empty def <> line
-        forM_ (sortOn fst $ IntMap.toList metas) $ \(Meta.Index index, (metaDef, metaType)) -> do
-          putDoc $ "  ?" <> pretty index <> " : " <> Pretty.prettyTerm 0 Pretty.empty metaType <> line
-          putDoc $ "  ?" <> pretty index <> " = " <> Pretty.prettyTerm 0 Pretty.empty metaDef <> line
   print errs

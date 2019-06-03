@@ -5,15 +5,23 @@ import Protolude
 import qualified Text.Parsix as Parsix
 
 import qualified Meta
-import Name (Name)
-import qualified Name
 import qualified Presyntax
+import qualified Scope
+import qualified Span
 
 data Error
   = Parse !Parsix.Error
-  | DuplicateName !Name
-  | NotInScope !Presyntax.Name
+  | DuplicateName !Scope.KeyedName
+  | Elaboration !Scope.KeyedName !Error.Spanned
+  deriving Show
+
+data Elaboration
+  = NotInScope !Presyntax.Name
   | TypeMismatch
   | OccursCheck
-  | UnsolvedMetaVariable !Name.Qualified !Meta.Index
+  | UnsolvedMetaVariable !Meta.Index
+  deriving Show
+
+data Spanned
+  = Spanned !Span.Relative !Error.Elaboration
   deriving Show

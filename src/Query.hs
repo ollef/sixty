@@ -8,23 +8,22 @@ import Data.GADT.Compare.TH
 import Data.HashMap.Lazy (HashMap)
 import Rock.HashTag
 
-import qualified Meta
 import Name (Name)
 import qualified Name
+import qualified Scope
 import qualified Presyntax
-import qualified Resolution
 import qualified Syntax
 
 data Query a where
   ReadFile :: FilePath -> Query Text
   ParsedModule :: Name.Module -> Query [Presyntax.Definition]
-  ParsedModuleMap :: Name.Module -> Query (HashMap (Name, Resolution.Key) Presyntax.Term)
-  ParsedDefinition :: Resolution.KeyedName -> Query (Maybe Presyntax.Term)
-  Scopes :: Name.Module -> Query Resolution.Scopes
-  Visibility :: Resolution.KeyedName -> Presyntax.Name -> Query (Maybe Resolution.Visibility)
-  ResolvedName :: Resolution.KeyedName -> Presyntax.Name -> Query (Maybe Name.Qualified)
-  ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void, Syntax.MetaSolutions)
-  ElaboratedDefinition :: Name.Qualified -> Query (Maybe (Syntax.Term Void, Syntax.Type Void, Syntax.MetaSolutions))
+  ParsedModuleMap :: Name.Module -> Query (HashMap (Scope.Key, Name) Presyntax.Term)
+  ParsedDefinition :: Scope.KeyedName -> Query (Maybe Presyntax.Term)
+  Scopes :: Name.Module -> Query Scope.Scopes
+  Visibility :: Scope.KeyedName -> Presyntax.Name -> Query (Maybe Scope.Visibility)
+  ResolvedName :: Scope.KeyedName -> Presyntax.Name -> Query (Maybe Name.Qualified)
+  ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void)
+  ElaboratedDefinition :: Name.Qualified -> Query (Maybe (Syntax.Term Void, Syntax.Type Void))
 
 deriveGEq ''Query
 deriveGCompare ''Query

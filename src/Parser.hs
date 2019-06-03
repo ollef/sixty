@@ -15,12 +15,14 @@ import Text.Parsix ((<?>), symbol, try)
 import qualified Text.Parsix as Parsix
 
 import Name
+import qualified Position
 import Presyntax hiding (Name)
 import qualified Presyntax
+import qualified Span
 
-newtype Parser a = Parser (Parsix.Parser a)
+newtype Parser a = Parser (ReaderT Position.Absolute Parsix.Parser a)
   deriving
-    ( Monad, MonadPlus, Functor, Applicative, Alternative
+    ( Monad, MonadReader Position.Absolute, MonadPlus, Functor, Applicative, Alternative
     , Parsix.Parsing, Parsix.CharParsing, Parsix.SliceParsing, LookAhead.LookAheadParsing
     )
 
@@ -30,7 +32,35 @@ parseTest p s =
 
 parseText :: Parser a -> Text -> FilePath -> Parsix.Result a
 parseText (Parser p) =
-  Parsix.parseText (p <* Parsix.eof)
+  Parsix.parseText (runReaderT p 0 <* Parsix.eof)
+
+-------------------------------------------------------------------------------
+-- Positions
+
+position :: Parser Position.Absolute
+position =
+  Position.Absolute . Parsix.codeUnits <$> Parsix.position
+
+relativeTo :: Parser a -> Parser (Position.Absolute, a)
+relativeTo parser = do
+  p <- position
+  result <- local (const p) parser
+  return (p, result)
+
+spanned :: Parser a -> Parser (Span.Relative, a)
+spanned parser = do
+  base <- ask
+  start <- position
+  result <- parser
+  end <- position
+  pure (Span.relativeTo base (Span.Absolute start end), result)
+
+positioned :: Parser a -> Parser (Position.Relative, a)
+positioned parser = do
+  base <- ask
+  start <- position
+  result <- parser
+  pure (Position.relativeTo base start, result)
 
 -------------------------------------------------------------------------------
 -- Tokenisation
@@ -98,26 +128,29 @@ prename =
 -------------------------------------------------------------------------------
 -- Terms
 
+spannedTerm :: Parser UnspannedTerm -> Parser Term
+spannedTerm =
+  fmap (uncurry Term) . spanned
+
 atomicTerm :: Parser Term
 atomicTerm =
   symbol "(" *> term <* symbol ")"
-  <|> Wildcard <$ reserved "_"
-  <|> Var <$> prename
-  <|> Let <$ reserved "let" <*> name <* symbol "=" <*> term <* reserved "in" <*> term
-  <|> lams <$ symbol "\\" <*> some name <* symbol "." <*> term
+  <|> spannedTerm
+    ( Wildcard <$ reserved "_"
+      <|> Var <$> prename
+      <|> Let <$ reserved "let" <*> name <* symbol "=" <*> term <* reserved "in" <*> term
+      <|> unspanned <$> (lams <$ symbol "\\" <*> some (positioned name) <* symbol "." <*> term)
+    )
   <?> "term"
-  where
-    lams vs body = foldr Lam body vs
 
 term :: Parser Term
 term =
-  pis <$> try (symbol "(" *> some name <* reserved ":") <*> term <* symbol ")" <* symbol "->" <*> term
+  spannedTerm (unspanned <$> (pis <$> try (symbol "(" *> some (positioned name) <* reserved ":") <*> term <* symbol ")" <* symbol "->" <*> term))
   <|> apps <$> atomicTerm <*> many atomicTerm <**> fun
   <?> "term"
   where
-    pis vs src dst = foldr (`Pi` src) dst vs
     fun =
-      flip Fun <$ symbol "->" <*> term
+      flip function <$ symbol "->" <*> term
       <|> pure identity
 
 -------------------------------------------------------------------------------
