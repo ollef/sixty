@@ -32,12 +32,14 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [ ] Tests
 - [ ] Implicit arguments and subtyping
   - [ ] Deep skolemisation
-- [ ] Source location tracking for error messages
+- [ ] Errors
+  - [x] Source location tracking
+  - [ ] Pretty-printing
+  - [ ] Error recovery during
+    - [ ] Parsing
+    - [x] Elaboration
+    - [ ] Unification
 - [ ] Recursive let bindings
-- [ ] Error recovery during
-  - [ ] Parsing
-  - [x] Elaboration
-  - [ ] Unification
 - [ ] Data definitions
 - [ ] Pattern matching elaboration
 - [ ] Generalisation?
