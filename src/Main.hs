@@ -55,7 +55,7 @@ parseAndTypeCheck module_ = do
     let
       names =
         HashSet.fromList $
-          Name.Qualified module_ . Presyntax.definitionName <$> defs
+          Name.Qualified module_ . Presyntax.definitionName . snd <$> defs
     forM_ names $ \name -> do
       type_ <- fetch $ Query.ElaboratedType name
       liftIO $ putDoc $ pretty name <> " : " <> Pretty.prettyTerm 0 Pretty.empty type_ <> line

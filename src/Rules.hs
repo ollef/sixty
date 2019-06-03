@@ -15,6 +15,7 @@ import qualified Elaboration
 import Error (Error)
 import qualified Error
 import qualified Evaluation
+import qualified Index
 import Monad
 import Name (Name(Name))
 import qualified Name
@@ -38,17 +39,18 @@ rules (Writer query) =
           toS $ module_ <> ".lx"
 
       text <- fetch $ ReadFile filePath
-      pure $ case Parser.parseText Parser.module_ text filePath of
-        Parsix.Success definitions ->
-          (definitions, mempty)
+      pure $
+        case Parser.parseText Parser.module_ text filePath of
+          Parsix.Success definitions ->
+            (definitions, mempty)
 
-        Parsix.Failure err ->
-          (mempty, pure $ Error.Parse err)
+          Parsix.Failure err ->
+            (mempty, pure $ Error.Parse err)
 
     ParsedModuleMap module_ ->
       noError $ do
         defs <- fetch $ ParsedModule module_
-        pure $ HashMap.fromList $ Scope.keyed <$> defs
+        pure $ HashMap.fromList $ Scope.keyed . snd <$> defs
 
     ParsedDefinition (Scope.KeyedName key (Name.Qualified module_ name)) ->
       noError $ do
@@ -57,7 +59,7 @@ rules (Writer query) =
 
     Scopes module_ -> do
       defs <- fetch $ ParsedModule module_
-      pure $ Resolution.moduleScopes module_ defs
+      pure $ Resolution.moduleScopes module_ $ snd <$> defs
 
     Visibility (Scope.KeyedName key (Name.Qualified module_ keyName)) (Presyntax.Name name) ->
       noError $ do

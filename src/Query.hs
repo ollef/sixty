@@ -10,13 +10,14 @@ import Rock.HashTag
 
 import Name (Name)
 import qualified Name
-import qualified Scope
+import qualified Position
 import qualified Presyntax
+import qualified Scope
 import qualified Syntax
 
 data Query a where
   ReadFile :: FilePath -> Query Text
-  ParsedModule :: Name.Module -> Query [Presyntax.Definition]
+  ParsedModule :: Name.Module -> Query [(Position.Absolute, Presyntax.Definition)]
   ParsedModuleMap :: Name.Module -> Query (HashMap (Scope.Key, Name) Presyntax.Term)
   ParsedDefinition :: Scope.KeyedName -> Query (Maybe Presyntax.Term)
   Scopes :: Name.Module -> Query Scope.Scopes

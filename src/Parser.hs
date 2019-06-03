@@ -156,14 +156,15 @@ term =
 -------------------------------------------------------------------------------
 -- Definitions
 
-module_ :: Parser [Definition]
+module_ :: Parser [(Position.Absolute, Definition)]
 module_ =
   many definition
 
-definition :: Parser Definition
+definition :: Parser (Position.Absolute, Definition)
 definition =
-  name <**>
-    (flip TypeDeclaration <$ symbol ":" <*> term
-    <|> flip ConstantDefinition <$ symbol "=" <*> term
-    ) <* symbol ";"
-  <?> "definition"
+  relativeTo $
+    name <**>
+      (flip TypeDeclaration <$ symbol ":" <*> term
+      <|> flip ConstantDefinition <$ symbol "=" <*> term
+      ) <* symbol ";"
+    <?> "definition"
