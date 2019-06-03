@@ -1,6 +1,4 @@
 {-# language BangPatterns #-}
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
 module Resolution where
 
 import Protolude
