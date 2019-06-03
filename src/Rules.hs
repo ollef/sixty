@@ -82,6 +82,10 @@ rules (Writer query) =
             pure $ Just $ Name.Qualified module_ (Name name)
 
     ElaboratedType name
+      -- TODO
+      | name == Builtin.fail ->
+        pure (Syntax.Pi "x" (Syntax.Global Builtin.typeName) $ Syntax.Var Index.Zero, mempty)
+
       | name == Builtin.typeName ->
         pure (Syntax.Global Builtin.typeName, mempty)
 
@@ -116,8 +120,13 @@ rules (Writer query) =
                   (result, errs)
 
     ElaboratedDefinition name
+      -- TODO
+      | name == Builtin.fail ->
+        pure (Nothing, mempty)
+
       | name == Builtin.typeName ->
         pure (Nothing, mempty)
+
       | otherwise -> do
         let
           defKey =
