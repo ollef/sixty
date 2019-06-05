@@ -1,5 +1,4 @@
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE PackageImports #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 module Main where
@@ -20,13 +19,14 @@ import qualified Pretty
 import Query (Query)
 import qualified Query
 import qualified Rules
+import qualified Span
 
 main :: IO ()
 main = do
   [inputModule] <- getArgs
   parseAndTypeCheck (fromString inputModule)
 
-runQueryTask :: Task Query a -> IO (a, [Error])
+runQueryTask :: Task Query a -> IO (a, [(FilePath, Span.Absolute, Error)])
 runQueryTask task = do
   startedVar <- newMVar mempty
   errorsVar <- newMVar mempty
@@ -40,13 +40,17 @@ runQueryTask task = do
     rules =
       memoise startedVar $ writer writeErrors Rules.rules
 
-  result <- runTask sequentially rules task
-  errorsMap <- readMVar errorsVar
-  let
-    errors =
-      flip foldMap (DMap.toList errorsMap) $ \(_ DMap.:=> Const errs) ->
-        errs
-  return (result, errors)
+  runTask sequentially rules $ do
+    result <- task
+    errorsMap <- liftIO $ readMVar errorsVar
+    let
+      errors =
+        flip foldMap (DMap.toList errorsMap) $ \(_ DMap.:=> Const errs) ->
+          errs
+    spannedErrors <- forM errors $ \err -> do
+      (filePath, span) <- fetch $ Query.ErrorSpan err
+      pure (filePath, span, err)
+    pure (result, spannedErrors)
 
 parseAndTypeCheck :: Name.Module -> IO ()
 parseAndTypeCheck module_ = do

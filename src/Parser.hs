@@ -18,6 +18,7 @@ import Name
 import qualified Position
 import Presyntax hiding (Name)
 import qualified Presyntax
+import qualified Error
 import qualified Span
 
 newtype Parser a = Parser (ReaderT Position.Absolute Parsix.Parser a)
@@ -30,9 +31,20 @@ parseTest :: (MonadIO m, Show a) => Parser a -> String -> m ()
 parseTest p s =
   liftIO $ print $ parseText p (fromString s) "<interactive>"
 
-parseText :: Parser a -> Text -> FilePath -> Parsix.Result a
-parseText (Parser p) =
-  Parsix.parseText (runReaderT p 0 <* Parsix.eof)
+parseText :: Parser a -> Text -> FilePath -> Either Error.Parsing a
+parseText (Parser p) input filePath =
+  case Parsix.parseText (runReaderT p 0 <* Parsix.eof) input filePath of
+    Parsix.Success a ->
+      Right a
+
+    Parsix.Failure err ->
+      Left $
+        Error.Parsing
+          { Error.reason = Parsix.errorReason err
+          , Error.expected = toList $ Parsix.errorExpected err
+          , Error.position = Position.Absolute $ Parsix.codeUnits $ Parsix.errorPosition err
+          , Error.file = filePath
+          }
 
 -------------------------------------------------------------------------------
 -- Positions

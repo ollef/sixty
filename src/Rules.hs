@@ -6,8 +6,8 @@ module Rules where
 import Protolude hiding (force)
 
 import qualified Data.HashMap.Lazy as HashMap
+import Data.Text.Unsafe as Text
 import Rock
-import qualified Text.Parsix as Parsix
 
 import qualified Builtin
 import qualified Domain
@@ -15,6 +15,7 @@ import qualified Elaboration
 import Error (Error)
 import qualified Error
 import qualified Evaluation
+import qualified Position
 import qualified Index
 import Monad
 import Name (Name(Name))
@@ -33,24 +34,31 @@ rules (Writer query) =
     ReadFile filePath ->
       noError $ liftIO $ readFile filePath
 
-    ParsedModule (Name.Module module_) -> do
+    ParsedModule module_ -> do
       let
         filePath =
-          toS $ module_ <> ".lx"
+          moduleFilePath module_
 
       text <- fetch $ ReadFile filePath
       pure $
         case Parser.parseText Parser.module_ text filePath of
-          Parsix.Success definitions ->
+          Right definitions ->
             (definitions, mempty)
 
-          Parsix.Failure err ->
+          Left err ->
             (mempty, pure $ Error.Parse err)
 
     ParsedModuleMap module_ ->
       noError $ do
         defs <- fetch $ ParsedModule module_
         pure $ HashMap.fromList $ Scope.keyed . snd <$> defs
+
+    ModulePositionMap module_ ->
+      noError $ do
+        defs <- fetch $ ParsedModule module_
+        pure $
+          HashMap.fromList
+            [(key, loc) | (loc, def) <- defs, let (key, _) =  Scope.keyed def]
 
     ParsedDefinition (Scope.KeyedName key (Name.Qualified module_ name)) ->
       noError $ do
@@ -154,7 +162,36 @@ rules (Writer query) =
                   (def', errs) <- Elaboration.checkTopLevel defKey def typeValue
                   pure ((def', type_), errs)
 
+    ErrorSpan err ->
+      noError $
+        case err of
+          Error.Parse p ->
+            pure
+              ( Error.file p
+              , Span.Absolute (Error.position p) (Error.position p)
+              )
 
+          Error.DuplicateName keyedName ->
+            fetch $ KeyedNameSpan keyedName
+
+          Error.Elaboration keyedName (Error.Spanned relativeSpan _) -> do
+            (file, Span.Absolute absolutePosition _) <- fetch $ KeyedNameSpan keyedName
+            pure (file, Span.add absolutePosition relativeSpan)
+
+    KeyedNameSpan (Scope.KeyedName key (Name.Qualified module_ name@(Name textName))) ->
+      noError $ do
+        positions <- fetch $ ModulePositionMap module_
+        pure
+          ( moduleFilePath module_
+          , case HashMap.lookup (key, name) positions of
+            Nothing ->
+              Span.Absolute 0 0
+
+            Just position ->
+              Span.Absolute
+                position
+                (position + Position.Absolute (Text.lengthWord16 textName))
+          )
   where
     noError :: Functor m => m a -> m (a, [Error])
     noError = fmap (, mempty)
@@ -176,3 +213,8 @@ rules (Writer query) =
 
           Right (result, errs) ->
             (Just result, errs)
+
+-- TODO
+moduleFilePath :: Name.Module -> FilePath
+moduleFilePath (Name.Module module_) =
+  toS $ module_ <> ".lx"
