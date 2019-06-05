@@ -19,3 +19,12 @@ relativeTo base (Span.Absolute start end) =
 add :: Position.Absolute -> Span.Relative -> Span.Absolute
 add base (Span.Relative start end) =
   Span.Absolute (Position.add base start) (Position.add base end)
+
+data LineColumn = LineColumn !Position.LineColumn !Position.LineColumn
+  deriving Show
+
+lineColumn :: Absolute -> Text -> LineColumn
+lineColumn (Absolute start end) text =
+  LineColumn
+    (Position.lineColumn start text)
+    (Position.lineColumn end text)

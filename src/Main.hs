@@ -26,7 +26,7 @@ main = do
   [inputModule] <- getArgs
   parseAndTypeCheck (fromString inputModule)
 
-runQueryTask :: Task Query a -> IO (a, [(FilePath, Span.Absolute, Error)])
+runQueryTask :: Task Query a -> IO (a, [(FilePath, Span.LineColumn, Error)])
 runQueryTask task = do
   startedVar <- newMVar mempty
   errorsVar <- newMVar mempty
@@ -49,7 +49,8 @@ runQueryTask task = do
           errs
     spannedErrors <- forM errors $ \err -> do
       (filePath, span) <- fetch $ Query.ErrorSpan err
-      pure (filePath, span, err)
+      text <- fetch $ Query.ReadFile filePath
+      pure (filePath, Span.lineColumn span text, err)
     pure (result, spannedErrors)
 
 parseAndTypeCheck :: Name.Module -> IO ()
