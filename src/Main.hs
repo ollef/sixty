@@ -13,6 +13,7 @@ import Data.Text.Prettyprint.Doc.Render.Text
 import Rock
 
 import Error (Error)
+import qualified Error
 import qualified Name
 import qualified Presyntax
 import qualified Pretty
@@ -67,4 +68,5 @@ parseAndTypeCheck module_ = do
       maybeDef <- fetch $ Query.ElaboratedDefinition name
       liftIO $ forM_ maybeDef $ \(def, _) -> do
         putDoc $ pretty name <> " = " <> Pretty.prettyTerm 0 Pretty.empty def <> line
-  print errs
+  forM_ errs $ \(filePath, lineColumn, err) ->
+    liftIO $ putDoc $ Error.pretty filePath lineColumn err <> line

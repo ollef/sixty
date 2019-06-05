@@ -1,8 +1,11 @@
 {-# language DeriveAnyClass #-}
 {-# language DeriveGeneric #-}
+{-# language OverloadedStrings #-}
 module Error where
 
 import Protolude
+
+import Data.Text.Prettyprint.Doc as Doc
 
 import qualified Meta
 import qualified Position
@@ -33,3 +36,27 @@ data Parsing = Parsing
   , position :: !Position.Absolute
   , file :: !FilePath
   } deriving (Eq, Ord, Show, Generic, Hashable)
+
+pretty :: FilePath -> Span.LineColumn -> Error -> Doc ann
+pretty filePath span err =
+  Doc.pretty filePath <> ":" <> Doc.pretty span <> ":" <+>
+  case err of
+    Parse _ ->
+      "Parse error"
+
+    DuplicateName _ ->
+      "Duplicate name"
+
+    Elaboration _ (Error.Spanned _ err') ->
+      case err' of
+        NotInScope (Presyntax.Name name) ->
+          "Not in scope:" <+> Doc.pretty name
+
+        TypeMismatch ->
+          "Type mismatch"
+
+        OccursCheck ->
+          "Failed occurs check"
+
+        UnsolvedMetaVariable _ ->
+          "Unsolved meta variable"

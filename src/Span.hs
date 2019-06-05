@@ -1,8 +1,11 @@
 {-# language DeriveAnyClass #-}
 {-# language DeriveGeneric #-}
+{-# language OverloadedStrings #-}
 module Span where
 
 import Protolude
+
+import Data.Text.Prettyprint.Doc
 
 import qualified Position
 
@@ -20,11 +23,26 @@ add :: Position.Absolute -> Span.Relative -> Span.Absolute
 add base (Span.Relative start end) =
   Span.Absolute (Position.add base start) (Position.add base end)
 
-data LineColumn = LineColumn !Position.LineColumn !Position.LineColumn
+data LineColumn = LineColumns !Position.LineColumn !Position.LineColumn
   deriving Show
 
 lineColumn :: Absolute -> Text -> LineColumn
 lineColumn (Absolute start end) text =
-  LineColumn
+  LineColumns
     (Position.lineColumn start text)
     (Position.lineColumn end text)
+
+-- | Gives a summary (fileName:row:column) of the location
+instance Pretty LineColumn where
+  pretty
+    (LineColumns
+      start@(Position.LineColumn startLine startColumn)
+      end@(Position.LineColumn endLine endColumn))
+    | start == end =
+      pretty startLine <> ":" <> pretty startColumn
+
+    | startLine == endLine =
+      pretty startLine <> ":" <> pretty startColumn <> "-" <> pretty endColumn
+
+    | otherwise =
+      pretty startLine <> ":" <> pretty startColumn <> "-" <> pretty endLine <> ":" <> pretty endColumn
