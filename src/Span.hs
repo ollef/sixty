@@ -26,11 +26,17 @@ add base (Span.Relative start end) =
 data LineColumn = LineColumns !Position.LineColumn !Position.LineColumn
   deriving Show
 
-lineColumn :: Absolute -> Text -> LineColumn
+lineColumn :: Absolute -> Text -> (LineColumn, Text)
 lineColumn (Absolute start end) text =
-  LineColumns
-    (Position.lineColumn start text)
-    (Position.lineColumn end text)
+  let
+    (startLineColumn, lineText) =
+      Position.lineColumn start text
+  in
+  ( LineColumns
+    startLineColumn
+    (fst $ Position.lineColumn end text)
+  , lineText
+  )
 
 -- | Gives a summary (fileName:row:column) of the location
 instance Pretty LineColumn where

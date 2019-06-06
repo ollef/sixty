@@ -28,12 +28,33 @@ add (Absolute base) (Relative rel) = Absolute $ base + rel
 data LineColumn = LineColumn !Int !Int
   deriving (Eq, Ord, Show, Generic, Hashable)
 
-lineColumn :: Absolute -> Text -> LineColumn
+lineColumn :: Absolute -> Text -> (LineColumn, Text)
 lineColumn (Absolute index) text =
   let
     prefix =
       Text.takeWord16 index text
+
+    suffix =
+      Text.dropWord16 index text
+
+    linePrefixLength =
+      Text.lengthWord16 $ Text.takeWhileEnd (/= '\n') prefix
+
+    lineSuffixLength =
+      Text.lengthWord16 $ Text.takeWhile (/= '\n') suffix
+
+    lineStart =
+      index - linePrefixLength
+
+    lineLength =
+      linePrefixLength + lineSuffixLength
+
+    line =
+      Text.takeWord16 lineLength $
+      Text.dropWord16 lineStart text
   in
-  LineColumn
+  ( LineColumn
     (Text.count "\n" prefix)
-    (Text.lengthWord16 $ Text.takeWhileEnd (/= '\n') prefix)
+    linePrefixLength
+  , line
+  )

@@ -34,7 +34,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [ ] Deep skolemisation
 - [ ] Errors
   - [x] Source location tracking
-  - [ ] Pretty-printing
+  - [x] Pretty-printing
   - [ ] Error recovery during
     - [ ] Parsing
     - [x] Elaboration

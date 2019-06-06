@@ -27,7 +27,7 @@ main = do
   [inputModule] <- getArgs
   parseAndTypeCheck (fromString inputModule)
 
-runQueryTask :: Task Query a -> IO (a, [(FilePath, Span.LineColumn, Error)])
+runQueryTask :: Task Query a -> IO (a, [(FilePath, Span.LineColumn, Text, Error)])
 runQueryTask task = do
   startedVar <- newMVar mempty
   errorsVar <- newMVar mempty
@@ -51,7 +51,10 @@ runQueryTask task = do
     spannedErrors <- forM errors $ \err -> do
       (filePath, span) <- fetch $ Query.ErrorSpan err
       text <- fetch $ Query.ReadFile filePath
-      pure (filePath, Span.lineColumn span text, err)
+      let
+        (lineColumn, lineText) =
+          Span.lineColumn span text
+      pure (filePath, lineColumn, lineText, err)
     pure (result, spannedErrors)
 
 parseAndTypeCheck :: Name.Module -> IO ()
@@ -66,7 +69,7 @@ parseAndTypeCheck module_ = do
       type_ <- fetch $ Query.ElaboratedType name
       liftIO $ putDoc $ pretty name <> " : " <> Pretty.prettyTerm 0 Pretty.empty type_ <> line
       maybeDef <- fetch $ Query.ElaboratedDefinition name
-      liftIO $ forM_ maybeDef $ \(def, _) -> do
+      liftIO $ forM_ maybeDef $ \(def, _) ->
         putDoc $ pretty name <> " = " <> Pretty.prettyTerm 0 Pretty.empty def <> line
-  forM_ errs $ \(filePath, lineColumn, err) ->
-    liftIO $ putDoc $ Error.pretty filePath lineColumn err <> line
+  forM_ errs $ \(filePath, lineColumn, lineText, err) ->
+    liftIO $ putDoc $ Error.pretty filePath lineColumn lineText err <> line
