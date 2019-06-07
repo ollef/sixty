@@ -13,7 +13,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Inlining of globals
 - [x] Readback
 - [x] Parsing
-  - [ ] Indentation-sensitivity
+  - [x] Indentation-sensitivity
 - [x] Pretty printing
   - [ ] Scope-aware name printing
 - [x] Unification and meta variables
