@@ -74,7 +74,7 @@ pretty filePath span lineText err =
             span
 
         lineNumberText =
-          show startLineNumber
+          show (startLineNumber + 1)
 
         lineNumberTextLength =
           Text.lengthWord16 lineNumberText

@@ -1,6 +1,7 @@
 {-# language DeriveAnyClass #-}
 {-# language DeriveGeneric #-}
 {-# language OverloadedStrings #-}
+{-# language ViewPatterns #-}
 module Span where
 
 import Protolude
@@ -42,8 +43,8 @@ lineColumn (Absolute start end) text =
 instance Pretty LineColumn where
   pretty
     (LineColumns
-      start@(Position.LineColumn startLine startColumn)
-      end@(Position.LineColumn endLine endColumn))
+      start@(Position.LineColumn ((+ 1) -> startLine) ((+ 1) -> startColumn))
+      end@(Position.LineColumn ((+ 1) -> endLine) ((+ 1) -> endColumn)))
     | start == end =
       pretty startLine <> ":" <> pretty startColumn
 
