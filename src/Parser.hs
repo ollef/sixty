@@ -160,7 +160,7 @@ p <**>% q =
 -- Error recovery
 
 recover :: (Error.Parsing -> a) -> Parsix.ErrorInfo -> Parsix.Position -> Parser a
-recover k errorInfo pos = trace ("recover" <> show pos :: Text) $ do
+recover k errorInfo pos = do
   skipToBaseLevel
   pure $
     k $
