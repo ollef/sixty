@@ -46,8 +46,8 @@ pretty filePath span lineText err =
   where
     summary =
       case err of
-        Parse _ ->
-          "Parse error"
+        Parse parse ->
+          "Parse error" <+> Doc.pretty (reason parse)
 
         DuplicateName _ ->
           "Duplicate name"
