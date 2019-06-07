@@ -34,9 +34,10 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [ ] Deep skolemisation
 - [ ] Errors
   - [x] Source location tracking
+    - [ ] Meta variable locations
   - [x] Pretty-printing
   - [ ] Error recovery during
-    - [ ] Parsing
+    - [x] Parsing
     - [x] Elaboration
     - [ ] Unification
 - [ ] Recursive let bindings

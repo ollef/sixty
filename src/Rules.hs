@@ -42,23 +42,26 @@ rules (Writer query) =
       text <- fetch $ ReadFile filePath
       pure $
         case Parser.parseText Parser.module_ text filePath of
-          Right definitions ->
-            (definitions, mempty)
+          Right errorsAndDefinitions -> do
+            let
+              (errors, definitions) =
+                partitionEithers errorsAndDefinitions
+            (definitions, map (Error.Parse filePath) errors)
 
           Left err ->
-            (mempty, pure $ Error.Parse err)
+            (mempty, pure $ Error.Parse filePath err)
 
     ParsedModuleMap module_ ->
       noError $ do
         defs <- fetch $ ParsedModule module_
-        pure $ HashMap.fromList $ Scope.keyed . snd <$> defs
+        pure $ HashMap.fromList $ Presyntax.keyed . snd <$> defs
 
     ModulePositionMap module_ ->
       noError $ do
         defs <- fetch $ ParsedModule module_
         pure $
           HashMap.fromList
-            [(key, loc) | (loc, def) <- defs, let (key, _) =  Scope.keyed def]
+            [(key, loc) | (loc, def) <- defs, let (key, _) = Presyntax.keyed def]
 
     ParsedDefinition (Scope.KeyedName key (Name.Qualified module_ name)) ->
       noError $ do
@@ -69,7 +72,7 @@ rules (Writer query) =
       defs <- fetch $ ParsedModule module_
       pure $ Resolution.moduleScopes module_ $ snd <$> defs
 
-    Visibility (Scope.KeyedName key (Name.Qualified module_ keyName)) (Presyntax.Name name) ->
+    Visibility (Scope.KeyedName key (Name.Qualified module_ keyName)) (Name.Pre name) ->
       noError $ do
         scopes <- fetch $ Scopes module_
         let
@@ -81,7 +84,7 @@ rules (Writer query) =
     ResolvedName _ name
       | name == "Type" -> pure (Just Builtin.typeName, mempty)
 
-    ResolvedName key@(Scope.KeyedName _ (Name.Qualified module_ _)) prename@(Presyntax.Name name) ->
+    ResolvedName key@(Scope.KeyedName _ (Name.Qualified module_ _)) prename@(Name.Pre name) ->
       noError $ do
         visibility <- fetch $ Query.Visibility key prename
         case visibility of
@@ -165,10 +168,10 @@ rules (Writer query) =
     ErrorSpan err ->
       noError $
         case err of
-          Error.Parse p ->
+          Error.Parse filePath parseError ->
             pure
-              ( Error.file p
-              , Span.Absolute (Error.position p) (Error.position p)
+              ( filePath
+              , Span.Absolute (Error.position parseError) (Error.position parseError)
               )
 
           Error.DuplicateName keyedName ->
@@ -213,8 +216,3 @@ rules (Writer query) =
 
           Right (result, errs) ->
             (Just result, errs)
-
--- TODO
-moduleFilePath :: Name.Module -> FilePath
-moduleFilePath (Name.Module module_) =
-  toS $ module_ <> ".lx"

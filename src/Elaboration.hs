@@ -289,6 +289,10 @@ elaborateUnspanned context term expected = -- trace ("elaborate " <> show term :
       term'' <- readback context term'
       elaborated context expected term'' $ Lazy $ pure type_
 
+    Presyntax.ParseError err -> do
+      Context.reportParseError context err
+      elaborateUnspanned context Presyntax.Wildcard expected
+
 -------------------------------------------------------------------------------
 -- Meta solutions
 

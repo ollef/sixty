@@ -1,18 +1,15 @@
 {-# language DeriveGeneric #-}
 {-# language DeriveAnyClass #-}
-{-# language DerivingStrategies #-}
-{-# language GeneralizedNewtypeDeriving #-}
 module Presyntax where
 
 import Protolude hiding (Type)
 
+import qualified Error
+import Name (Name)
 import qualified Name
 import qualified Position
+import qualified Scope
 import qualified Span
-
-newtype Name = Name Text
-  deriving stock (Eq, Ord, Show, Generic)
-  deriving newtype (Hashable, IsString)
 
 data Term
   = Term !Span.Relative !UnspannedTerm
@@ -23,13 +20,14 @@ unspanned (Term _ term) =
   term
 
 data UnspannedTerm
-  = Var !Name
+  = Var !Name.Pre
   | Let !Name.Name !Term !Term
   | Pi !Name.Name !Type !Type
   | Fun !Type !Type
   | Lam !Name.Name !Term
   | App !Term !Term
   | Wildcard
+  | ParseError !Error.Parsing
   deriving (Show, Generic, Hashable)
 
 type Type = Term
@@ -72,3 +70,12 @@ definitionName def =
   case def of
     TypeDeclaration name _ -> name
     ConstantDefinition name _ -> name
+
+keyed :: Definition -> ((Scope.Key, Name), Presyntax.Term)
+keyed def =
+  case def of
+    Presyntax.ConstantDefinition name term ->
+      ((Scope.Definition, name), term)
+
+    Presyntax.TypeDeclaration name type_ ->
+      ((Scope.Type, name), type_)

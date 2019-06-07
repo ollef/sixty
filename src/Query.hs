@@ -1,4 +1,5 @@
 {-# language GADTs #-}
+{-# language OverloadedStrings #-}
 {-# language TemplateHaskell #-}
 module Query where
 
@@ -24,8 +25,8 @@ data Query a where
   ModulePositionMap :: Name.Module -> Query (HashMap (Scope.Key, Name) Position.Absolute)
   ParsedDefinition :: Scope.KeyedName -> Query (Maybe Presyntax.Term)
   Scopes :: Name.Module -> Query Scope.Scopes
-  Visibility :: Scope.KeyedName -> Presyntax.Name -> Query (Maybe Scope.Visibility)
-  ResolvedName :: Scope.KeyedName -> Presyntax.Name -> Query (Maybe Name.Qualified)
+  Visibility :: Scope.KeyedName -> Name.Pre -> Query (Maybe Scope.Visibility)
+  ResolvedName :: Scope.KeyedName -> Name.Pre -> Query (Maybe Name.Qualified)
   ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void)
   ElaboratedDefinition :: Name.Qualified -> Query (Maybe (Syntax.Term Void, Syntax.Type Void))
   ErrorSpan :: Error -> Query (FilePath, Span.Absolute)
@@ -49,3 +50,8 @@ instance HashTag Query where
       ElaboratedDefinition {} -> hash
       ErrorSpan {} -> hash
       KeyedNameSpan {} -> hash
+
+-- TODO
+moduleFilePath :: Name.Module -> FilePath
+moduleFilePath (Name.Module module_) =
+  toS $ module_ <> ".lx"

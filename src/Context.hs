@@ -13,6 +13,7 @@ import Data.IORef
 import "this" Data.IntMap (IntMap)
 import qualified Builtin
 import Data.IntSequence (IntSeq)
+import qualified Query
 import qualified Data.IntSequence as IntSeq
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
@@ -24,7 +25,7 @@ import Index
 import qualified Meta
 import Monad
 import Name (Name(Name))
-import qualified Presyntax
+import qualified Name
 import qualified "this" Data.IntMap as IntMap
 import qualified Readback
 import qualified Scope
@@ -131,8 +132,8 @@ extendDef context name value type_ = do
     , var
     )
 
-lookupNameIndex :: Presyntax.Name -> Context v -> Maybe (Index v)
-lookupNameIndex (Presyntax.Name name) context = do
+lookupNameIndex :: Name.Pre -> Context v -> Maybe (Index v)
+lookupNameIndex (Name.Pre name) context = do
   var <- HashMap.lookup (Name name) (nameVars context)
   pure $ lookupVarIndex var context
 
@@ -268,6 +269,21 @@ report context err =
     err' =
       Error.Elaboration (scopeKey context) $
       Error.Spanned (span context) err
+  in
+  liftIO $ atomicModifyIORef (errors context) $ \errs ->
+    (Tsil.Snoc errs err', ())
+
+reportParseError :: Context v -> Error.Parsing -> M ()
+reportParseError context err =
+  let
+    Scope.KeyedName _ (Name.Qualified module_ _) =
+      Context.scopeKey context
+
+    filePath =
+      Query.moduleFilePath module_
+
+    err' =
+      Error.Parse filePath err
   in
   liftIO $ atomicModifyIORef (errors context) $ \errs ->
     (Tsil.Snoc errs err', ())

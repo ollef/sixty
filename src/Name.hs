@@ -13,6 +13,10 @@ import Data.Text.Prettyprint.Doc
 
 import Orphans ()
 
+newtype Pre = Pre Text
+  deriving stock (Eq, Ord, Show, Generic)
+  deriving newtype (Hashable, IsString)
+
 newtype Name = Name Text
   deriving stock (Eq, Ord, Show, Generic)
   deriving newtype (Hashable, IsString)

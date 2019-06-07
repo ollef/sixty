@@ -10,19 +10,19 @@ import Data.Text.Prettyprint.Doc as Doc
 import qualified Data.Text.Unsafe as Text
 
 import qualified Meta
+import qualified Name
 import qualified Position
-import qualified Presyntax
 import qualified Scope
 import qualified Span
 
 data Error
-  = Parse !Parsing
+  = Parse FilePath !Parsing
   | DuplicateName !Scope.KeyedName
   | Elaboration !Scope.KeyedName !Error.Spanned
   deriving (Eq, Ord, Show, Generic, Hashable)
 
 data Elaboration
-  = NotInScope !Presyntax.Name
+  = NotInScope !Name.Pre
   | TypeMismatch
   | OccursCheck
   | UnsolvedMetaVariable !Meta.Index
@@ -36,7 +36,6 @@ data Parsing = Parsing
   { reason :: !(Maybe Text)
   , expected :: [Text]
   , position :: !Position.Absolute
-  , file :: !FilePath
   } deriving (Eq, Ord, Show, Generic, Hashable)
 
 pretty :: FilePath -> Span.LineColumn -> Text -> Error -> Doc ann
@@ -46,7 +45,7 @@ pretty filePath span lineText err =
   where
     summary =
       case err of
-        Parse parse ->
+        Parse _ parse ->
           "Parse error" <+> Doc.pretty (reason parse)
 
         DuplicateName _ ->
@@ -54,7 +53,7 @@ pretty filePath span lineText err =
 
         Elaboration _ (Error.Spanned _ err') ->
           case err' of
-            NotInScope (Presyntax.Name name) ->
+            NotInScope (Name.Pre name) ->
               "Not in scope:" <+> Doc.pretty name
 
             TypeMismatch ->

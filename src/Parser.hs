@@ -8,17 +8,17 @@ import Protolude hiding (try)
 import Data.Char
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
+import qualified Data.Set as Set
 import Data.String
 import qualified Text.Parser.LookAhead as LookAhead
 import qualified Text.Parser.Token.Highlight as Highlight
 import Text.Parsix ((<?>), symbol, try)
 import qualified Text.Parsix as Parsix
 
+import qualified Error
 import Name
 import qualified Position
-import Presyntax hiding (Name)
-import qualified Presyntax
-import qualified Error
+import Presyntax
 import qualified Span
 
 data Environment = Environment
@@ -26,10 +26,11 @@ data Environment = Environment
   , basePosition :: !Position.Absolute
   }
 
-newtype Parser a = Parser (ReaderT Environment Parsix.Parser a)
+newtype Parser a = Parser { unparser :: ReaderT Environment Parsix.Parser a }
   deriving
     ( Monad, MonadReader Environment, MonadPlus, Functor, Applicative, Alternative
     , Parsix.Parsing, Parsix.CharParsing, Parsix.SliceParsing, LookAhead.LookAheadParsing
+    , Parsix.RecoveryParsing
     )
 
 parseTest :: (MonadIO m, Show a) => Parser a -> String -> m ()
@@ -37,8 +38,8 @@ parseTest p s =
   liftIO $ print $ parseText p (fromString s) "<interactive>"
 
 parseText :: Parser a -> Text -> FilePath -> Either Error.Parsing a
-parseText (Parser p) input filePath =
-  case Parsix.parseText (Parsix.whiteSpace *> runReaderT p startEnv <* Parsix.eof) input filePath of
+parseText p input filePath =
+  case Parsix.parseText (runReaderT (unparser $ Parsix.whiteSpace *> p <* Parsix.eof) startEnv) input filePath of
     Parsix.Success a ->
       Right a
 
@@ -48,7 +49,6 @@ parseText (Parser p) input filePath =
           { Error.reason = Parsix.errorReason err
           , Error.expected = toList $ Parsix.errorExpected err
           , Error.position = Position.Absolute $ Parsix.codeUnits $ Parsix.errorPosition err
-          , Error.file = filePath
           }
   where
     startEnv = Environment
@@ -157,6 +157,23 @@ p <**>% q =
   p <**> indented q
 
 -------------------------------------------------------------------------------
+-- Error recovery
+
+recover :: (Error.Parsing -> a) -> Parsix.ErrorInfo -> Parsix.Position -> Parser a
+recover k errorInfo pos = trace ("recover" <> show pos :: Text) $ do
+  skipToBaseLevel
+  pure $
+    k $
+    Error.Parsing
+      (Parsix.errorInfoReason errorInfo)
+      (Set.toList $ Parsix.errorInfoExpected errorInfo)
+      (Position.Absolute (Parsix.codeUnits pos))
+
+skipToBaseLevel :: Parser ()
+skipToBaseLevel =
+  Parsix.token $ Parsix.anyChar >> Parsix.skipMany (indented Parsix.anyChar)
+
+-------------------------------------------------------------------------------
 -- Positions
 
 position :: Parser Position.Absolute
@@ -189,9 +206,15 @@ positioned parser = do
 
 idStart, idLetter, qidLetter :: Parser Char
 idStart =
-  Parsix.satisfy isAlpha <|> Parsix.oneOf "_"
+  Parsix.satisfy isIdStart
+    where
+      isIdStart c =
+        isAlpha c || c == '_'
 idLetter =
-  Parsix.satisfy isAlphaNum <|> Parsix.oneOf "_'"
+  Parsix.satisfy isIdLetter
+    where
+      isIdLetter c =
+        isAlphaNum c || c == '_' || c == '\''
 qidLetter = idLetter
   <|> Parsix.try (Parsix.char '.' <* LookAhead.lookAhead idLetter)
 
@@ -243,7 +266,7 @@ name :: Parser Name
 name =
   Parsix.ident idStyle
 
-prename :: Parser Presyntax.Name
+prename :: Parser Name.Pre
 prename =
   Parsix.ident qidStyle
 
@@ -278,16 +301,24 @@ term =
 -------------------------------------------------------------------------------
 -- Definitions
 
-module_ :: Parser [(Position.Absolute, Definition)]
+module_ :: Parser [Either Error.Parsing (Position.Absolute, Definition)]
 module_ =
-  blockOfMany definition
+  many definition
 
-definition :: Parser (Position.Absolute, Definition)
+definition :: Parser (Either Error.Parsing (Position.Absolute, Definition))
 definition =
-  relativeTo $
+  Parsix.withRecovery (recover Left) $
+  fmap Right $
+  sameLevel $
   withIndentationBlock $
+  relativeTo $
     name <**>%
-      (flip TypeDeclaration <$ symbol ":" <*>% term
-      <|> flip ConstantDefinition <$ symbol "=" <*>% term
+      (flip TypeDeclaration <$ symbol ":" <*> recoveringTerm
+      <|> flip ConstantDefinition <$ symbol "=" <*> recoveringTerm
       )
     <?> "definition"
+  where
+    recoveringTerm =
+      Parsix.withRecovery
+        (\errorInfo -> spannedTerm . recover ParseError errorInfo)
+        (indented term)
