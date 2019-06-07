@@ -168,7 +168,7 @@ newMeta :: Domain.Type -> Context v -> M Domain.Value
 newMeta type_ context = do
   closedType <- piBoundVars context type_
   liftIO $ do
-    i <- atomicModifyIORef (metas context) $ Meta.insert closedType
+    i <- atomicModifyIORef (metas context) $ Meta.insert closedType (span context)
     pure $ Domain.Neutral (Domain.Meta i) (Lazy . pure . Domain.var <$> IntSeq.toTsil (boundVars context))
 
 newMetaType :: Context v -> M Domain.Value
@@ -254,7 +254,7 @@ forceHead context value =
           value' <- Evaluation.applySpine headValue' spine
           forceHead context value'
 
-        Meta.Unsolved _ ->
+        Meta.Unsolved {} ->
           pure value
 
     _ ->

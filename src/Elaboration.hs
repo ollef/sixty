@@ -303,8 +303,8 @@ checkMetaSolutions context = do
   metaVars <- liftIO $ readIORef $ Context.metas context
   flip IntMap.traverseWithKey (Meta.vars metaVars) $ \index var ->
     case var of
-      Meta.Unsolved type_ -> do
-        Context.report context $
+      Meta.Unsolved type_ span -> do
+        Context.report (Context.spanned span context) $
           Error.UnsolvedMetaVariable index
         pure (Syntax.App (Syntax.Global Builtin.fail) type_, type_)
 

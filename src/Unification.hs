@@ -326,7 +326,7 @@ pruneMeta context meta allowedArgs = do
   putText $ "pruneMeta " <> show meta
   putText $ "pruneMeta " <> show allowedArgs
   case solution of
-    Meta.Unsolved metaType -> do
+    Meta.Unsolved metaType _ -> do
       putText $ show metaType
       metaType' <-
         Evaluation.evaluate
