@@ -20,6 +20,7 @@ import qualified Readback
 import qualified Syntax
 import Telescope (Telescope)
 import qualified Telescope
+import Plicity
 import Var (Var)
 import qualified Var
 
@@ -95,11 +96,11 @@ inlineSolutions solutions def type_ = do
             pure (constr, constrType')
           pure $ Telescope.Empty (Syntax.ConstructorDefinitions constrs')
 
-        Telescope.Extend name paramType tele' -> do
+        Telescope.Extend name paramType plicity tele' -> do
           paramType' <- inlineTermSolutions env paramType
           (env', _) <- Readback.extend env
           tele'' <- inlineTeleSolutions env' tele'
-          pure $ Telescope.Extend name paramType' tele''
+          pure $ Telescope.Extend name paramType' plicity tele''
 
   inlinedType <- inlineTermSolutions Readback.empty type_
   inlinedDef <- inlineDefSolutions Readback.empty def
@@ -230,7 +231,7 @@ evaluate env term =
           evaluate env type_ <*>
           evaluate env' body
 
-      Syntax.Pi name source domain -> do
+      Syntax.Pi name source _ domain -> do
         (env', var) <- Readback.extend env
         Pi name var <$>
           evaluate env source <*>
@@ -241,13 +242,13 @@ evaluate env term =
           evaluate env source <*>
           evaluate env domain
 
-      Syntax.Lam name type_ body -> do
+      Syntax.Lam name type_ _ body -> do
         (env', var) <- Readback.extend env
         Lam name var <$>
           evaluate env type_ <*>
           evaluate env' body
 
-      Syntax.App function argument ->
+      Syntax.App function _ argument ->
         app <$>
           evaluate env function <*>
           evaluate env argument
@@ -278,7 +279,7 @@ readback env metas (Value value _) =
         (Syntax.Var $
           fromMaybe (panic $ "Elaboration.Metas.readback Meta " <> show index) $
           Readback.lookupVarIndex var env)
-        (readback env metas <$> arguments')
+        ((,) Explicit . readback env metas <$> arguments')
 
     Let name var value' type_ body ->
       Syntax.Let
@@ -291,6 +292,7 @@ readback env metas (Value value _) =
       Syntax.Pi
         name
         (readback env metas source)
+        Explicit
         (readback (Readback.extendVar env var) metas domain)
 
     Fun source domain ->
@@ -300,10 +302,11 @@ readback env metas (Value value _) =
       Syntax.Lam
         name
         (readback env metas type_)
+        Explicit
         (readback (Readback.extendVar env var) metas body)
 
     App function argument ->
-      Syntax.App (readback env metas function) (readback env metas argument)
+      Syntax.App (readback env metas function) Explicit (readback env metas argument)
 
 inlineArguments
   :: Value

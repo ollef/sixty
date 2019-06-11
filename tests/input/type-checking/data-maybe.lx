@@ -5,7 +5,7 @@ data Maybe a where
   Just : a -> Maybe a
 
 test : (a : Type) -> a -> Maybe a
-test = \a. Just a
+test = \a. Just
 
 test2 : (a : Type) -> a -> Maybe a
-test2 = \a x. Just a x
+test2 = \a x. Just x

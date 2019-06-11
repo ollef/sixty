@@ -15,6 +15,7 @@ import Monad
 import Name (Name)
 import qualified Name
 import qualified "this" Data.IntMap as IntMap
+import Plicity
 import qualified Scope
 import qualified Syntax
 import Var (Var)
@@ -22,8 +23,8 @@ import qualified Var
 
 data Value
   = Neutral !Head Spine
-  | Lam !Name !(Lazy Type) !Closure
-  | Pi !Name !(Lazy Type) !Closure
+  | Lam !Name !(Lazy Type) !Plicity !Closure
+  | Pi !Name !(Lazy Type) !Plicity !Closure
   | Fun !(Lazy Type) !(Lazy Type)
 
 type Type = Value
@@ -35,7 +36,7 @@ data Head
   | Meta !Meta.Index
   deriving (Eq, Show)
 
-type Spine = Tsil (Lazy Value)
+type Spine = Tsil (Plicity, Lazy Value)
 
 data Closure where
   Closure :: Environment v -> Scope Syntax.Term v -> Closure

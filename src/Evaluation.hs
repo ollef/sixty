@@ -8,6 +8,7 @@ import Rock
 import qualified Data.Tsil as Tsil
 import qualified Domain
 import Monad
+import Plicity
 import qualified Query
 import qualified Scope
 import qualified Syntax
@@ -44,38 +45,39 @@ evaluate env term =
       env' <- Domain.extendValue env t'
       evaluate env' s
 
-    Syntax.Pi n t s -> do
+    Syntax.Pi n t p s -> do
       t' <- lazy $ evaluate env t
-      pure $ Domain.Pi n t' (Domain.Closure env s)
+      pure $ Domain.Pi n t' p (Domain.Closure env s)
 
     Syntax.Fun t1 t2 -> do
       t1' <- lazy $ evaluate env t1
       t2' <- lazy $ evaluate env t2
       pure $ Domain.Fun t1' t2'
 
-    Syntax.Lam n t s -> do
+    Syntax.Lam n t p s -> do
       t' <- lazy $ evaluate env t
-      pure $ Domain.Lam n t' (Domain.Closure env s)
+      pure $ Domain.Lam n t' p (Domain.Closure env s)
 
-    Syntax.App t1 t2 -> do
+    Syntax.App t1 p t2 -> do
       t1' <- evaluate env t1
       t2' <- lazy $ evaluate env t2
-      apply t1' t2'
+      apply t1' p t2'
 
-apply :: Domain.Value -> Lazy Domain.Value -> M Domain.Value
-apply fun arg =
+apply :: Domain.Value -> Plicity -> Lazy Domain.Value -> M Domain.Value
+apply fun plicity arg =
   case fun of
-    Domain.Lam _ _ closure ->
+    Domain.Lam _ _  plicity' closure
+      | plicity == plicity' ->
       evaluateClosure closure arg
 
     Domain.Neutral hd args ->
-      pure $ Domain.Neutral hd (args Tsil.:> arg)
+      pure $ Domain.Neutral hd (args Tsil.:> (plicity, arg))
 
     _ ->
       panic "applying non-function"
 
 applySpine :: Domain.Value -> Domain.Spine -> M Domain.Value
-applySpine = foldM apply
+applySpine = foldM (\val (plicity, arg) -> apply val plicity arg)
 
 evaluateClosure :: Domain.Closure -> Lazy Domain.Value -> M Domain.Value
 evaluateClosure (Domain.Closure env body) argument = do

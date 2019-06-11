@@ -71,13 +71,13 @@ readback env value =
     Domain.Neutral hd spine ->
       readbackNeutral env hd spine
 
-    Domain.Lam name type_ closure -> do
+    Domain.Lam name type_ plicity closure -> do
       type' <- force type_
-      Syntax.Lam name <$> readback env type' <*> readbackClosure env closure
+      Syntax.Lam name <$> readback env type' <*> pure plicity <*> readbackClosure env closure
 
-    Domain.Pi name type_ closure -> do
+    Domain.Pi name type_ plicity closure -> do
       type' <- force type_
-      Syntax.Pi name <$> readback env type' <*> readbackClosure env closure
+      Syntax.Pi name <$> readback env type' <*> pure plicity <*> readbackClosure env closure
 
     Domain.Fun source domain -> do
       source' <- force source
@@ -97,9 +97,9 @@ readbackNeutral env hd spine =
     Tsil.Empty ->
       readbackHead env hd
 
-    spine' Tsil.:> arg -> do
+    spine' Tsil.:> (plicity, arg) -> do
       arg' <- force arg
-      Syntax.App <$> readbackNeutral env hd spine' <*> readback env arg'
+      Syntax.App <$> readbackNeutral env hd spine' <*> pure plicity <*> readback env arg'
 
 readbackHead :: Environment v -> Domain.Head -> M (Syntax.Term v)
 readbackHead env hd =

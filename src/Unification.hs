@@ -18,6 +18,7 @@ import qualified Readback
 import Readback (readback)
 import Data.IntSequence (IntSeq)
 import qualified Data.IntSequence as IntSeq
+import Plicity
 import qualified Syntax
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
@@ -30,8 +31,8 @@ unify context value1 value2 = do
   case (value1', value2') of
     -- Both metas
     (Domain.Neutral (Domain.Meta metaIndex1) spine1, Domain.Neutral (Domain.Meta metaIndex2) spine2) -> do
-      spine1' <- mapM (force >=> Context.forceHead context) spine1
-      spine2' <- mapM (force >=> Context.forceHead context) spine2
+      spine1' <- mapM ((force >=> Context.forceHead context) . snd) spine1
+      spine2' <- mapM ((force >=> Context.forceHead context) . snd) spine2
       let
         spine1Vars = traverse Domain.singleVarView spine1'
         spine2Vars = traverse Domain.singleVarView spine2'
@@ -62,15 +63,17 @@ unify context value1 value2 = do
     -- Same heads
     (Domain.Neutral head1 spine1, Domain.Neutral head2 spine2)
       | head1 == head2 ->
-        Tsil.zipWithM_ (unifyForce context) spine1 spine2
+        Tsil.zipWithM_ (\(_, v1) (_, v2) -> unifyForce context v1 v2) spine1 spine2
 
-    (Domain.Lam name1 type1 closure1, Domain.Lam _ type2 closure2) ->
+    (Domain.Lam name1 type1 plicity1 closure1, Domain.Lam _ type2 plicity2 closure2)
+      | plicity1 == plicity2 ->
       unifyAbstraction name1 type1 closure1 type2 closure2
 
-    (Domain.Pi name1 source1 domainClosure1, Domain.Pi _ source2 domainClosure2) ->
+    (Domain.Pi name1 source1 plicity1 domainClosure1, Domain.Pi _ source2 plicity2 domainClosure2)
+      | plicity1 == plicity2 ->
       unifyAbstraction name1 source1 domainClosure1 source2 domainClosure2
 
-    (Domain.Pi name1 source1 domainClosure1, Domain.Fun source2 domain2) -> do
+    (Domain.Pi name1 source1 Explicit domainClosure1, Domain.Fun source2 domain2) -> do
       unifyForce context source2 source1
 
       (context', var) <- Context.extend context name1 source1
@@ -81,7 +84,7 @@ unify context value1 value2 = do
       domain2' <- force domain2
       unify context' domain1 domain2'
 
-    (Domain.Fun source1 domain1, Domain.Pi name2 source2 domainClosure2) -> do
+    (Domain.Fun source1 domain1, Domain.Pi name2 source2 Explicit domainClosure2) -> do
       unifyForce context source2 source1
 
       (context', var) <- Context.extend context name2 source2
@@ -97,29 +100,29 @@ unify context value1 value2 = do
       unifyForce context domain1 domain2
 
     -- Eta expand
-    (Domain.Lam name1 type1 closure1, v2) -> do
+    (Domain.Lam name1 type1 plicity1 closure1, v2) -> do
       (context', var) <- Context.extend context name1 type1
       let
         lazyVar = Lazy $ pure $ Domain.var var
 
       body1 <- Evaluation.evaluateClosure closure1 lazyVar
-      body2 <- Evaluation.apply v2 lazyVar
+      body2 <- Evaluation.apply v2 plicity1 lazyVar
 
       unify context' body1 body2
 
-    (v1, Domain.Lam name2 type2 closure2) -> do
+    (v1, Domain.Lam name2 type2 plicity2 closure2) -> do
       (context', var) <- Context.extend context name2 type2
       let
         lazyVar = Lazy $ pure $ Domain.var var
 
-      body1 <- Evaluation.apply v1 lazyVar
+      body1 <- Evaluation.apply v1 plicity2 lazyVar
       body2 <- Evaluation.evaluateClosure closure2 lazyVar
 
       unify context' body1 body2
 
     -- Metas
     (Domain.Neutral (Domain.Meta metaIndex1) spine1, v2) -> do
-      spine1' <- mapM (force >=> Context.forceHead context) spine1
+      spine1' <- mapM ((force >=> Context.forceHead context) . snd) spine1
       case traverse Domain.singleVarView spine1' of
         Just vars1
           | unique vars1 ->
@@ -129,7 +132,7 @@ unify context value1 value2 = do
           can'tUnify
 
     (v1, Domain.Neutral (Domain.Meta metaIndex2) spine2) -> do
-      spine2' <- mapM (force >=> Context.forceHead context) spine2
+      spine2' <- mapM ((force >=> Context.forceHead context) . snd) spine2
       case traverse Domain.singleVarView spine2' of
         Just vars2
           | unique vars2 ->
@@ -214,7 +217,7 @@ addAndCheckLambdas outerContext meta vars term =
             }
           type'
       let
-        term' = Syntax.Lam name type'' (Syntax.succ term)
+        term' = Syntax.Lam name type'' Explicit (Syntax.succ term)
       addAndCheckLambdas outerContext meta vars' term'
 
 checkInnerSolution
@@ -227,7 +230,7 @@ checkInnerSolution outerContext occurs env value = do
   value' <- Context.forceHead outerContext value
   case value' of
     Domain.Neutral hd@(Domain.Meta i) spine -> do
-      spine' <- mapM (force >=> Context.forceHead outerContext) spine
+      spine' <- mapM ((force >=> Context.forceHead outerContext) . snd) spine
       case traverse Domain.singleVarView spine' of
         Just vars
           | allowedVars <- map (\v -> isJust (Readback.lookupVarIndex v env)) vars
@@ -242,16 +245,18 @@ checkInnerSolution outerContext occurs env value = do
     Domain.Neutral hd spine ->
       checkInnerNeutral outerContext occurs env hd spine
 
-    Domain.Lam name type_ closure -> do
+    Domain.Lam name type_ plicity closure -> do
       type' <- force type_
       Syntax.Lam name
         <$> checkInnerSolution outerContext occurs env type'
+        <*> pure plicity
         <*> checkInnerClosure outerContext occurs env closure
 
-    Domain.Pi name type_ closure -> do
+    Domain.Pi name type_ plicity closure -> do
       type' <- force type_
       Syntax.Pi name
         <$> checkInnerSolution outerContext occurs env type'
+        <*> pure plicity
         <*> checkInnerClosure outerContext occurs env closure
 
     Domain.Fun source domain -> do
@@ -285,10 +290,11 @@ checkInnerNeutral outerContext occurs env hd spine =
     Tsil.Empty ->
       checkInnerHead occurs env hd
 
-    spine' Tsil.:> arg -> do
+    spine' Tsil.:> (plicity, arg) -> do
       arg' <- force arg
       Syntax.App
         <$> checkInnerNeutral outerContext occurs env hd spine'
+        <*> pure plicity
         <*> checkInnerSolution outerContext occurs env arg'
 
 checkInnerHead
@@ -372,9 +378,9 @@ pruneMeta context meta allowedArgs = do
                     source
               domain' <- force domain
               body <- go alloweds' context'' domain'
-              return $ Syntax.Lam "x" source'' body
+              return $ Syntax.Lam "x" source'' Explicit body
 
-            Domain.Pi name source domainClosure -> do
+            Domain.Pi name source plicity domainClosure -> do
               (context'', v) <-
                 if allowed then
                   Context.extend context' name source
@@ -394,6 +400,6 @@ pruneMeta context meta allowedArgs = do
                   (Context.toReadbackEnvironment context')
                   source'
               body <- go alloweds' context'' domain
-              return $ Syntax.Lam name source'' body
+              return $ Syntax.Lam name source'' plicity body
 
             _ -> panic "pruneMeta wrong type"

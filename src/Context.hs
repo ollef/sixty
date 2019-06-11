@@ -1,6 +1,7 @@
 {-# language DuplicateRecordFields #-}
 {-# language OverloadedStrings #-}
 {-# language PackageImports #-}
+{-# language TupleSections #-}
 module Context where
 
 import Protolude hiding (IntMap, force)
@@ -27,6 +28,7 @@ import Monad
 import Name (Name(Name))
 import qualified Name
 import qualified "this" Data.IntMap as IntMap
+import Plicity
 import qualified Readback
 import qualified Scope
 import qualified Span
@@ -170,7 +172,7 @@ newMeta type_ context = do
   closedType <- piBoundVars context type_
   liftIO $ do
     i <- atomicModifyIORef (metas context) $ Meta.insert closedType (span context)
-    pure $ Domain.Neutral (Domain.Meta i) (Lazy . pure . Domain.var <$> IntSeq.toTsil (boundVars context))
+    pure $ Domain.Neutral (Domain.Meta i) ((Explicit,) . Lazy . pure . Domain.var <$> IntSeq.toTsil (boundVars context))
 
 newMetaType :: Context v -> M Domain.Value
 newMetaType =
@@ -202,7 +204,7 @@ piBoundVars context type_ = do
                 }
               varType
           let
-            term' = Syntax.Pi (lookupVarName var context) varType' $ coerce term
+            term' = Syntax.Pi (lookupVarName var context) varType' Explicit $ coerce term
           pis vars' term'
 
 lookupMeta

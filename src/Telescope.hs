@@ -9,10 +9,11 @@ import Protolude
 
 import Index
 import Name (Name)
+import Plicity
 
 data Telescope t k v
   = Empty !(k v)
-  | Extend !Name !(t v) (Scope (Telescope t k) v)
+  | Extend !Name !(t v) Plicity (Scope (Telescope t k) v)
   deriving (Generic)
 
 deriving instance

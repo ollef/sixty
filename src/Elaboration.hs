@@ -1,12 +1,13 @@
 {-# language DeriveFunctor #-}
 {-# language DuplicateRecordFields #-}
 {-# language GADTs #-}
+{-# language OverloadedStrings #-}
 {-# language PackageImports #-}
 {-# language ScopedTypeVariables #-}
 {-# language ViewPatterns #-}
 module Elaboration where
 
-import Protolude hiding (Seq, force, check, evaluate)
+import Protolude hiding (Seq, force, check, evaluate, until)
 
 import Data.IORef
 import Rock
@@ -25,6 +26,7 @@ import Name (Name)
 import qualified Name
 import qualified Presyntax
 import qualified "this" Data.IntMap as IntMap
+import Plicity
 import qualified Query
 import qualified Readback
 import qualified Scope
@@ -41,8 +43,10 @@ newtype Checked term
   = Checked term
   deriving Functor
 
+newtype InstantiateUntil = InstantiateUntil Plicity
+
 data Expected f where
-  Infer :: Expected Inferred
+  Infer :: InstantiateUntil -> Expected Inferred
   Check :: Domain.Type -> Expected Checked
 
 -------------------------------------------------------------------------------
@@ -53,7 +57,7 @@ inferDefinition
   -> M ((Syntax.Definition, Syntax.Type Void), [Error])
 inferDefinition key def = do
   context <- Context.empty key
-  Inferred def' typeValue <- elaborateDefinition context def Infer
+  Inferred def' typeValue <- elaborateDefinition context def (Infer (InstantiateUntil Explicit))
   typeValue' <- force typeValue
   type_ <- readback context typeValue'
   metas <- checkMetaSolutions context
@@ -92,7 +96,8 @@ elaborateDefinition context def expected =
 
     Presyntax.DataDefinition params constrs ->
       case expected of
-        Infer -> do
+        -- TODO: use `until`
+        Infer _until -> do
           (tele, type_) <- inferDataDefinition context params constrs
           type' <- lazy $ evaluate context type_
           pure $ Inferred (Syntax.DataDefinition tele) type'
@@ -126,8 +131,8 @@ inferDataDefinition context params constrs =
       (context', _) <- Context.extend context name type''
       (tele, dataType) <- inferDataDefinition context' params' constrs
       pure
-        ( Telescope.Extend name type' tele
-        , Syntax.Pi name type' dataType
+        ( Telescope.Extend name type' Explicit tele
+        , Syntax.Pi name type' Explicit dataType
         )
 
 -------------------------------------------------------------------------------
@@ -137,16 +142,29 @@ check
   -> Presyntax.Term
   -> Domain.Type
   -> M (Syntax.Term v)
-check context term type_ = do
-  Checked result <- elaborate context term $ Check type_
-  pure result
+check context term type_ =
+  case (term, type_) of
+    (Presyntax.Term _ (Presyntax.Lam _ Implicit _), Domain.Pi _ _ Implicit _) -> do
+      Checked result <- elaborate context term $ Check type_
+      pure result
+    (_, Domain.Pi n s Implicit c) -> do
+      (context', v) <- Context.extend context n s
+      d' <- Evaluation.evaluateClosure c (Lazy . pure $ Domain.var v)
+      s' <- force s
+      t <- readback context s'
+      term' <- check context' term d'
+      pure $ Syntax.Lam n t Implicit term'
+    _ -> do
+      Checked result <- elaborate context term $ Check type_
+      pure result
 
 infer
   :: Context v
   -> Presyntax.Term
+  -> InstantiateUntil
   -> M (Inferred (Syntax.Term v))
-infer context term =
-  elaborate context term Infer
+infer context term until =
+  elaborate context term (Infer until)
 
 elaborated
   :: Context v
@@ -156,13 +174,29 @@ elaborated
   -> M (e (Syntax.Term v))
 elaborated context expected term type_ =
   case expected of
-    Infer ->
+    Infer (InstantiateUntil Explicit) -> do
+      type' <- force type_
+      insertMetasForImplicits context term type'
+
+    Infer (InstantiateUntil Implicit) ->
       pure $ Inferred term type_
 
     Check expectedType -> do
       type' <- force type_
       Unification.unify context type' expectedType
       pure $ Checked term
+
+insertMetasForImplicits :: Context v -> Syntax.Term v -> Domain.Type -> M (Inferred (Syntax.Term v))
+insertMetasForImplicits context term type_ = do
+  case type_ of
+    Domain.Pi _ sourceType Implicit domainClosure -> do
+      sourceType' <- force sourceType
+      meta <- Context.newMeta sourceType' context
+      domain <- Evaluation.evaluateClosure domainClosure (Lazy $ pure meta)
+      meta' <- readback context meta
+      insertMetasForImplicits context (Syntax.App term Implicit meta') domain
+    _ ->
+      pure $ Inferred term (Lazy (pure type_))
 
 elaborate
   :: Functor e
@@ -197,7 +231,7 @@ elaborateUnspanned context term expected = -- trace ("elaborate " <> show term :
               elaborated
                 context
                 expected
-                (Syntax.App (Syntax.Global Builtin.fail) resultType')
+                (Syntax.App (Syntax.Global Builtin.fail) Explicit resultType')
                 (Lazy $ pure resultType)
 
             Just (Scope.Name qualifiedName) -> do
@@ -212,12 +246,12 @@ elaborateUnspanned context term expected = -- trace ("elaborate " <> show term :
 
             Just (Scope.Constructors (toList -> [constr])) -> do
               type_ <- fetch $ Query.ConstructorType constr
-              type' <- lazy $ evaluate context $ Syntax.fromVoid type_
+              type' <- evaluate context $ Syntax.fromVoid type_
               elaborated
                 context
                 expected
                 (Syntax.Con constr)
-                type'
+                (Lazy $ pure type')
 
             Just (Scope.Constructors constrs) -> do
               -- TODO
@@ -227,7 +261,7 @@ elaborateUnspanned context term expected = -- trace ("elaborate " <> show term :
               elaborated
                 context
                 expected
-                (Syntax.App (Syntax.Global Builtin.fail) resultType')
+                (Syntax.App (Syntax.Global Builtin.fail) Explicit resultType')
                 (Lazy $ pure resultType)
 
             Just (Scope.Ambiguous constrCandidates nameCandidates) -> do
@@ -237,7 +271,7 @@ elaborateUnspanned context term expected = -- trace ("elaborate " <> show term :
               elaborated
                 context
                 expected
-                (Syntax.App (Syntax.Global Builtin.fail) resultType')
+                (Syntax.App (Syntax.Global Builtin.fail) Explicit resultType')
                 (Lazy $ pure resultType)
 
 
@@ -249,7 +283,7 @@ elaborateUnspanned context term expected = -- trace ("elaborate " <> show term :
             (Context.lookupIndexType i context)
 
     Presyntax.Let name term' body -> do
-      Inferred term'' type_ <- infer context term'
+      Inferred term'' type_ <- infer context term' (InstantiateUntil Implicit)
       type' <- force type_
       type'' <- readback context type'
 
@@ -259,7 +293,7 @@ elaborateUnspanned context term expected = -- trace ("elaborate " <> show term :
       body' <- elaborate context' body expected
       pure $ Syntax.Let name term'' type'' <$> body'
 
-    Presyntax.Pi name source domain -> do
+    Presyntax.Pi name plicity source domain -> do
       source' <- check context source Builtin.type_
 
       (context', _) <- Context.extend context name $ Lazy $ pure Builtin.type_
@@ -268,7 +302,7 @@ elaborateUnspanned context term expected = -- trace ("elaborate " <> show term :
       elaborated
         context
         expected
-        (Syntax.Pi name source' domain')
+        (Syntax.Pi name source' plicity domain')
         (Lazy $ pure Builtin.type_)
 
     Presyntax.Fun source domain -> do
@@ -280,34 +314,37 @@ elaborateUnspanned context term expected = -- trace ("elaborate " <> show term :
         (Syntax.Fun source' domain')
         (Lazy $ pure Builtin.type_)
 
-    Presyntax.Lam name body ->
+    Presyntax.Lam name plicity body ->
       let
         inferIt = do
           source <- Context.newMetaType context
           source' <- readback context source
           (context', _) <- Context.extend context name (Lazy $ pure source)
-          Inferred body' domain <- infer context' body
+          Inferred body' domain <- infer context' body (InstantiateUntil Explicit)
           type_ <- lazy $ do
             domain' <- force domain
             domain'' <- readback context' domain'
             pure
               $ Domain.Pi name (Lazy $ pure source)
+              plicity
               $ Domain.Closure (Context.toEvaluationEnvironment context) domain''
 
           elaborated
             context
             expected
-            (Syntax.Lam name source' body')
+            (Syntax.Lam name source' plicity body')
             type_
       in
       case expected of
-        Infer ->
+        -- TODO: use `until`
+        Infer _until ->
           inferIt
 
         Check expectedType -> do
           expectedType' <- Context.forceHead context expectedType
           case expectedType' of
-            Domain.Pi _ source domainClosure -> do
+            Domain.Pi _ source typePlicity domainClosure
+              | plicity == typePlicity -> do
               source' <- force source
               source'' <- readback context source'
               (context', var) <- Context.extend context name source
@@ -317,27 +354,29 @@ elaborateUnspanned context term expected = -- trace ("elaborate " <> show term :
                   domainClosure
                   (Lazy $ pure $ Domain.var var)
               body' <- check context' body domain
-              pure $ Checked (Syntax.Lam name source'' body')
+              pure $ Checked (Syntax.Lam name source'' plicity body')
 
-            Domain.Fun source domain -> do
+            Domain.Fun source domain
+              | plicity == Explicit -> do
               source' <- force source
               source'' <- readback context source'
               (context', _) <- Context.extend context name source
 
               domain' <- force domain
               body' <- check context' body domain'
-              pure $ Checked (Syntax.Lam name source'' body')
+              pure $ Checked (Syntax.Lam name source'' Explicit body')
 
             _ ->
               inferIt
 
-    Presyntax.App function argument -> do
-      Inferred function' functionType <- infer context function
+    Presyntax.App function plicity argument -> do
+      Inferred function' functionType <- infer context function (InstantiateUntil plicity)
       functionType' <- force functionType
       functionType'' <- Context.forceHead context functionType'
 
       case functionType'' of
-        Domain.Pi _ source domainClosure -> do
+        Domain.Pi _ source typePlicity domainClosure
+          | plicity == typePlicity -> do
           source' <- force source
           argument' <- check context argument source'
           argument'' <- lazy $ evaluate context argument'
@@ -345,23 +384,25 @@ elaborateUnspanned context term expected = -- trace ("elaborate " <> show term :
           elaborated
             context
             expected
-            (Syntax.App function' argument')
+            (Syntax.App function' plicity argument')
             domain
 
-        Domain.Fun source domain -> do
+        Domain.Fun source domain
+          | plicity == Explicit -> do
           source' <- force source
           case expected of
             Check expectedType -> do
               domain' <- force domain
               Unification.unify context expectedType domain'
               argument' <- check context argument source'
-              pure $ Checked (Syntax.App function' argument')
+              pure $ Checked (Syntax.App function' plicity argument')
 
-            Infer -> do
+            -- TODO: use `until`
+            Infer _until -> do
               argument' <- check context argument source'
-              pure $ Inferred (Syntax.App function' argument') domain
+              pure $ Inferred (Syntax.App function' plicity argument') domain
 
-        _ -> do
+        _ | plicity == Explicit -> do
           source <- Context.newMetaType context
           domain <- Context.newMetaType context
           let
@@ -374,11 +415,15 @@ elaborateUnspanned context term expected = -- trace ("elaborate " <> show term :
             Check expectedType -> do
               Unification.unify context expectedType domain
               argument' <- check context argument source
-              pure $ Checked (Syntax.App function' argument')
+              pure $ Checked (Syntax.App function' plicity argument')
 
-            Infer -> do
+            -- TODO: use `until`
+            Infer _until -> do
               argument' <- check context argument source
-              pure $ Inferred (Syntax.App function' argument') lazyDomain
+              pure $ Inferred (Syntax.App function' plicity argument') lazyDomain
+
+        _ ->
+            panic "The “impossible” happened :S"
 
     Presyntax.Wildcard -> do
       type_ <- Context.newMetaType context
@@ -403,7 +448,7 @@ checkMetaSolutions context = do
       Meta.Unsolved type_ span -> do
         Context.report (Context.spanned span context) $
           Error.UnsolvedMetaVariable index
-        pure (Syntax.App (Syntax.Global Builtin.fail) type_, type_)
+        pure (Syntax.App (Syntax.Global Builtin.fail) Explicit type_, type_)
 
       Meta.Solved solution type_ ->
         pure (solution, type_)

@@ -89,13 +89,13 @@ prettyTerm prec env term = case term of
     prettyParen (prec > lamPrec) $
       "\\" <> prettyLamTerm env term
 
-  Syntax.App t1 t2 ->
+  Syntax.App t1 _ t2 ->
     prettyParen (prec > appPrec) $
       prettyTerm appPrec env t1 <+> prettyTerm (appPrec + 1) env t2
 
 prettyLamTerm :: Environment v -> Syntax.Term v -> Doc ann
 prettyLamTerm env term = case term of
-  Syntax.Lam name typ scope ->
+  Syntax.Lam name typ _ scope ->
     let
       (env', name') = extend env name
     in
@@ -107,7 +107,7 @@ prettyLamTerm env term = case term of
 
 prettyPiTerm :: Environment v -> Syntax.Term v -> Doc ann
 prettyPiTerm env term = case term of
-  Syntax.Pi name typ scope ->
+  Syntax.Pi name typ _ scope ->
     let
       (env', name') = extend env name
     in
@@ -146,7 +146,7 @@ prettyTelescope env tele =
           ]
         )
 
-    Telescope.Extend name type_ tele' ->
+    Telescope.Extend name type_ _plicity tele' ->
       let
         (env', name') = extend env name
       in

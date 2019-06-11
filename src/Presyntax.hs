@@ -7,6 +7,7 @@ import Protolude hiding (Type)
 import qualified Error
 import Name (Name)
 import qualified Name
+import Plicity
 import qualified Position
 import qualified Scope
 import qualified Span
@@ -22,10 +23,10 @@ unspanned (Term _ term) =
 data UnspannedTerm
   = Var !Name.Pre
   | Let !Name.Name !Term !Term
-  | Pi !Name.Name !Type !Type
+  | Pi !Name.Name !Plicity !Type !Type
   | Fun !Type !Type
-  | Lam !Name.Name !Term
-  | App !Term !Term
+  | Lam !Name.Name !Plicity !Term
+  | App !Term !Plicity !Term
   | Wildcard
   | ParseError !Error.Parsing
   deriving (Show, Generic, Hashable)
@@ -34,27 +35,27 @@ type Type = Term
 
 app :: Term -> Term -> Term
 app fun@(Term (Span.Relative start _) _) arg@(Term (Span.Relative _ end) _) =
-  Term (Span.Relative start end) $ App fun arg
+  Term (Span.Relative start end) $ App fun Explicit arg
 
 apps :: Foldable f => Term -> f Term -> Term
 apps fun@(Term (Span.Relative start _) _) =
-  foldl (\fun' arg@(Term (Span.Relative _ end) _) -> Term (Span.Relative start end) $ App fun' arg) fun
+  foldl (\fun' arg@(Term (Span.Relative _ end) _) -> Term (Span.Relative start end) $ App fun' Explicit arg) fun
 
 lam :: (Position.Relative, Name.Name) -> Term -> Term
 lam (start, v) body@(Term (Span.Relative _ end) _) =
-  Term (Span.Relative start end) $ Lam v body
+  Term (Span.Relative start end) $ Lam v Explicit body
 
 lams :: Foldable f => f (Position.Relative, Name.Name) -> Term -> Term
 lams vs body@(Term (Span.Relative _ end) _) =
-  foldr (\(start, v) -> Term (Span.Relative start end) . Lam v) body vs
+  foldr (\(start, v) -> Term (Span.Relative start end) . Lam v Explicit) body vs
 
 pi :: (Position.Relative, Name.Name) -> Type -> Type -> Type
 pi (start, v) source domain@(Term (Span.Relative _ end) _) =
-  Term (Span.Relative start end) $ Pi v source domain
+  Term (Span.Relative start end) $ Pi v Explicit source domain
 
 pis :: Foldable f => f (Position.Relative, Name.Name) -> Type -> Type -> Type
 pis vs source domain@(Term (Span.Relative _ end) _) =
-  foldr (\(start, v) -> Term (Span.Relative start end) . Pi v source) domain vs
+  foldr (\(start, v) -> Term (Span.Relative start end) . Pi v Explicit source) domain vs
 
 function :: Term -> Term -> Term
 function source@(Term (Span.Relative start _) _) domain@(Term (Span.Relative _ end) _) =

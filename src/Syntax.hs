@@ -14,6 +14,7 @@ import qualified Meta
 import Name (Name)
 import qualified Name
 import Telescope (Telescope)
+import Plicity
 
 data Term v
   = Var !(Index v)
@@ -21,21 +22,21 @@ data Term v
   | Con !Name.QualifiedConstructor
   | Meta !Meta.Index
   | Let !Name !(Term v) !(Type v) !(Scope Term v)
-  | Pi !Name !(Type v) !(Scope Type v)
+  | Pi !Name !(Type v) !Plicity !(Scope Type v)
   | Fun !(Type v) !(Type v)
-  | Lam !Name !(Type v) !(Scope Term v)
-  | App !(Term v) !(Term v)
+  | Lam !Name !(Type v) !Plicity !(Scope Term v)
+  | App !(Term v) !Plicity !(Term v)
   deriving (Show, Generic, Hashable)
 
 type Type = Term
 
-apps :: Foldable f => Term v -> f (Term v) -> Term v
-apps = foldl App
+apps :: Foldable f => Term v -> f (Plicity, Term v) -> Term v
+apps = foldl (\fun (plicity, arg) -> App fun plicity arg)
 
 appsView :: Term v -> (Term v, [Term v])
 appsView = go []
   where
-    go args (App t1 t2) = go (t2 : args) t1
+    go args (App t1 _ t2) = go (t2 : args) t1
     go args t = (t, args)
 
 succ :: Term v -> Term (Succ v)

@@ -22,6 +22,7 @@ import Name (Name(Name))
 import qualified Name
 import qualified Parser
 import qualified Position
+import Plicity
 import qualified Presyntax
 import Query
 import qualified Resolution
@@ -115,7 +116,7 @@ rules (Writer query) =
     ElaboratedType name
       -- TODO
       | name == Builtin.fail ->
-        pure (Syntax.Pi "x" (Syntax.Global Builtin.typeName) $ Syntax.Var Index.Zero, mempty)
+        pure (Syntax.Pi "x" (Syntax.Global Builtin.typeName) Explicit $ Syntax.Var Index.Zero, mempty)
 
       | name == Builtin.typeName ->
         pure (Syntax.Global Builtin.typeName, mempty)
@@ -143,6 +144,7 @@ rules (Writer query) =
                 Nothing ->
                   ( Syntax.App
                     (Syntax.Global Builtin.fail)
+                    Explicit
                     (Syntax.Global Builtin.typeName)
                   , errs
                   )
@@ -191,8 +193,8 @@ rules (Writer query) =
                     fromMaybe (panic "ConstructorType: no such constructor") $
                       List.lookup constr constrs
 
-                  Telescope.Extend paramName paramType tele'' ->
-                    Syntax.Pi paramName paramType $ go tele''
+                  Telescope.Extend paramName paramType _ tele'' ->
+                    Syntax.Pi paramName paramType Implicit $ go tele''
 
             pure $ go tele
 

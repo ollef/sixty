@@ -8,4 +8,4 @@ t1 = Type
 t2 = Type
 
 example =
-  Cons _ t1 (Cons _ t2 (Nil _))
+  Cons t1 (Cons t2 Nil)
