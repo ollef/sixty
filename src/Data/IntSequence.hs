@@ -48,8 +48,8 @@ instance Foldable IntSeq where
   foldMap f (IntSeq ft) = foldMap (coerce f) ft
 
 instance Show a => Show (IntSeq a) where
-    showsPrec p xs = showParen (p > 10) $
-        showString "fromList " . shows (toList xs)
+  showsPrec p xs = showParen (p > 10) $
+    showString "fromList " . shows (toList xs)
 
 pattern Empty :: (Coercible a Data.IntMap.Key) => IntSeq a
 pattern Empty <- IntSeq (FingerTree.null -> True)
