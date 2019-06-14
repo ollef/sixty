@@ -59,7 +59,7 @@ apply fun arg =
       evaluateClosure closure arg
 
     Domain.Neutral hd args ->
-      pure $ Domain.Neutral hd (Tsil.Snoc args arg)
+      pure $ Domain.Neutral hd (args Tsil.:> arg)
 
     _ ->
       panic "applying non-function"

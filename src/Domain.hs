@@ -39,16 +39,16 @@ data Closure where
   Closure :: Environment v -> Scope Syntax.Term v -> Closure
 
 var :: Var -> Value
-var v = Neutral (Domain.Var v) Tsil.Nil
+var v = Neutral (Domain.Var v) mempty
 
 global :: Name.Qualified -> Value
-global g = Neutral (Global g) Tsil.Nil
+global g = Neutral (Global g) mempty
 
 meta :: Meta.Index -> Value
-meta i = Neutral (Meta i) Tsil.Nil
+meta i = Neutral (Meta i) mempty
 
 singleVarView :: Value -> Maybe Var
-singleVarView (Neutral (Var v) Tsil.Nil) = Just v
+singleVarView (Neutral (Var v) Tsil.Empty) = Just v
 singleVarView _ = Nothing
 
 -------------------------------------------------------------------------------

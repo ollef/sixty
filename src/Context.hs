@@ -271,7 +271,7 @@ report context err =
       Error.Spanned (span context) err
   in
   liftIO $ atomicModifyIORef (errors context) $ \errs ->
-    (Tsil.Snoc errs err', ())
+    (errs Tsil.:> err', ())
 
 reportParseError :: Context v -> Error.Parsing -> M ()
 reportParseError context err =
@@ -286,7 +286,7 @@ reportParseError context err =
       Error.Parse filePath err
   in
   liftIO $ atomicModifyIORef (errors context) $ \errs ->
-    (Tsil.Snoc errs err', ())
+    (errs Tsil.:> err', ())
 
 try :: Context v -> M a -> M (Maybe a)
 try context m =

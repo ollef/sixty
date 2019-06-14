@@ -282,10 +282,10 @@ checkInnerNeutral
   -> M (Syntax.Term v')
 checkInnerNeutral outerContext occurs env hd spine =
   case spine of
-    Tsil.Nil ->
+    Tsil.Empty ->
       checkInnerHead occurs env hd
 
-    Tsil.Snoc spine' arg -> do
+    spine' Tsil.:> arg -> do
       arg' <- force arg
       Syntax.App
         <$> checkInnerNeutral outerContext occurs env hd spine'

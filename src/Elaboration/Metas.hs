@@ -106,7 +106,7 @@ app :: Value -> Value -> InnerValue
 app fun@(Value fun' _) arg =
   case fun' of
     Meta index args ->
-      Meta index $ Tsil.Snoc args arg
+      Meta index $ args Tsil.:> arg
 
     _ ->
       App fun arg
@@ -371,13 +371,13 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
 
       | otherwise ->
         case Tsil.filter ((index `IntMap.member`) . occurrencesMap) args of
-          Tsil.Nil ->
+          Tsil.Empty ->
             pure
               ( foldl' (\v1 v2 -> makeValue $ app v1 v2) value args
               , Nothing
               )
 
-          Tsil.Snoc Tsil.Nil _ -> do
+          Tsil.Empty Tsil.:> _ -> do
             argResults <- mapM (inlineIndex index solution) args
             let
               (args', results) =

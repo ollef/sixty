@@ -94,10 +94,10 @@ readbackClosure env closure = do
 readbackNeutral :: Environment v -> Domain.Head -> Domain.Spine -> M (Syntax.Term v)
 readbackNeutral env hd spine =
   case spine of
-    Tsil.Nil ->
+    Tsil.Empty ->
       readbackHead env hd
 
-    Tsil.Snoc spine' arg -> do
+    spine' Tsil.:> arg -> do
       arg' <- force arg
       Syntax.App <$> readbackNeutral env hd spine' <*> readback env arg'
 

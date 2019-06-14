@@ -92,17 +92,17 @@ index (IntSeq ft) i =
 fromTsil :: (Coercible a Data.IntMap.Key) => Tsil a -> IntSeq a
 fromTsil tsil =
   case tsil of
-    Tsil.Nil ->
+    Tsil.Empty ->
       mempty
 
-    Tsil.Snoc as a ->
+    as Tsil.:> a ->
       fromTsil as :> a
 
 toTsil :: (Coercible a Data.IntMap.Key) => IntSeq a -> Tsil a
 toTsil as =
   case as of
     Empty ->
-      Tsil.Nil
+      Tsil.Empty
 
     as' :> a ->
-      Tsil.Snoc (toTsil as') a
+      toTsil as' Tsil.:> a
