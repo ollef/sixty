@@ -221,7 +221,7 @@ qidLetter = idLetter
 
 reservedIds :: HashSet String
 reservedIds =
-  HashSet.fromList ["let", "in", "_"]
+  HashSet.fromList ["let", "in", "_", "data", "where"]
 
 idStyle :: Parsix.IdentifierStyle Parser
 idStyle
@@ -265,6 +265,10 @@ reserved =
 
 name :: Parser Name
 name =
+  Parsix.ident idStyle
+
+constructor :: Parser Name.Constructor
+constructor =
   Parsix.ident idStyle
 
 prename :: Parser Name.Pre
@@ -313,6 +317,9 @@ definition =
   sameLevel $
   withIndentationBlock $
   relativeTo $
+    (,) <$ reserved "data" <*>% name <*>
+      (DataDefinition <$> manyIndented param <*% reserved "where" <*> blockOfMany constr)
+    <|>
     (,) <$> name <*>%
       (TypeDeclaration <$ symbol ":" <*> recoveringTerm
       <|> ConstantDefinition <$ symbol "=" <*> recoveringTerm
@@ -323,3 +330,7 @@ definition =
       Parsix.withRecovery
         (\errorInfo -> spannedTerm . recover ParseError errorInfo)
         (indented term)
+    param =
+      (,) <$ symbol "(" <*>% name <*% symbol ":" <*>% recoveringTerm <*% symbol ")"
+    constr =
+      (,) <$> constructor <*% symbol ":" <*>% recoveringTerm
