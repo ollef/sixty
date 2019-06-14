@@ -41,8 +41,10 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
     - [x] Elaboration
     - [ ] Unification
 - [ ] Recursive let bindings
-- [ ] Data definitions
-- [ ] Pattern matching elaboration
+- [ ] Data
+  - [ ] Elaboration of data definitions
+  - [ ] Constructors
+  - [ ] Pattern matching elaboration
 - [ ] Generalisation?
 - [ ] Glued evaluation
 
