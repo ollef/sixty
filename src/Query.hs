@@ -29,6 +29,7 @@ data Query a where
   ResolvedName :: Scope.KeyedName -> Name.Pre -> Query (Maybe Name.Qualified)
   ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void)
   ElaboratedDefinition :: Name.Qualified -> Query (Maybe (Syntax.Definition, Syntax.Type Void))
+  ConstructorType :: Name.QualifiedConstructor -> Query (Syntax.Type Void)
   ErrorSpan :: Error -> Query (FilePath, Span.Absolute)
   KeyedNameSpan :: Scope.KeyedName -> Query (FilePath, Span.Absolute)
 
@@ -48,6 +49,7 @@ instance HashTag Query where
       ResolvedName {} -> hash
       ElaboratedType {} -> hash
       ElaboratedDefinition {} -> hash
+      ConstructorType {} -> hash
       ErrorSpan {} -> hash
       KeyedNameSpan {} -> hash
 

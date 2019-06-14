@@ -6,6 +6,7 @@ module Rules where
 import Protolude hiding (force)
 
 import qualified Data.HashMap.Lazy as HashMap
+import qualified Data.List as List
 import Data.Text.Unsafe as Text
 import Rock
 
@@ -15,18 +16,20 @@ import qualified Elaboration
 import Error (Error)
 import qualified Error
 import qualified Evaluation
-import qualified Position
 import qualified Index
 import Monad
 import Name (Name(Name))
 import qualified Name
 import qualified Parser
+import qualified Position
 import qualified Presyntax
 import Query
 import qualified Resolution
 import qualified Scope
 import qualified Span
 import qualified Syntax
+import Telescope (Telescope)
+import qualified Telescope
 
 rules :: GenRules (Writer [Error] Query) Query
 rules (Writer query) =
@@ -172,6 +175,27 @@ rules (Writer query) =
                   typeValue <- Evaluation.evaluate Domain.empty type_
                   (def', errs) <- Elaboration.checkDefinition defKey def typeValue
                   pure ((def', type_), errs)
+
+    ConstructorType (Name.QualifiedConstructor dataTypeName constr) ->
+      noError $ do
+        def <- fetch $ ElaboratedDefinition dataTypeName
+        case def of
+          Just (Syntax.DataDefinition tele, _) -> do
+            let
+              go :: Telescope Syntax.Type Syntax.ConstructorDefinitions v -> Syntax.Type v
+              go tele' =
+                case tele' of
+                  Telescope.Empty (Syntax.ConstructorDefinitions constrs) ->
+                    fromMaybe (panic "ConstructorType: no such constructor") $
+                      List.lookup constr constrs
+
+                  Telescope.Extend paramName paramType tele'' ->
+                    Syntax.Pi paramName paramType $ go tele''
+
+            pure $ go tele
+
+          _ ->
+            panic "ConstructorType: none-datatype"
 
     ErrorSpan err ->
       noError $
