@@ -61,21 +61,19 @@ function source@(Term (Span.Relative start _) _) domain@(Term (Span.Relative _ e
   Term (Span.Relative start end) $ Fun source domain
 
 data Definition
-  = TypeDeclaration !Name.Name !Type
-  | ConstantDefinition !Name.Name !Term
+  = TypeDeclaration !Type
+  | ConstantDefinition !Term
+  | DataDefinition [(Name.Name, Type)] [(Name.Constructor, Type)]
   deriving (Show, Generic, Hashable)
 
-definitionName :: Definition -> Name.Name
-definitionName def =
+key :: Definition -> Scope.Key
+key def =
   case def of
-    TypeDeclaration name _ -> name
-    ConstantDefinition name _ -> name
+    TypeDeclaration {} ->
+      Scope.Type
 
-keyed :: Definition -> ((Scope.Key, Name), Presyntax.Term)
-keyed def =
-  case def of
-    Presyntax.ConstantDefinition name term ->
-      ((Scope.Definition, name), term)
+    ConstantDefinition {} ->
+      Scope.Definition
 
-    Presyntax.TypeDeclaration name type_ ->
-      ((Scope.Type, name), type_)
+    DataDefinition {} ->
+      Scope.Definition

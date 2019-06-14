@@ -20,12 +20,16 @@ import qualified Error
 import qualified Evaluation
 import qualified Meta
 import Monad
+import Name (Name)
+import qualified Name
 import qualified Presyntax
 import qualified "this" Data.IntMap as IntMap
 import qualified Query
 import qualified Readback
 import qualified Scope
 import qualified Syntax
+import Telescope (Telescope)
+import qualified Telescope
 import qualified Unification
 
 data Inferred term
@@ -40,40 +44,100 @@ data Expected f where
   Infer :: Expected Inferred
   Check :: Domain.Type -> Expected Checked
 
-inferTopLevel
+-------------------------------------------------------------------------------
+
+inferDefinition
   :: Scope.KeyedName
-  -> Presyntax.Term
-  -> M ((Syntax.Term Void, Syntax.Type Void), [Error])
-inferTopLevel key term = do
+  -> Presyntax.Definition
+  -> M ((Syntax.Definition, Syntax.Type Void), [Error])
+inferDefinition key def = do
   context <- Context.empty key
-  Inferred term' typeValue <- Elaboration.infer context term
+  Inferred def' typeValue <- elaborateDefinition context def Infer
   typeValue' <- force typeValue
   type_ <- readback context typeValue'
   metas <- checkMetaSolutions context
-  result <- Metas.inlineSolutions metas term' type_
+  result <- Metas.inlineSolutions metas def' type_
   errors <- liftIO $ readIORef (Context.errors context)
   pure (result, toList errors)
 
-checkTopLevel
+checkDefinition
   :: Scope.KeyedName
-  -> Presyntax.Term
+  -> Presyntax.Definition
   -> Domain.Type
-  -> M (Syntax.Term Void, [Error])
-checkTopLevel key term type_ = do
+  -> M (Syntax.Definition, [Error])
+checkDefinition key def type_ = do
   context <- Context.empty key
-  term' <- check context term type_
+  Checked def' <- elaborateDefinition context def $ Check type_
   metas <- checkMetaSolutions context
-  (term'', _) <- Metas.inlineSolutions metas term' $ Syntax.Global Builtin.fail
+  (def'', _) <- Metas.inlineSolutions metas def' $ Syntax.Global Builtin.fail
   errors <- liftIO $ readIORef (Context.errors context)
-  pure (term'', toList errors)
+  pure (def'', toList errors)
+
+elaborateDefinition
+  :: Functor e
+  => Context Void
+  -> Presyntax.Definition
+  -> Expected e
+  -> M (e Syntax.Definition)
+elaborateDefinition context def expected =
+  case def of
+    Presyntax.TypeDeclaration type_ -> do
+      type' <- elaborate context type_ expected
+      pure $ Syntax.TypeDeclaration <$> type'
+
+    Presyntax.ConstantDefinition term -> do
+      term' <- elaborate context term expected
+      pure $ Syntax.ConstantDefinition <$> term'
+
+    Presyntax.DataDefinition params constrs ->
+      case expected of
+        Infer -> do
+          (tele, type_) <- inferDataDefinition context params constrs
+          type' <- lazy $ evaluate context type_
+          pure $ Inferred (Syntax.DataDefinition tele) type'
+
+        Check expectedType -> do
+          (tele, type_) <- inferDataDefinition context params constrs
+          type' <- evaluate context type_
+          Unification.unify context type' expectedType
+          pure $ Checked (Syntax.DataDefinition tele)
+
+inferDataDefinition
+  :: Context v
+  -> [(Name, Presyntax.Type)]
+  -> [(Name.Constructor, Presyntax.Type)]
+  -> M (Telescope Syntax.Type Syntax.ConstructorDefinitions v, Syntax.Type v)
+inferDataDefinition context params constrs =
+  case params of
+    [] -> do
+      constrs' <- forM constrs $ \(constr, type_) -> do
+        -- TODO check return value of constructors
+        type' <- check context type_ Builtin.type_
+        pure (constr, type')
+      pure
+        ( Telescope.Empty (Syntax.ConstructorDefinitions constrs')
+        , Syntax.Global Builtin.typeName
+        )
+
+    (name, type_):params' -> do
+      type' <- check context type_ Builtin.type_
+      type'' <- lazy $ evaluate context type'
+      (context', _) <- Context.extend context name type''
+      (tele, dataType) <- inferDataDefinition context' params' constrs
+      pure
+        ( Telescope.Extend name type' tele
+        , Syntax.Pi name type' dataType
+        )
+
+-------------------------------------------------------------------------------
 
 check
   :: Context v
   -> Presyntax.Term
   -> Domain.Type
   -> M (Syntax.Term v)
-check context term typ = do
-  Checked result <- elaborate context term $ Check typ
+check context term type_ = do
+  Checked result <- elaborate context term $ Check type_
   pure result
 
 infer
@@ -89,14 +153,14 @@ elaborated
   -> Syntax.Term v
   -> Lazy Domain.Type
   -> M (e (Syntax.Term v))
-elaborated context expected term typ =
+elaborated context expected term type_ =
   case expected of
     Infer ->
-      pure $ Inferred term typ
+      pure $ Inferred term type_
 
     Check expectedType -> do
-      typ' <- force typ
-      Unification.unify context typ' expectedType
+      type' <- force type_
+      Unification.unify context type' expectedType
       pure $ Checked term
 
 elaborate
@@ -152,15 +216,15 @@ elaborateUnspanned context term expected = -- trace ("elaborate " <> show term :
             (Context.lookupIndexType i context)
 
     Presyntax.Let name term' body -> do
-      Inferred term'' typ <- infer context term'
-      typ' <- force typ
-      typ'' <- readback context typ'
+      Inferred term'' type_ <- infer context term'
+      type' <- force type_
+      type'' <- readback context type'
 
       term''' <- lazy $ evaluate context term''
-      (context', _) <- Context.extendDef context name term''' $ Lazy $ pure typ'
+      (context', _) <- Context.extendDef context name term''' $ Lazy $ pure type'
 
       body' <- elaborate context' body expected
-      pure $ Syntax.Let name term'' typ'' <$> body'
+      pure $ Syntax.Let name term'' type'' <$> body'
 
     Presyntax.Pi name source domain -> do
       source' <- check context source Builtin.type_

@@ -16,7 +16,8 @@ import Text.Parsix ((<?>), symbol, try)
 import qualified Text.Parsix as Parsix
 
 import qualified Error
-import Name
+import Name (Name)
+import qualified Name
 import qualified Position
 import Presyntax
 import qualified Span
@@ -301,20 +302,20 @@ term =
 -------------------------------------------------------------------------------
 -- Definitions
 
-module_ :: Parser [Either Error.Parsing (Position.Absolute, Definition)]
+module_ :: Parser [Either Error.Parsing (Position.Absolute, (Name, Definition))]
 module_ =
   many definition
 
-definition :: Parser (Either Error.Parsing (Position.Absolute, Definition))
+definition :: Parser (Either Error.Parsing (Position.Absolute, (Name, Definition)))
 definition =
   Parsix.withRecovery (recover Left) $
   fmap Right $
   sameLevel $
   withIndentationBlock $
   relativeTo $
-    name <**>%
-      (flip TypeDeclaration <$ symbol ":" <*> recoveringTerm
-      <|> flip ConstantDefinition <$ symbol "=" <*> recoveringTerm
+    (,) <$> name <*>%
+      (TypeDeclaration <$ symbol ":" <*> recoveringTerm
+      <|> ConstantDefinition <$ symbol "=" <*> recoveringTerm
       )
     <?> "definition"
   where

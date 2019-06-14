@@ -15,7 +15,6 @@ import Rock
 import Error (Error)
 import qualified Error
 import qualified Name
-import qualified Presyntax
 import qualified Pretty
 import Query (Query)
 import qualified Query
@@ -64,12 +63,12 @@ parseAndTypeCheck module_ = do
     let
       names =
         HashSet.fromList $
-          Name.Qualified module_ . Presyntax.definitionName . snd <$> defs
+          Name.Qualified module_ . fst . snd <$> defs
     forM_ names $ \name -> do
       type_ <- fetch $ Query.ElaboratedType name
       liftIO $ putDoc $ pretty name <> " : " <> Pretty.prettyTerm 0 Pretty.empty type_ <> line
       maybeDef <- fetch $ Query.ElaboratedDefinition name
       liftIO $ forM_ maybeDef $ \(def, _) ->
-        putDoc $ pretty name <> " = " <> Pretty.prettyTerm 0 Pretty.empty def <> line
+        putDoc $ Pretty.prettyDefinition name def <> line
   forM_ errs $ \(filePath, lineColumn, lineText, err) ->
     liftIO $ putDoc $ Error.pretty filePath lineColumn lineText err <> line

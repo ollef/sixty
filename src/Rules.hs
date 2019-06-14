@@ -54,14 +54,19 @@ rules (Writer query) =
     ParsedModuleMap module_ ->
       noError $ do
         defs <- fetch $ ParsedModule module_
-        pure $ HashMap.fromList $ Presyntax.keyed . snd <$> defs
+        pure $ HashMap.fromList
+          [ ((Presyntax.key def, name), def)
+          | (_, (name, def)) <- defs
+          ]
 
     ModulePositionMap module_ ->
       noError $ do
         defs <- fetch $ ParsedModule module_
         pure $
           HashMap.fromList
-            [(key, loc) | (loc, def) <- defs, let (key, _) = Presyntax.keyed def]
+            [ ((Presyntax.key def, name), loc)
+            | (loc, (name, def)) <- defs
+            ]
 
     ParsedDefinition (Scope.KeyedName key (Name.Qualified module_ name)) ->
       noError $ do
@@ -117,9 +122,9 @@ rules (Writer query) =
               Just (_, type_) ->
                 pure (type_, mempty)
 
-          Just type_ -> do
+          Just def -> do
             (maybeResult, errs) <- runElaborator key $
-              Elaboration.checkTopLevel key type_ Builtin.type_
+              Elaboration.checkDefinition key def Builtin.type_
             pure $
               case maybeResult of
                 Nothing ->
@@ -129,8 +134,11 @@ rules (Writer query) =
                   , errs
                   )
 
-                Just result ->
+                Just (Syntax.TypeDeclaration result) ->
                   (result, errs)
+
+                Just _ ->
+                  panic "ElaboratedType: Not a type declaration"
 
     ElaboratedDefinition name
       -- TODO
@@ -156,13 +164,13 @@ rules (Writer query) =
             mtype <- fetch $ ParsedDefinition typeKey
             case mtype of
               Nothing ->
-                runElaborator defKey $ Elaboration.inferTopLevel defKey def
+                runElaborator defKey $ Elaboration.inferDefinition defKey def
 
               Just _ -> do
                 type_ <- fetch $ ElaboratedType name
                 runElaborator defKey $ do
                   typeValue <- Evaluation.evaluate Domain.empty type_
-                  (def', errs) <- Elaboration.checkTopLevel defKey def typeValue
+                  (def', errs) <- Elaboration.checkDefinition defKey def typeValue
                   pure ((def', type_), errs)
 
     ErrorSpan err ->

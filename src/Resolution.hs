@@ -7,6 +7,7 @@ import qualified Data.HashMap.Lazy as HashMap
 
 import Error (Error)
 import qualified Error
+import Name (Name)
 import qualified Name
 import qualified Presyntax
 import Scope (Scopes)
@@ -14,7 +15,7 @@ import qualified Scope
 
 moduleScopes
   :: Name.Module
-  -> [Presyntax.Definition]
+  -> [(Name, Presyntax.Definition)]
   -> (Scopes, [Error])
 moduleScopes module_ definitions =
   let
@@ -27,9 +28,9 @@ moduleScopes module_ definitions =
       Error.DuplicateName
         (Scope.KeyedName key (Name.Qualified module_ name))
 
-    go (!scope, !scopes, !errs) def =
+    go (!scope, !scopes, !errs) (name, def) =
       case def of
-        Presyntax.TypeDeclaration name _ ->
+        Presyntax.TypeDeclaration {} ->
           case HashMap.lookup name scope of
             Nothing ->
               ( HashMap.insert name Scope.Type scope
@@ -37,19 +38,33 @@ moduleScopes module_ definitions =
               , errs
               )
 
-            Just Scope.Type ->
+            Just key ->
               ( scope
               , scopes
-              , duplicate Scope.Type name : errs
+              , duplicate key name : errs
+              )
+
+        Presyntax.ConstantDefinition {} ->
+          case HashMap.lookup name scope of
+            Nothing ->
+              ( HashMap.insert name Scope.Definition scope
+              , HashMap.insert (name, Scope.Definition) scope scopes
+              , errs
+              )
+
+            Just Scope.Type ->
+              ( HashMap.insert name Scope.Definition scope
+              , HashMap.insert (name, Scope.Definition) scope scopes
+              , errs
               )
 
             Just Scope.Definition ->
               ( scope
-              , HashMap.insert (name, Scope.Type) scope scopes
-              , duplicate Scope.Type name : errs
+              , scopes
+              , duplicate Scope.Definition name : errs
               )
 
-        Presyntax.ConstantDefinition name _ ->
+        Presyntax.DataDefinition {} ->
           case HashMap.lookup name scope of
             Nothing ->
               ( HashMap.insert name Scope.Definition scope

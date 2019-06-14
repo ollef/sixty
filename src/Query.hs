@@ -20,15 +20,15 @@ import qualified Syntax
 
 data Query a where
   ReadFile :: FilePath -> Query Text
-  ParsedModule :: Name.Module -> Query [(Position.Absolute, Presyntax.Definition)]
-  ParsedModuleMap :: Name.Module -> Query (HashMap (Scope.Key, Name) Presyntax.Term)
+  ParsedModule :: Name.Module -> Query [(Position.Absolute, (Name, Presyntax.Definition))]
+  ParsedModuleMap :: Name.Module -> Query (HashMap (Scope.Key, Name) Presyntax.Definition)
   ModulePositionMap :: Name.Module -> Query (HashMap (Scope.Key, Name) Position.Absolute)
-  ParsedDefinition :: Scope.KeyedName -> Query (Maybe Presyntax.Term)
+  ParsedDefinition :: Scope.KeyedName -> Query (Maybe Presyntax.Definition)
   Scopes :: Name.Module -> Query Scope.Scopes
   Visibility :: Scope.KeyedName -> Name.Pre -> Query (Maybe Scope.Visibility)
   ResolvedName :: Scope.KeyedName -> Name.Pre -> Query (Maybe Name.Qualified)
   ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void)
-  ElaboratedDefinition :: Name.Qualified -> Query (Maybe (Syntax.Term Void, Syntax.Type Void))
+  ElaboratedDefinition :: Name.Qualified -> Query (Maybe (Syntax.Definition, Syntax.Type Void))
   ErrorSpan :: Error -> Query (FilePath, Span.Absolute)
   KeyedNameSpan :: Scope.KeyedName -> Query (FilePath, Span.Absolute)
 

@@ -13,6 +13,7 @@ import Index
 import qualified Meta
 import Name (Name)
 import qualified Name
+import Telescope (Telescope)
 
 data Term v
   = Var !(Index v)
@@ -44,3 +45,12 @@ fromVoid = coerce
 
 type MetaSolutions =
   IntMap Meta.Index (Syntax.Term Void, Syntax.Type Void)
+
+data Definition
+  = TypeDeclaration !(Type Void)
+  | ConstantDefinition !(Term Void)
+  | DataDefinition (Telescope Type ConstructorDefinitions Void)
+  deriving (Show, Generic, Hashable)
+
+newtype ConstructorDefinitions v = ConstructorDefinitions [(Name.Constructor, Type v)]
+  deriving (Show, Generic, Hashable)

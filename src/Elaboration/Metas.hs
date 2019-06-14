@@ -8,6 +8,8 @@ import Protolude hiding (Type, IntMap, evaluate)
 import Data.Graph
 
 import "this" Data.IntMap (IntMap)
+import Data.Tsil (Tsil)
+import qualified Data.Tsil as Tsil
 import Extra
 import qualified Meta
 import Monad
@@ -16,17 +18,17 @@ import qualified Name
 import qualified "this" Data.IntMap as IntMap
 import qualified Readback
 import qualified Syntax
-import Data.Tsil (Tsil)
-import qualified Data.Tsil as Tsil
+import Telescope (Telescope)
+import qualified Telescope
 import Var (Var)
 import qualified Var
 
 inlineSolutions
   :: Syntax.MetaSolutions
-  -> Syntax.Term Void
+  -> Syntax.Definition
   -> Syntax.Type Void
-  -> M (Syntax.Term Void, Syntax.Type Void)
-inlineSolutions solutions term type_ = do
+  -> M (Syntax.Definition, Syntax.Type Void)
+inlineSolutions solutions def type_ = do
   solutionValues <- forM solutions $ \(metaTerm, metaType) -> do
     metaValue <- evaluate Readback.empty metaTerm
     metaType' <- evaluate Readback.empty metaType
@@ -40,10 +42,6 @@ inlineSolutions solutions term type_ = do
         (\(_, (metaValue, metaType)) -> fst <$> IntMap.toList (void $ unoccurrences $ occurrences metaValue <> occurrences metaType))
         (IntMap.toList solutionValues)
 
-  value <- evaluate Readback.empty term
-  typeValue <- evaluate Readback.empty type_
-
-  let
     go (index, meta) (value', metaVars) = do
       (result, maybeSolution) <- inlineIndex index meta value'
       let
@@ -57,19 +55,58 @@ inlineSolutions solutions term type_ = do
 
       pure (result, metaVars')
 
-  (inlinedValue, metaVars) <- foldrM go (value, mempty) sortedSolutions
-  (inlinedType, typeMetaVars) <- foldrM go (typeValue, mempty) sortedSolutions
-
-  let
     lookupMetaIndex metas index =
       IntMap.lookupDefault
         (panic "Elaboration.Metas.inlineSolutions: unknown index")
         index
         metas
 
+    inlineTermSolutions :: Readback.Environment v -> Syntax.Term v -> M (Syntax.Term v)
+    inlineTermSolutions env term = do
+      value <- evaluate env term
+      (inlinedValue, metaVars) <- foldrM go (value, mempty) sortedSolutions
+      pure $
+        readback env (lookupMetaIndex metaVars) inlinedValue
+
+    inlineDefSolutions :: Readback.Environment Void -> Syntax.Definition -> M Syntax.Definition
+    inlineDefSolutions env def' =
+      case def' of
+        Syntax.TypeDeclaration declaredType -> do
+          declaredType' <- inlineTermSolutions env declaredType
+          pure $ Syntax.TypeDeclaration declaredType'
+
+        Syntax.ConstantDefinition term -> do
+          term' <- inlineTermSolutions env term
+          pure $ Syntax.ConstantDefinition term'
+
+        Syntax.DataDefinition tele -> do
+          tele' <- inlineTeleSolutions env tele
+          pure $ Syntax.DataDefinition tele'
+
+    inlineTeleSolutions
+      :: Readback.Environment v
+      -> Telescope Syntax.Type Syntax.ConstructorDefinitions v
+      -> M (Telescope Syntax.Type Syntax.ConstructorDefinitions v)
+    inlineTeleSolutions env tele =
+      case tele of
+        Telescope.Empty (Syntax.ConstructorDefinitions constrs) -> do
+          constrs' <- forM constrs $ \(constr, constrType) -> do
+            constrType' <- inlineTermSolutions env constrType
+            pure (constr, constrType')
+          pure $ Telescope.Empty (Syntax.ConstructorDefinitions constrs')
+
+        Telescope.Extend name paramType tele' -> do
+          paramType' <- inlineTermSolutions env paramType
+          (env', _) <- Readback.extend env
+          tele'' <- inlineTeleSolutions env' tele'
+          pure $ Telescope.Extend name paramType' tele''
+
+  inlinedType <- inlineTermSolutions Readback.empty type_
+  inlinedDef <- inlineDefSolutions Readback.empty def
+
   pure
-    ( readback Readback.empty (lookupMetaIndex metaVars) inlinedValue
-    , readback Readback.empty (lookupMetaIndex typeMetaVars) inlinedType
+    ( inlinedDef
+    , inlinedType
     )
 
   where

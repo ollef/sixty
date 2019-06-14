@@ -5,7 +5,7 @@
 {-# language OverloadedStrings #-}
 module Name where
 
-import Protolude
+import Protolude hiding (Constructor)
 
 import Data.String
 import qualified Data.Text as Text
@@ -21,11 +21,18 @@ newtype Name = Name Text
   deriving stock (Eq, Ord, Show, Generic)
   deriving newtype (Hashable, IsString)
 
+newtype Constructor = Constructor Text
+  deriving stock (Eq, Ord, Show, Generic)
+  deriving newtype (Hashable, IsString)
+
 newtype Module = Module Text
   deriving stock (Eq, Ord, Show, Generic)
   deriving newtype (Hashable, IsString)
 
 data Qualified = Qualified !Module !Name
+  deriving (Eq, Ord, Show, Generic, Hashable)
+
+data QualifiedConstructor = QualifiedConstructor !Qualified !Constructor
   deriving (Eq, Ord, Show, Generic, Hashable)
 
 -------------------------------------------------------------------------------
@@ -50,6 +57,10 @@ instance Pretty Name where
   pretty (Name t) =
     pretty t
 
+instance Pretty Constructor where
+  pretty (Constructor c) =
+    pretty c
+
 instance Pretty Module where
   pretty (Module t) =
     pretty t
@@ -60,3 +71,7 @@ instance Pretty Qualified where
       pretty name
     | otherwise =
       pretty module_ <> "." <> pretty name
+
+instance Pretty QualifiedConstructor where
+  pretty (QualifiedConstructor n c) =
+    pretty n <> pretty c
