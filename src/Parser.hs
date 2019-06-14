@@ -1,5 +1,6 @@
 {-# language GeneralizedNewtypeDeriving #-}
 {-# language OverloadedStrings #-}
+{-# language TupleSections #-}
 module Parser where
 
 import Prelude (String)
@@ -332,5 +333,6 @@ definition =
         (indented term)
     param =
       (,) <$ symbol "(" <*>% name <*% symbol ":" <*>% recoveringTerm <*% symbol ")"
+      <|> (\(span, name_) -> (name_, Term span Presyntax.Wildcard)) <$> spanned name
     constr =
       (,) <$> constructor <*% symbol ":" <*>% recoveringTerm
