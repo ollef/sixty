@@ -51,8 +51,10 @@ runQueryTask task = do
       (filePath, span) <- fetch $ Query.ErrorSpan err
       text <- fetch $ Query.ReadFile filePath
       let
+        trimmedSpan =
+          Span.trim text span
         (lineColumn, lineText) =
-          Span.lineColumn span text
+          Span.lineColumn trimmedSpan text
       pure (filePath, lineColumn, lineText, err)
     pure (result, spannedErrors)
 
