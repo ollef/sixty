@@ -45,6 +45,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [ ] Elaboration of data definitions
   - [ ] Constructors
   - [ ] Pattern matching elaboration
+  - [ ] Inductive families
 - [ ] Generalisation?
 - [ ] Glued evaluation
 
