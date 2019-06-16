@@ -53,6 +53,10 @@ instance IsString Qualified where
       Just module_ ->
         Qualified (Module module_) (Name name)
 
+instance Pretty Pre where
+  pretty (Pre t) =
+    pretty t
+
 instance Pretty Name where
   pretty (Name t) =
     pretty t

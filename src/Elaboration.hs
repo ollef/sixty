@@ -199,7 +199,7 @@ elaborateUnspanned context term expected = -- trace ("elaborate " <> show term :
                 (Syntax.App (Syntax.Global Builtin.fail) resultType')
                 (Lazy $ pure resultType)
 
-            Just qualifiedName -> do
+            Just (Scope.Name qualifiedName) -> do
               type_ <- fetch $ Query.ElaboratedType qualifiedName
               type' <- lazy $ evaluate context $ Syntax.fromVoid type_
               elaborated
@@ -207,6 +207,17 @@ elaborateUnspanned context term expected = -- trace ("elaborate " <> show term :
                 expected
                 (Syntax.Global qualifiedName)
                 type'
+
+            Just (Scope.Ambiguous candidates) -> do
+              Context.report context $ Error.Ambiguous name candidates
+              resultType <- Context.newMetaType context
+              resultType' <- readback context resultType
+              elaborated
+                context
+                expected
+                (Syntax.App (Syntax.Global Builtin.fail) resultType')
+                (Lazy $ pure resultType)
+
 
         Just i ->
           elaborated

@@ -24,9 +24,9 @@ data Query a where
   ParsedModuleMap :: Name.Module -> Query (HashMap (Scope.Key, Name) Presyntax.Definition)
   ModulePositionMap :: Name.Module -> Query (HashMap (Scope.Key, Name) Position.Absolute)
   ParsedDefinition :: Scope.KeyedName -> Query (Maybe Presyntax.Definition)
-  Scopes :: Name.Module -> Query Scope.Scopes
-  Visibility :: Scope.KeyedName -> Name.Pre -> Query (Maybe Scope.Visibility)
-  ResolvedName :: Scope.KeyedName -> Name.Pre -> Query (Maybe Name.Qualified)
+  Scopes :: Name.Module -> Query Scope.Module
+  ResolvedName :: Scope.KeyedName -> Name.Pre -> Query (Maybe Scope.Entry)
+  Visibility :: Scope.KeyedName -> Name.Qualified -> Query Scope.Key
   ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void)
   ElaboratedDefinition :: Name.Qualified -> Query (Maybe (Syntax.Definition, Syntax.Type Void))
   ConstructorType :: Name.QualifiedConstructor -> Query (Syntax.Type Void)
@@ -45,8 +45,8 @@ instance HashTag Query where
       ModulePositionMap {} -> hash
       ParsedDefinition {} -> hash
       Scopes {} -> hash
-      Visibility {} -> hash
       ResolvedName {} -> hash
+      Visibility {} -> hash
       ElaboratedType {} -> hash
       ElaboratedDefinition {} -> hash
       ConstructorType {} -> hash

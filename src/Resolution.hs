@@ -7,79 +7,72 @@ import qualified Data.HashMap.Lazy as HashMap
 
 import Error (Error)
 import qualified Error
-import Name (Name)
+import Name (Name(Name))
 import qualified Name
 import qualified Presyntax
-import Scope (Scopes)
 import qualified Scope
 
 moduleScopes
   :: Name.Module
   -> [(Name, Presyntax.Definition)]
-  -> (Scopes, [Error])
+  -> (Scope.Module, [Error])
 moduleScopes module_ definitions =
   let
-    (_, scopes, errs) =
-      foldl' go mempty definitions
+    (_, _, scopes, errs) =
+      foldl' go (mempty, mempty, mempty, mempty) definitions
   in
   (scopes, reverse errs)
   where
-    duplicate key name =
+    duplicate key qualifiedName =
       Error.DuplicateName
-        (Scope.KeyedName key (Name.Qualified module_ name))
+        (Scope.KeyedName key qualifiedName)
 
-    go (!scope, !scopes, !errs) (name, def) =
-      case def of
-        Presyntax.TypeDeclaration {} ->
-          case HashMap.lookup name scope of
-            Nothing ->
-              ( HashMap.insert name Scope.Type scope
-              , HashMap.insert (name, Scope.Type) scope scopes
+    go (!scope, !visibility, !scopes, !errs) (name@(Name nameText), def) =
+      let
+        prename =
+          Name.Pre nameText
+
+        qualifiedName =
+          Name.Qualified module_ name
+
+        definitionCase =
+          case HashMap.lookup prename scope of
+            Just (Scope.Name qualifiedName')
+              | qualifiedName == qualifiedName'
+              , Scope.Definition <- visibility HashMap.! qualifiedName ->
+                ( scope
+                , visibility
+                , scopes
+                , duplicate Scope.Definition qualifiedName : errs
+                )
+
+            _ ->
+              ( HashMap.insertWith (<>) prename (Scope.Name qualifiedName) scope
+              , HashMap.insertWith max qualifiedName Scope.Definition visibility
+              , HashMap.insert (name, Scope.Definition) (scope, visibility) scopes
               , errs
               )
+      in
+      case def of
+        Presyntax.TypeDeclaration {} ->
+          case HashMap.lookup prename scope of
+            Just (Scope.Name qualifiedName')
+              | qualifiedName == qualifiedName' ->
+                ( scope
+                , visibility
+                , scopes
+                , duplicate (visibility HashMap.! qualifiedName) qualifiedName : errs
+                )
 
-            Just key ->
-              ( scope
-              , scopes
-              , duplicate key name : errs
+            _ ->
+              ( HashMap.insertWith (<>) prename (Scope.Name qualifiedName) scope
+              , HashMap.insertWith max qualifiedName Scope.Type visibility
+              , HashMap.insert (name, Scope.Type) (scope, visibility) scopes
+              , errs
               )
 
         Presyntax.ConstantDefinition {} ->
-          case HashMap.lookup name scope of
-            Nothing ->
-              ( HashMap.insert name Scope.Definition scope
-              , HashMap.insert (name, Scope.Definition) scope scopes
-              , errs
-              )
-
-            Just Scope.Type ->
-              ( HashMap.insert name Scope.Definition scope
-              , HashMap.insert (name, Scope.Definition) scope scopes
-              , errs
-              )
-
-            Just Scope.Definition ->
-              ( scope
-              , scopes
-              , duplicate Scope.Definition name : errs
-              )
+          definitionCase
 
         Presyntax.DataDefinition {} ->
-          case HashMap.lookup name scope of
-            Nothing ->
-              ( HashMap.insert name Scope.Definition scope
-              , HashMap.insert (name, Scope.Definition) scope scopes
-              , errs
-              )
-
-            Just Scope.Type ->
-              ( HashMap.insert name Scope.Definition scope
-              , HashMap.insert (name, Scope.Definition) scope scopes
-              , errs
-              )
-
-            Just Scope.Definition ->
-              ( scope
-              , scopes
-              , duplicate Scope.Definition name : errs
-              )
+          definitionCase

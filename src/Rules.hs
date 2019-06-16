@@ -80,27 +80,37 @@ rules (Writer query) =
       defs <- fetch $ ParsedModule module_
       pure $ Resolution.moduleScopes module_ $ snd <$> defs
 
-    Visibility (Scope.KeyedName key (Name.Qualified module_ keyName)) (Name.Pre name) ->
+    -- TODO
+    ResolvedName _ name
+      | name == "Type" ->
+        pure (Just $ Scope.Name Builtin.typeName, mempty)
+
+    ResolvedName (Scope.KeyedName key (Name.Qualified module_ keyName)) prename ->
       noError $ do
         scopes <- fetch $ Scopes module_
         let
-          scope = scopes HashMap.! (keyName, key)
+          (scope, _) = scopes HashMap.! (keyName, key)
 
-        pure $ HashMap.lookup (Name name) scope
+        pure $ HashMap.lookup prename scope
 
-    -- TODO
-    ResolvedName _ name
-      | name == "Type" -> pure (Just Builtin.typeName, mempty)
+    Visibility _ qualifiedName
+      -- TODO
+      | qualifiedName == Builtin.typeName ->
+        pure (Scope.Type, mempty)
 
-    ResolvedName key@(Scope.KeyedName _ (Name.Qualified module_ _)) prename@(Name.Pre name) ->
+      | qualifiedName == Builtin.fail ->
+        pure (Scope.Type, mempty)
+
+    Visibility (Scope.KeyedName key (Name.Qualified module_ keyName)) qualifiedName ->
       noError $ do
-        visibility <- fetch $ Query.Visibility key prename
-        case visibility of
-          Nothing ->
-            pure Nothing
+        scopes <- fetch $ Scopes module_
+        let
+          (_, visibility) = scopes HashMap.! (keyName, key)
 
-          Just _ ->
-            pure $ Just $ Name.Qualified module_ (Name name)
+        pure $
+          fromMaybe (panic "Fetching Visibility for name without visibility") $
+          HashMap.lookup qualifiedName visibility
+
 
     ElaboratedType name
       -- TODO
@@ -143,38 +153,30 @@ rules (Writer query) =
                 Just _ ->
                   panic "ElaboratedType: Not a type declaration"
 
-    ElaboratedDefinition name
-      -- TODO
-      | name == Builtin.fail ->
-        pure (Nothing, mempty)
+    ElaboratedDefinition name -> do
+      let
+        defKey =
+          Scope.KeyedName Scope.Definition name
+      mdef <- fetch $ ParsedDefinition defKey
+      case mdef of
+        Nothing ->
+          pure (Nothing, mempty)
 
-      | name == Builtin.typeName ->
-        pure (Nothing, mempty)
+        Just def -> do
+          let
+            typeKey =
+              Scope.KeyedName Scope.Type name
+          mtype <- fetch $ ParsedDefinition typeKey
+          case mtype of
+            Nothing ->
+              runElaborator defKey $ Elaboration.inferDefinition defKey def
 
-      | otherwise -> do
-        let
-          defKey =
-            Scope.KeyedName Scope.Definition name
-        mdef <- fetch $ ParsedDefinition defKey
-        case mdef of
-          Nothing ->
-            pure (Nothing, mempty)
-
-          Just def -> do
-            let
-              typeKey =
-                Scope.KeyedName Scope.Type name
-            mtype <- fetch $ ParsedDefinition typeKey
-            case mtype of
-              Nothing ->
-                runElaborator defKey $ Elaboration.inferDefinition defKey def
-
-              Just _ -> do
-                type_ <- fetch $ ElaboratedType name
-                runElaborator defKey $ do
-                  typeValue <- Evaluation.evaluate Domain.empty type_
-                  (def', errs) <- Elaboration.checkDefinition defKey def typeValue
-                  pure ((def', type_), errs)
+            Just _ -> do
+              type_ <- fetch $ ElaboratedType name
+              runElaborator defKey $ do
+                typeValue <- Evaluation.evaluate (Domain.empty defKey) type_
+                (def', errs) <- Elaboration.checkDefinition defKey def typeValue
+                pure ((def', type_), errs)
 
     ConstructorType (Name.QualifiedConstructor dataTypeName constr) ->
       noError $ do

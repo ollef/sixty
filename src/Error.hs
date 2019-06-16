@@ -5,6 +5,7 @@ module Error where
 
 import Protolude
 
+import Data.HashSet (HashSet)
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc as Doc
 import qualified Data.Text.Unsafe as Text
@@ -23,6 +24,7 @@ data Error
 
 data Elaboration
   = NotInScope !Name.Pre
+  | Ambiguous !Name.Pre (HashSet Name.Qualified)
   | TypeMismatch
   | OccursCheck
   | UnsolvedMetaVariable !Meta.Index
@@ -53,8 +55,12 @@ pretty filePath span lineText err =
 
         Elaboration _ (Error.Spanned _ err') ->
           case err' of
-            NotInScope (Name.Pre name) ->
+            NotInScope name ->
               "Not in scope:" <+> Doc.pretty name
+
+            Ambiguous name candidates ->
+              "Ambiguous name:" <+> Doc.pretty name <> line <>
+              "Candidates are:" <+> Doc.pretty (toList candidates)
 
             TypeMismatch ->
               "Type mismatch"

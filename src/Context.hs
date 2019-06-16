@@ -51,7 +51,8 @@ toEvaluationEnvironment
   -> Domain.Environment v
 toEvaluationEnvironment context =
   Domain.Environment
-    { vars = vars context
+    { scopeKey = scopeKey context
+    , vars = vars context
     , values = values context
     }
 
@@ -250,7 +251,7 @@ forceHead context value =
 
       case meta of
         Meta.Solved headValue _ -> do
-          headValue' <- Evaluation.evaluate Domain.empty headValue
+          headValue' <- Evaluation.evaluate (Domain.empty $ scopeKey context) headValue
           value' <- Evaluation.applySpine headValue' spine
           forceHead context value'
 

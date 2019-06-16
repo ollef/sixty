@@ -5,17 +5,18 @@ module Domain where
 import Protolude hiding (Type, Seq, IntMap)
 
 import "this" Data.IntMap (IntMap)
-import Index
 import Data.IntSequence (IntSeq)
 import qualified Data.IntSequence as IntSeq
+import Data.Tsil (Tsil)
+import qualified Data.Tsil as Tsil
+import Index
 import qualified Meta
 import Monad
 import Name (Name)
 import qualified Name
 import qualified "this" Data.IntMap as IntMap
+import qualified Scope
 import qualified Syntax
-import Data.Tsil (Tsil)
-import qualified Data.Tsil as Tsil
 import Var (Var)
 import qualified Var
 
@@ -55,14 +56,16 @@ singleVarView _ = Nothing
 -- Evaluation environments
 
 data Environment v = Environment
-  { vars :: IntSeq Var
+  { scopeKey :: !Scope.KeyedName
+  , vars :: IntSeq Var
   , values :: IntMap Var (Lazy Domain.Value)
   }
 
-empty :: Environment Void
-empty =
+empty :: Scope.KeyedName -> Environment Void
+empty key =
   Environment
-    { vars = mempty
+    { scopeKey = key
+    , vars = mempty
     , values = mempty
     }
 

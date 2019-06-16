@@ -5,11 +5,12 @@ import Protolude hiding (Seq, force, evaluate)
 
 import Rock
 
+import qualified Data.Tsil as Tsil
 import qualified Domain
 import Monad
 import qualified Query
+import qualified Scope
 import qualified Syntax
-import qualified Data.Tsil as Tsil
 
 evaluate :: Domain.Environment v -> Syntax.Term v -> M Domain.Value
 evaluate env term =
@@ -21,13 +22,19 @@ evaluate env term =
       pure $ Domain.meta i
 
     Syntax.Global name -> do
-      maybeDefinition <- fetch $ Query.ElaboratedDefinition name
-      case maybeDefinition of
-        Just (Syntax.ConstantDefinition term', _) ->
-          evaluate Domain.empty term'
-
-        _ ->
+      visibility <- fetch $ Query.Visibility (Domain.scopeKey env) name
+      case visibility of
+        Scope.Type ->
           pure $ Domain.global name
+
+        Scope.Definition -> do
+          maybeDefinition <- fetch $ Query.ElaboratedDefinition name
+          case maybeDefinition of
+            Just (Syntax.ConstantDefinition term', _) ->
+              evaluate (Domain.empty $ Domain.scopeKey env) term'
+
+            _ ->
+              pure $ Domain.global name
 
     Syntax.Let _ t _ s -> do
       t' <- lazy $ evaluate env t
