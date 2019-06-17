@@ -11,8 +11,8 @@ import Index
 import Name (Name)
 
 data Telescope t k v
-  = Empty (k v)
-  | Extend Name (t v) (Scope (Telescope t k) v)
+  = Empty !(k v)
+  | Extend !Name !(t v) (Scope (Telescope t k) v)
   deriving (Generic)
 
 deriving instance
