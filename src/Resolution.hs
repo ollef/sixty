@@ -4,6 +4,7 @@ module Resolution where
 import Protolude
 
 import qualified Data.HashMap.Lazy as HashMap
+import qualified Data.HashSet as HashSet
 
 import Error (Error)
 import qualified Error
@@ -74,5 +75,20 @@ moduleScopes module_ definitions =
         Presyntax.ConstantDefinition {} ->
           definitionCase
 
-        Presyntax.DataDefinition {} ->
-          definitionCase
+        Presyntax.DataDefinition _ constrTypes ->
+          let
+            (scope', visibility', scopes', errs') =
+              definitionCase
+
+            constrs =
+              HashMap.fromListWith (<>)
+              [ ( Name.Pre text
+                , Scope.Constructors $
+                  HashSet.singleton $
+                  Name.QualifiedConstructor qualifiedName constr
+                )
+              | (constr@(Name.Constructor text), _) <- constrTypes
+              ]
+
+          in
+          (HashMap.unionWith (<>) constrs scope', visibility', scopes', errs')

@@ -30,8 +30,9 @@ type Type = Value
 
 data Head
   = Var !Var
-  | Meta !Meta.Index
   | Global !Name.Qualified
+  | Con !Name.QualifiedConstructor
+  | Meta !Meta.Index
   deriving (Eq, Show)
 
 type Spine = Tsil (Lazy Value)
@@ -44,6 +45,9 @@ var v = Neutral (Domain.Var v) mempty
 
 global :: Name.Qualified -> Value
 global g = Neutral (Global g) mempty
+
+con :: Name.QualifiedConstructor -> Value
+con c = Neutral (Con c) mempty
 
 meta :: Meta.Index -> Value
 meta i = Neutral (Meta i) mempty

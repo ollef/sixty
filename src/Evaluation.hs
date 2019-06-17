@@ -18,9 +18,6 @@ evaluate env term =
     Syntax.Var v ->
       force $ Domain.lookupValue v env
 
-    Syntax.Meta i ->
-      pure $ Domain.meta i
-
     Syntax.Global name -> do
       visibility <- fetch $ Query.Visibility (Domain.scopeKey env) name
       case visibility of
@@ -35,6 +32,12 @@ evaluate env term =
 
             _ ->
               pure $ Domain.global name
+
+    Syntax.Con c ->
+      pure $ Domain.con c
+
+    Syntax.Meta i ->
+      pure $ Domain.meta i
 
     Syntax.Let _ t _ s -> do
       t' <- lazy $ evaluate env t

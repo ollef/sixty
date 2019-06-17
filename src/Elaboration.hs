@@ -3,6 +3,7 @@
 {-# language GADTs #-}
 {-# language PackageImports #-}
 {-# language ScopedTypeVariables #-}
+{-# language ViewPatterns #-}
 module Elaboration where
 
 import Protolude hiding (Seq, force, check, evaluate)
@@ -208,8 +209,29 @@ elaborateUnspanned context term expected = -- trace ("elaborate " <> show term :
                 (Syntax.Global qualifiedName)
                 type'
 
-            Just (Scope.Ambiguous candidates) -> do
-              Context.report context $ Error.Ambiguous name candidates
+
+            Just (Scope.Constructors (toList -> [constr])) -> do
+              type_ <- fetch $ Query.ConstructorType constr
+              type' <- lazy $ evaluate context $ Syntax.fromVoid type_
+              elaborated
+                context
+                expected
+                (Syntax.Con constr)
+                type'
+
+            Just (Scope.Constructors constrs) -> do
+              -- TODO
+              Context.report context $ Error.Ambiguous name constrs mempty
+              resultType <- Context.newMetaType context
+              resultType' <- readback context resultType
+              elaborated
+                context
+                expected
+                (Syntax.App (Syntax.Global Builtin.fail) resultType')
+                (Lazy $ pure resultType)
+
+            Just (Scope.Ambiguous constrCandidates nameCandidates) -> do
+              Context.report context $ Error.Ambiguous name constrCandidates nameCandidates
               resultType <- Context.newMetaType context
               resultType' <- readback context resultType
               elaborated

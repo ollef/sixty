@@ -112,8 +112,11 @@ readbackHead env hd =
         Nothing ->
           panic "readbackHead: Scoping error"
 
-    Domain.Meta m ->
-      pure $ Syntax.Meta m
-
     Domain.Global g ->
       pure $ Syntax.Global g
+
+    Domain.Con c ->
+      pure $ Syntax.Con c
+
+    Domain.Meta m ->
+      pure $ Syntax.Meta m

@@ -57,6 +57,9 @@ prettyTerm prec env term = case term of
   Syntax.Global g ->
     pretty g
 
+  Syntax.Con c ->
+    pretty c
+
   Syntax.Meta (Meta.Index i) ->
     pretty
       ("?" <> show i :: Text)

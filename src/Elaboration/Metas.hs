@@ -115,8 +115,9 @@ inlineSolutions solutions def type_ = do
 
 data InnerValue
   = Var !Var
-  | Meta !Meta.Index (Tsil Value)
   | Global !Name.Qualified
+  | Con !Name.QualifiedConstructor
+  | Meta !Meta.Index (Tsil Value)
   | Let !Name !Var !Value !Type !Value
   | Pi !Name !Var !Type !Type
   | Fun !Type !Type
@@ -166,6 +167,12 @@ makeValue innerValue =
       Var _ ->
         mempty
 
+      Global _ ->
+        mempty
+
+      Con _ ->
+        mempty
+
       Meta index arguments ->
         let
           varView (Value arg _) =
@@ -178,9 +185,6 @@ makeValue innerValue =
         in
         Occurrences (IntMap.singleton index (varView <$> arguments)) <>
         foldMap occurrences arguments
-
-      Global _ ->
-        mempty
 
       Let _ _ term type_ body ->
         occurrences term <>
@@ -210,11 +214,14 @@ evaluate env term =
       Syntax.Var index ->
         pure $ Var $ Readback.lookupIndexVar index env
 
-      Syntax.Meta index ->
-        pure $ Meta index mempty
-
       Syntax.Global global ->
         pure $ Global global
+
+      Syntax.Con con ->
+        pure $ Con con
+
+      Syntax.Meta index ->
+        pure $ Meta index mempty
 
       Syntax.Let name value type_ body -> do
         (env', var) <- Readback.extend env
@@ -253,6 +260,12 @@ readback env metas (Value value _) =
         fromMaybe (panic "Elaboration.Metas.readback Var") $
           Readback.lookupVarIndex var env
 
+    Global global ->
+      Syntax.Global global
+
+    Con global ->
+      Syntax.Con global
+
     Meta index arguments ->
       let
         (var, varArgs) =
@@ -266,9 +279,6 @@ readback env metas (Value value _) =
           fromMaybe (panic $ "Elaboration.Metas.readback Meta " <> show index) $
           Readback.lookupVarIndex var env)
         (readback env metas <$> arguments')
-
-    Global global ->
-      Syntax.Global global
 
     Let name var value' type_ body ->
       Syntax.Let
@@ -350,11 +360,14 @@ substitute subst
         Var var ->
           IntMap.lookupDefault value var subst
 
-        Meta index args ->
-          makeValue $ Meta index $ go <$> args
-
         Global _ ->
           value
+
+        Con _ ->
+          value
+
+        Meta index args ->
+          makeValue $ Meta index $ go <$> args
 
         Let name var value' type_ body ->
           makeValue $ Let name var (go value') (go type_) (go body)
@@ -379,6 +392,12 @@ inlineIndex
 inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue _) =
   case innerValue of
     Var _ ->
+      pure (value, Nothing)
+
+    Global _ ->
+      pure (value, Nothing)
+
+    Con _ ->
       pure (value, Nothing)
 
     Meta index' args
@@ -426,9 +445,6 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
 
           _ ->
             letSolution
-
-    Global _ ->
-      pure (value, Nothing)
 
     Let name var value' type_ body ->
       inline3 (Let name var) value' type_ body

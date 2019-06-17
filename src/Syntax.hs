@@ -18,6 +18,7 @@ import Telescope (Telescope)
 data Term v
   = Var !(Index v)
   | Global !Name.Qualified
+  | Con !Name.QualifiedConstructor
   | Meta !Meta.Index
   | Let !Name !(Term v) !(Type v) !(Scope Term v)
   | Pi !Name !(Type v) !(Scope Type v)
@@ -52,5 +53,6 @@ data Definition
   | DataDefinition (Telescope Type ConstructorDefinitions Void)
   deriving (Show, Generic, Hashable)
 
-newtype ConstructorDefinitions v = ConstructorDefinitions [(Name.Constructor, Type v)]
+newtype ConstructorDefinitions v =
+  ConstructorDefinitions [(Name.Constructor, Type v)]
   deriving (Show, Generic, Hashable)

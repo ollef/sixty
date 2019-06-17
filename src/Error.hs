@@ -24,7 +24,7 @@ data Error
 
 data Elaboration
   = NotInScope !Name.Pre
-  | Ambiguous !Name.Pre (HashSet Name.Qualified)
+  | Ambiguous !Name.Pre (HashSet Name.QualifiedConstructor) (HashSet Name.Qualified)
   | TypeMismatch
   | OccursCheck
   | UnsolvedMetaVariable !Meta.Index
@@ -58,9 +58,11 @@ pretty filePath span lineText err =
             NotInScope name ->
               "Not in scope:" <+> Doc.pretty name
 
-            Ambiguous name candidates ->
+            Ambiguous name constrCandidates nameCandidates ->
               "Ambiguous name:" <+> Doc.pretty name <> line <>
-              "Candidates are:" <+> Doc.pretty (toList candidates)
+              "Candidates are:" <+>
+                hcat (punctuate comma $
+                  Doc.pretty <$> toList constrCandidates <|> Doc.pretty <$> toList nameCandidates)
 
             TypeMismatch ->
               "Type mismatch"

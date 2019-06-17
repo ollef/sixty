@@ -78,4 +78,4 @@ instance Pretty Qualified where
 
 instance Pretty QualifiedConstructor where
   pretty (QualifiedConstructor n c) =
-    pretty n <> pretty c
+    pretty n <> "." <> pretty c

@@ -43,7 +43,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [ ] Recursive let bindings
 - [ ] Data
   - [ ] Elaboration of data definitions
-  - [ ] Constructors
+  - [x] Constructors
   - [ ] Pattern matching elaboration
   - [ ] Inductive families
 - [ ] Generalisation?

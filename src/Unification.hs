@@ -306,15 +306,18 @@ checkInnerHead occurs env hd =
         Just i ->
           pure $ Syntax.Var i
 
+    Domain.Global g ->
+      pure $ Syntax.Global g
+
+    Domain.Con g ->
+      pure $ Syntax.Con g
+
     Domain.Meta m
       | m == occurs ->
         throwError Error.OccursCheck
 
       | otherwise ->
         pure $ Syntax.Meta m
-
-    Domain.Global g ->
-      pure $ Syntax.Global g
 
 pruneMeta
   :: Context v
