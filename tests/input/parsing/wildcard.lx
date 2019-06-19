@@ -1,0 +1,5 @@
+id : (A : Type) -> A -> A
+id = \A a. a
+
+id2 : (A : Type) -> A -> A
+id2 = \A. id _

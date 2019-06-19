@@ -130,7 +130,7 @@ rules (Writer query) =
             mdef <- fetch $ ElaboratedDefinition name
             case mdef of
               Nothing ->
-                panic "ElaboratedType: No type or definition"
+                panic $ "ElaboratedType: No type or definition " <> show key
 
               Just (_, type_) ->
                 pure (type_, mempty)

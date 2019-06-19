@@ -1,0 +1,5 @@
+-- Should fail because of circularity -- we can't compile this using CBV
+
+g : Type
+f = g
+g = f

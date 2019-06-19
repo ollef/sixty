@@ -1,0 +1,30 @@
+Pair : Type -> Type -> Type
+Pair = \A B. (Result : Type) -> (A -> B -> Result) -> Result
+
+pair : (A B : Type) -> A -> B -> Pair A B
+pair = \A B a b Result pair. pair a b
+
+pairStress : Type
+pairStress =
+  let x0  = pair _ _ Type Type in
+  let x1  = pair _ _ x0  x0  in
+  let x2  = pair _ _ x1  x1  in
+  let x3  = pair _ _ x2  x2  in
+  let x4  = pair _ _ x3  x3  in
+  let x5  = pair _ _ x4  x4  in
+  let x6  = pair _ _ x5  x5  in
+  let x7  = pair _ _ x6  x6  in
+  let x8  = pair _ _ x7  x7  in
+  let x9  = pair _ _ x8  x8  in
+  let x10 = pair _ _ x9  x9  in
+  let x11 = pair _ _ x10 x10 in
+  let x12 = pair _ _ x11 x11 in
+--   let x13 = pair _ _ x12 x12 in
+--   let x14 = pair _ _ x13 x13 in
+--   let x15 = pair _ _ x14 x14 in
+--   let x16 = pair _ _ x15 x15 in
+--   let x17 = pair _ _ x16 x16 in
+--   let x18 = pair _ _ x17 x17 in
+--   let x19 = pair _ _ x18 x18 in
+--   let x20 = pair _ _ x19 x19 in
+  Type

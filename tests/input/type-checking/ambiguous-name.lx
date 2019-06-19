@@ -1,0 +1,12 @@
+Maybe : Type
+
+data Maybe where
+  Nothing : Maybe
+
+Maybe2 : Type
+
+data Maybe2 where
+  Nothing : Maybe2
+
+f : Type
+f = Nothing -- ambiguous name error expected

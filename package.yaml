@@ -40,7 +40,23 @@ ghc-options:
   - -funbox-strict-fields
   - -XNoImplicitPrelude
 
+library:
+  source-dirs: src
+
 executables:
   sixty:
-    source-dirs:      src
-    main:             Main.hs
+    source-dirs: app
+    main: Main.hs
+    dependencies:
+      - sixty
+
+tests:
+  test-sixty:
+    main: Main.hs
+    source-dirs: tests
+    dependencies:
+      - directory
+      - filepath
+      - sixty
+      - tasty
+      - tasty-hunit

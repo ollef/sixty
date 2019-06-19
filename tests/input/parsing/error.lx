@@ -1,0 +1,4 @@
+f
+
+g : Type -- parse error expected
+g = Type

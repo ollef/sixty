@@ -29,7 +29,8 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Name resolution
   - [ ] Error for circular values
   - [ ] Imports
-- [ ] Tests
+- [x] Tests
+  - [x] Error tests
 - [ ] Implicit arguments and subtyping
   - [ ] Deep skolemisation
 - [ ] Errors

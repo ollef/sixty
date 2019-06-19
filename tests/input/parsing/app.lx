@@ -1,0 +1,4 @@
+f : Type -> Type -> Type
+
+g = f Type Type
+h = f (f Type Type) (f Type Type)

@@ -1,0 +1,11 @@
+Maybe : Type -> Type
+
+data Maybe a where
+  Nothing : Maybe a
+  Just : a -> Maybe a
+
+test : (a : Type) -> a -> Maybe a
+test = \a. Just a
+
+test2 : (a : Type) -> a -> Maybe a
+test2 = \a x. Just a x

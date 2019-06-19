@@ -1,0 +1,11 @@
+List : Type -> Type
+
+data List a where
+  Nil : List a
+  Cons : a -> List a -> List a
+
+t1 = Type
+t2 = Type
+
+example =
+  Cons _ t1 (Cons _ t2 (Nil _))

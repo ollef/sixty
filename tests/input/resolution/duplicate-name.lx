@@ -1,0 +1,4 @@
+g = Type
+
+f = Type
+f = g -- duplicate name error expected

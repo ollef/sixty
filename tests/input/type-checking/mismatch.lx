@@ -1,0 +1,11 @@
+t : Type
+t = Type
+
+f : Type -> Type
+f = \x. x
+
+g : (Type -> Type) -> Type
+g = \h. h t
+
+i : (Type -> Type) -> Type
+i = \h. h f -- type mismatch error expected

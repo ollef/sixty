@@ -1,0 +1,30 @@
+id : (A : Type) -> A -> A
+id = \A a. a
+
+id250 : (A : Type) -> A -> A
+id250 = \A.
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)
+  (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _) (id _)

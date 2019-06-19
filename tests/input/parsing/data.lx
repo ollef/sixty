@@ -1,0 +1,5 @@
+Maybe : Type -> Type
+
+data Maybe a where
+  Nothing : Maybe a
+  Just : Maybe a

@@ -1,0 +1,5 @@
+f : Type -> Type -> Type
+f = \x y. x
+
+g : Type -> Type
+g = \x. x

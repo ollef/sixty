@@ -1,0 +1,4 @@
+arr = Type -> Type
+
+test : arr
+test = \x. x
