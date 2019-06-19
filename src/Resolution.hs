@@ -37,33 +37,37 @@ moduleScopes module_ definitions =
           Name.Qualified module_ name
 
         definitionCase =
-          case HashMap.lookup prename scope of
-            Just (Scope.Name qualifiedName')
-              | qualifiedName == qualifiedName'
-              , Scope.Definition <- visibility HashMap.! qualifiedName ->
-                ( scope
-                , visibility
-                , scopes
-                , duplicate Scope.Definition qualifiedName : errs
-                )
-
-            _ ->
+          let
+            ok =
               ( HashMap.insertWith (<>) prename (Scope.Name qualifiedName) scope
               , HashMap.insertWith max qualifiedName Scope.Definition visibility
               , HashMap.insert (name, Scope.Definition) (scope, visibility) scopes
               , errs
               )
+          in
+          case HashMap.lookup qualifiedName visibility of
+            Nothing ->
+              ok
+
+            Just Scope.Type ->
+              ok
+
+            Just Scope.Definition ->
+              ( scope
+              , visibility
+              , scopes
+              , duplicate Scope.Definition qualifiedName : errs
+              )
       in
       case def of
         Presyntax.TypeDeclaration {} ->
-          case HashMap.lookup prename scope of
-            Just (Scope.Name qualifiedName')
-              | qualifiedName == qualifiedName' ->
-                ( scope
-                , visibility
-                , scopes
-                , duplicate (visibility HashMap.! qualifiedName) qualifiedName : errs
-                )
+          case HashMap.lookup qualifiedName visibility of
+            Just _ ->
+              ( scope
+              , visibility
+              , scopes
+              , duplicate (visibility HashMap.! qualifiedName) qualifiedName : errs
+              )
 
             _ ->
               ( HashMap.insertWith (<>) prename (Scope.Name qualifiedName) scope
