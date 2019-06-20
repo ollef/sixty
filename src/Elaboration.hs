@@ -247,64 +247,7 @@ inferUnspanned context term until =
   case term of
     Presyntax.Var name ->
       insertMetasForImplicitsM context $
-        case Context.lookupNameIndex name context of
-          Just i -> do
-            type_ <- force $ Context.lookupIndexType i context
-            pure
-              ( Syntax.Var i
-              , type_
-              )
-
-          Nothing -> do
-            maybeQualifiedName <-
-              fetch $
-                Query.ResolvedName
-                  (Context.scopeKey context)
-                  name
-            case maybeQualifiedName of
-              Nothing -> do
-                Context.report context $ Error.NotInScope name
-                type_ <- Context.newMetaType context
-                type' <- readback context type_
-                pure
-                  ( Syntax.App (Syntax.Global Builtin.fail) Explicit type'
-                  , type_
-                  )
-
-              Just (Scope.Name qualifiedName) -> do
-                type_ <- fetch $ Query.ElaboratedType qualifiedName
-                type' <- evaluate context $ Syntax.fromVoid type_
-                pure
-                  ( Syntax.Global qualifiedName
-                  , type'
-                  )
-
-              Just (Scope.Constructors (toList -> [constr])) -> do
-                type_ <- fetch $ Query.ConstructorType constr
-                type' <- evaluate context $ Syntax.fromVoid type_
-                pure
-                  ( Syntax.Con constr
-                  , type'
-                  )
-
-              Just (Scope.Constructors constrs) -> do
-                -- TODO
-                Context.report context $ Error.Ambiguous name constrs mempty
-                type_ <- Context.newMetaType context
-                type' <- readback context type_
-                pure
-                  ( Syntax.App (Syntax.Global Builtin.fail) Explicit type'
-                  , type_
-                  )
-
-              Just (Scope.Ambiguous constrCandidates nameCandidates) -> do
-                Context.report context $ Error.Ambiguous name constrCandidates nameCandidates
-                type_ <- Context.newMetaType context
-                type' <- readback context type_
-                pure
-                  ( Syntax.App (Syntax.Global Builtin.fail) Explicit type'
-                  , type_
-                  )
+        inferVar context name
 
     Presyntax.Let name term' body -> do
       (term'', type_) <- infer context term' $ InstantiateUntil Explicit
@@ -405,6 +348,60 @@ inferUnspanned context term until =
     Presyntax.ParseError err -> do
       Context.reportParseError context err
       inferUnspanned context Presyntax.Wildcard until
+
+inferVar :: Context v -> Name.Pre -> M (Syntax.Term v, Domain.Type)
+inferVar context name =
+  case Context.lookupNameIndex name context of
+    Just i -> do
+      type_ <- force $ Context.lookupIndexType i context
+      pure
+        ( Syntax.Var i
+        , type_
+        )
+
+    Nothing -> do
+      maybeQualifiedName <-
+        fetch $
+          Query.ResolvedName
+            (Context.scopeKey context)
+            name
+      case maybeQualifiedName of
+        Nothing -> do
+          Context.report context $ Error.NotInScope name
+          failed
+
+        Just (Scope.Name qualifiedName) -> do
+          type_ <- fetch $ Query.ElaboratedType qualifiedName
+          type' <- evaluate context $ Syntax.fromVoid type_
+          pure
+            ( Syntax.Global qualifiedName
+            , type'
+            )
+
+        Just (Scope.Constructors (toList -> [constr])) -> do
+          type_ <- fetch $ Query.ConstructorType constr
+          type' <- evaluate context $ Syntax.fromVoid type_
+          pure
+            ( Syntax.Con constr
+            , type'
+            )
+
+        Just (Scope.Constructors constrs) -> do
+          -- TODO
+          Context.report context $ Error.Ambiguous name constrs mempty
+          failed
+
+        Just (Scope.Ambiguous constrCandidates nameCandidates) -> do
+          Context.report context $ Error.Ambiguous name constrCandidates nameCandidates
+          failed
+  where
+    failed = do
+      type_ <- Context.newMetaType context
+      type' <- readback context type_
+      pure
+        ( Syntax.App (Syntax.Global Builtin.fail) Explicit type'
+        , type_
+        )
 
 -------------------------------------------------------------------------------
 -- Implicits
