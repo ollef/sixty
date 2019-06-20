@@ -138,7 +138,7 @@ rules (Writer query) =
 
           Just def -> do
             (maybeResult, errs) <- runElaborator key $
-              Elaboration.checkDefinition key def Builtin.type_
+              Elaboration.checkTopLevelDefinition key def Builtin.type_
             pure $
               case maybeResult of
                 Nothing ->
@@ -171,13 +171,13 @@ rules (Writer query) =
           mtype <- fetch $ ParsedDefinition typeKey
           case mtype of
             Nothing ->
-              runElaborator defKey $ Elaboration.inferDefinition defKey def
+              runElaborator defKey $ Elaboration.inferTopLevelDefinition defKey def
 
             Just _ -> do
               type_ <- fetch $ ElaboratedType name
               runElaborator defKey $ do
                 typeValue <- Evaluation.evaluate (Domain.empty defKey) type_
-                (def', errs) <- Elaboration.checkDefinition defKey def typeValue
+                (def', errs) <- Elaboration.checkTopLevelDefinition defKey def typeValue
                 pure ((def', type_), errs)
 
     ConstructorType (Name.QualifiedConstructor dataTypeName constr) ->
