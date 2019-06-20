@@ -222,13 +222,11 @@ checkUnspanned context term expectedType = do
 
         _ | plicity == Explicit -> do
           source <- Context.newMetaType context
-          domain <- Context.newMetaType context
           let
             metaFunctionType =
-              Domain.Fun (Lazy $ pure source) (Lazy $ pure domain)
+              Domain.Fun (Lazy $ pure source) (Lazy $ pure expectedType)
 
           Unification.unify context functionType' metaFunctionType
-          Unification.unify context domain expectedType
           argument' <- check context argument source
           pure $ Syntax.App function' plicity argument'
 
