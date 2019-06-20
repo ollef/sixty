@@ -1,4 +1,3 @@
-{-# language DeriveFunctor #-}
 {-# language DuplicateRecordFields #-}
 {-# language GADTs #-}
 {-# language OverloadedStrings #-}
@@ -11,6 +10,7 @@ import Protolude hiding (Seq, force, check, evaluate, until)
 
 import Data.IORef
 import Rock
+import qualified Data.HashSet as HashSet
 
 import qualified Builtin
 import Context (Context)
@@ -97,7 +97,7 @@ inferDefinition context def =
       pure (Syntax.TypeDeclaration type', Builtin.type_)
 
     Presyntax.ConstantDefinition term -> do
-      (term', type_) <- infer context term $ InstantiateUntil Explicit
+      (term', type_) <- infer context term (InstantiateUntil Explicit) $ Lazy $ pure Nothing
       pure (Syntax.ConstantDefinition term', type_)
 
     Presyntax.DataDefinition params constrs -> do
@@ -146,9 +146,10 @@ infer
   :: Context v
   -> Presyntax.Term
   -> InstantiateUntil
+  -> Lazy (Maybe Name.Qualified)
   -> M (Syntax.Term v, Domain.Type)
-infer context (Presyntax.Term span term) =
-  inferUnspanned (Context.spanned span context) term
+infer context (Presyntax.Term span term) expectedTypeName =
+  inferUnspanned (Context.spanned span context) term expectedTypeName
 
 checkUnspanned
   :: Context v
@@ -159,7 +160,7 @@ checkUnspanned context term expectedType = do
   expectedType' <- Context.forceHead context expectedType
   case (term, expectedType') of
     (Presyntax.Let name term' body, _) -> do
-      (term'', type_) <- infer context term' $ InstantiateUntil Explicit
+      (term'', type_) <- infer context term' (InstantiateUntil Explicit) $ Lazy $ pure Nothing
       type' <- readback context type_
 
       term''' <- lazy $ evaluate context term''
@@ -199,7 +200,8 @@ checkUnspanned context term expectedType = do
       pure $ Syntax.Lam name source'' Implicit term'
 
     (Presyntax.App function plicity argument, _) -> do
-      (function', functionType) <- infer context function $ InstantiateUntil plicity
+      expectedTypeName <- lazy $ getExpectedTypeName context expectedType'
+      (function', functionType) <- infer context function (InstantiateUntil plicity) expectedTypeName
       functionType' <- Context.forceHead context functionType
 
       case functionType' of
@@ -234,7 +236,8 @@ checkUnspanned context term expectedType = do
             panic "The “impossible” happened :S"
 
     _ -> do
-      (term', type_) <- inferUnspanned context term $ InstantiateUntil Explicit
+      expectedTypeName <- lazy $ getExpectedTypeName context expectedType'
+      (term', type_) <- inferUnspanned context term (InstantiateUntil Explicit) expectedTypeName
       Unification.unify context type_ expectedType
       pure term'
 
@@ -242,21 +245,22 @@ inferUnspanned
   :: Context v
   -> Presyntax.UnspannedTerm
   -> InstantiateUntil
+  -> Lazy (Maybe Name.Qualified)
   -> M (Syntax.Term v, Domain.Type)
-inferUnspanned context term until =
+inferUnspanned context term until expectedTypeName =
   case term of
     Presyntax.Var name ->
       insertMetasForImplicitsM context $
-        inferVar context name
+        inferName context name expectedTypeName
 
     Presyntax.Let name term' body -> do
-      (term'', type_) <- infer context term' $ InstantiateUntil Explicit
+      (term'', type_) <- infer context term' (InstantiateUntil Explicit) $ Lazy $ pure Nothing
       type' <- readback context type_
 
       term''' <- lazy $ evaluate context term''
       (context', _) <- Context.extendDef context name term''' $ Lazy $ pure type_
 
-      (body', bodyType) <- infer context' body until
+      (body', bodyType) <- infer context' body until expectedTypeName
       pure
         ( Syntax.Let name term'' type' body'
         , bodyType
@@ -286,7 +290,7 @@ inferUnspanned context term until =
         source <- Context.newMetaType context
         source' <- readback context source
         (context', _) <- Context.extend context name $ Lazy $ pure source
-        (body', domain) <- infer context' body $ InstantiateUntil Explicit
+        (body', domain) <- infer context' body (InstantiateUntil Explicit) $ Lazy $ pure Nothing
         domain' <- readback context' domain
 
         pure
@@ -297,7 +301,7 @@ inferUnspanned context term until =
 
     Presyntax.App function plicity argument ->
       insertMetasForImplicitsM context $ do
-        (function', functionType) <- infer context function $ InstantiateUntil plicity
+        (function', functionType) <- infer context function (InstantiateUntil plicity) expectedTypeName
         functionType' <- Context.forceHead context functionType
 
         case functionType' of
@@ -347,10 +351,10 @@ inferUnspanned context term until =
 
     Presyntax.ParseError err -> do
       Context.reportParseError context err
-      inferUnspanned context Presyntax.Wildcard until
+      inferUnspanned context Presyntax.Wildcard until expectedTypeName
 
-inferVar :: Context v -> Name.Pre -> M (Syntax.Term v, Domain.Type)
-inferVar context name =
+inferName :: Context v -> Name.Pre -> Lazy (Maybe Name.Qualified) -> M (Syntax.Term v, Domain.Type)
+inferName context name expectedTypeName =
   case Context.lookupNameIndex name context of
     Just i -> do
       type_ <- force $ Context.lookupIndexType i context
@@ -368,7 +372,7 @@ inferVar context name =
       case maybeQualifiedName of
         Nothing -> do
           Context.report context $ Error.NotInScope name
-          failed
+          fail
 
         Just (Scope.Name qualifiedName) -> do
           type_ <- fetch $ Query.ElaboratedType qualifiedName
@@ -378,30 +382,73 @@ inferVar context name =
             , type'
             )
 
-        Just (Scope.Constructors (toList -> [constr])) -> do
-          type_ <- fetch $ Query.ConstructorType constr
-          type' <- evaluate context $ Syntax.fromVoid type_
-          pure
-            ( Syntax.Con constr
-            , type'
-            )
+        Just (Scope.Constructors (toList -> [constr])) ->
+          constrSuccess constr
 
         Just (Scope.Constructors constrs) -> do
-          -- TODO
-          Context.report context $ Error.Ambiguous name constrs mempty
-          failed
+          maybeExpectedTypeName <- force expectedTypeName
+          case maybeExpectedTypeName of
+            Nothing -> do
+              Context.report context $ Error.Ambiguous name constrs mempty
+              fail
+            Just typeName -> do
+              let
+                constrs' =
+                  HashSet.filter
+                    (\(Name.QualifiedConstructor constrTypeName _) -> constrTypeName == typeName)
+                    constrs
+              case toList constrs' of
+                [constr] ->
+                  constrSuccess constr
+
+                _ -> do
+                  Context.report context $ Error.Ambiguous name constrs' mempty
+                  fail
+
 
         Just (Scope.Ambiguous constrCandidates nameCandidates) -> do
           Context.report context $ Error.Ambiguous name constrCandidates nameCandidates
-          failed
+          fail
   where
-    failed = do
+    constrSuccess constr = do
+      type_ <- fetch $ Query.ConstructorType constr
+      type' <- evaluate context $ Syntax.fromVoid type_
+      pure
+        ( Syntax.Con constr
+        , type'
+        )
+    fail = do
       type_ <- Context.newMetaType context
       type' <- readback context type_
       pure
         ( Syntax.App (Syntax.Global Builtin.fail) Explicit type'
         , type_
         )
+
+getExpectedTypeName
+  :: Context v
+  -> Domain.Type
+  -> M (Maybe Name.Qualified)
+getExpectedTypeName context type_ = do
+  type' <- Context.forceHead context type_
+  case type' of
+    Domain.Neutral (Domain.Global name) _ ->
+      pure $ Just name
+
+    Domain.Neutral {} ->
+      pure Nothing
+
+    Domain.Pi name source _ domainClosure -> do
+      (context', var) <- Context.extend context name source
+      domain <- Evaluation.evaluateClosure domainClosure $ Lazy $ pure $ Domain.var var
+      getExpectedTypeName context' domain
+
+    Domain.Fun _ domain -> do
+      domain' <- force domain
+      getExpectedTypeName context domain'
+
+    Domain.Lam {} ->
+      pure Nothing
 
 -------------------------------------------------------------------------------
 -- Implicits

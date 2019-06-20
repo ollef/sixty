@@ -1,0 +1,15 @@
+Maybe : Type
+
+data Maybe where
+  Nothing : Maybe
+
+Maybe2 : Type
+
+data Maybe2 where
+  Nothing : Maybe2
+
+f : Maybe
+f = Nothing
+
+g : Maybe2
+g = Nothing

@@ -46,7 +46,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [ ] Data
   - [ ] Elaboration of data definitions
   - [x] Constructors
-    - [ ] Type-based overloading
+    - [x] Type-based overloading
   - [ ] Pattern matching elaboration
   - [ ] Inductive families
 - [ ] Generalisation?

@@ -1,0 +1,27 @@
+List : Type -> Type
+
+data List a where
+  Nil : List a
+  Cons : a -> List a -> List a
+
+List2 : Type -> Type
+data List2 a where
+  Nil : List2 a
+  Cons : a -> List2 a -> List2 a
+
+the : (A : Type) -> A -> A
+the = \A a. a
+
+Int = Type
+One = Type
+
+test1 : List Int
+test1 = Cons One Nil
+test2 : List2 Int
+test2 = Cons One Nil
+
+test3 = the (List Int) (Cons One Nil)
+test4 = the (List2 Int) (Cons One Nil)
+
+test5 = the (_ -> _ -> List _) Cons One Nil
+test6 = the (_ -> _ -> List2 _) Cons One Nil
