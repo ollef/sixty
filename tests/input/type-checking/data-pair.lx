@@ -1,0 +1,7 @@
+Pair : Type -> Type -> Type
+
+data Pair a b where
+  MkPair : a -> b -> Pair a b
+
+test : Pair Type Type
+test = MkPair Type Type
