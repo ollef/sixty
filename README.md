@@ -31,8 +31,9 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [ ] Imports
 - [x] Tests
   - [x] Error tests
-- [ ] Implicit arguments and subtyping
-  - [ ] Deep skolemisation
+- [ ] Implicit arguments
+  - [ ] Syntax
+  - [x] Type checking
 - [ ] Errors
   - [x] Source location tracking
     - [x] Meta variable locations
