@@ -148,8 +148,8 @@ infer
   -> InstantiateUntil
   -> Lazy (Maybe Name.Qualified)
   -> M (Syntax.Term v, Domain.Type)
-infer context (Presyntax.Term span term) expectedTypeName =
-  inferUnspanned (Context.spanned span context) term expectedTypeName
+infer context (Presyntax.Term span term) =
+  inferUnspanned (Context.spanned span context) term
 
 checkUnspanned
   :: Context v
