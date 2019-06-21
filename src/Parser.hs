@@ -1,6 +1,5 @@
 {-# language GeneralizedNewtypeDeriving #-}
 {-# language OverloadedStrings #-}
-{-# language TupleSections #-}
 module Parser where
 
 import Prelude (String)
