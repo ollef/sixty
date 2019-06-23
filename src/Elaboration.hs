@@ -218,27 +218,32 @@ checkUnspanned context term expectedType = do
           | plicity == Explicit -> do
             source' <- force source
             domain' <- force domain
-            Unification.unify context domain' expectedType
+            Unification.unify context domain' expectedType'
             argument' <- check context argument source'
             pure $ Syntax.App function' plicity argument'
 
-        _ | plicity == Explicit -> do
+        _ -> do
           source <- Context.newMetaType context
-          let
-            metaFunctionType =
-              Domain.Fun (Lazy $ pure source) (Lazy $ pure expectedType)
+          metaFunctionType <-
+            case plicity of
+              Explicit ->
+                pure $ Domain.Fun (Lazy $ pure source) (Lazy $ pure expectedType')
+
+              Implicit -> do
+                (context', _) <- Context.extend context "x" $ Lazy $ pure source
+                expectedType'' <- readback context' expectedType'
+                pure $
+                  Domain.Pi "x" (Lazy $ pure source) Implicit $
+                  Domain.Closure (Context.toEvaluationEnvironment context) expectedType''
 
           Unification.unify context functionType' metaFunctionType
           argument' <- check context argument source
           pure $ Syntax.App function' plicity argument'
 
-        _ ->
-            panic "The “impossible” happened :S"
-
     _ -> do
       expectedTypeName <- lazy $ getExpectedTypeName context expectedType'
       (term', type_) <- inferUnspanned context term (InstantiateUntil Explicit) expectedTypeName
-      Unification.unify context type_ expectedType
+      Unification.unify context type_ expectedType'
       pure term'
 
 inferUnspanned
@@ -307,31 +312,39 @@ inferUnspanned context term until expectedTypeName =
         case functionType' of
           Domain.Pi _ source typePlicity domainClosure
             | plicity == typePlicity -> do
-            source' <- force source
-            argument' <- check context argument source'
-            argument'' <- lazy $ evaluate context argument'
-            domain <- Evaluation.evaluateClosure domainClosure argument''
-            pure
-              ( Syntax.App function' plicity argument'
-              , domain
-              )
+              source' <- force source
+              argument' <- check context argument source'
+              argument'' <- lazy $ evaluate context argument'
+              domain <- Evaluation.evaluateClosure domainClosure argument''
+              pure
+                ( Syntax.App function' plicity argument'
+                , domain
+                )
 
           Domain.Fun source domain
             | plicity == Explicit -> do
-            source' <- force source
-            argument' <- check context argument source'
-            domain' <- force domain
-            pure
-              ( Syntax.App function' plicity argument'
-              , domain'
-              )
+              source' <- force source
+              argument' <- check context argument source'
+              domain' <- force domain
+              pure
+                ( Syntax.App function' plicity argument'
+                , domain'
+                )
 
-          _ | plicity == Explicit -> do
+          _ -> do
             source <- Context.newMetaType context
             domain <- Context.newMetaType context
-            let
-              metaFunctionType =
-                Domain.Fun (Lazy $ pure source) (Lazy $ pure domain)
+            metaFunctionType <-
+              case plicity of
+                Explicit ->
+                  pure $ Domain.Fun (Lazy $ pure source) (Lazy $ pure domain)
+
+                Implicit -> do
+                  (context', _) <- Context.extend context "x" $ Lazy $ pure source
+                  domain' <- readback context' domain
+                  pure $
+                    Domain.Pi "x" (Lazy $ pure source) Implicit $
+                    Domain.Closure (Context.toEvaluationEnvironment context) domain'
 
             Unification.unify context functionType' metaFunctionType
             argument' <- check context argument source
@@ -339,9 +352,6 @@ inferUnspanned context term until expectedTypeName =
               ( Syntax.App function' plicity argument'
               , domain
               )
-
-          _ ->
-              panic "The “impossible” happened :S"
 
     Presyntax.Wildcard -> do
       type_ <- Context.newMetaType context
