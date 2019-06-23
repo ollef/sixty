@@ -3,6 +3,8 @@ module Main where
 
 import Protolude
 
+import Data.HashMap.Lazy (HashMap)
+import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.String
 import qualified Data.Text as Text
@@ -17,6 +19,7 @@ import qualified Driver
 import Error (Error)
 import qualified Error
 import qualified Name
+import qualified Position
 import qualified Query
 import qualified Span
 
@@ -36,7 +39,7 @@ main = do
 
 checkModule :: Name.Module -> IO ()
 checkModule module_ = do
-  ((), errs) <- Driver.runTask $ do
+  (moduleSource, errs) <- Driver.runTask $ do
     defs <- fetch $ Query.ParsedModule module_
     let
       names =
@@ -46,67 +49,118 @@ checkModule module_ = do
       _type <- fetch $ Query.ElaboratedType name
       _maybeDef <- fetch $ Query.ElaboratedDefinition name
       pure ()
-  -- TODO: Also check that the set of expected errors doesn't
-  -- contain errors that we _don't_ get.
-  verifyErrors errs
+    fetch $ Query.ReadFile $ Query.moduleFilePath module_
 
-verifyErrors :: [(FilePath, Span.LineColumn, Text, Error)] -> IO ()
-verifyErrors errs =
-  forM_ errs $ \(filePath, lineColumn, lineText, err) ->
+  let
+    expectedErrors =
+      expectedErrorsFromSource moduleSource
+  verifyErrors errs expectedErrors
+
+verifyErrors :: [(FilePath, Span.LineColumn, Text, Error)] -> HashMap Int ExpectedError -> IO ()
+verifyErrors errs expectedErrors = do
+  let
+    errorsMap =
+      HashMap.fromList
+        [ (lineNumber, errorToExpectedError err)
+        | (_, Span.LineColumns (Position.LineColumn lineNumber _) _, _, err) <- errs
+        ]
+
+  forM_ (HashMap.toList expectedErrors) $ \(lineNumber, expectedError) ->
+    case HashMap.lookup lineNumber errorsMap of
+      Just expectedError'
+        | expectedError == expectedError' ->
+          pure ()
+
+      _ ->
+        Tasty.assertFailure $
+          "Expected " <> show expectedError <> " error on line " <> show lineNumber
+
+  forM_ errs $ \(filePath, lineColumn@(Span.LineColumns (Position.LineColumn lineNumber _) _), lineText, err) ->
     let
       failure =
-        Tasty.assertFailure $ show $ Error.pretty filePath lineColumn lineText err <> line
+        Tasty.assertFailure $
+          "Unexpected error:\n" <> show (Error.pretty filePath lineColumn lineText err <> line)
     in
-    case Text.splitOn "--" lineText of
-      [_, expectedErrorText] ->
-        case (err, Text.strip expectedErrorText) of
-          (Error.Parse {}, "parse error expected") ->
-            pure ()
-
-          (Error.Parse {}, _) ->
-            failure
-
-          (Error.DuplicateName {}, "duplicate name error expected") ->
-            pure ()
-
-          (Error.DuplicateName {}, _) ->
-            failure
-
-          (Error.Elaboration _ (Error.Spanned _ elaborationError), strippedExpectedErrorText) ->
-            case (elaborationError, strippedExpectedErrorText) of
-              (Error.NotInScope {}, "not in scope error expected") ->
-                pure ()
-
-              (Error.NotInScope {}, _) ->
-                failure
-
-              (Error.Ambiguous {}, "ambiguous name error expected") ->
-                pure ()
-
-              (Error.Ambiguous {}, _) ->
-                failure
-
-              (Error.TypeMismatch {}, "type mismatch error expected") ->
-                pure ()
-
-              (Error.TypeMismatch {}, _) ->
-                failure
-
-              (Error.OccursCheck {}, "occurs check error expected") ->
-                pure ()
-
-              (Error.OccursCheck {}, _) ->
-                failure
-
-              (Error.UnsolvedMetaVariable {}, "unsolved meta error expected") ->
-                pure ()
-
-              (Error.UnsolvedMetaVariable {}, _) ->
-                failure
+    case HashMap.lookup lineNumber expectedErrors of
+      Just expectedError
+        | expectedError == errorToExpectedError err ->
+          pure ()
 
       _ ->
         failure
 
+data ExpectedError
+  = Parse
+  | DuplicateName
+  | NotInScope
+  | Ambiguous
+  | TypeMismatch
+  | OccursCheck
+  | UnsolvedMetaVariable
+  deriving (Eq, Show)
+
+errorToExpectedError :: Error -> ExpectedError
+errorToExpectedError err =
+  case err of
+    Error.Parse {} ->
+      Parse
+
+    Error.DuplicateName {} ->
+      DuplicateName
+
+    Error.Elaboration _ (Error.Spanned _ elaborationError) ->
+      case elaborationError of
+        Error.NotInScope {} ->
+          NotInScope
+
+        Error.Ambiguous {} ->
+          Ambiguous
+
+        Error.TypeMismatch {} ->
+          TypeMismatch
+
+        Error.OccursCheck {} ->
+          OccursCheck
+
+        Error.UnsolvedMetaVariable {} ->
+          UnsolvedMetaVariable
+
+expectedErrorsFromSource
+  :: Text
+  -> HashMap Int ExpectedError
+expectedErrorsFromSource sourceText =
+  HashMap.fromList $ concatMap go $ zip [0..] $ Text.lines sourceText
+  where
+    go (lineNumber, lineText) =
+      case Text.splitOn "--" lineText of
+        [_, expectedErrorText] ->
+          case Text.strip expectedErrorText of
+            "parse error expected" ->
+              [(lineNumber, Parse)]
+
+            "duplicate name error expected" ->
+              [(lineNumber, DuplicateName)]
+
+            "not in scope error expected" ->
+              [(lineNumber, NotInScope)]
+
+            "ambiguous name error expected" ->
+              [(lineNumber, Ambiguous)]
+
+            "type mismatch error expected" ->
+              [(lineNumber, TypeMismatch)]
+
+            "occurs check error expected" ->
+              [(lineNumber, OccursCheck)]
+
+            "unsolved meta error expected" ->
+              [(lineNumber, UnsolvedMetaVariable)]
+
+            _ ->
+              mempty
+
+        _ ->
+          mempty
 
 listDirectoryRecursive :: FilePath -> (FilePath -> Bool) -> IO [FilePath]
 listDirectoryRecursive dir p = do

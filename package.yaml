@@ -60,3 +60,4 @@ tests:
       - sixty
       - tasty
       - tasty-hunit
+      - unordered-containers
