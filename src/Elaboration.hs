@@ -212,7 +212,7 @@ checkUnspanned context term expectedType = do
       term''' <- lazy $ evaluate context term''
       (context', _) <- Context.extendDef context name term''' $ Lazy $ pure type_
 
-      body' <- check context' body expectedType
+      body' <- check context' body expectedType'
       pure $ Syntax.Let name term'' type' body'
 
     (Presyntax.Lam name plicity body, Domain.Pi _ source typePlicity domainClosure)
@@ -257,7 +257,7 @@ checkUnspanned context term expectedType = do
             argument' <- check context argument source'
             argument'' <- lazy $ evaluate context argument'
             domain <- Evaluation.evaluateClosure domainClosure argument''
-            Unification.unify context domain expectedType
+            Unification.unify context domain expectedType'
             pure $ Syntax.App function' plicity argument'
 
         Domain.Fun source domain
