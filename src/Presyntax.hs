@@ -64,7 +64,7 @@ function source@(Term (Span.Relative start _) _) domain@(Term (Span.Relative _ e
 data Definition
   = TypeDeclaration !Type
   | ConstantDefinition !Term
-  | DataDefinition [(Name.Name, Type)] [(Name.Constructor, Type)]
+  | DataDefinition [(Name.Name, Type, Plicity)] [(Name.Constructor, Type)]
   deriving (Show, Generic, Hashable)
 
 key :: Definition -> Scope.Key

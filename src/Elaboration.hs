@@ -8,13 +8,15 @@ module Elaboration where
 
 import Protolude hiding (Seq, force, check, evaluate, until)
 
+import qualified Data.HashSet as HashSet
 import Data.IORef
 import Rock
-import qualified Data.HashSet as HashSet
 
 import qualified Builtin
 import Context (Context)
 import qualified Context
+import Data.Tsil (Tsil)
+import qualified Data.Tsil as Tsil
 import qualified Domain
 import qualified Elaboration.Metas as Metas
 import Error (Error)
@@ -24,9 +26,9 @@ import qualified Meta
 import Monad
 import Name (Name)
 import qualified Name
+import Plicity
 import qualified Presyntax
 import qualified "this" Data.IntMap as IntMap
-import Plicity
 import qualified Query
 import qualified Readback
 import qualified Scope
@@ -34,6 +36,7 @@ import qualified Syntax
 import Telescope (Telescope)
 import qualified Telescope
 import qualified Unification
+import Var (Var)
 
 newtype InstantiateUntil = InstantiateUntil Plicity
 
@@ -81,7 +84,7 @@ checkDefinition context def expectedType =
       pure $ Syntax.ConstantDefinition term'
 
     Presyntax.DataDefinition params constrs -> do
-      (tele, type_) <- inferDataDefinition context params constrs
+      (tele, type_) <- inferDataDefinition context params constrs mempty
       type' <- evaluate context type_
       Unification.unify context type' expectedType
       pure $ Syntax.DataDefinition tele
@@ -101,36 +104,79 @@ inferDefinition context def =
       pure (Syntax.ConstantDefinition term', type_)
 
     Presyntax.DataDefinition params constrs -> do
-      (tele, type_) <- inferDataDefinition context params constrs
+      (tele, type_) <- inferDataDefinition context params constrs mempty
       type' <- evaluate context type_
       pure (Syntax.DataDefinition tele, type')
 
 inferDataDefinition
   :: Context v
-  -> [(Name, Presyntax.Type)]
+  -> [(Name, Presyntax.Type, Plicity)]
   -> [(Name.Constructor, Presyntax.Type)]
+  -> Tsil (Plicity, Var)
   -> M (Telescope Syntax.Type Syntax.ConstructorDefinitions v, Syntax.Type v)
-inferDataDefinition context params constrs =
-  case params of
+inferDataDefinition context preParams constrs paramVars =
+  case preParams of
     [] -> do
+      let
+        Scope.KeyedName _ qualifiedThisName@(Name.Qualified _ thisName) =
+          Context.scopeKey context
+
+        this =
+          Syntax.Global qualifiedThisName
+
+      thisType <-
+        Syntax.fromVoid <$>
+          varPis
+            context
+            (Domain.empty $ Context.scopeKey context)
+            (toList paramVars)
+            Builtin.type_
+
+      thisType' <- lazy $ evaluate context thisType
+
+      (context', _) <- Context.extend context thisName thisType'
+
       constrs' <- forM constrs $ \(constr, type_) -> do
         -- TODO check return value of constructors
-        type' <- check context type_ Builtin.type_
-        pure (constr, type')
+        type' <- check context' type_ Builtin.type_
+        pure (constr, Syntax.Let thisName this thisType type')
       pure
         ( Telescope.Empty (Syntax.ConstructorDefinitions constrs')
         , Syntax.Global Builtin.typeName
         )
 
-    (name, type_):params' -> do
+    (name, type_, plicity):preParams' -> do
       type' <- check context type_ Builtin.type_
       type'' <- lazy $ evaluate context type'
-      (context', _) <- Context.extend context name type''
-      (tele, dataType) <- inferDataDefinition context' params' constrs
+      (context', paramVar) <- Context.extend context name type''
+      let
+        paramVars' =
+          paramVars Tsil.:> (plicity, paramVar)
+      (tele, dataType) <- inferDataDefinition context' preParams' constrs paramVars'
       pure
         ( Telescope.Extend name type' Explicit tele
         , Syntax.Pi name type' Explicit dataType
         )
+
+varPis
+  :: Context v
+  -> Domain.Environment v'
+  -> [(Plicity, Var)]
+  -> Domain.Value
+  -> M (Syntax.Term v')
+varPis context env vars domain =
+  case vars of
+    [] ->
+      Readback.readback (Readback.fromEvaluationEnvironment env) domain
+
+    (plicity, var):vars'-> do
+      let
+        env' =
+          Domain.extendVar env var
+      source <- force $ Context.lookupVarType var context
+      source' <- Readback.readback (Readback.fromEvaluationEnvironment env) source
+      domain' <- varPis context env' vars' domain
+      pure $ Syntax.Pi (Context.lookupVarName var context) source' plicity domain'
 
 -------------------------------------------------------------------------------
 
@@ -363,7 +409,11 @@ inferUnspanned context term until expectedTypeName =
       Context.reportParseError context err
       inferUnspanned context Presyntax.Wildcard until expectedTypeName
 
-inferName :: Context v -> Name.Pre -> Lazy (Maybe Name.Qualified) -> M (Syntax.Term v, Domain.Type)
+inferName
+  :: Context v
+  -> Name.Pre
+  -> Lazy (Maybe Name.Qualified)
+  -> M (Syntax.Term v, Domain.Type)
 inferName context name expectedTypeName =
   case Context.lookupNameIndex name context of
     Just i -> do
@@ -374,12 +424,9 @@ inferName context name expectedTypeName =
         )
 
     Nothing -> do
-      maybeQualifiedName <-
-        fetch $
-          Query.ResolvedName
-            (Context.scopeKey context)
-            name
-      case maybeQualifiedName of
+      maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
+
+      case maybeScopeEntry of
         Nothing -> do
           Context.report context $ Error.NotInScope name
           fail

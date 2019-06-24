@@ -79,7 +79,14 @@ extend
   -> M (Environment (Succ v))
 extend env = do
   v <- freshVar
-  pure env
+  pure $ extendVar env v
+
+extendVar
+  :: Environment v
+  -> Var
+  -> Environment (Succ v)
+extendVar env v =
+  env
     { vars = vars env IntSeq.:> v
     }
 

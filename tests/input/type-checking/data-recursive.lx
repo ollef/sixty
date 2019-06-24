@@ -1,0 +1,12 @@
+data List a where
+  Nil : List a
+  Cons : a -> List a -> List a
+
+list : List Type
+list = Cons Type (Cons Type Nil)
+
+data DependentParams (a : Type)(b : a) where
+  Con : DependentParams a b
+
+dependentParams : DependentParams Type Type
+dependentParams = Con

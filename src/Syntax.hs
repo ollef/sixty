@@ -13,8 +13,8 @@ import Index
 import qualified Meta
 import Name (Name)
 import qualified Name
-import Telescope (Telescope)
 import Plicity
+import Telescope (Telescope)
 
 data Term v
   = Var !(Index v)

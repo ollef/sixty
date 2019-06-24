@@ -1,5 +1,6 @@
 {-# language GeneralizedNewtypeDeriving #-}
 {-# language OverloadedStrings #-}
+{-# language TupleSections #-}
 module Parser where
 
 import Prelude (String)
@@ -18,6 +19,7 @@ import qualified Text.Parsix as Parsix
 import qualified Error
 import Name (Name)
 import qualified Name
+import Plicity
 import qualified Position
 import Presyntax
 import qualified Span
@@ -331,7 +333,7 @@ definition =
         (\errorInfo -> spannedTerm . recover ParseError errorInfo)
         (indented term)
     param =
-      (,) <$ symbol "(" <*>% name <*% symbol ":" <*>% recoveringTerm <*% symbol ")"
-      <|> (\(span, name_) -> (name_, Term span Presyntax.Wildcard)) <$> spanned name
+      (,, Explicit) <$ symbol "(" <*>% name <*% symbol ":" <*>% recoveringTerm <*% symbol ")"
+      <|> (\(span, name_) -> (name_, Term span Presyntax.Wildcard, Explicit)) <$> spanned name
     constr =
       (,) <$> constructor <*% symbol ":" <*>% recoveringTerm
