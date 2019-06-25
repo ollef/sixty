@@ -1,0 +1,6 @@
+data List a where
+  Nil : List a
+  Cons : a -> List a -> List a
+
+map : forall a b. List a -> List b
+map = \xs. Nil
