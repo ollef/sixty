@@ -223,7 +223,7 @@ qidLetter = idLetter
 
 reservedIds :: HashSet String
 reservedIds =
-  HashSet.fromList ["let", "in", "_", "data", "where"]
+  HashSet.fromList ["let", "in", "_", "data", "where", "forall"]
 
 idStyle :: Parsix.IdentifierStyle Parser
 idStyle
@@ -291,13 +291,24 @@ atomicTerm =
     ( Wildcard <$ reserved "_"
       <|> Var <$> prename
       <|> Let <$ reserved "let" <*>% name <*% symbol "=" <*>% term <*% reserved "in" <*>% term
-      <|> unspanned <$> (lams <$ symbol "\\" <*> someIndented (positioned name) <*% symbol "." <*>% term)
+      <|> unspanned <$>
+        ( lams <$ symbol "\\" <*> someIndented (positioned name) <*% symbol "." <*>% term
+        <|> implicitPis <$ reserved "forall" <*>
+          someIndented
+            ( (,) <$ symbol "(" <*> someIndented (positioned name) <*% symbol ":" <*>% term <*% symbol ")"
+            <|> (\(span@(Span.Relative pos _), name_) -> ([(pos, name_)], Term span Wildcard)) <$> spanned name
+            ) <*% symbol "." <*>% term
+        )
     )
   <?> "term"
+  where
+    implicitPis vss domain =
+      foldr (\(vs, source) domain' -> pis Implicit vs source domain') domain vss
+
 
 term :: Parser Term
 term =
-  spannedTerm (unspanned <$> (pis <$> try (symbol "(" *> someIndented (positioned name) <*% reserved ":") <*>% term <*% symbol ")" <*% symbol "->" <*>% term))
+  spannedTerm (unspanned <$> (pis Explicit <$> try (symbol "(" *> someIndented (positioned name) <*% symbol ":") <*>% term <*% symbol ")" <*% symbol "->" <*>% term))
   <|> apps <$> atomicTerm <*> manyIndented atomicTerm <**> fun
   <?> "term"
   where

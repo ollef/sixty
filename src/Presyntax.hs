@@ -41,21 +41,13 @@ apps :: Foldable f => Term -> f Term -> Term
 apps fun@(Term (Span.Relative start _) _) =
   foldl (\fun' arg@(Term (Span.Relative _ end) _) -> Term (Span.Relative start end) $ App fun' Explicit arg) fun
 
-lam :: (Position.Relative, Name.Name) -> Term -> Term
-lam (start, v) body@(Term (Span.Relative _ end) _) =
-  Term (Span.Relative start end) $ Lam v Explicit body
-
 lams :: Foldable f => f (Position.Relative, Name.Name) -> Term -> Term
 lams vs body@(Term (Span.Relative _ end) _) =
   foldr (\(start, v) -> Term (Span.Relative start end) . Lam v Explicit) body vs
 
-pi :: (Position.Relative, Name.Name) -> Type -> Type -> Type
-pi (start, v) source domain@(Term (Span.Relative _ end) _) =
-  Term (Span.Relative start end) $ Pi v Explicit source domain
-
-pis :: Foldable f => f (Position.Relative, Name.Name) -> Type -> Type -> Type
-pis vs source domain@(Term (Span.Relative _ end) _) =
-  foldr (\(start, v) -> Term (Span.Relative start end) . Pi v Explicit source) domain vs
+pis :: Foldable f => Plicity -> f (Position.Relative, Name.Name) -> Type -> Type -> Type
+pis plicity vs source domain@(Term (Span.Relative _ end) _) =
+  foldr (\(start, v) -> Term (Span.Relative start end) . Pi v plicity source) domain vs
 
 function :: Term -> Term -> Term
 function source@(Term (Span.Relative start _) _) domain@(Term (Span.Relative _ end) _) =

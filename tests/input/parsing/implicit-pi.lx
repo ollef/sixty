@@ -1,0 +1,4 @@
+withType : forall (y : Type). Type
+withTypes : forall (x y : Type). Type
+withoutType : forall x. x
+mixed : forall x (y : x). Type
