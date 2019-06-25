@@ -1,0 +1,30 @@
+id : forall (A : Type). A -> A
+id = \a. a
+
+id250 : forall (A : Type). A -> A
+id250 =
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
+  id id id id id id id id id id
