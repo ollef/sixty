@@ -327,8 +327,9 @@ inferUnspanned context term until expectedTypeName =
 
     Presyntax.Pi name plicity source domain -> do
       source' <- check context source Builtin.type_
+      source'' <- lazy $ evaluate context source'
 
-      (context', _) <- Context.extend context name $ Lazy $ pure Builtin.type_
+      (context', _) <- Context.extend context name source''
 
       domain' <- check context' domain Builtin.type_
       pure
