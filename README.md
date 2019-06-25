@@ -32,8 +32,10 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [x] Tests
   - [x] Error tests
 - [ ] Implicit arguments
-  - [ ] Syntax
   - [x] Type checking
+  - [x] Pi syntax
+  - [ ] Application syntax
+  - [ ] Abstraction syntax
 - [ ] Errors
   - [x] Source location tracking
     - [x] Meta variable locations
