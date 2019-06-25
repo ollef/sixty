@@ -286,6 +286,14 @@ checkUnspanned context term expectedType = do
           argument' <- check context argument source
           pure $ Syntax.App function' plicity argument'
 
+    (Presyntax.Wildcard, _) -> do
+      term' <- Context.newMeta expectedType' context
+      readback context term'
+
+    (Presyntax.ParseError err, _) -> do
+      Context.reportParseError context err
+      checkUnspanned context Presyntax.Wildcard expectedType'
+
     _ -> do
       expectedTypeName <- lazy $ getExpectedTypeName context expectedType'
       (term', type_) <- inferUnspanned context term (InstantiateUntil Explicit) expectedTypeName
