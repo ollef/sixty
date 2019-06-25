@@ -120,10 +120,10 @@ data InnerValue
   | Con !Name.QualifiedConstructor
   | Meta !Meta.Index (Tsil Value)
   | Let !Name !Var !Value !Type !Value
-  | Pi !Name !Var !Type !Type
+  | Pi !Name !Var !Type !Plicity !Type
   | Fun !Type !Type
-  | Lam !Name !Var !Type !Value
-  | App !Value !Value
+  | Lam !Name !Var !Type !Plicity !Value
+  | App !Value !Plicity !Value
   deriving Show
 
 newtype Occurrences = Occurrences { unoccurrences :: IntMap Meta.Index (Tsil (Maybe Var)) }
@@ -141,14 +141,14 @@ instance Monoid Occurrences where
 
 data Value = Value !InnerValue Occurrences
 
-app :: Value -> Value -> InnerValue
-app fun@(Value fun' _) arg =
-  case fun' of
-    Meta index args ->
+app :: Value -> Plicity -> Value -> InnerValue
+app fun@(Value fun' _) plicity arg =
+  case (fun', plicity) of
+    (Meta index args, Explicit) ->
       Meta index $ args Tsil.:> arg
 
     _ ->
-      App fun arg
+      App fun plicity arg
 
 instance Show Value where
   showsPrec d (Value v _) = showsPrec d v
@@ -192,7 +192,7 @@ makeValue innerValue =
         occurrences type_ <>
         occurrences body
 
-      Pi _ _ source domain ->
+      Pi _ _ source _ domain ->
         occurrences source <>
         occurrences domain
 
@@ -200,11 +200,11 @@ makeValue innerValue =
         occurrences source <>
         occurrences domain
 
-      Lam _ _ type_ body ->
+      Lam _ _ type_ _ body ->
         occurrences type_ <>
         occurrences body
 
-      App function argument ->
+      App function _ argument ->
         occurrences function <>
         occurrences argument
 
@@ -231,10 +231,11 @@ evaluate env term =
           evaluate env type_ <*>
           evaluate env' body
 
-      Syntax.Pi name source _ domain -> do
+      Syntax.Pi name source plicity domain -> do
         (env', var) <- Readback.extend env
         Pi name var <$>
           evaluate env source <*>
+          pure plicity <*>
           evaluate env' domain
 
       Syntax.Fun source domain ->
@@ -242,15 +243,17 @@ evaluate env term =
           evaluate env source <*>
           evaluate env domain
 
-      Syntax.Lam name type_ _ body -> do
+      Syntax.Lam name type_ plicity body -> do
         (env', var) <- Readback.extend env
         Lam name var <$>
           evaluate env type_ <*>
+          pure plicity <*>
           evaluate env' body
 
-      Syntax.App function _ argument ->
+      Syntax.App function plicity argument ->
         app <$>
           evaluate env function <*>
+          pure plicity <*>
           evaluate env argument
 
 readback :: Readback.Environment v -> (Meta.Index -> (Var, [Maybe var])) -> Value -> Syntax.Term v
@@ -288,25 +291,25 @@ readback env metas (Value value _) =
         (readback env metas type_)
         (readback (Readback.extendVar env var) metas body)
 
-    Pi name var source domain ->
+    Pi name var source plicity domain ->
       Syntax.Pi
         name
         (readback env metas source)
-        Explicit
+        plicity
         (readback (Readback.extendVar env var) metas domain)
 
     Fun source domain ->
       Syntax.Fun (readback env metas source) (readback env metas domain)
 
-    Lam name var type_ body ->
+    Lam name var type_ plicity body ->
       Syntax.Lam
         name
         (readback env metas type_)
-        Explicit
+        plicity
         (readback (Readback.extendVar env var) metas body)
 
-    App function argument ->
-      Syntax.App (readback env metas function) Explicit (readback env metas argument)
+    App function plicity argument ->
+      Syntax.App (readback env metas function) plicity (readback env metas argument)
 
 inlineArguments
   :: Value
@@ -321,7 +324,7 @@ inlineArguments value@(Value innerValue _) type_@(Value innerType _) args subst 
 
     Just argVar:args' ->
       case (innerValue, innerType) of
-        (Lam _ var _ body, Pi _ var' _ domain) ->
+        (Lam _ var _ _ body, Pi _ var' _ _ domain) ->
           let
             subst' =
               IntMap.insert var (makeValue $ Var argVar) $
@@ -334,20 +337,21 @@ inlineArguments value@(Value innerValue _) type_@(Value innerType _) args subst 
 
     Nothing:args' ->
       case (innerValue, innerType) of
-        (Lam name var argType body, Pi name' var' source domain) ->
-          let
-            argType' =
-              substitute subst argType
+        (Lam name var argType plicity1 body, Pi name' var' source plicity2 domain)
+          | plicity1 == plicity2 ->
+            let
+              argType' =
+                substitute subst argType
 
-            source' =
-              substitute subst source
+              source' =
+                substitute subst source
 
-            (body', domain') =
-              inlineArguments body domain args' subst
-          in
-          ( makeValue $ Lam name var argType' body'
-          , makeValue $ Pi name' var' source' domain'
-          )
+              (body', domain') =
+                inlineArguments body domain args' subst
+            in
+            ( makeValue $ Lam name var argType' plicity1 body'
+            , makeValue $ Pi name' var' source' plicity1 domain'
+            )
 
         _ ->
           (substitute subst value, substitute subst type_)
@@ -375,17 +379,17 @@ substitute subst
         Let name var value' type_ body ->
           makeValue $ Let name var (go value') (go type_) (go body)
 
-        Pi name var source domain ->
-          makeValue $ Pi name var (go source) (go domain)
+        Pi name var source plicity domain ->
+          makeValue $ Pi name var (go source) plicity (go domain)
 
         Fun source domain ->
           makeValue $ Fun (go source) (go domain)
 
-        Lam name var type_ body ->
-          makeValue $ Lam name var (go type_) (go body)
+        Lam name var type_ plicity body ->
+          makeValue $ Lam name var (go type_) plicity (go body)
 
-        App function argument ->
-          makeValue $ App (go function) (go argument)
+        App function plicity argument ->
+          makeValue $ App (go function) plicity (go argument)
 
 inlineIndex
   :: Meta.Index
@@ -421,7 +425,7 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
                 inlineArguments solutionValue solutionType varArgsList mempty
             in
             pure
-              ( foldl' (\v1 v2 -> makeValue $ app v1 v2) inlinedSolutionValue remainingArgs
+              ( foldl' (\v1 v2 -> makeValue $ app v1 Explicit v2) inlinedSolutionValue remainingArgs
               , Nothing
               )
 
@@ -432,7 +436,7 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
         case Tsil.filter ((index `IntMap.member`) . occurrencesMap) args of
           Tsil.Empty ->
             pure
-              ( foldl' (\v1 v2 -> makeValue $ app v1 v2) value args
+              ( foldl' (\v1 v2 -> makeValue $ app v1 Explicit v2) value args
               , Nothing
               )
 
@@ -452,17 +456,17 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
     Let name var value' type_ body ->
       inline3 (Let name var) value' type_ body
 
-    Pi name var source domain ->
-      inline2 (Pi name var) source domain
+    Pi name var source plicity domain ->
+      inline2 (flip (Pi name var) plicity) source domain
 
     Fun source domain ->
       inline2 Fun source domain
 
-    Lam name var type_ body ->
-      inline2 (Lam name var) type_ body
+    Lam name var type_ plicity body ->
+      inline2 (flip (Lam name var) plicity) type_ body
 
-    App function argument ->
-      inline2 app function argument
+    App function plicity argument ->
+      inline2 (flip app plicity) function argument
   where
     letSolution =
       case IntMap.lookup index $ occurrencesMap value of
