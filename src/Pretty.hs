@@ -89,17 +89,17 @@ prettyTerm prec env term = case term of
     prettyParen (prec > lamPrec) $
       "\\" <> prettyLamTerm env term
 
-  Syntax.App t1 _ t2 ->
+  Syntax.App t1 plicity t2 ->
     prettyParen (prec > appPrec) $
-      prettyTerm appPrec env t1 <+> prettyTerm (appPrec + 1) env t2
+      prettyTerm appPrec env t1 <+> pretty plicity <> prettyTerm (appPrec + 1) env t2
 
 prettyLamTerm :: Environment v -> Syntax.Term v -> Doc ann
 prettyLamTerm env term = case term of
-  Syntax.Lam name typ _ scope ->
+  Syntax.Lam name typ plicity scope ->
     let
       (env', name') = extend env name
     in
-    lparen <> pretty name' <+> ":" <+> prettyTerm 0 env typ <> rparen
+    pretty plicity <> lparen <> pretty name' <+> ":" <+> prettyTerm 0 env typ <> rparen
     <> prettyLamTerm env' scope
 
   t ->
@@ -107,11 +107,11 @@ prettyLamTerm env term = case term of
 
 prettyPiTerm :: Environment v -> Syntax.Term v -> Doc ann
 prettyPiTerm env term = case term of
-  Syntax.Pi name typ _ scope ->
+  Syntax.Pi name typ plicity scope ->
     let
       (env', name') = extend env name
     in
-    lparen <> pretty name' <+> ":" <+> prettyTerm 0 env typ <> rparen
+    pretty plicity <> lparen <> pretty name' <+> ":" <+> prettyTerm 0 env typ <> rparen
     <> prettyPiTerm env' scope
 
   t ->
@@ -146,11 +146,11 @@ prettyTelescope env tele =
           ]
         )
 
-    Telescope.Extend name type_ _plicity tele' ->
+    Telescope.Extend name type_ plicity tele' ->
       let
         (env', name') = extend env name
       in
-      "(" <> pretty name' <+> ":" <+> prettyTerm 0 env type_ <> ")" <+>
+      pretty plicity <> "(" <> pretty name' <+> ":" <+> prettyTerm 0 env type_ <> ")" <+>
       prettyTelescope env' tele'
 
 -------------------------------------------------------------------------------
