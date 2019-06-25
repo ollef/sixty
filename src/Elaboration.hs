@@ -86,8 +86,14 @@ checkDefinition context def expectedType =
     Presyntax.DataDefinition params constrs -> do
       (tele, type_) <- inferDataDefinition context params constrs mempty
       type' <- evaluate context type_
-      Unification.unify context type' expectedType
-      pure $ Syntax.DataDefinition tele
+      success <- Context.try_ context $ Unification.unify context type' expectedType
+      if success then
+        pure $ Syntax.DataDefinition tele
+      else do
+        expectedType' <- readback context expectedType
+        pure $
+         Syntax.ConstantDefinition $
+         Syntax.App (Syntax.Global Builtin.fail) Explicit expectedType'
 
 inferDefinition
   :: Context Void
@@ -257,16 +263,16 @@ checkUnspanned context term expectedType = do
             argument' <- check context argument source'
             argument'' <- lazy $ evaluate context argument'
             domain <- Evaluation.evaluateClosure domainClosure argument''
-            Unification.unify context domain expectedType'
-            pure $ Syntax.App function' plicity argument'
+            f <- Unification.tryUnify context domain expectedType'
+            pure $ f $ Syntax.App function' plicity argument'
 
         Domain.Fun source domain
           | plicity == Explicit -> do
             source' <- force source
             domain' <- force domain
-            Unification.unify context domain' expectedType'
+            f <- Unification.tryUnify context domain' expectedType'
             argument' <- check context argument source'
-            pure $ Syntax.App function' plicity argument'
+            pure $ f $ Syntax.App function' plicity argument'
 
         _ -> do
           source <- Context.newMetaType context
@@ -282,9 +288,9 @@ checkUnspanned context term expectedType = do
                   Domain.Pi "x" (Lazy $ pure source) Implicit $
                   Domain.Closure (Context.toEvaluationEnvironment context) expectedType''
 
-          Unification.unify context functionType' metaFunctionType
+          f <- Unification.tryUnify context functionType' metaFunctionType
           argument' <- check context argument source
-          pure $ Syntax.App function' plicity argument'
+          pure $ Syntax.App (f function') plicity argument'
 
     (Presyntax.Wildcard, _) -> do
       term' <- Context.newMeta expectedType' context
@@ -297,8 +303,8 @@ checkUnspanned context term expectedType = do
     _ -> do
       expectedTypeName <- lazy $ getExpectedTypeName context expectedType'
       (term', type_) <- inferUnspanned context term (InstantiateUntil Explicit) expectedTypeName
-      Unification.unify context type_ expectedType'
-      pure term'
+      f <- Unification.tryUnify context type_ expectedType'
+      pure $ f term'
 
 inferUnspanned
   :: Context v
@@ -401,10 +407,10 @@ inferUnspanned context term until expectedTypeName =
                     Domain.Pi "x" (Lazy $ pure source) Implicit $
                     Domain.Closure (Context.toEvaluationEnvironment context) domain'
 
-            Unification.unify context functionType' metaFunctionType
+            f <- Unification.tryUnify context functionType' metaFunctionType
             argument' <- check context argument source
             pure
-              ( Syntax.App function' plicity argument'
+              ( Syntax.App (f function') plicity argument'
               , domain
               )
 
@@ -470,7 +476,6 @@ inferName context name expectedTypeName =
                 _ -> do
                   Context.report context $ Error.Ambiguous name constrs' mempty
                   fail
-
 
         Just (Scope.Ambiguous constrCandidates nameCandidates) -> do
           Context.report context $ Error.Ambiguous name constrCandidates nameCandidates

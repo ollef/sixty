@@ -5,8 +5,13 @@ module Unification where
 
 import Protolude hiding (force, check, evaluate)
 
+import qualified Builtin
 import Context (Context)
 import qualified Context
+import Data.IntSequence (IntSeq)
+import qualified Data.IntSequence as IntSeq
+import Data.Tsil (Tsil)
+import qualified Data.Tsil as Tsil
 import qualified Domain
 import qualified Error
 import qualified Evaluation
@@ -14,15 +19,20 @@ import Extra
 import Index
 import qualified Meta
 import Monad
+import Plicity
 import qualified Readback
 import Readback (readback)
-import Data.IntSequence (IntSeq)
-import qualified Data.IntSequence as IntSeq
-import Plicity
 import qualified Syntax
-import Data.Tsil (Tsil)
-import qualified Data.Tsil as Tsil
 import Var
+
+tryUnify :: Context v -> Domain.Value -> Domain.Value -> M (Syntax.Term v -> Syntax.Term v)
+tryUnify context value1 value2 = do
+  success <- Context.try_ context $ unify context value1 value2
+  if success then
+    pure identity
+  else do
+    type_ <- Readback.readback (Context.toReadbackEnvironment context) value2
+    pure $ const $ Syntax.App (Syntax.Global Builtin.fail) Explicit type_
 
 unify :: Context v -> Domain.Value -> Domain.Value -> M ()
 unify context value1 value2 = do

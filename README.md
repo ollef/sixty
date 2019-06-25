@@ -40,10 +40,10 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Source location tracking
     - [x] Meta variable locations
   - [x] Pretty-printing
-  - [ ] Error recovery during
+  - [x] Error recovery during
     - [x] Parsing
     - [x] Elaboration
-    - [ ] Unification
+    - [x] Unification
 - [ ] Recursive let bindings
 - [ ] Data
   - [ ] Elaboration of data definitions
