@@ -36,14 +36,14 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Pi syntax
   - [ ] Application syntax
   - [ ] Abstraction syntax
-- [ ] Errors
+- [x] Errors
   - [x] Source location tracking
     - [x] Meta variable locations
-  - [x] Pretty-printing
   - [x] Error recovery during
     - [x] Parsing
     - [x] Elaboration
     - [x] Unification
+  - [ ] Pretty pretty-printing
 - [ ] Recursive let bindings
 - [ ] Data
   - [ ] Elaboration of data definitions
