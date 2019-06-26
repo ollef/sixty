@@ -1,0 +1,10 @@
+data Nat where
+  Z : Nat
+  S : Nat -> Nat
+
+data Vector n a where
+  Nil : Vector Z a
+  Cons : a -> Vector n a -> Vector (S n) a
+
+-- test =
+  -- Cons Z (Cons Z (Cons Z Nil))

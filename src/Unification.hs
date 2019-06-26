@@ -43,32 +43,35 @@ unify context value1 value2 = do
     (Domain.Neutral (Domain.Meta metaIndex1) spine1, Domain.Neutral (Domain.Meta metaIndex2) spine2) -> do
       spine1' <- mapM ((force >=> Context.forceHead context) . snd) spine1
       spine2' <- mapM ((force >=> Context.forceHead context) . snd) spine2
-      let
-        spine1Vars = traverse Domain.singleVarView spine1'
-        spine2Vars = traverse Domain.singleVarView spine2'
+      if metaIndex1 == metaIndex2 then do
+        -- If the same metavar is applied to two different lists of unknown
+        -- variables its solution must not mention any variables at
+        -- positions where the lists differ.
+        let
+          keep = Tsil.zipWith shouldKeepMetaArgument spine1' spine2'
 
-      case (spine1Vars, spine2Vars) of
-        (Just vars1, Just vars2)
-          | metaIndex1 == metaIndex2 -> do
-            -- If the same metavar is applied to two different lists of unknown
-            -- variables its solution must not mention any variables at
-            -- positions where the lists differ.
-            let
-              keep = Tsil.zipWith (==) vars1 vars2
-
-            unless (and keep) $
-              pruneMeta context metaIndex1 keep
-
-        (Just vars1, _)
-          | unique vars1 ->
-          solve context metaIndex1 vars1 value2'
-
-        (_, Just vars2)
-          | unique vars2 ->
-          solve context metaIndex2 vars2 value1'
-
-        _ ->
+        if and keep then
           Tsil.zipWithM_ (unify context) spine1' spine2'
+
+        else
+          pruneMeta context metaIndex1 keep
+
+      else do
+        let
+          spine1Vars = traverse Domain.singleVarView spine1'
+          spine2Vars = traverse Domain.singleVarView spine2'
+
+        case (spine1Vars, spine2Vars) of
+          (Just vars1, _)
+            | unique vars1 ->
+              solve context metaIndex1 vars1 value2'
+
+          (_, Just vars2)
+            | unique vars2 ->
+              solve context metaIndex2 vars2 value1'
+
+          _ ->
+            can'tUnify
 
     -- Same heads
     (Domain.Neutral head1 spine1, Domain.Neutral head2 spine2)
@@ -173,6 +176,35 @@ unify context value1 value2 = do
 
     can'tUnify =
       throwError Error.TypeMismatch
+
+shouldKeepMetaArgument :: Domain.Value -> Domain.Value -> Bool
+shouldKeepMetaArgument value1 value2 =
+  case (value1, value2) of
+    (Domain.Neutral (Domain.Var var1) Tsil.Empty, Domain.Neutral (Domain.Var var2) Tsil.Empty) ->
+      var1 == var2
+
+    (Domain.Neutral (Domain.Var _) Tsil.Empty, _) ->
+      not $ simpleNonVar value2
+
+    (_, Domain.Neutral (Domain.Var _) Tsil.Empty) ->
+      not $ simpleNonVar value1
+
+    _ ->
+      True
+
+  where
+    simpleNonVar value =
+      case value of
+        Domain.Neutral hd Tsil.Empty ->
+          case hd of
+            Domain.Var _ ->
+              False
+
+            _ ->
+              True
+
+        _ ->
+          False
 
 -- | Solve `meta = \vars. value`.
 solve :: Context v -> Meta.Index -> Tsil Var -> Domain.Value -> M ()
