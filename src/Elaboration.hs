@@ -114,6 +114,8 @@ inferDefinition context def =
       type' <- evaluate context type_
       pure (Syntax.DataDefinition tele, type')
 
+-------------------------------------------------------------------------------
+
 inferDataDefinition
   :: Context v
   -> [(Name, Presyntax.Type, Plicity)]
@@ -138,13 +140,12 @@ inferDataDefinition context preParams constrs paramVars =
             (toList paramVars)
             Builtin.type_
 
-      thisType' <- lazy $ evaluate context thisType
+      thisType' <- evaluate context thisType
 
-      (context', _) <- Context.extend context thisName thisType'
+      (context', var) <- Context.extend context thisName $ Lazy $ pure thisType'
 
       constrs' <- forM constrs $ \(constr, type_) -> do
-        -- TODO check return value of constructors
-        type' <- check context' type_ Builtin.type_
+        type' <- checkConstructorType context' type_ var paramVars
         pure (constr, Syntax.Let thisName this thisType type')
       pure
         ( Telescope.Empty (Syntax.ConstructorDefinitions constrs')
@@ -183,6 +184,46 @@ varPis context env vars domain =
       source' <- Readback.readback (Readback.fromEvaluationEnvironment env) source
       domain' <- varPis context env' vars' domain
       pure $ Syntax.Pi (Context.lookupVarName var context) source' plicity domain'
+
+checkConstructorType
+  :: Context v
+  -> Presyntax.Term
+  -> Var
+  -> Tsil (Plicity, Var)
+  -> M (Syntax.Term v)
+checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
+  let
+    context' =
+      Context.spanned span context
+  constrType <- check context' term Builtin.type_
+  constrType' <- evaluate context' constrType
+  success <- Context.try_ context' $ go context' constrType'
+  pure $ if success then
+    constrType
+  else
+    Syntax.App (Syntax.Global Builtin.fail) Explicit (Syntax.Global Builtin.typeName)
+  where
+    go :: Context v -> Domain.Value -> M ()
+    go context' constrType =
+      case constrType of
+        Domain.Pi name source _ domainClosure -> do
+          (context'', var) <- Context.extend context' name source
+          domain <- Evaluation.evaluateClosure domainClosure $ Lazy $ pure $ Domain.var var
+          go context'' domain
+
+        Domain.Fun _ domain -> do
+          domain' <- force domain
+          go context' domain'
+
+        _ ->
+          Unification.unify
+            context'
+            constrType
+            (Domain.Neutral
+              (Domain.Var dataVar)
+              ((\(plicity, var) -> (plicity, Lazy $ pure $ Domain.var var)) <$> paramVars))
+
+
 
 -------------------------------------------------------------------------------
 

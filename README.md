@@ -46,7 +46,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [ ] Pretty pretty-printing
 - [ ] Recursive let bindings
 - [ ] Data
-  - [ ] Elaboration of data definitions
+  - [x] Elaboration of data definitions
   - [x] Constructors
     - [x] Type-based overloading
   - [ ] Pattern matching elaboration

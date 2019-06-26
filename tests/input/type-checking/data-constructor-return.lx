@@ -1,0 +1,7 @@
+data List a where
+  Nil : List a
+  Cons : a -> List a -> List a
+
+data Maybe a where
+  Nothing : Maybe a
+  Just : a -> List a -- type mismatch error expected
