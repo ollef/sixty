@@ -216,6 +216,10 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
           domain' <- force domain
           go context' domain'
 
+        Domain.Neutral (Domain.Var headVar) _
+          | headVar == dataVar ->
+            pure ()
+
         _ ->
           Unification.unify
             context'
