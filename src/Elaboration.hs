@@ -204,8 +204,9 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
     Syntax.App (Syntax.Global Builtin.fail) Explicit (Syntax.Global Builtin.typeName)
   where
     go :: Context v -> Domain.Value -> M ()
-    go context' constrType =
-      case constrType of
+    go context' constrType = do
+      constrType' <- Context.forceHead context constrType
+      case constrType' of
         Domain.Pi name source _ domainClosure -> do
           (context'', var) <- Context.extend context' name source
           domain <- Evaluation.evaluateClosure domainClosure $ Lazy $ pure $ Domain.var var
@@ -218,12 +219,10 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
         _ ->
           Unification.unify
             context'
-            constrType
+            constrType'
             (Domain.Neutral
               (Domain.Var dataVar)
               ((\(plicity, var) -> (plicity, Lazy $ pure $ Domain.var var)) <$> paramVars))
-
-
 
 -------------------------------------------------------------------------------
 
