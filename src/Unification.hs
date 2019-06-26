@@ -374,11 +374,11 @@ pruneMeta
   -> M ()
 pruneMeta context meta allowedArgs = do
   solution <- Context.lookupMeta meta context
-  putText $ "pruneMeta " <> show meta
-  putText $ "pruneMeta " <> show allowedArgs
+  -- putText $ "pruneMeta " <> show meta
+  -- putText $ "pruneMeta " <> show allowedArgs
   case solution of
     Meta.Unsolved metaType _ -> do
-      putText $ show metaType
+      -- putText $ show metaType
       metaType' <-
         Evaluation.evaluate
           (Domain.empty $ Context.scopeKey context)
