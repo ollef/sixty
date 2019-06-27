@@ -57,6 +57,8 @@ inlineTerm env term = do
   value <- evaluate env term
   pure $ readback Readback.Environment { vars = vars env } value
 
+-------------------------------------------------------------------------------
+
 data Value
   = Var !Var
   | Global !Name.Qualified
@@ -99,6 +101,8 @@ extendValue env value = do
     env'
       { values = IntMap.insert var value $ values env'
       }
+
+-------------------------------------------------------------------------------
 
 evaluate :: Environment v -> Syntax.Term v -> M Value
 evaluate env term =
