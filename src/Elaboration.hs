@@ -22,6 +22,7 @@ import qualified Elaboration.Metas as Metas
 import Error (Error)
 import qualified Error
 import qualified Evaluation
+import qualified Inlining
 import qualified Meta
 import Monad
 import Name (Name)
@@ -51,9 +52,11 @@ inferTopLevelDefinition key def = do
   (def', typeValue) <- inferDefinition context def
   type_ <- readback context typeValue
   metas <- checkMetaSolutions context
-  result <- Metas.inlineSolutions metas def' type_
+  (def'', type') <- Metas.inlineSolutions metas def' type_
+  def''' <- Inlining.inlineDefinition def''
+  type'' <- Inlining.inlineTerm Inlining.empty type'
   errors <- liftIO $ readIORef (Context.errors context)
-  pure (result, toList errors)
+  pure ((def''', type''), toList errors)
 
 checkTopLevelDefinition
   :: Scope.KeyedName
@@ -65,8 +68,9 @@ checkTopLevelDefinition key def type_ = do
   def' <- checkDefinition context def type_
   metas <- checkMetaSolutions context
   (def'', _) <- Metas.inlineSolutions metas def' $ Syntax.Global Builtin.fail
+  def''' <- Inlining.inlineDefinition def''
   errors <- liftIO $ readIORef $ Context.errors context
-  pure (def'', toList errors)
+  pure (def''', toList errors)
 
 checkDefinition
   :: Context Void
