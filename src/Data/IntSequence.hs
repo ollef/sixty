@@ -63,6 +63,10 @@ pattern as :> a <- IntSeq (FingerTree.viewr -> (IntSeq -> as) FingerTree.:> Inde
 
 {-# COMPLETE Empty, (:>) #-}
 
+singleton :: (Coercible a Data.IntMap.Key) => a -> IntSeq a
+singleton a =
+  Empty :> a
+
 length :: (Coercible a Data.IntMap.Key) => IntSeq a -> Int
 length (IntSeq ft) =
   let
@@ -88,6 +92,41 @@ index (IntSeq ft) i =
 
     IndexMapped a FingerTree.:< _ ->
       a
+
+splitAt :: (Coercible a Data.IntMap.Key) => Int -> IntSeq a -> (IntSeq a, IntSeq a)
+splitAt i (IntSeq ft) =
+  coerce $ FingerTree.split (\(IndexMap len _) -> len > i) ft
+
+insertAt :: (Coercible a Data.IntMap.Key) => Int -> a -> IntSeq a -> IntSeq a
+insertAt i a as =
+  let
+    (l, r) =
+      Data.IntSequence.splitAt i as
+
+  in
+  l <> singleton a <> r
+
+delete :: (Coercible a Data.IntMap.Key) => a -> IntSeq a -> IntSeq a
+delete a as =
+  case elemIndex a as of
+    Nothing ->
+      as
+
+    Just i ->
+      deleteAt i as
+
+deleteAt :: (Coercible a Data.IntMap.Key) => Int -> IntSeq a -> IntSeq a
+deleteAt i (IntSeq ft) =
+  let
+    (l, r) = FingerTree.split (\(IndexMap len _) -> len > i) ft
+  in
+  coerce $
+    case FingerTree.viewl r of
+      FingerTree.EmptyL ->
+        l
+
+      _ FingerTree.:< r' ->
+        l <> r'
 
 fromTsil :: (Coercible a Data.IntMap.Key) => Tsil a -> IntSeq a
 fromTsil tsil =
