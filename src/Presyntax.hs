@@ -27,11 +27,23 @@ data UnspannedTerm
   | Fun !Type !Type
   | Lam !Name.Name !Plicity !Term
   | App !Term !Plicity !Term
+  | Case !Term [(Pattern, Term)]
   | Wildcard
   | ParseError !Error.Parsing
   deriving (Show, Generic, Hashable)
 
 type Type = Term
+
+data Pattern
+  = Pattern !Span.Relative !UnspannedPattern
+  deriving (Show, Generic, Hashable)
+
+data UnspannedPattern
+  = ConOrVar !Name.Pre [(Plicity, Pattern)]
+  | WildcardPattern
+  | Anno !Pattern !Type
+  | Forced !Term
+  deriving (Show, Generic, Hashable)
 
 app :: Term -> Term -> Term
 app fun@(Term (Span.Relative start _) _) arg@(Term (Span.Relative _ end) _) =

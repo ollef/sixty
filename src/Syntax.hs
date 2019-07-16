@@ -6,7 +6,7 @@ module Syntax where
 
 import Protolude hiding (Type, IntMap)
 
-import Data.Coerce
+import Unsafe.Coerce
 
 import "this" Data.IntMap (IntMap)
 import Index
@@ -14,7 +14,7 @@ import qualified Meta
 import Name (Name)
 import qualified Name
 import Plicity
-import Telescope (Telescope)
+import Syntax.Telescope (Telescope)
 
 data Term v
   = Var !(Index v)
@@ -26,9 +26,17 @@ data Term v
   | Fun !(Type v) !(Type v)
   | Lam !Name !(Type v) !Plicity !(Scope Term v)
   | App !(Term v) !Plicity !(Term v)
+  | Case !(Term v) [Branch v]
   deriving (Show, Generic, Hashable)
 
 type Type = Term
+
+data Branch v = Branch !Name.QualifiedConstructor (Telescope Type Term v)
+  deriving (Show, Generic, Hashable)
+
+implicitPi :: Name -> Type v -> Plicity -> Scope Type v -> Type v
+implicitPi name type_ _plicity =
+  Pi name type_ Implicit
 
 apps :: Foldable f => Term v -> f (Plicity, Term v) -> Term v
 apps = foldl (\fun (plicity, arg) -> App fun plicity arg)
@@ -44,6 +52,10 @@ succ = coerce
 
 fromVoid :: Term Void -> Term v
 fromVoid = coerce
+
+coerce :: Term v -> Term v'
+-- Can't be Data.Coerce.coerce anymore due to role limitations for Telescopes
+coerce = unsafeCoerce
 
 type MetaSolutions =
   IntMap Meta.Index (Syntax.Term Void, Syntax.Type Void)

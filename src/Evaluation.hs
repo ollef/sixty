@@ -8,10 +8,33 @@ import Rock
 import qualified Data.Tsil as Tsil
 import qualified Domain
 import Monad
+import qualified Name
 import Plicity
 import qualified Query
 import qualified Scope
 import qualified Syntax
+import Syntax.Telescope (Telescope)
+import qualified Syntax.Telescope as Telescope
+import qualified Domain.Telescope as Domain (Telescope)
+import qualified Domain.Telescope
+
+evaluateConstructorDefinitions
+  :: Domain.Environment v
+  -> Telescope Syntax.Type Syntax.ConstructorDefinitions v
+  -> M (Domain.Telescope Domain.Type [(Name.Constructor, Domain.Type)])
+evaluateConstructorDefinitions env tele =
+  case tele of
+    Telescope.Empty (Syntax.ConstructorDefinitions constrs) -> do
+      constrs' <- forM constrs $ \(constr, type_) -> do
+        type' <- evaluate env type_
+        pure (constr, type')
+      pure $ Domain.Telescope.Empty constrs'
+
+    Telescope.Extend name source plicity domain -> do
+      source' <- evaluate env source
+      pure $ Domain.Telescope.Extend name source' plicity $ \param -> do
+        env' <- Domain.extendValue env param
+        evaluateConstructorDefinitions env' domain
 
 evaluate :: Domain.Environment v -> Syntax.Term v -> M Domain.Value
 evaluate env term =
@@ -62,6 +85,48 @@ evaluate env term =
       t1' <- evaluate env t1
       t2' <- lazy $ evaluate env t2
       apply t1' p t2'
+
+    Syntax.Case scrutinee branches -> do
+      scrutinee' <- evaluate env scrutinee
+      case scrutinee' of
+        Domain.Neutral (Domain.Con constr) spine ->
+          chooseBranch env constr (toList spine) branches
+
+        _ ->
+          pure $ Domain.Case scrutinee' $ Domain.Branches env branches
+
+chooseBranch
+  :: Domain.Environment v
+  -> Name.QualifiedConstructor
+  -> [(Plicity, Lazy Domain.Value)]
+  -> [Syntax.Branch v]
+  -> M Domain.Value
+chooseBranch outerEnv constr outerArgs branches =
+  go outerEnv outerArgs $
+    case filter (\(Syntax.Branch c _)-> c == constr) branches of
+      [] ->
+        panic "chooseBranch no branches"
+
+      Syntax.Branch _ tele:_ ->
+        tele
+  where
+    go
+      :: Domain.Environment v
+      -> [(Plicity, Lazy Domain.Value)]
+      -> Telescope Syntax.Type Syntax.Term v
+      -> M Domain.Value
+    go env args tele =
+      case (args, tele) of
+        ([], Telescope.Empty branch) ->
+          evaluate env branch
+
+        ((plicity1, arg):args', Telescope.Extend _ _ plicity2 domain)
+          | plicity1 == plicity2 -> do
+            env' <- Domain.extendValue env arg
+            go env' args' domain
+
+        _ ->
+          panic "chooseBranch mismatch"
 
 apply :: Domain.Value -> Plicity -> Lazy Domain.Value -> M Domain.Value
 apply fun plicity arg =

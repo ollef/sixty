@@ -1,12 +1,12 @@
 {-# language DuplicateRecordFields #-}
 {-# language OverloadedStrings #-}
 {-# language PackageImports #-}
+{-# language RankNTypes #-}
 {-# language TupleSections #-}
 module Context where
 
 import Protolude hiding (IntMap, force)
 
-import Data.Coerce
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef
@@ -17,6 +17,7 @@ import Data.IntSequence (IntSeq)
 import qualified Query
 import qualified Data.IntSequence as IntSeq
 import Data.Tsil (Tsil)
+import Data.Some (Some(Some))
 import qualified Data.Tsil as Tsil
 import qualified Domain
 import Error (Error)
@@ -135,6 +136,52 @@ extendDef context name value type_ = do
     , var
     )
 
+extendDefs
+  :: Context v
+  -> Tsil (Name, Lazy Domain.Value, Lazy Domain.Type)
+  -> M (Some Context)
+extendDefs context defs =
+  case defs of
+    Tsil.Empty ->
+      pure $ Some context
+
+    defs' Tsil.:> (name, value, type_) -> do
+      Some context' <- extendDefs context defs'
+      (context'', _) <- extendDef context' name value type_
+      pure $ Some context''
+
+extendBefore :: Context v -> Var -> Name -> Lazy Domain.Type -> M (Context (Succ v), Var)
+extendBefore context beforeVar name type_ = do
+  var <- freshVar
+  pure
+    ( context
+      { varNames = IntMap.insert var name $ varNames context
+      , vars =
+        case IntSeq.elemIndex beforeVar $ vars context of
+          Nothing ->
+            panic "extendBefore no such var"
+
+          Just i ->
+            IntSeq.insertAt i var $ vars context
+      , types = IntMap.insert var type_ (types context)
+      , boundVars =
+        case IntSeq.elemIndex beforeVar $ boundVars context of
+          Nothing ->
+            panic "extendBefore no such var"
+
+          Just i ->
+            IntSeq.insertAt i var $ boundVars context
+      }
+    , var
+    )
+
+define :: Context v -> Var -> Lazy Domain.Value -> Context v
+define context var value =
+  context
+    { values = IntMap.insert var value $ values context
+    , boundVars = IntSeq.delete var $ boundVars context
+    }
+
 lookupNameIndex :: Name.Pre -> Context v -> Maybe (Index v)
 lookupNameIndex (Name.Pre name) context = do
   var <- HashMap.lookup (Name name) (nameVars context)
@@ -153,9 +200,13 @@ lookupVarName var context =
     $ IntMap.lookup var
     $ varNames context
 
+lookupIndexVar :: Index v -> Context v -> Var
+lookupIndexVar (Index i) context =
+  IntSeq.index (vars context) (IntSeq.length (vars context) - i - 1)
+
 lookupIndexType :: Index v -> Context v -> Lazy Domain.Type
-lookupIndexType (Index i) context =
-  lookupVarType (IntSeq.index (vars context) (IntSeq.length (vars context) - i - 1)) context
+lookupIndexType index context =
+  lookupVarType (lookupIndexVar index context) context
 
 lookupVarType :: Var -> Context v -> Lazy Domain.Type
 lookupVarType var context =
@@ -193,7 +244,7 @@ piBoundVars context type_ = do
     pis vars_ term =
       case vars_ of
         IntSeq.Empty ->
-          pure $ coerce term
+          pure $ Syntax.coerce term
 
         vars' IntSeq.:> var -> do
           varType <- force $ lookupVarType var context
@@ -204,7 +255,7 @@ piBoundVars context type_ = do
                 }
               varType
           let
-            term' = Syntax.Pi (lookupVarName var context) varType' Explicit $ coerce term
+            term' = Syntax.Pi (lookupVarName var context) varType' Explicit $ Syntax.succ term
           pis vars' term'
 
 lookupMeta
@@ -214,7 +265,7 @@ lookupMeta
 lookupMeta i context =
   liftIO $ do
     m <- readIORef (metas context)
-    pure $ coerce $ Meta.lookup i m
+    pure $ Syntax.coerce <$> Meta.lookup i m
 
 solveMeta
   :: Context v
@@ -259,6 +310,21 @@ forceHead context value =
 
         Meta.Unsolved {} ->
           pure value
+
+    Domain.Case scrutinee branches@(Domain.Branches branchEnv brs)  -> do
+      scrutinee' <- forceHead context scrutinee
+      case scrutinee' of
+        Domain.Neutral (Domain.Con constr) spine -> do
+          value' <-
+            Evaluation.chooseBranch
+              branchEnv
+              constr
+              (toList spine)
+              brs
+          forceHead context value'
+
+        _ ->
+          pure $ Domain.Case scrutinee' branches
 
     _ ->
       pure value

@@ -23,6 +23,8 @@ import Plicity
 import qualified Readback
 import Readback (readback)
 import qualified Syntax
+import Syntax.Telescope (Telescope)
+import qualified Syntax.Telescope as Telescope
 import Var
 
 tryUnify :: Context v -> Domain.Value -> Domain.Value -> M (Syntax.Term v -> Syntax.Term v)
@@ -307,6 +309,36 @@ checkInnerSolution outerContext occurs env value = do
       Syntax.Fun
         <$> checkInnerSolution outerContext occurs env source'
         <*> checkInnerSolution outerContext occurs env domain'
+
+    Domain.Case scrutinee (Domain.Branches env' branches) -> do
+      scrutinee' <- checkInnerSolution outerContext occurs env scrutinee
+      branches' <- forM branches $ \(Syntax.Branch constr tele) ->
+        Syntax.Branch constr <$> checkInnerBranch outerContext occurs env env' tele
+      pure $ Syntax.Case scrutinee' branches'
+
+checkInnerBranch
+  :: Context outer
+  -> Meta.Index
+  -> Readback.Environment v
+  -> Domain.Environment v'
+  -> Telescope Syntax.Type Syntax.Term v'
+  -> M (Telescope Syntax.Type Syntax.Term v)
+checkInnerBranch outerContext occurs outerEnv innerEnv tele =
+  case tele of
+    Telescope.Empty term -> do
+      value <- Evaluation.evaluate innerEnv term
+      term' <- checkInnerSolution outerContext occurs outerEnv value
+      pure $ Telescope.Empty term'
+
+    Telescope.Extend name source plicity tele' -> do
+      source' <- Evaluation.evaluate innerEnv source
+      source'' <- checkInnerSolution outerContext occurs outerEnv source'
+      (outerEnv', var) <- Readback.extend outerEnv
+      let
+        innerEnv' =
+          Domain.extendVar innerEnv var
+      tele'' <- checkInnerBranch outerContext occurs outerEnv' innerEnv' tele'
+      pure $ Telescope.Extend name source'' plicity tele''
 
 checkInnerClosure
   :: Context v

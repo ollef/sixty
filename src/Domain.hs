@@ -26,6 +26,7 @@ data Value
   | Lam !Name !(Lazy Type) !Plicity !Closure
   | Pi !Name !(Lazy Type) !Plicity !Closure
   | Fun !(Lazy Type) !(Lazy Type)
+  | Case !Value !Branches
 
 type Type = Value
 
@@ -40,6 +41,9 @@ type Spine = Tsil (Plicity, Lazy Value)
 
 data Closure where
   Closure :: Environment v -> Scope Syntax.Term v -> Closure
+
+data Branches where
+  Branches :: Environment v -> [Syntax.Branch v] -> Branches
 
 var :: Var -> Value
 var v = Neutral (Domain.Var v) mempty

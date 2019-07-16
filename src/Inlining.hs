@@ -17,8 +17,8 @@ import Plicity
 import qualified "this" Data.IntMap as IntMap
 import qualified Readback
 import qualified Syntax
-import Telescope (Telescope)
-import qualified Telescope
+import Syntax.Telescope (Telescope)
+import qualified Syntax.Telescope as Telescope
 import Var (Var)
 import qualified Var
 
@@ -69,6 +69,10 @@ data Value
   | Fun !Type !Type
   | Lam !Name !Var !Type !Plicity !Value
   | App !Value !Plicity !Value
+  | Case !Value [Branch]
+  deriving Show
+
+data Branch = Branch !Name.QualifiedConstructor [(Name, Var, Type, Plicity)] !Value
   deriving Show
 
 type Type = Value
@@ -160,6 +164,29 @@ evaluate env term =
     Syntax.App fun plicity arg ->
       App <$> evaluate env fun <*> pure plicity <*> evaluate env arg
 
+    Syntax.Case scrutinee branches ->
+      Case <$> evaluate env scrutinee <*> mapM (evaluateBranch env) branches
+
+evaluateBranch :: Environment v -> Syntax.Branch v -> M Branch
+evaluateBranch outerEnv (Syntax.Branch constr outerTele) =
+  uncurry (Branch constr) <$> go outerEnv outerTele
+  where
+    go
+      :: Environment v
+      -> Telescope Syntax.Type Syntax.Term v
+      -> M ([(Name, Var, Type, Plicity)], Value)
+    go env tele =
+      case tele of
+        Telescope.Empty body -> do
+          body' <- evaluate env body
+          pure ([], body')
+
+        Telescope.Extend name type_ plicity tele' -> do
+          type' <- evaluate env type_
+          (env', var) <- extend env
+          (bindings, body) <- go env' tele'
+          pure ((name, var, type', plicity):bindings, body)
+
 readback :: Readback.Environment v -> Value -> Syntax.Term v
 readback env value =
   case value of
@@ -203,6 +230,29 @@ readback env value =
 
     App fun plicity arg ->
       Syntax.App (readback env fun) plicity (readback env arg)
+
+    Case scrutinee branches ->
+      Syntax.Case (readback env scrutinee) (map (readbackBranch env) branches)
+
+readbackBranch :: Readback.Environment v -> Branch -> Syntax.Branch v
+readbackBranch outerEnv (Branch constr outerBindings body) =
+  Syntax.Branch constr $
+    go outerEnv outerBindings
+  where
+    go
+      :: Readback.Environment v
+      -> [(Name, Var, Type, Plicity)]
+      -> Telescope Syntax.Type Syntax.Term v
+    go env bindings =
+      case bindings of
+        [] ->
+          Telescope.Empty $ readback env body
+
+        (name, var, type_, plicity):bindings' -> do
+          let
+            env' =
+              Readback.extendVar env var
+          Telescope.Extend name (readback env type_) plicity (go env' bindings')
 
 duplicable :: Syntax.Term v -> Bool
 duplicable term =

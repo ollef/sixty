@@ -17,6 +17,7 @@ import qualified Presyntax
 import qualified Scope
 import qualified Span
 import qualified Syntax
+import Syntax.Telescope (Telescope)
 
 data Query a where
   ReadFile :: FilePath -> Query Text
@@ -29,7 +30,7 @@ data Query a where
   Visibility :: Scope.KeyedName -> Name.Qualified -> Query Scope.Key
   ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void)
   ElaboratedDefinition :: Name.Qualified -> Query (Maybe (Syntax.Definition, Syntax.Type Void))
-  ConstructorType :: Name.QualifiedConstructor -> Query (Syntax.Type Void)
+  ConstructorType :: Name.QualifiedConstructor -> Query (Telescope Syntax.Type Syntax.Type Void)
   ErrorSpan :: Error -> Query (FilePath, Span.Absolute)
   KeyedNameSpan :: Scope.KeyedName -> Query (FilePath, Span.Absolute)
 

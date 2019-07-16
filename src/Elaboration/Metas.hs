@@ -6,6 +6,7 @@ import Prelude (Show (showsPrec))
 import Protolude hiding (Type, IntMap, evaluate)
 
 import Data.Graph
+import Data.IORef
 
 import "this" Data.IntMap (IntMap)
 import Data.Tsil (Tsil)
@@ -15,12 +16,12 @@ import qualified Meta
 import Monad
 import Name (Name)
 import qualified Name
+import Plicity
 import qualified "this" Data.IntMap as IntMap
 import qualified Readback
 import qualified Syntax
-import Telescope (Telescope)
-import qualified Telescope
-import Plicity
+import Syntax.Telescope (Telescope)
+import qualified Syntax.Telescope as Telescope
 import Var (Var)
 import qualified Var
 
@@ -124,6 +125,10 @@ data InnerValue
   | Fun !Type !Type
   | Lam !Name !Var !Type !Plicity !Value
   | App !Value !Plicity !Value
+  | Case !Value [Branch]
+  deriving Show
+
+data Branch = Branch !Name.QualifiedConstructor [(Name, Var, Type, Plicity)] !Value
   deriving Show
 
 newtype Occurrences = Occurrences { unoccurrences :: IntMap Meta.Index (Tsil (Maybe Var)) }
@@ -208,6 +213,14 @@ makeValue innerValue =
         occurrences function <>
         occurrences argument
 
+      Case scrutinee branches ->
+        occurrences scrutinee <>
+        mconcat
+          [ foldMap (\(_, _, type_, _) -> occurrences type_) bindings <>
+            occurrences body
+          | Branch _ bindings body <- branches
+          ]
+
 evaluate :: Readback.Environment v -> Syntax.Term v -> M Value
 evaluate env term =
   makeValue <$>
@@ -255,6 +268,31 @@ evaluate env term =
           evaluate env function <*>
           pure plicity <*>
           evaluate env argument
+
+      Syntax.Case scrutinee branches ->
+        Case <$>
+          evaluate env scrutinee <*>
+          mapM (evaluateBranch env) branches
+
+evaluateBranch :: Readback.Environment v -> Syntax.Branch v -> M Branch
+evaluateBranch outerEnv (Syntax.Branch constr outerTele) =
+  uncurry (Branch constr) <$> go outerEnv outerTele
+  where
+    go
+      :: Readback.Environment v
+      -> Telescope Syntax.Type Syntax.Term v
+      -> M ([(Name, Var, Type, Plicity)], Value)
+    go env tele =
+      case tele of
+        Telescope.Empty body -> do
+          body' <- evaluate env body
+          pure ([], body')
+
+        Telescope.Extend name type_ plicity tele' -> do
+          type' <- evaluate env type_
+          (env', var) <- Readback.extend env
+          (bindings, body) <- go env' tele'
+          pure ((name, var, type', plicity):bindings, body)
 
 readback :: Readback.Environment v -> (Meta.Index -> (Var, [Maybe var])) -> Value -> Syntax.Term v
 readback env metas (Value value _) =
@@ -310,6 +348,33 @@ readback env metas (Value value _) =
 
     App function plicity argument ->
       Syntax.App (readback env metas function) plicity (readback env metas argument)
+
+    Case scrutinee branches ->
+      Syntax.Case (readback env metas scrutinee) (map (readbackBranch env metas) branches)
+
+readbackBranch
+  :: Readback.Environment v
+  -> (Meta.Index -> (Var, [Maybe var]))
+  -> Branch
+  -> Syntax.Branch v
+readbackBranch outerEnv metas (Branch constr outerBindings body) =
+  Syntax.Branch constr $
+    go outerEnv outerBindings
+  where
+    go
+      :: Readback.Environment v
+      -> [(Name, Var, Type, Plicity)]
+      -> Telescope Syntax.Type Syntax.Term v
+    go env bindings =
+      case bindings of
+        [] ->
+          Telescope.Empty $ readback env metas body
+
+        (name, var, type_, plicity):bindings' -> do
+          let
+            env' =
+              Readback.extendVar env var
+          Telescope.Extend name (readback env metas type_) plicity (go env' bindings')
 
 inlineArguments
   :: Value
@@ -391,6 +456,19 @@ substitute subst
         App function plicity argument ->
           makeValue $ App (go function) plicity (go argument)
 
+        Case scrutinee branches ->
+          makeValue $
+            Case
+              (go scrutinee)
+              [ Branch
+                constr
+                [ (name, var, go type_, plicity)
+                | (name, var, type_, plicity) <- bindings
+                ]
+                (go body)
+              | Branch constr bindings body <- branches
+              ]
+
 inlineIndex
   :: Meta.Index
   -> (Value, Value)
@@ -467,6 +545,51 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
 
     App function plicity argument ->
       inline2 (flip app plicity) function argument
+
+    Case scrutinee branches -> do
+      let
+        branchOccurrences =
+          flip concatMap branches $ \(Branch _ bindings body) ->
+            occurrencesMap body :
+            [occurrencesMap type_ | (_, _, type_, _) <- bindings]
+      case
+        ( index `IntMap.member` occurrencesMap scrutinee
+        , filter (index `IntMap.member`) branchOccurrences
+        ) of
+        (False, []) ->
+          pure (value, Nothing)
+
+        (True, []) -> do
+          (scrutinee', result) <- inlineIndex index solution scrutinee
+          pure
+            ( makeValue $ Case scrutinee' branches
+            , result
+            )
+
+        (False, [_]) -> do
+          resultRef <- liftIO $ newIORef $ panic "Elaboration.Metas inlineIndex Case"
+          branches' <- forM branches $ \(Branch constr bindings body) -> do
+            bindings' <- forM bindings $ \(name, var, type_, plicity) ->
+              if index `IntMap.member` occurrencesMap type_ then do
+                (type', result) <- inlineIndex index solution type_
+                liftIO $ writeIORef resultRef result
+                pure (name, var, type', plicity)
+              else
+                pure (name, var, type_, plicity)
+            if index `IntMap.member` occurrencesMap body then do
+              (body', result) <- inlineIndex index solution body
+              liftIO $ writeIORef resultRef result
+              pure $ Branch constr bindings' body'
+            else
+              pure $ Branch constr bindings' body
+          result <- liftIO $ readIORef resultRef
+          pure
+            ( makeValue $ Case scrutinee branches'
+            , result
+            )
+
+        _ ->
+          letSolution
   where
     letSolution =
       case IntMap.lookup index $ occurrencesMap value of

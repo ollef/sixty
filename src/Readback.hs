@@ -3,14 +3,16 @@ module Readback where
 
 import Protolude hiding (Seq, force, evaluate)
 
+import Data.IntSequence (IntSeq)
+import qualified Data.IntSequence as IntSeq
+import qualified Data.Tsil as Tsil
 import qualified Domain
 import qualified Evaluation
 import Index
 import Monad
-import Data.IntSequence (IntSeq)
-import qualified Data.IntSequence as IntSeq
 import qualified Syntax
-import qualified Data.Tsil as Tsil
+import Syntax.Telescope (Telescope)
+import qualified Syntax.Telescope as Telescope
 import Var
 
 -------------------------------------------------------------------------------
@@ -84,6 +86,12 @@ readback env value =
       domain' <- force domain
       Syntax.Fun <$> readback env source' <*> readback env domain'
 
+    Domain.Case scrutinee (Domain.Branches env' branches) -> do
+      scrutinee' <- readback env scrutinee
+      branches' <- forM branches $ \(Syntax.Branch constr tele) ->
+        Syntax.Branch constr <$> readbackBranch env env' tele
+      pure $ Syntax.Case scrutinee' branches'
+
 readbackClosure :: Environment v -> Domain.Closure -> M (Scope Syntax.Term v)
 readbackClosure env closure = do
   (env', v) <- extend env
@@ -120,3 +128,25 @@ readbackHead env hd =
 
     Domain.Meta m ->
       pure $ Syntax.Meta m
+
+readbackBranch
+  :: Environment v
+  -> Domain.Environment v'
+  -> Telescope Syntax.Type Syntax.Term v'
+  -> M (Telescope Syntax.Type Syntax.Term v)
+readbackBranch outerEnv innerEnv tele =
+  case tele of
+    Telescope.Empty term -> do
+      value <- Evaluation.evaluate innerEnv term
+      term' <- readback outerEnv value
+      pure $ Telescope.Empty term'
+
+    Telescope.Extend name source plicity tele' -> do
+      source' <- Evaluation.evaluate innerEnv source
+      source'' <- readback outerEnv source'
+      (outerEnv', var) <- extend outerEnv
+      let
+        innerEnv' =
+          Domain.extendVar innerEnv var
+      tele'' <- readbackBranch outerEnv' innerEnv' tele'
+      pure $ Telescope.Extend name source'' plicity tele''

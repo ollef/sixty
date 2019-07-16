@@ -1,3 +1,6 @@
+{-# language DeriveFoldable #-}
+{-# language DeriveFunctor #-}
+{-# language DeriveTraversable #-}
 {-# language GeneralizedNewtypeDeriving #-}
 {-# language OverloadedStrings #-}
 {-# language PackageImports #-}
@@ -12,6 +15,7 @@ import qualified Span
 data Var term
   = Unsolved term Span.Relative
   | Solved term term
+  deriving (Functor, Foldable, Traversable)
 
 newtype Index = Index Int
   deriving (Eq, Ord, Show, Hashable)

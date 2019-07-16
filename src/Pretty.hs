@@ -13,8 +13,8 @@ import Index
 import qualified Meta
 import Name (Name(Name))
 import qualified Syntax
-import Telescope (Telescope)
-import qualified Telescope
+import Syntax.Telescope (Telescope)
+import qualified Syntax.Telescope as Telescope
 
 -------------------------------------------------------------------------------
 -- Pretty-printing environments
@@ -93,6 +93,16 @@ prettyTerm prec env term = case term of
     prettyParen (prec > appPrec) $
       prettyTerm appPrec env t1 <+> pretty plicity <> prettyTerm (appPrec + 1) env t2
 
+  Syntax.Case scrutinee branches ->
+    prettyParen (prec > casePrec) $
+      "case" <+> prettyTerm 0 env scrutinee <+> "of" <> line <>
+        indent 2
+          (vcat
+            [ pretty constr <+> prettyBranch env tele
+            | Syntax.Branch constr tele <- branches
+            ]
+          )
+
 prettyLamTerm :: Environment v -> Syntax.Term v -> Doc ann
 prettyLamTerm env term = case term of
   Syntax.Lam name typ plicity scope ->
@@ -117,6 +127,22 @@ prettyPiTerm env term = case term of
   t ->
     " ->" <+> prettyTerm funPrec env t
 
+prettyBranch
+  :: Environment v
+  -> Telescope Syntax.Type Syntax.Term v
+  -> Doc ann
+prettyBranch env tele =
+  case tele of
+    Telescope.Empty body ->
+      "->" <> line <> indent 2 (prettyTerm casePrec env body)
+
+    Telescope.Extend name type_ plicity tele' ->
+      let
+        (env', name') = extend env name
+      in
+      pretty plicity <> "(" <> pretty name' <+> ":" <+> prettyTerm 0 env type_ <> ")" <+>
+      prettyBranch env' tele'
+
 -------------------------------------------------------------------------------
 
 prettyDefinition :: Pretty name => name -> Syntax.Definition -> Doc ann
@@ -129,13 +155,13 @@ prettyDefinition name def =
       pretty name <+> "=" <+> prettyTerm 0 Pretty.empty term
 
     Syntax.DataDefinition tele ->
-      "data" <+> pretty name <+> prettyTelescope Pretty.empty tele
+      "data" <+> pretty name <+> prettyConstructorDefinitions Pretty.empty tele
 
-prettyTelescope
+prettyConstructorDefinitions
   :: Environment v
   -> Telescope Syntax.Type Syntax.ConstructorDefinitions v
   -> Doc ann
-prettyTelescope env tele =
+prettyConstructorDefinitions env tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constrs) ->
       "where" <> line <>
@@ -151,7 +177,7 @@ prettyTelescope env tele =
         (env', name') = extend env name
       in
       pretty plicity <> "(" <> pretty name' <+> ":" <+> prettyTerm 0 env type_ <> ")" <+>
-      prettyTelescope env' tele'
+      prettyConstructorDefinitions env' tele'
 
 -------------------------------------------------------------------------------
 
@@ -159,8 +185,9 @@ prettyParen :: Bool -> Doc a -> Doc a
 prettyParen True doc = lparen <> doc <> rparen
 prettyParen False doc = doc
 
-funPrec, appPrec, lamPrec, letPrec :: Int
+funPrec, appPrec, lamPrec, letPrec, casePrec :: Int
 funPrec = 0
 appPrec = 10
 lamPrec = 0
 letPrec = 0
+casePrec = 0

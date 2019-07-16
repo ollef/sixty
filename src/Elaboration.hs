@@ -8,6 +8,7 @@ module Elaboration where
 
 import Protolude hiding (Seq, force, check, evaluate, until)
 
+import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import Data.IORef
 import Rock
@@ -18,6 +19,7 @@ import qualified Context
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Domain
+import qualified Elaboration.Matching as Matching
 import qualified Elaboration.Metas as Metas
 import Error (Error)
 import qualified Error
@@ -34,8 +36,8 @@ import qualified Query
 import qualified Readback
 import qualified Scope
 import qualified Syntax
-import Telescope (Telescope)
-import qualified Telescope
+import Syntax.Telescope (Telescope)
+import qualified Syntax.Telescope as Telescope
 import qualified Unification
 import Var (Var)
 
@@ -269,6 +271,11 @@ checkUnspanned context term expectedType = do
       body' <- check context' body expectedType'
       pure $ Syntax.Let name term'' type' body'
 
+    (Presyntax.Case scrutinee branches, _) -> do
+      (scrutinee', scrutineeType) <-
+        infer context scrutinee (InstantiateUntil Explicit) $ Lazy $ pure Nothing
+      Matching.elaborateCase context scrutinee' scrutineeType branches expectedType
+
     (Presyntax.Lam name plicity body, Domain.Pi _ source typePlicity domainClosure)
       | plicity == typePlicity -> do
         source' <- force source
@@ -462,6 +469,13 @@ inferUnspanned context term until expectedTypeName =
               , domain
               )
 
+    Presyntax.Case scrutinee branches -> do
+      (scrutinee', scrutineeType) <-
+        infer context scrutinee (InstantiateUntil Explicit) $ Lazy $ pure Nothing
+      type_ <- Context.newMetaType context
+      term' <- Matching.elaborateCase context scrutinee' scrutineeType branches type_
+      pure (term', type_)
+
     Presyntax.Wildcard -> do
       type_ <- Context.newMetaType context
       term' <- Context.newMeta type_ context
@@ -502,40 +516,24 @@ inferName context name expectedTypeName =
             , type'
             )
 
-        Just (Scope.Constructors (toList -> [constr])) ->
-          constrSuccess constr
-
-        Just (Scope.Constructors constrs) -> do
-          maybeExpectedTypeName <- force expectedTypeName
-          case maybeExpectedTypeName of
-            Nothing -> do
-              Context.report context $ Error.Ambiguous name constrs mempty
+        Just (Scope.Constructors candidates) -> do
+          maybeConstr <- resolveConstructor context name candidates expectedTypeName
+          case maybeConstr of
+            Nothing ->
               fail
-            Just typeName -> do
-              let
-                constrs' =
-                  HashSet.filter
-                    (\(Name.QualifiedConstructor constrTypeName _) -> constrTypeName == typeName)
-                    constrs
-              case toList constrs' of
-                [constr] ->
-                  constrSuccess constr
 
-                _ -> do
-                  Context.report context $ Error.Ambiguous name constrs' mempty
-                  fail
+            Just constr -> do
+              type_ <- fetch $ Query.ConstructorType constr
+              type' <- evaluate context $ Syntax.fromVoid $ Telescope.fold Syntax.implicitPi type_
+              pure
+                ( Syntax.Con constr
+                , type'
+                )
 
         Just (Scope.Ambiguous constrCandidates nameCandidates) -> do
           Context.report context $ Error.Ambiguous name constrCandidates nameCandidates
           fail
   where
-    constrSuccess constr = do
-      type_ <- fetch $ Query.ConstructorType constr
-      type' <- evaluate context $ Syntax.fromVoid type_
-      pure
-        ( Syntax.Con constr
-        , type'
-        )
     fail = do
       type_ <- Context.newMetaType context
       type' <- readback context type_
@@ -543,6 +541,38 @@ inferName context name expectedTypeName =
         ( Syntax.App (Syntax.Global Builtin.fail) Explicit type'
         , type_
         )
+
+resolveConstructor
+  :: Context v
+  -> Name.Pre
+  -> HashSet Name.QualifiedConstructor
+  -> Lazy (Maybe Name.Qualified)
+  -> M (Maybe Name.QualifiedConstructor)
+resolveConstructor context name candidates expectedTypeName =
+  case toList candidates of
+    [constr] ->
+      pure $ Just constr
+
+    _ -> do
+      maybeExpectedTypeName <- force expectedTypeName
+      case maybeExpectedTypeName of
+        Nothing -> do
+          Context.report context $ Error.Ambiguous name candidates mempty
+          pure Nothing
+
+        Just typeName -> do
+          let
+            constrs' =
+              HashSet.filter
+                (\(Name.QualifiedConstructor constrTypeName _) -> constrTypeName == typeName)
+                candidates
+          case toList constrs' of
+            [constr] ->
+              pure $ Just constr
+
+            _ -> do
+              Context.report context $ Error.Ambiguous name constrs' mempty
+              pure Nothing
 
 getExpectedTypeName
   :: Context v
@@ -567,6 +597,9 @@ getExpectedTypeName context type_ = do
       getExpectedTypeName context domain'
 
     Domain.Lam {} ->
+      pure Nothing
+
+    Domain.Case {} ->
       pure Nothing
 
 -------------------------------------------------------------------------------
