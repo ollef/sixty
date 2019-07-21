@@ -194,8 +194,8 @@ rules (Writer query) =
                       fromMaybe (panic "ConstructorType: no such constructor") $
                         List.lookup constr constrs
 
-                  Telescope.Extend paramName paramType _ tele'' ->
-                    Telescope.Extend paramName paramType Implicit $ go tele''
+                  Telescope.Extend paramName paramType plicity tele'' ->
+                    Telescope.Extend paramName paramType (implicitise plicity) $ go tele''
 
             pure $ go tele
 

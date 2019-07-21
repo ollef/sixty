@@ -20,3 +20,7 @@ instance Pretty Plicity where
 
       Implicit ->
         "@"
+
+implicitise :: Plicity -> Plicity
+implicitise _ =
+  Implicit

@@ -35,8 +35,8 @@ data Branch v = Branch !Name.QualifiedConstructor (Telescope Type Term v)
   deriving (Show, Generic, Hashable)
 
 implicitPi :: Name -> Type v -> Plicity -> Scope Type v -> Type v
-implicitPi name type_ _plicity =
-  Pi name type_ Implicit
+implicitPi name type_ plicity =
+  Pi name type_ (implicitise plicity)
 
 apps :: Foldable f => Term v -> f (Plicity, Term v) -> Term v
 apps = foldl (\fun (plicity, arg) -> App fun plicity arg)

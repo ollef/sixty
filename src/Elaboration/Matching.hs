@@ -358,7 +358,7 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
         Domain.Telescope.Extend _ source plicity domainClosure -> do
           param <- lazy $ Context.newMeta source context
           domain <- domainClosure param
-          goParams context (conArgs Tsil.:> (plicity, param)) domain
+          goParams context (conArgs Tsil.:> (implicitise plicity, param)) domain
 
     goConstrFields
       :: Context v
