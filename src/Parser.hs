@@ -223,7 +223,7 @@ qidLetter = idLetter
 
 reservedIds :: HashSet String
 reservedIds =
-  HashSet.fromList ["let", "in", "_", "data", "where", "forall"]
+  HashSet.fromList ["let", "in", "_", "data", "where", "forall", "case", "of"]
 
 idStyle :: Parsix.IdentifierStyle Parser
 idStyle
@@ -278,6 +278,38 @@ prename =
   Parsix.ident qidStyle
 
 -------------------------------------------------------------------------------
+-- Patterns
+
+spannedPattern :: Parser UnspannedPattern -> Parser Pattern
+spannedPattern =
+  fmap (uncurry Pattern) . spanned
+
+atomicPattern :: Parser Pattern
+atomicPattern =
+  symbol "(" *>% pattern <*% symbol ")"
+  <|> spannedPattern
+    ((`ConOrVar` mempty) <$> prename
+    <|> WildcardPattern <$ reserved "_"
+    <|> Forced <$ symbol "~" <*>% atomicTerm
+    )
+  <?> "pattern"
+
+pattern :: Parser Pattern
+pattern =
+  ( spannedPattern (ConOrVar <$> prename <*> manyIndented plicitPattern)
+    <|> atomicPattern
+  )
+  <**>
+  ( flip anno <$% symbol ":" <*> term
+    <|> pure identity
+  ) <?> "pattern"
+
+plicitPattern :: Parser (Plicity, Pattern)
+plicitPattern =
+  (,) Explicit <$> atomicPattern
+  <?> "explicit or implicit pattern"
+
+-------------------------------------------------------------------------------
 -- Terms
 
 spannedTerm :: Parser UnspannedTerm -> Parser Term
@@ -291,6 +323,7 @@ atomicTerm =
     ( Wildcard <$ reserved "_"
       <|> Var <$> prename
       <|> Let <$ reserved "let" <*>% name <*% symbol "=" <*>% term <*% reserved "in" <*>% term
+      <|> Case <$ reserved "case" <*>% term <*% reserved "of" <*> blockOfMany branch
       <|> unspanned <$>
         ( lams <$ symbol "\\" <*> someIndented (positioned name) <*% symbol "." <*>% term
         <|> implicitPis <$ reserved "forall" <*>
@@ -305,6 +338,9 @@ atomicTerm =
     implicitPis vss domain =
       foldr (\(vs, source) domain' -> pis Implicit vs source domain') domain vss
 
+    branch :: Parser (Pattern, Term)
+    branch =
+      (,) <$> pattern <*% symbol "->" <*>% term
 
 term :: Parser Term
 term =

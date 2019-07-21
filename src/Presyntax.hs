@@ -65,6 +65,10 @@ function :: Term -> Term -> Term
 function source@(Term (Span.Relative start _) _) domain@(Term (Span.Relative _ end) _) =
   Term (Span.Relative start end) $ Fun source domain
 
+anno :: Pattern -> Type -> Pattern
+anno pat@(Pattern (Span.Relative start _) _) type_@(Term (Span.Relative _ end) _) =
+  Pattern (Span.Relative start end) (Anno pat type_)
+
 data Definition
   = TypeDeclaration !Type
   | ConstantDefinition !Term
