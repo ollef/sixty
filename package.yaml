@@ -11,22 +11,6 @@ category:            Web
 extra-source-files:
 - README.md
 
-dependencies:
-  - base >= 4.7 && < 5
-  - containers
-  - dependent-map
-  - dependent-sum-template
-  - fingertree
-  - parsers
-  - parsix
-  - prettyprinter
-  - protolude
-  - rock
-  - text
-  - transformers
-  - vector
-  - unordered-containers
-
 ghc-options:
   - -Wall
   - -Wcompat
@@ -40,8 +24,25 @@ ghc-options:
   - -funbox-strict-fields
   - -XNoImplicitPrelude
 
+dependencies:
+  - base >= 4.7 && < 5
+  - prettyprinter
+  - protolude
+  - rock
+  - unordered-containers
+
 library:
   source-dirs: src
+  dependencies:
+    - containers
+    - dependent-map
+    - dependent-sum-template
+    - fingertree
+    - parsers
+    - parsix
+    - text
+    - transformers
+    - vector
 
 executables:
   sixty:
@@ -60,4 +61,4 @@ tests:
       - sixty
       - tasty
       - tasty-hunit
-      - unordered-containers
+      - text
