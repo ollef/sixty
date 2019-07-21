@@ -3,7 +3,6 @@
 {-# language OverloadedStrings #-}
 {-# language PackageImports #-}
 {-# language ScopedTypeVariables #-}
-{-# language ViewPatterns #-}
 module Elaboration where
 
 import Protolude hiding (Seq, force, check, evaluate, until)
