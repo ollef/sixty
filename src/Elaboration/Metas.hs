@@ -425,7 +425,8 @@ substitute :: IntMap Var Value -> Value -> Value
 substitute subst
   | IntMap.null subst =
     identity
-  | otherwise = go
+  | otherwise =
+    go
   where
     go value@(Value innerValue _) =
       case innerValue of
