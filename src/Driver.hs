@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 module Driver where
 
@@ -25,7 +26,9 @@ runTask task = do
 
     rules :: Rules Query
     rules =
-      memoise startedVar $ writer writeErrors Rules.rules
+      -- traceFetch (\q -> liftIO $ putText $ "fetching " <> show q) (\q _ -> liftIO $ putText $ "fetched " <> show q) $
+      memoise startedVar $
+      writer writeErrors Rules.rules
 
   Rock.runTask sequentially rules $ do
     result <- task

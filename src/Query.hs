@@ -1,5 +1,6 @@
 {-# language GADTs #-}
 {-# language OverloadedStrings #-}
+{-# language StandaloneDeriving #-}
 {-# language TemplateHaskell #-}
 module Query where
 
@@ -33,6 +34,8 @@ data Query a where
   ConstructorType :: Name.QualifiedConstructor -> Query (Telescope Syntax.Type Syntax.Type Void)
   ErrorSpan :: Error -> Query (FilePath, Span.Absolute)
   KeyedNameSpan :: Scope.KeyedName -> Query (FilePath, Span.Absolute)
+
+deriving instance Show (Query a)
 
 deriveGEq ''Query
 deriveGCompare ''Query

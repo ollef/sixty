@@ -45,12 +45,16 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
     - [x] Unification
   - [ ] Pretty pretty-printing
 - [ ] Recursive let bindings
-- [ ] Data
+- [x] Data
   - [x] Elaboration of data definitions
   - [x] Constructors
     - [x] Type-based overloading
-  - [ ] Pattern matching elaboration
-  - [ ] Inductive families
+- [ ] Pattern matching elaboration
+  - [x] Case expressions
+  - [ ] Coverage check
+  - [ ] Uninhabitation check
+  - [ ] Clause elaboration
+- [ ] Inductive families
 - [ ] Generalisation?
 - [ ] Glued evaluation
 

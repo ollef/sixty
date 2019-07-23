@@ -14,22 +14,24 @@ import Data.IORef
 import "this" Data.IntMap (IntMap)
 import qualified Builtin
 import Data.IntSequence (IntSeq)
-import qualified Query
 import qualified Data.IntSequence as IntSeq
-import Data.Tsil (Tsil)
 import Data.Some (Some(Some))
+import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Domain
 import Error (Error)
 import qualified Error
 import qualified Evaluation
 import Index
+import qualified Index.Map
+import qualified Index.Map as Index
 import qualified Meta
 import Monad
 import Name (Name(Name))
 import qualified Name
-import qualified "this" Data.IntMap as IntMap
 import Plicity
+import qualified "this" Data.IntMap as IntMap
+import qualified Query
 import qualified Readback
 import qualified Scope
 import qualified Span
@@ -39,7 +41,7 @@ import Var
 data Context v = Context
   { scopeKey :: !Scope.KeyedName
   , span :: !Span.Relative
-  , vars :: IntSeq Var
+  , indices :: Index.Map v Var
   , nameVars :: HashMap Name Var
   , varNames :: IntMap Var Name
   , values :: IntMap Var (Lazy Domain.Value)
@@ -55,7 +57,7 @@ toEvaluationEnvironment
 toEvaluationEnvironment context =
   Domain.Environment
     { scopeKey = scopeKey context
-    , vars = vars context
+    , indices = indices context
     , values = values context
     }
 
@@ -64,7 +66,8 @@ toReadbackEnvironment
   -> Readback.Environment v
 toReadbackEnvironment context =
   Readback.Environment
-    { vars = vars context
+    { indices = indices context
+    , values = values context
     }
 
 empty :: Scope.KeyedName -> M (Context Void)
@@ -76,7 +79,7 @@ empty key = do
     , span = Span.Relative 0 0
     , nameVars = mempty
     , varNames = mempty
-    , vars = mempty
+    , indices = Index.Map.Empty
     , values = mempty
     , types = mempty
     , boundVars = mempty
@@ -91,7 +94,7 @@ emptyFrom context =
     , span = span context
     , nameVars = mempty
     , varNames = mempty
-    , vars = mempty
+    , indices = Index.Map.Empty
     , values = mempty
     , types = mempty
     , boundVars = mempty
@@ -110,7 +113,24 @@ extend context name type_ = do
     ( context
       { nameVars = HashMap.insert name var $ nameVars context
       , varNames = IntMap.insert var name $ varNames context
-      , vars = vars context IntSeq.:> var
+      , indices = indices context Index.Map.:> var
+      , types = IntMap.insert var type_ (types context)
+      , boundVars = boundVars context IntSeq.:> var
+      }
+    , var
+    )
+
+extendUnnamed
+  :: Context v
+  -> Name
+  -> Lazy Domain.Type
+  -> M (Context (Succ v), Var)
+extendUnnamed context name type_ = do
+  var <- freshVar
+  pure
+    ( context
+      { varNames = IntMap.insert var name $ varNames context
+      , indices = indices context Index.Map.:> var
       , types = IntMap.insert var type_ (types context)
       , boundVars = boundVars context IntSeq.:> var
       }
@@ -129,7 +149,7 @@ extendDef context name value type_ = do
     ( context
       { nameVars = HashMap.insert name var $ nameVars context
       , varNames = IntMap.insert var name $ varNames context
-      , vars = vars context IntSeq.:> var
+      , indices = indices context Index.Map.:> var
       , values = IntMap.insert var value (values context)
       , types = IntMap.insert var type_ (types context)
       }
@@ -156,13 +176,7 @@ extendBefore context beforeVar name type_ = do
   pure
     ( context
       { varNames = IntMap.insert var name $ varNames context
-      , vars =
-        case IntSeq.elemIndex beforeVar $ vars context of
-          Nothing ->
-            panic "extendBefore no such var"
-
-          Just i ->
-            IntSeq.insertAt i var $ vars context
+      , indices = indices context Index.Map.:> var
       , types = IntMap.insert var type_ (types context)
       , boundVars =
         case IntSeq.elemIndex beforeVar $ boundVars context of
@@ -189,10 +203,9 @@ lookupNameIndex (Name.Pre name) context = do
 
 lookupVarIndex :: Var -> Context v -> Index v
 lookupVarIndex var context =
-  Index
-    $ IntSeq.length (vars context)
-    - fromMaybe (panic "Context.lookupVarIndex") (IntSeq.elemIndex var (vars context))
-    - 1
+  fromMaybe
+    (panic "Context.lookupVarIndex")
+    (Index.Map.elemIndex var (indices context))
 
 lookupVarName :: Var -> Context v -> Name
 lookupVarName var context =
@@ -201,8 +214,8 @@ lookupVarName var context =
     $ varNames context
 
 lookupIndexVar :: Index v -> Context v -> Var
-lookupIndexVar (Index i) context =
-  IntSeq.index (vars context) (IntSeq.length (vars context) - i - 1)
+lookupIndexVar index context =
+  Index.Map.index (indices context) index
 
 lookupIndexType :: Index v -> Context v -> Lazy Domain.Type
 lookupIndexType index context =
@@ -234,7 +247,8 @@ piBoundVars context type_ = do
   type' <-
     Readback.readback
       Readback.Environment
-        { vars = boundVars context
+        { indices = Index.Map $ boundVars context
+        , values = values context
         }
       type_
 
@@ -251,7 +265,8 @@ piBoundVars context type_ = do
           varType' <-
             Readback.readback
               Readback.Environment
-                { vars = vars'
+                { indices = Index.Map vars'
+                , values = values context
                 }
               varType
           let

@@ -213,8 +213,7 @@ makeValue innerValue =
         occurrences function <>
         occurrences argument
 
-      Case scrutinee branches ->
-        occurrences scrutinee <>
+      Case _scrutinee branches ->
         mconcat
           [ foldMap (\(_, _, type_, _) -> occurrences type_) bindings <>
             occurrences body
@@ -349,8 +348,10 @@ readback env metas (Value value _) =
     App function plicity argument ->
       Syntax.App (readback env metas function) plicity (readback env metas argument)
 
-    Case scrutinee branches ->
-      Syntax.Case (readback env metas scrutinee) (map (readbackBranch env metas) branches)
+    Case scrutinee branches -> do
+      Syntax.Case
+        (readback env metas scrutinee)
+        (map (readbackBranch env metas) branches)
 
 readbackBranch
   :: Readback.Environment v

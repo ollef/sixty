@@ -1,0 +1,11 @@
+data List a where
+  Nil : List a
+  Cons : a -> List a -> List a
+
+f : forall a. List a -> List a
+f =
+  \xs. case xs of
+    Nil ->
+      Nil
+    Cons y ys ->
+      Cons y ys

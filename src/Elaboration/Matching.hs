@@ -14,6 +14,7 @@ import {-# source #-} qualified Elaboration
 import qualified Builtin
 import Context (Context)
 import qualified Context
+import qualified Data.IntSequence as IntSeq
 import Data.Some (Some(Some))
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
@@ -78,13 +79,13 @@ elaborateCase context scrutinee scrutineeType branches expectedType =
         }
 
     _ -> do
-      (context', var) <- Context.extend context "scrutinee" $ Lazy $ pure scrutineeType
+      (context', var) <- Context.extendUnnamed context "scrutinee" $ Lazy $ pure scrutineeType
       let
         index =
           Context.lookupVarIndex var context'
       term <- elaborateCase context' (Syntax.Var index) scrutineeType branches expectedType
       scrutineeType' <- Readback.readback (Context.toReadbackEnvironment context) scrutineeType
-      pure $ Syntax.Let "scrutinee" scrutineeType' scrutinee term
+      pure $ Syntax.Let "scrutinee" scrutinee scrutineeType' term
 
 -------------------------------------------------------------------------------
 
@@ -100,7 +101,7 @@ elaborate context config = do
     firstClause:_ -> do
       let
         matches = _matches firstClause
-      maybeConMatch <- findConMatches context matches
+      maybeConMatch <- findConstructorMatches context matches
       case maybeConMatch of
         Just (var, span, constr, typ) ->
           splitConstructor context config' var span constr typ
@@ -128,8 +129,8 @@ checkForcedPattern context match =
 
       term' <- Elaboration.check context' term type_
       value2 <- Elaboration.evaluate context term'
-      -- TODO recover from failure
-      Unification.unify context' value1 value2
+      _ <- Context.try_ context' $ Unification.unify context' value1 value2
+      pure ()
 
     _ ->
       pure ()
@@ -176,9 +177,11 @@ simplifyMatch context (Match value plicity pattern@(Presyntax.Pattern span unspa
                   (Telescope.fromVoid constrType)
                   (toList spine)
 
-              (matches', type') <- matchPrepatterns patSpine pats patsType
-              -- TODO: Recover from failure
-              Unification.unify (Context.spanned span context) type_ type'
+              (matches', type') <- matchPrepatterns context patSpine pats patsType
+              let
+                context' =
+                  Context.spanned span context
+              _ <- Context.try_ context' $ Unification.unify context' type_ type'
               pure matches'
 
           | otherwise ->
@@ -201,20 +204,21 @@ instantiateConstructorType env tele spine =
       constrType' <- Evaluation.evaluate env constrType
       pure (constrType', spine)
 
-    (Telescope.Extend _ _ _ tele', (Implicit, arg):spine') -> do
-      env' <- Domain.extendValue env arg
-      instantiateConstructorType env' tele' spine'
+    (Telescope.Extend _ _ plicity1 tele', (plicity2, arg):spine')
+      | plicity1 == plicity2 -> do
+        env' <- Domain.extendValue env arg
+        instantiateConstructorType env' tele' spine'
 
     _ ->
-      panic "TODO match tele error message"
+      panic ("instantiateConstructorType: " <> show (tele, fst <$> spine))
 
--- TODO: handle implicits that haven't been given
 matchPrepatterns
-  :: [(Plicity, Lazy Domain.Value)]
+  :: Context v
+  -> [(Plicity, Lazy Domain.Value)]
   -> [(Plicity, Presyntax.Pattern)]
   -> Domain.Type
   -> M ([Match], Domain.Type)
-matchPrepatterns values patterns type_ =
+matchPrepatterns context values patterns type_ =
   case (values, patterns) of
     ([], []) ->
       pure ([], type_)
@@ -224,22 +228,29 @@ matchPrepatterns values patterns type_ =
       , Domain.Pi _ source plicity3 domainClosure <- type_
       , plicity2 == plicity3 -> do
         domain <- Evaluation.evaluateClosure domainClosure value
-        (matches, type') <- matchPrepatterns values' patterns' domain
+        (matches, type') <- matchPrepatterns context values' patterns' domain
         value' <- force value
         source' <- force source
         pure (Match value' plicity1 pattern source' : matches, type')
 
-      | plicity1 == Explicit
-      , plicity2 == Explicit
-      , Domain.Fun source domain <- type_ -> do
+    ((Explicit, value):values', (Explicit, pattern):patterns')
+      | Domain.Fun source domain <- type_ -> do
         domain' <- force domain
-        (matches, type') <- matchPrepatterns values' patterns' domain'
+        (matches, type') <- matchPrepatterns context values' patterns' domain'
         value' <- force value
         source' <- force source
         pure (Match value' Explicit pattern source' : matches, type')
 
+    ((Implicit, value):values', _)
+      | Domain.Pi _ source Implicit domainClosure <- type_ -> do
+        domain <- Evaluation.evaluateClosure domainClosure value
+        (matches, type') <- matchPrepatterns context values' patterns domain
+        value' <- force value
+        source' <- force source
+        pure (Match value' Implicit (Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern) source' : matches, type')
+
     _ ->
-      panic "matchPrepatterns TODO error message"
+      panic ("matchPrepatterns TODO error message " <> show (fst <$> values, patterns))
 
 type PatternSubstitution = Tsil (Name, Lazy Domain.Value, Lazy Domain.Value)
 
@@ -265,9 +276,12 @@ expandAnnotations context matches =
             Match term plicity (Presyntax.Pattern span (Presyntax.Anno pat annoType)) type_ -> do
               lift $ do
                 annoType' <- Elaboration.check context annoType Builtin.type_
-                -- TODO: Recover from failure
                 annoType'' <- Elaboration.evaluate context annoType'
-                Unification.unify (Context.spanned span context) annoType'' type_
+                let
+                  context' =
+                    Context.spanned span context
+                _ <- Context.try_ context' $ Unification.unify context' annoType'' type_
+                pure ()
               pure $ Match term plicity pat type_ : matches'
 
             _ ->
@@ -300,11 +314,11 @@ solved context =
 
 -------------------------------------------------------------------------------
 
-findConMatches
+findConstructorMatches
   :: Context v
   -> [Match]
   -> M (Maybe (Var, Span.Relative, Name.QualifiedConstructor, Domain.Type))
-findConMatches context matches =
+findConstructorMatches context matches =
     case matches of
       [] ->
         pure Nothing
@@ -317,17 +331,17 @@ findConMatches context matches =
             maybeConstr <- Elaboration.resolveConstructor context name constrs expectedTypeName
             case maybeConstr of
               Nothing ->
-                findConMatches context matches'
+                findConstructorMatches context matches'
 
               Just constr ->
                 pure $ Just (x, span, constr, type_)
 
           -- TODO ambiguity errors?
           _ ->
-            findConMatches context matches'
+            findConstructorMatches context matches'
 
       _:matches' ->
-        findConMatches context matches'
+        findConstructorMatches context matches'
 
 splitConstructor
   :: Context v
@@ -356,7 +370,14 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
           pure $ Syntax.Case (Syntax.Var $ Context.lookupVarIndex scrutinee context) branches
 
         Domain.Telescope.Extend _ source plicity domainClosure -> do
-          param <- lazy $ Context.newMeta source context
+          param <-
+            lazy $ Context.newMeta source context
+              { Context.boundVars =
+                -- Remove the scrutinee so it's not added to the meta variable
+                -- context, because that would create a circular value when
+                -- the scrutinee is defined later
+                IntSeq.delete scrutinee $ Context.boundVars context
+              }
           domain <- domainClosure param
           goParams context (conArgs Tsil.:> (implicitise plicity, param)) domain
 
@@ -402,10 +423,9 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
           let
             context' =
               Context.define context scrutinee $ Lazy $ pure $ Domain.Neutral (Domain.Con constr) conArgs
-          -- TODO recover from failure
-          Unification.unify context' type_ outerType
+          f <- Unification.tryUnify context' type_ outerType
           result <- elaborate context' config
-          pure $ Telescope.Empty result
+          pure $ Telescope.Empty $ f result
 
   maybeDefinition <- fetch $ Query.ElaboratedDefinition typeName
   case maybeDefinition of

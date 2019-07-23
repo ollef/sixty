@@ -6,9 +6,9 @@ module Inlining where
 import Protolude hiding (Type, IntMap, evaluate, empty)
 
 import "this" Data.IntMap (IntMap)
-import Data.IntSequence (IntSeq)
-import qualified Data.IntSequence as IntSeq
 import Index
+import qualified Index.Map
+import qualified Index.Map as Index
 import qualified Meta
 import Monad
 import Name (Name)
@@ -55,7 +55,7 @@ inlineDataDefinition env tele =
 inlineTerm :: Environment v -> Syntax.Term v -> M (Syntax.Term v)
 inlineTerm env term = do
   value <- evaluate env term
-  pure $ readback Readback.Environment { vars = vars env } value
+  pure $ readback Readback.Environment { indices = indices env, values = mempty } value
 
 -------------------------------------------------------------------------------
 
@@ -78,13 +78,13 @@ data Branch = Branch !Name.QualifiedConstructor [(Name, Var, Type, Plicity)] !Va
 type Type = Value
 
 data Environment v = Environment
-  { vars :: IntSeq Var
+  { indices :: Index.Map v Var
   , values :: IntMap Var Value
   }
 
 empty :: Environment Void
 empty = Environment
-  { vars = mempty
+  { indices = Index.Map.Empty
   , values = mempty
   }
 
@@ -94,7 +94,7 @@ extend env = do
   let
     env' =
       env
-        { vars = vars env IntSeq.:> var
+        { indices = indices env Index.Map.:> var
         }
   pure (env', var)
 
@@ -111,10 +111,10 @@ extendValue env value = do
 evaluate :: Environment v -> Syntax.Term v -> M Value
 evaluate env term =
   case term of
-    Syntax.Var (Index index) -> do
+    Syntax.Var index -> do
       let
         var =
-          IntSeq.index (vars env) (IntSeq.length (vars env) - index - 1)
+          Index.Map.index (indices env) index
       case IntMap.lookup var (values env) of
         Nothing ->
           pure $ Var var
@@ -164,8 +164,10 @@ evaluate env term =
     Syntax.App fun plicity arg ->
       App <$> evaluate env fun <*> pure plicity <*> evaluate env arg
 
-    Syntax.Case scrutinee branches ->
-      Case <$> evaluate env scrutinee <*> mapM (evaluateBranch env) branches
+    Syntax.Case scrutinee branches -> do
+      scrutinee' <- evaluate env scrutinee
+      -- TODO choose branch if variable is inlined to constructor
+      Case scrutinee' <$> mapM (evaluateBranch env) branches
 
 evaluateBranch :: Environment v -> Syntax.Branch v -> M Branch
 evaluateBranch outerEnv (Syntax.Branch constr outerTele) =

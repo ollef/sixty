@@ -1,15 +1,18 @@
 {-# language OverloadedStrings #-}
+{-# language PackageImports #-}
 module Readback where
 
-import Protolude hiding (Seq, force, evaluate)
+import Protolude hiding (IntMap, Seq, force, evaluate)
 
-import Data.IntSequence (IntSeq)
-import qualified Data.IntSequence as IntSeq
+import "this" Data.IntMap (IntMap)
 import qualified Data.Tsil as Tsil
 import qualified Domain
 import qualified Evaluation
 import Index
+import qualified Index.Map
+import qualified Index.Map as Index
 import Monad
+import qualified "this" Data.IntMap as IntMap
 import qualified Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
@@ -18,13 +21,15 @@ import Var
 -------------------------------------------------------------------------------
 -- Readback environments
 
-newtype Environment v = Environment
-  { vars :: IntSeq Var
-  } deriving Show
+data Environment v = Environment
+  { indices :: Index.Map v Var
+  , values :: IntMap Var (Lazy Domain.Value)
+  }
 
 empty :: Environment Void
 empty = Environment
-  { vars = mempty
+  { indices = Index.Map.Empty
+  , values = mempty
   }
 
 extend
@@ -43,26 +48,27 @@ extendVar
   -> Environment (Succ v)
 extendVar env var =
   env
-    { vars = vars env IntSeq.:> var
+    { indices = indices env Index.Map.:> var
     }
 
 lookupVarIndex :: Var -> Environment v -> Maybe (Index v)
 lookupVarIndex var context =
-  case IntSeq.elemIndex var (vars context) of
-    Nothing ->
-      Nothing
-
-    Just i ->
-      Just (Index (IntSeq.length (vars context) - i - 1))
+  Index.Map.elemIndex var (indices context)
 
 lookupIndexVar :: Index v -> Environment v -> Var
-lookupIndexVar (Index i) context =
-  IntSeq.index (vars context) (IntSeq.length (vars context) - i - 1)
+lookupIndexVar index context =
+  Index.Map.index (indices context) index
+
+lookupVarValue :: Var -> Environment v -> Maybe (Lazy Domain.Type)
+lookupVarValue var context =
+  IntMap.lookup var (values context)
 
 fromEvaluationEnvironment :: Domain.Environment v -> Environment v
 fromEvaluationEnvironment env =
+  -- TODO merge with evaluation environment?
   Environment
-    { vars = Domain.vars env
+    { indices = Domain.indices env
+    , values = Domain.values env
     }
 
 -------------------------------------------------------------------------------
@@ -113,12 +119,16 @@ readbackHead :: Environment v -> Domain.Head -> M (Syntax.Term v)
 readbackHead env hd =
   case hd of
     Domain.Var v ->
-      case lookupVarIndex v env of
-        Just i ->
+      case (lookupVarIndex v env, lookupVarValue v env) of
+        (Just i, _) ->
           pure $ Syntax.Var i
 
-        Nothing ->
-          panic "readbackHead: Scoping error"
+        (Nothing, Just value) -> do
+          value' <- force value
+          readback env value'
+
+        (Nothing, Nothing) ->
+          panic $ "readbackHead: Scoping error (" <> show v <> ")"
 
     Domain.Global g ->
       pure $ Syntax.Global g

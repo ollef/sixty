@@ -40,7 +40,7 @@ evaluate :: Domain.Environment v -> Syntax.Term v -> M Domain.Value
 evaluate env term =
   case term of
     Syntax.Var v ->
-      force $ Domain.lookupValue v env
+      force $ Domain.lookupValue (Domain.lookupVar v env) env
 
     Syntax.Global name -> do
       visibility <- fetch $ Query.Visibility (Domain.scopeKey env) name
@@ -87,13 +87,13 @@ evaluate env term =
       apply t1' p t2'
 
     Syntax.Case scrutinee branches -> do
-      scrutinee' <- evaluate env scrutinee
-      case scrutinee' of
+      scrutineeValue <- evaluate env scrutinee
+      case scrutineeValue of
         Domain.Neutral (Domain.Con constr) spine ->
           chooseBranch env constr (toList spine) branches
 
         _ ->
-          pure $ Domain.Case scrutinee' $ Domain.Branches env branches
+          pure $ Domain.Case scrutineeValue $ Domain.Branches env branches
 
 chooseBranch
   :: Domain.Environment v

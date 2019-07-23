@@ -241,6 +241,7 @@ check
   -> Domain.Type
   -> M (Syntax.Term v)
 check context (Presyntax.Term span term) =
+  -- traceShow ("check", term) $
   checkUnspanned (Context.spanned span context) term
 
 infer
@@ -250,6 +251,7 @@ infer
   -> Lazy (Maybe Name.Qualified)
   -> M (Syntax.Term v, Domain.Type)
 infer context (Presyntax.Term span term) =
+  -- traceShow ("infer", term) $
   inferUnspanned (Context.spanned span context) term
 
 checkUnspanned

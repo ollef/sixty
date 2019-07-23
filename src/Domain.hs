@@ -5,14 +5,14 @@ module Domain where
 import Protolude hiding (Type, Seq, IntMap)
 
 import "this" Data.IntMap (IntMap)
-import Data.IntSequence (IntSeq)
-import qualified Data.IntSequence as IntSeq
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import Index
 import qualified Meta
 import Monad
 import Name (Name)
+import qualified Index.Map
+import qualified Index.Map as Index
 import qualified Name
 import qualified "this" Data.IntMap as IntMap
 import Plicity
@@ -66,7 +66,7 @@ singleVarView _ = Nothing
 
 data Environment v = Environment
   { scopeKey :: !Scope.KeyedName
-  , vars :: IntSeq Var
+  , indices :: Index.Map v Var
   , values :: IntMap Var (Lazy Domain.Value)
   }
 
@@ -74,7 +74,7 @@ empty :: Scope.KeyedName -> Environment Void
 empty key =
   Environment
     { scopeKey = key
-    , vars = mempty
+    , indices = Index.Map.Empty
     , values = mempty
     }
 
@@ -91,7 +91,7 @@ extendVar
   -> Environment (Succ v)
 extendVar env v =
   env
-    { vars = vars env IntSeq.:> v
+    { indices = indices env Index.Map.:> v
     }
 
 extendValue
@@ -101,15 +101,16 @@ extendValue
 extendValue env value = do
   v <- freshVar
   pure env
-    { vars = vars env IntSeq.:> v
+    { indices = indices env Index.Map.:> v
     , values = IntMap.insert v value (values env)
     }
 
-lookupValue :: Index v -> Environment v -> Lazy Domain.Value
-lookupValue (Index i) env =
-  let
-    v = IntSeq.index (vars env) (IntSeq.length (vars env) - i - 1)
-  in
+lookupVar :: Index v -> Environment v -> Var
+lookupVar index env =
+  Index.Map.index (indices env) index
+
+lookupValue :: Var -> Environment v -> Lazy Domain.Value
+lookupValue v env =
   fromMaybe
     (Lazy $ pure $ var v)
     (IntMap.lookup v $ values env)

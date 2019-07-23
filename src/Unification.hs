@@ -17,6 +17,7 @@ import qualified Error
 import qualified Evaluation
 import Extra
 import Index
+import qualified Index.Map as Index
 import qualified Meta
 import Monad
 import Plicity
@@ -228,7 +229,8 @@ checkSolution outerContext meta vars value = do
       outerContext
       meta
       Readback.Environment
-        { vars = vars
+        { indices = Index.Map vars
+        , values = Context.values outerContext
         }
       value
   addAndCheckLambdas outerContext meta vars solution
@@ -257,7 +259,8 @@ addAndCheckLambdas outerContext meta vars term =
           outerContext
           meta
           Readback.Environment
-            { vars = vars'
+            { indices = Index.Map vars'
+            , values = Context.values outerContext
             }
           type'
       let
