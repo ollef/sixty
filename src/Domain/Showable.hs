@@ -58,7 +58,8 @@ to value =
       Case <$> to scrutinee <*> branchesTo branches
 
 lazyTo :: Lazy Domain.Value -> M Value
-lazyTo = to <=< force
+lazyTo =
+  to <=< force
 
 closureTo :: Domain.Closure -> M Closure
 closureTo (Domain.Closure env term) =
