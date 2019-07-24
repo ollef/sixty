@@ -73,7 +73,7 @@ verifyErrors errs expectedErrors = do
 
       _ ->
         Tasty.assertFailure $
-          "Expected " <> show expectedError <> " error on line " <> show lineNumber
+          "Expected " <> show expectedError <> " error on line " <> show (lineNumber + 1)
 
   forM_ errs $ \(filePath, lineColumn@(Span.LineColumns (Position.LineColumn lineNumber _) _), lineText, err) ->
     let
