@@ -95,8 +95,8 @@ elaborate context config = do
     config' = config { _clauses = clauses }
   case clauses of
     [] -> do
-      ok <- anyM (uninhabitedScrutinee context) $ _scrutinees config
-      unless ok $ Context.report context Error.NonExhaustivePatterns
+      exhaustive <- anyM (uninhabitedScrutinee context) $ _scrutinees config
+      unless exhaustive $ Context.report context Error.NonExhaustivePatterns
       targetType <- Elaboration.readback context $ _targetType config
       pure $ Syntax.App (Syntax.Global Builtin.fail) Explicit targetType
 
