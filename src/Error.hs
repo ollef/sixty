@@ -30,6 +30,7 @@ data Elaboration
   | OccursCheck
   | UnsolvedMetaVariable !Meta.Index
   | NonExhaustivePatterns
+  | OverlappingPatterns
   | PlicityMismatch !PlicityMismatch
   deriving (Eq, Ord, Show, Generic, Hashable)
 
@@ -84,6 +85,9 @@ pretty filePath span lineText err =
 
             NonExhaustivePatterns ->
               "Non-exhaustive patterns"
+
+            OverlappingPatterns ->
+              "Overlapping patterns"
 
             PlicityMismatch plicityMismatch ->
               case plicityMismatch of

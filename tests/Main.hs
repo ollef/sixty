@@ -98,6 +98,7 @@ data ExpectedError
   | OccursCheck
   | UnsolvedMetaVariable
   | NonExhaustivePatterns
+  | OverlappingPatterns
   | PlicityMismatch
   deriving (Eq, Show)
 
@@ -129,6 +130,9 @@ errorToExpectedError err =
 
         Error.NonExhaustivePatterns {} ->
           NonExhaustivePatterns
+
+        Error.OverlappingPatterns {} ->
+          OverlappingPatterns
 
         Error.PlicityMismatch {} ->
           PlicityMismatch
@@ -166,6 +170,9 @@ expectedErrorsFromSource sourceText =
 
             "non-exhaustive patterns error expected" ->
               [(lineNumber, NonExhaustivePatterns)]
+
+            "overlapping patterns error expected" ->
+              [(lineNumber, OverlappingPatterns)]
 
             "plicity mismatch error expected" ->
               [(lineNumber, PlicityMismatch)]

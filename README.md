@@ -52,7 +52,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [ ] Pattern matching elaboration
   - [x] Case expressions
   - [x] Exhaustiveness check
-  - [ ] Redundant pattern check
+  - [x] Redundant pattern check
   - [ ] Clause elaboration
 - [ ] Inductive families
 - [ ] Generalisation?

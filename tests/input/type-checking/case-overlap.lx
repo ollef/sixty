@@ -1,0 +1,42 @@
+data List a where
+  Nil : List a
+  Cons : a -> List a -> List a
+
+f : forall a. List a -> List a
+f = \as.
+  case as of
+    Nil ->
+      as
+
+    Nil -> -- overlapping patterns error expected
+      as
+
+    Cons x xs ->
+      as
+
+    Cons x xs -> -- overlapping patterns error expected
+      as
+
+g : forall a. List a -> List a
+g = \as.
+  case as of
+    Nil ->
+      as
+
+    _ ->
+      as
+
+    Cons x xs -> -- overlapping patterns error expected
+      as
+
+h : forall a. List a -> List a
+h = \as.
+  case as of
+    Nil ->
+      as
+
+    Cons x xs ->
+      as
+
+    _ -> -- overlapping patterns error expected
+      as

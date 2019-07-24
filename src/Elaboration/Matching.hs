@@ -7,6 +7,9 @@ import Protolude hiding (force)
 import Control.Monad.Fail
 import Control.Monad.Trans.Maybe
 import qualified Data.HashSet as HashSet
+import Data.Set (Set)
+import qualified Data.Set as Set
+import Data.IORef
 import Rock
 
 import {-# source #-} qualified Elaboration
@@ -40,10 +43,12 @@ data Config = Config
   { _targetType :: !Domain.Value
   , _scrutinees :: ![Domain.Value]
   , _clauses :: [Clause]
+  , _usedClauses :: !(IORef (Set Span.Relative))
   }
 
 data Clause = Clause
-  { _matches :: [Match]
+  { _span :: !Span.Relative
+  , _matches :: [Match]
   , _rhs :: !Presyntax.Term
   }
 
@@ -64,17 +69,20 @@ elaborateCase context scrutinee scrutineeType branches expectedType =
       let
         scrutineeValue =
           Domain.var $ Context.lookupIndexVar index context
-      -- TODO coverage check
-      elaborate context Config
+      usedClauses <- liftIO $ newIORef mempty
+
+      elaborateWithCoverage context Config
         { _targetType = expectedType
         , _scrutinees = pure scrutineeValue
         , _clauses =
           [ Clause
-            { _matches = [Match scrutineeValue Explicit pattern scrutineeType]
+            { _span = Span.add patSpan rhsSpan
+            , _matches = [Match scrutineeValue Explicit pattern scrutineeType]
             , _rhs = rhs'
             }
-          | (pattern, rhs') <- branches
+          | (pattern@(Presyntax.Pattern patSpan _), rhs'@(Presyntax.Term rhsSpan _)) <- branches
           ]
+        , _usedClauses = usedClauses
         }
 
     _ -> do
@@ -87,6 +95,20 @@ elaborateCase context scrutinee scrutineeType branches expectedType =
       pure $ Syntax.Let "scrutinee" scrutinee scrutineeType' term
 
 -------------------------------------------------------------------------------
+
+elaborateWithCoverage :: Context v -> Config -> M (Syntax.Term v)
+elaborateWithCoverage context config = do
+  result <- elaborate context config
+  let
+    allClauseSpans =
+      Set.fromList
+        [ span
+        | Clause span _ _ <- _clauses config
+        ]
+  usedClauseSpans <- liftIO $ readIORef (_usedClauses config)
+  forM_ (Set.difference allClauseSpans usedClauseSpans) $ \span ->
+    Context.report (Context.spanned span context) Error.OverlappingPatterns
+  pure result
 
 elaborate :: Context v -> Config -> M (Syntax.Term v)
 elaborate context config = do
@@ -118,6 +140,7 @@ elaborate context config = do
               context' <- Context.extendUnindexedDefs context sub
               mapM_ (checkForcedPattern context') matches
               result <- Elaboration.check context' (_rhs firstClause) (_targetType config)
+              liftIO $ modifyIORef (_usedClauses config) $ Set.insert $ _span firstClause
               pure result
 
 checkForcedPattern :: Context v -> Match -> M ()
