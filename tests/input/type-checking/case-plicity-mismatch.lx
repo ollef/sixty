@@ -12,3 +12,9 @@ g = \d.
   case d of
     MkD -> -- plicity mismatch error expected
       Type
+
+h : D -> Type
+h = \d.
+  case d of
+    MkD d' ->
+      Type
