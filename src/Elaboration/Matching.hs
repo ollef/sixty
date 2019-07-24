@@ -118,8 +118,7 @@ elaborate context config = do
               context' <- Context.extendUnindexedDefs context sub
               mapM_ (checkForcedPattern context') matches
               result <- Elaboration.check context' (_rhs firstClause) (_targetType config)
-              -- TODO escape check instead of coercion?
-              pure $ Syntax.coerce result
+              pure result
 
 checkForcedPattern :: Context v -> Match -> M ()
 checkForcedPattern context match =
