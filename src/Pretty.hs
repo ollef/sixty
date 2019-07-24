@@ -12,6 +12,7 @@ import Data.Text.Prettyprint.Doc
 import Index
 import qualified Meta
 import Name (Name(Name))
+import qualified Plicity
 import qualified Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
@@ -91,7 +92,7 @@ prettyTerm prec env term = case term of
 
   Syntax.App t1 plicity t2 ->
     prettyParen (prec > appPrec) $
-      prettyTerm appPrec env t1 <+> pretty plicity <> prettyTerm (appPrec + 1) env t2
+      prettyTerm appPrec env t1 <+> Plicity.prettyAnnotation plicity <> prettyTerm (appPrec + 1) env t2
 
   Syntax.Case scrutinee branches ->
     prettyParen (prec > casePrec) $
@@ -109,7 +110,7 @@ prettyLamTerm env term = case term of
     let
       (env', name') = extend env name
     in
-    pretty plicity <> lparen <> pretty name' <+> ":" <+> prettyTerm 0 env typ <> rparen
+    Plicity.prettyAnnotation plicity <> lparen <> pretty name' <+> ":" <+> prettyTerm 0 env typ <> rparen
     <> prettyLamTerm env' scope
 
   t ->
@@ -121,7 +122,7 @@ prettyPiTerm env term = case term of
     let
       (env', name') = extend env name
     in
-    pretty plicity <> lparen <> pretty name' <+> ":" <+> prettyTerm 0 env typ <> rparen
+    Plicity.prettyAnnotation plicity <> lparen <> pretty name' <+> ":" <+> prettyTerm 0 env typ <> rparen
     <> prettyPiTerm env' scope
 
   t ->
@@ -140,7 +141,7 @@ prettyBranch env tele =
       let
         (env', name') = extend env name
       in
-      pretty plicity <> "(" <> pretty name' <+> ":" <+> prettyTerm 0 env type_ <> ")" <+>
+      Plicity.prettyAnnotation plicity <> "(" <> pretty name' <+> ":" <+> prettyTerm 0 env type_ <> ")" <+>
       prettyBranch env' tele'
 
 -------------------------------------------------------------------------------
@@ -176,7 +177,7 @@ prettyConstructorDefinitions env tele =
       let
         (env', name') = extend env name
       in
-      pretty plicity <> "(" <> pretty name' <+> ":" <+> prettyTerm 0 env type_ <> ")" <+>
+      Plicity.prettyAnnotation plicity <> "(" <> pretty name' <+> ":" <+> prettyTerm 0 env type_ <> ")" <+>
       prettyConstructorDefinitions env' tele'
 
 -------------------------------------------------------------------------------

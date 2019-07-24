@@ -8,18 +8,27 @@ import Protolude
 import Data.Text.Prettyprint.Doc
 
 data Plicity
-  = Explicit
-  | Implicit
-  deriving (Eq, Show, Generic, Hashable)
+  = Implicit
+  | Explicit
+  deriving (Eq, Ord, Show, Generic, Hashable)
 
 instance Pretty Plicity where
   pretty plicity =
     case plicity of
-      Explicit ->
-        ""
-
       Implicit ->
-        "@"
+        "implicit"
+
+      Explicit ->
+        "explicit"
+
+prettyAnnotation :: Plicity -> Doc ann
+prettyAnnotation plicity =
+  case plicity of
+    Implicit ->
+      "@"
+
+    Explicit ->
+      ""
 
 implicitise :: Plicity -> Plicity
 implicitise _ =

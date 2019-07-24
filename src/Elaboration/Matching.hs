@@ -220,39 +220,55 @@ matchPrepatterns
   -> [(Plicity, Presyntax.Pattern)]
   -> Domain.Type
   -> M ([Match], Domain.Type)
-matchPrepatterns context values patterns type_ =
+matchPrepatterns context values patterns type_ = do
+  type' <- Context.forceHead context type_
   case (values, patterns) of
     ([], []) ->
-      pure ([], type_)
+      pure ([], type')
+
+    ([], (_, Presyntax.Pattern span _):_) -> do
+      Context.report (Context.spanned span context) $ Error.PlicityMismatch Error.Extra
+      pure ([], type')
 
     ((plicity1, value):values', (plicity2, pattern):patterns')
       | plicity1 == plicity2
-      , Domain.Pi _ source plicity3 domainClosure <- type_
+      , Domain.Pi _ source plicity3 domainClosure <- type'
       , plicity2 == plicity3 -> do
         domain <- Evaluation.evaluateClosure domainClosure value
-        (matches, type') <- matchPrepatterns context values' patterns' domain
+        (matches, type'') <- matchPrepatterns context values' patterns' domain
         value' <- force value
         source' <- force source
-        pure (Match value' plicity1 pattern source' : matches, type')
+        pure (Match value' plicity1 pattern source' : matches, type'')
 
     ((Explicit, value):values', (Explicit, pattern):patterns')
-      | Domain.Fun source domain <- type_ -> do
+      | Domain.Fun source domain <- type' -> do
         domain' <- force domain
-        (matches, type') <- matchPrepatterns context values' patterns' domain'
+        (matches, type'') <- matchPrepatterns context values' patterns' domain'
         value' <- force value
         source' <- force source
-        pure (Match value' Explicit pattern source' : matches, type')
+        pure (Match value' Explicit pattern source' : matches, type'')
+
+      | otherwise ->
+        panic "matchPrepatterns non-pi"
 
     ((Implicit, value):values', _)
-      | Domain.Pi _ source Implicit domainClosure <- type_ -> do
+      | Domain.Pi _ source Implicit domainClosure <- type' -> do
         domain <- Evaluation.evaluateClosure domainClosure value
-        (matches, type') <- matchPrepatterns context values' patterns domain
+        (matches, type'') <- matchPrepatterns context values' patterns domain
         value' <- force value
         source' <- force source
-        pure (Match value' Implicit (Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern) source' : matches, type')
+        pure (Match value' Implicit (Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern) source' : matches, type'')
 
-    _ ->
-      panic ("matchPrepatterns TODO error message " <> show (fst <$> values, patterns))
+      | otherwise ->
+        panic "matchPrepatterns non-pi"
+
+    ((Explicit, _):_, []) -> do
+      Context.report context $ Error.PlicityMismatch (Error.Missing Explicit)
+      matchPrepatterns context values [(Explicit, Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern)] type'
+
+    ((Explicit, _):_, (Implicit, Presyntax.Pattern span _):patterns') -> do
+      Context.report (Context.spanned span context) $ Error.PlicityMismatch (Error.Mismatch Explicit Implicit)
+      matchPrepatterns context values patterns' type'
 
 type PatternSubstitution = Tsil (Name, Lazy Domain.Value, Lazy Domain.Value)
 

@@ -98,6 +98,7 @@ data ExpectedError
   | OccursCheck
   | UnsolvedMetaVariable
   | NonExhaustivePatterns
+  | PlicityMismatch
   deriving (Eq, Show)
 
 errorToExpectedError :: Error -> ExpectedError
@@ -128,6 +129,9 @@ errorToExpectedError err =
 
         Error.NonExhaustivePatterns {} ->
           NonExhaustivePatterns
+
+        Error.PlicityMismatch {} ->
+          PlicityMismatch
 
 expectedErrorsFromSource
   :: Text
@@ -162,6 +166,9 @@ expectedErrorsFromSource sourceText =
 
             "non-exhaustive patterns error expected" ->
               [(lineNumber, NonExhaustivePatterns)]
+
+            "plicity mismatch error expected" ->
+              [(lineNumber, PlicityMismatch)]
 
             _ ->
               mempty

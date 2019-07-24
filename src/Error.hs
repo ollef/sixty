@@ -12,6 +12,7 @@ import qualified Data.Text.Unsafe as Text
 
 import qualified Meta
 import qualified Name
+import Plicity
 import qualified Position
 import qualified Scope
 import qualified Span
@@ -29,6 +30,13 @@ data Elaboration
   | OccursCheck
   | UnsolvedMetaVariable !Meta.Index
   | NonExhaustivePatterns
+  | PlicityMismatch !PlicityMismatch
+  deriving (Eq, Ord, Show, Generic, Hashable)
+
+data PlicityMismatch
+  = Mismatch !Plicity !Plicity
+  | Missing !Plicity
+  | Extra
   deriving (Eq, Ord, Show, Generic, Hashable)
 
 data Spanned
@@ -76,6 +84,20 @@ pretty filePath span lineText err =
 
             NonExhaustivePatterns ->
               "Non-exhaustive patterns"
+
+            PlicityMismatch plicityMismatch ->
+              case plicityMismatch of
+                Mismatch expected_ actual ->
+                  "Expected an " <> Doc.pretty expected_ <>
+                  " but got an " <> Doc.pretty actual <>
+                  " field"
+
+                Missing expected_ ->
+                  "Expected an " <> Doc.pretty expected_ <>
+                  " field but didn't get any"
+
+                Extra ->
+                  "Unexpected field"
 
     spannedLine =
       let

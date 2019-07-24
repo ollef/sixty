@@ -1,0 +1,14 @@
+data D where
+  MkD : Type -> D
+
+f : D -> Type
+f = \d.
+  case d of
+    MkD d d -> -- plicity mismatch error expected
+      Type
+
+g : D -> Type
+g = \d.
+  case d of
+    MkD -> -- plicity mismatch error expected
+      Type
