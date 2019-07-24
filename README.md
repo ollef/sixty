@@ -51,8 +51,8 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
     - [x] Type-based overloading
 - [ ] Pattern matching elaboration
   - [x] Case expressions
-  - [ ] Coverage check
-  - [ ] Uninhabitation check
+  - [x] Exhaustiveness check
+  - [ ] Redundant pattern check
   - [ ] Clause elaboration
 - [ ] Inductive families
 - [ ] Generalisation?

@@ -97,6 +97,7 @@ data ExpectedError
   | TypeMismatch
   | OccursCheck
   | UnsolvedMetaVariable
+  | NonExhaustivePatterns
   deriving (Eq, Show)
 
 errorToExpectedError :: Error -> ExpectedError
@@ -124,6 +125,9 @@ errorToExpectedError err =
 
         Error.UnsolvedMetaVariable {} ->
           UnsolvedMetaVariable
+
+        Error.NonExhaustivePatterns {} ->
+          NonExhaustivePatterns
 
 expectedErrorsFromSource
   :: Text
@@ -155,6 +159,9 @@ expectedErrorsFromSource sourceText =
 
             "unsolved meta error expected" ->
               [(lineNumber, UnsolvedMetaVariable)]
+
+            "non-exhaustive patterns error expected" ->
+              [(lineNumber, NonExhaustivePatterns)]
 
             _ ->
               mempty

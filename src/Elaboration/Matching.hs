@@ -7,7 +7,6 @@ import Protolude hiding (force)
 import Control.Monad.Fail
 import Control.Monad.Trans.Maybe
 import qualified Data.HashSet as HashSet
-import Data.Vector (Vector)
 import Rock
 
 import {-# source #-} qualified Elaboration
@@ -20,6 +19,7 @@ import qualified Data.Tsil as Tsil
 import qualified Domain
 import qualified Domain.Telescope as Domain (Telescope)
 import qualified Domain.Telescope
+import qualified Error
 import qualified Evaluation
 import Monad
 import Name (Name(Name))
@@ -38,7 +38,7 @@ import Var
 
 data Config = Config
   { _targetType :: !Domain.Value
-  , _scrutinees :: !(Vector Domain.Value)
+  , _scrutinees :: ![Domain.Value]
   , _clauses :: [Clause]
   }
 
@@ -94,8 +94,11 @@ elaborate context config = do
   let
     config' = config { _clauses = clauses }
   case clauses of
-    [] ->
-      panic "TODO uninhabitation check"
+    [] -> do
+      ok <- anyM (uninhabitedScrutinee context) $ _scrutinees config
+      unless ok $ Context.report context Error.NonExhaustivePatterns
+      targetType <- Elaboration.readback context $ _targetType config
+      pure $ Syntax.App (Syntax.Global Builtin.fail) Explicit targetType
 
     firstClause:_ -> do
       let
@@ -209,7 +212,7 @@ instantiateConstructorType env tele spine =
         instantiateConstructorType env' tele' spine'
 
     _ ->
-      panic ("instantiateConstructorType: " <> show (tele, fst <$> spine))
+      panic $ "instantiateConstructorType: " <> show (tele, fst <$> spine)
 
 matchPrepatterns
   :: Context v
@@ -436,3 +439,93 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
 
     _ ->
       panic "splitConstructor no data definition"
+
+-------------------------------------------------------------------------------
+
+uninhabitedScrutinee :: Context v -> Domain.Value -> M Bool
+uninhabitedScrutinee context value = do
+  value' <- Context.forceHead context value
+  case value' of
+    Domain.Neutral (Domain.Var var) spine -> do
+      varType <- force $ Context.lookupVarType var context
+      type_ <- applySpine varType spine
+      uninhabitedType context 1 type_
+
+    _ ->
+      pure False
+
+  where
+    applySpine :: Domain.Type -> Domain.Spine -> M Domain.Type
+    applySpine type_ spine = do
+      type' <- Context.forceHead context type_
+      case (type', spine) of
+        (_, Tsil.Empty) ->
+          pure type'
+
+        (Domain.Fun _ domain, spine' Tsil.:> (Explicit, _)) -> do
+          domain' <- force domain
+          applySpine domain' spine'
+
+        (Domain.Pi _ _ plicity1 domainClosure, spine' Tsil.:> (plicity2, arg))
+          | plicity1 == plicity2 -> do
+            domain <- Evaluation.evaluateClosure domainClosure arg
+            applySpine domain spine'
+
+        _ ->
+          panic "uninhabitedScrutinee.applySpine"
+
+uninhabitedType :: Context v -> Int -> Domain.Type -> M Bool
+uninhabitedType context fuel type_ = do
+  type' <- Context.forceHead context type_
+  case type' of
+    Domain.Neutral (Domain.Global global) spine -> do
+      maybeDefinitions <- fetch $ Query.ElaboratedDefinition global
+      case maybeDefinitions of
+        Just (Syntax.DataDefinition tele, _) -> do
+          tele' <- Evaluation.evaluateConstructorDefinitions (Domain.empty $ Context.scopeKey context) tele
+          tele'' <- Domain.Telescope.apply tele' $ toList spine
+          case tele'' of
+            Domain.Telescope.Empty constructors ->
+              allM (uninhabitedConstrType context fuel . snd) constructors
+
+            _ ->
+              pure False
+
+        _ ->
+          pure False
+
+    _ ->
+      pure False
+
+uninhabitedConstrType :: Context v -> Int -> Domain.Type -> M Bool
+uninhabitedConstrType context fuel type_ =
+  case fuel of
+    0 ->
+      pure False
+
+    _ -> do
+      type' <- Context.forceHead context type_
+      case type' of
+        Domain.Pi _ source _ domainClosure -> do
+          source' <- force source
+          uninhabited <- uninhabitedType context (fuel - 1) source'
+          if uninhabited then
+            pure True
+
+          else do
+            (context', var) <- Context.extendUnnamed context "x" source
+            domain <- Evaluation.evaluateClosure domainClosure $ Lazy $ pure $ Domain.var var
+            uninhabitedConstrType context' fuel domain
+
+        Domain.Fun source domain -> do
+          source' <- force source
+          uninhabited <- uninhabitedType context (fuel - 1) source'
+          if uninhabited then
+            pure True
+
+          else do
+            domain' <- force domain
+            uninhabitedConstrType context fuel domain'
+
+        _ ->
+          pure False

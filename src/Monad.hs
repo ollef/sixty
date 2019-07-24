@@ -41,3 +41,21 @@ runM r = do
   runReaderT (runExceptT r) State
     { nextVar = nextVarVar
     }
+
+allM :: Monad m => (a -> m Bool) -> [a] -> m Bool
+allM _ [] = return True
+allM p (x:xs) = do
+  b <- p x
+  if b then
+    allM p xs
+  else
+    return False
+
+anyM :: Monad m => (a -> m Bool) -> [a] -> m Bool
+anyM _ [] = return False
+anyM p (x:xs) = do
+  b <- p x
+  if b then
+    return True
+  else
+    anyM p xs

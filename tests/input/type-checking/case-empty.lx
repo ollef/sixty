@@ -1,0 +1,25 @@
+data Empty where
+
+absurd : Empty -> forall a. a
+absurd = \empty.
+  case empty of
+
+data Unit where
+  MkUnit : Unit
+
+absurd' : Unit -> forall a. a
+absurd' = \unit.
+  case unit of -- non-exhaustive patterns error expected
+
+data Nested where
+  MkNested : Empty -> Nested
+
+nestedAbsurd : Nested -> forall a. a
+nestedAbsurd = \nested.
+  case nested of
+
+nestedAbsurd' : Nested -> forall a. a
+nestedAbsurd' = \nested.
+  case nested of
+    MkNested empty ->
+      case empty of

@@ -28,6 +28,7 @@ data Elaboration
   | TypeMismatch
   | OccursCheck
   | UnsolvedMetaVariable !Meta.Index
+  | NonExhaustivePatterns
   deriving (Eq, Ord, Show, Generic, Hashable)
 
 data Spanned
@@ -72,6 +73,9 @@ pretty filePath span lineText err =
 
             UnsolvedMetaVariable _ ->
               "Unsolved meta variable"
+
+            NonExhaustivePatterns ->
+              "Non-exhaustive patterns"
 
     spannedLine =
       let
