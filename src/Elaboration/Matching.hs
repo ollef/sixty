@@ -15,7 +15,6 @@ import qualified Builtin
 import Context (Context)
 import qualified Context
 import qualified Data.IntSequence as IntSeq
-import Data.Some (Some(Some))
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Domain
@@ -82,7 +81,7 @@ elaborateCase context scrutinee scrutineeType branches expectedType =
       (context', var) <- Context.extendUnnamed context "scrutinee" $ Lazy $ pure scrutineeType
       let
         index =
-          Context.lookupVarIndex var context'
+          fromMaybe (panic "matching lookupVarIndex") $ Context.lookupVarIndex var context'
       term <- elaborateCase context' (Syntax.Var index) scrutineeType branches expectedType
       scrutineeType' <- Readback.readback (Context.toReadbackEnvironment context) scrutineeType
       pure $ Syntax.Let "scrutinee" scrutinee scrutineeType' term
@@ -113,7 +112,7 @@ elaborate context config = do
               panic "matching: no solution"
 
             Just sub -> do
-              Some context' <- Context.extendDefs context sub
+              context' <- Context.extendUnindexedDefs context sub
               mapM_ (checkForcedPattern context') matches
               result <- Elaboration.check context' (_rhs firstClause) (_targetType config)
               -- TODO escape check instead of coercion?
@@ -143,7 +142,7 @@ simplifyClause context clause = do
     concat <$> mapM (simplifyMatch context) (_matches clause)
   case maybeMatches of
     Nothing ->
-      return Nothing
+      pure Nothing
 
     Just matches' -> do
       maybeExpanded <- runMaybeT $ expandAnnotations context matches'
@@ -267,7 +266,7 @@ expandAnnotations context matches =
       maybeSub <- lift $ runMaybeT $ matchSubstitution context match
       case maybeSub of
         Just sub -> do
-          Some context' <- lift $ Context.extendDefs context sub
+          context' <- lift $ Context.extendUnindexedDefs context sub
           matches'' <- expandAnnotations context' matches'
           pure $ match : matches''
 
@@ -367,7 +366,9 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
                 Name.QualifiedConstructor typeName constr
             branchTele <- goConstrFields context qualifiedConstr conArgs constrType
             pure $ Syntax.Branch qualifiedConstr branchTele
-          pure $ Syntax.Case (Syntax.Var $ Context.lookupVarIndex scrutinee context) branches
+
+          scrutinee' <- Elaboration.readback context (Domain.var scrutinee)
+          pure $ Syntax.Case scrutinee' branches
 
         Domain.Telescope.Extend _ source plicity domainClosure -> do
           param <-

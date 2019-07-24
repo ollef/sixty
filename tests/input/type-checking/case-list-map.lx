@@ -1,0 +1,21 @@
+data List a where
+  Nil : List a
+  Cons : a -> List a -> List a
+
+map : forall a b. (a -> b) -> List a -> List b
+map = \f as.
+  case as of
+    Nil ->
+      Nil
+
+    Cons a as' ->
+      Cons (f a) (map f as')
+
+useScrutinee : forall a. List a -> List a
+useScrutinee = \as.
+  case as of
+    Nil ->
+      as
+
+    Cons a as' ->
+      as

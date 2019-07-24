@@ -493,11 +493,12 @@ inferName
   -> Lazy (Maybe Name.Qualified)
   -> M (Syntax.Term v, Domain.Type)
 inferName context name expectedTypeName =
-  case Context.lookupNameIndex name context of
-    Just i -> do
-      type_ <- force $ Context.lookupIndexType i context
+  case Context.lookupNameVar name context of
+    Just var -> do
+      term <- readback context (Domain.var var)
+      type_ <- force $ Context.lookupVarType var context
       pure
-        ( Syntax.Var i
+        ( term
         , type_
         )
 

@@ -15,7 +15,6 @@ import "this" Data.IntMap (IntMap)
 import qualified Builtin
 import Data.IntSequence (IntSeq)
 import qualified Data.IntSequence as IntSeq
-import Data.Some (Some(Some))
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Domain
@@ -156,19 +155,37 @@ extendDef context name value type_ = do
     , var
     )
 
-extendDefs
+extendUnindexedDef
+  :: Context v
+  -> Name
+  -> Lazy Domain.Value
+  -> Lazy Domain.Type
+  -> M (Context v, Var)
+extendUnindexedDef context name value type_ = do
+  var <- freshVar
+  pure
+    ( context
+      { nameVars = HashMap.insert name var $ nameVars context
+      , varNames = IntMap.insert var name $ varNames context
+      , values = IntMap.insert var value (values context)
+      , types = IntMap.insert var type_ (types context)
+      }
+    , var
+    )
+
+extendUnindexedDefs
   :: Context v
   -> Tsil (Name, Lazy Domain.Value, Lazy Domain.Type)
-  -> M (Some Context)
-extendDefs context defs =
+  -> M (Context v)
+extendUnindexedDefs context defs =
   case defs of
     Tsil.Empty ->
-      pure $ Some context
+      pure context
 
     defs' Tsil.:> (name, value, type_) -> do
-      Some context' <- extendDefs context defs'
-      (context'', _) <- extendDef context' name value type_
-      pure $ Some context''
+      context' <- extendUnindexedDefs context defs'
+      (context'', _) <- extendUnindexedDef context' name value type_
+      pure context''
 
 extendBefore :: Context v -> Var -> Name -> Lazy Domain.Type -> M (Context (Succ v), Var)
 extendBefore context beforeVar name type_ = do
@@ -196,16 +213,13 @@ define context var value =
     , boundVars = IntSeq.delete var $ boundVars context
     }
 
-lookupNameIndex :: Name.Pre -> Context v -> Maybe (Index v)
-lookupNameIndex (Name.Pre name) context = do
-  var <- HashMap.lookup (Name name) (nameVars context)
-  pure $ lookupVarIndex var context
+lookupNameVar :: Name.Pre -> Context v -> Maybe Var
+lookupNameVar (Name.Pre name) context = do
+  HashMap.lookup (Name name) (nameVars context)
 
-lookupVarIndex :: Var -> Context v -> Index v
+lookupVarIndex :: Var -> Context v -> Maybe (Index v)
 lookupVarIndex var context =
-  fromMaybe
-    (panic "Context.lookupVarIndex")
-    (Index.Map.elemIndex var (indices context))
+  Index.Map.elemIndex var (indices context)
 
 lookupVarName :: Var -> Context v -> Name
 lookupVarName var context =
