@@ -338,7 +338,6 @@ findConstructorMatches context matches =
               Just constr ->
                 pure $ Just (x, span, constr, type_)
 
-          -- TODO ambiguity errors?
           _ ->
             findConstructorMatches context matches'
 
