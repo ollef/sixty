@@ -57,6 +57,12 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [ ] Inductive families
 - [ ] Generalisation?
 - [ ] Glued evaluation
+- [ ] Literals
+  - [ ] Numbers
+  - [ ] Strings
+- [ ] Command-line parser
+- [ ] Language server
+- [ ] Integrate into Sixten
 
 ## Inspiration
 
