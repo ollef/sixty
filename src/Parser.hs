@@ -187,7 +187,7 @@ relativeTo :: Parser a -> Parser (Position.Absolute, a)
 relativeTo parser = do
   p <- position
   result <- local (\env -> env { basePosition = p }) parser
-  return (p, result)
+  pure (p, result)
 
 spanned :: Parser a -> Parser (Span.Relative, a)
 spanned parser = do

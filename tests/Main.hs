@@ -172,4 +172,4 @@ listDirectoryRecursive dir p = do
       listDirectoryRecursive path p
 
     else
-      return [path | p path]
+      pure [path | p path]

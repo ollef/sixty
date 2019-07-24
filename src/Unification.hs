@@ -455,7 +455,7 @@ pruneMeta context meta allowedArgs = do
                     source
               domain' <- force domain
               body <- go alloweds' context'' domain'
-              return $ Syntax.Lam "x" source'' Explicit body
+              pure $ Syntax.Lam "x" source'' Explicit body
 
             Domain.Pi name source plicity domainClosure -> do
               (context'', v) <-
@@ -477,6 +477,6 @@ pruneMeta context meta allowedArgs = do
                   (Context.toReadbackEnvironment context')
                   source'
               body <- go alloweds' context'' domain
-              return $ Syntax.Lam name source'' plicity body
+              pure $ Syntax.Lam name source'' plicity body
 
             _ -> panic "pruneMeta wrong type"
