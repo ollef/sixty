@@ -3,7 +3,7 @@
 {-# language PackageImports #-}
 module Domain.Showable where
 
-import Protolude hiding (Type, IntMap, force)
+import Protolude hiding (Type, IntMap, force, to)
 
 import "this" Data.IntMap (IntMap)
 import Data.Tsil (Tsil)
@@ -39,38 +39,38 @@ data Branches where
 
 deriving instance Show Branches
 
-go :: Domain.Value -> M Value
-go value =
+to :: Domain.Value -> M Value
+to value =
   case value of
     Domain.Neutral hd spine ->
-      Neutral hd <$> mapM (mapM goForce) spine
+      Neutral hd <$> mapM (mapM lazyTo) spine
 
     Domain.Lam name type_ plicity closure ->
-      Lam name <$> goForce type_ <*> pure plicity <*> goClosure closure
+      Lam name <$> lazyTo type_ <*> pure plicity <*> closureTo closure
 
     Domain.Pi name type_ plicity closure ->
-      Pi name <$> goForce type_ <*> pure plicity <*> goClosure closure
+      Pi name <$> lazyTo type_ <*> pure plicity <*> closureTo closure
 
     Domain.Fun source domain ->
-      Fun <$> goForce source <*> goForce domain
+      Fun <$> lazyTo source <*> lazyTo domain
 
     Domain.Case scrutinee branches ->
-      Case <$> go scrutinee <*> goBranches branches
+      Case <$> to scrutinee <*> branchesTo branches
 
-goForce :: Lazy Domain.Value -> M Value
-goForce = go <=< force
+lazyTo :: Lazy Domain.Value -> M Value
+lazyTo = to <=< force
 
-goClosure :: Domain.Closure -> M Closure
-goClosure (Domain.Closure env term) =
-  flip Closure term <$> goEnv env
+closureTo :: Domain.Closure -> M Closure
+closureTo (Domain.Closure env term) =
+  flip Closure term <$> environmentTo env
 
-goBranches :: Domain.Branches -> M Branches
-goBranches (Domain.Branches env branches) =
-  flip Branches branches <$> goEnv env
+branchesTo :: Domain.Branches -> M Branches
+branchesTo (Domain.Branches env branches) =
+  flip Branches branches <$> environmentTo env
 
-goEnv :: Domain.Environment v -> M (Environment v)
-goEnv env = do
-  values' <- mapM goForce $ Domain.values env
+environmentTo :: Domain.Environment v -> M (Environment v)
+environmentTo env = do
+  values' <- mapM lazyTo $ Domain.values env
   pure $ Environment
     { scopeKey = Domain.scopeKey env
     , indices = Domain.indices env
