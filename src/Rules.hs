@@ -216,7 +216,7 @@ rules (Writer query) =
 
           Error.Elaboration keyedName (Error.Spanned relativeSpan _) -> do
             (file, Span.Absolute absolutePosition _) <- fetch $ KeyedNameSpan keyedName
-            pure (file, Span.add absolutePosition relativeSpan)
+            pure (file, Span.absoluteFrom absolutePosition relativeSpan)
 
     KeyedNameSpan (Scope.KeyedName key (Name.Qualified module_ name@(Name textName))) ->
       noError $ do

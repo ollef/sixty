@@ -23,9 +23,13 @@ relativeTo :: Position.Absolute -> Span.Absolute -> Span.Relative
 relativeTo base (Span.Absolute start end) =
   Span.Relative (Position.relativeTo base start) (Position.relativeTo base end)
 
-add :: Position.Absolute -> Span.Relative -> Span.Absolute
-add base (Span.Relative start end) =
+absoluteFrom :: Position.Absolute -> Span.Relative -> Span.Absolute
+absoluteFrom base (Span.Relative start end) =
   Span.Absolute (Position.add base start) (Position.add base end)
+
+add :: Relative -> Relative -> Relative
+add (Span.Relative start _) (Span.Relative _ end) =
+  Span.Relative start end
 
 data LineColumn = LineColumns !Position.LineColumn !Position.LineColumn
   deriving Show

@@ -46,12 +46,12 @@ data UnspannedPattern
   deriving (Show, Generic, Hashable)
 
 app :: Term -> Term -> Term
-app fun@(Term (Span.Relative start _) _) arg@(Term (Span.Relative _ end) _) =
-  Term (Span.Relative start end) $ App fun Explicit arg
+app fun@(Term span1 _) arg@(Term span2 _) =
+  Term (Span.add span1 span2) $ App fun Explicit arg
 
 apps :: Foldable f => Term -> f Term -> Term
-apps fun@(Term (Span.Relative start _) _) =
-  foldl (\fun' arg@(Term (Span.Relative _ end) _) -> Term (Span.Relative start end) $ App fun' Explicit arg) fun
+apps fun@(Term funSpan _) =
+  foldl (\fun' arg@(Term argSpan _) -> Term (Span.add funSpan argSpan) $ App fun' Explicit arg) fun
 
 lams :: Foldable f => f (Position.Relative, Name.Name) -> Term -> Term
 lams vs body@(Term (Span.Relative _ end) _) =
@@ -62,12 +62,12 @@ pis plicity vs source domain@(Term (Span.Relative _ end) _) =
   foldr (\(start, v) -> Term (Span.Relative start end) . Pi v plicity source) domain vs
 
 function :: Term -> Term -> Term
-function source@(Term (Span.Relative start _) _) domain@(Term (Span.Relative _ end) _) =
-  Term (Span.Relative start end) $ Fun source domain
+function source@(Term span1 _) domain@(Term span2 _) =
+  Term (Span.add span1 span2) $ Fun source domain
 
 anno :: Pattern -> Type -> Pattern
-anno pat@(Pattern (Span.Relative start _) _) type_@(Term (Span.Relative _ end) _) =
-  Pattern (Span.Relative start end) (Anno pat type_)
+anno pat@(Pattern span1 _) type_@(Term span2 _) =
+  Pattern (Span.add span1 span2) (Anno pat type_)
 
 data Definition
   = TypeDeclaration !Type
