@@ -214,7 +214,7 @@ define context var value =
     }
 
 lookupNameVar :: Name.Pre -> Context v -> Maybe Var
-lookupNameVar (Name.Pre name) context = do
+lookupNameVar (Name.Pre name) context =
   HashMap.lookup (Name name) (nameVars context)
 
 lookupVarIndex :: Var -> Context v -> Maybe (Index v)
