@@ -278,16 +278,9 @@ checkUnspanned context term expectedType = do
       Matching.elaborateCase context scrutinee' scrutineeType branches expectedType
 
     (Presyntax.Lam name body, Domain.Pi _ source Explicit domainClosure) -> do
-      source' <- force source
-      source'' <- readback context source'
-      (context', var) <- Context.extend context name source
-
-      domain <-
-        Evaluation.evaluateClosure
-          domainClosure
-          (Lazy $ pure $ Domain.var var)
+      (context', source', domain) <- checkLambda context name source domainClosure
       body' <- check context' body domain
-      pure $ Syntax.Lam name source'' Explicit body'
+      pure $ Syntax.Lam name source' Explicit body'
 
     (Presyntax.Lam name body, Domain.Fun source domain) -> do
       source' <- force source
@@ -304,16 +297,9 @@ checkUnspanned context term expectedType = do
 
     (Presyntax.ImplicitLams names body, Domain.Pi name source Implicit domainClosure)
       | name `HashMap.member` names -> do
-        source' <- force source
-        source'' <- readback context source'
-        (context', var) <- Context.extend context name source
-
-        domain <-
-          Evaluation.evaluateClosure
-            domainClosure
-            (Lazy $ pure $ Domain.var var)
+        (context', source', domain) <- checkLambda context name source domainClosure
         body' <- checkUnspanned context' (Presyntax.ImplicitLams (HashMap.delete name names) body) domain
-        pure $ Syntax.Lam name source'' Implicit body'
+        pure $ Syntax.Lam name source' Implicit body'
 
     (_, Domain.Pi name source Implicit domainClosure) -> do
       (context', v) <- Context.extend context name source
@@ -593,6 +579,22 @@ inferName context name expectedTypeName =
         ( Syntax.App (Syntax.Global Builtin.fail) Explicit type'
         , type_
         )
+
+checkLambda
+  :: Context v
+  -> Name
+  -> Lazy Domain.Type
+  -> Domain.Closure
+  -> M (Context (Succ v), Syntax.Term v, Domain.Type)
+checkLambda context name source domainClosure = do
+  (context', var) <- Context.extend context name source
+  source' <- force source
+  source'' <- readback context source'
+  domain <-
+    Evaluation.evaluateClosure
+      domainClosure
+      (Lazy $ pure $ Domain.var var)
+  pure (context', source'', domain)
 
 elaborateLet
   :: Context v
