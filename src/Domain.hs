@@ -81,9 +81,8 @@ empty key =
 extend
   :: Environment v
   -> M (Environment (Succ v))
-extend env = do
-  v <- freshVar
-  pure $ extendVar env v
+extend env =
+  extendVar env <$> freshVar
 
 extendVar
   :: Environment v
