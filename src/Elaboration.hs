@@ -316,10 +316,7 @@ checkUnspanned context term expectedType = do
 
       case functionType' of
         Domain.Pi _ source Explicit domainClosure -> do
-          source' <- force source
-          argument' <- check context argument source'
-          argument'' <- lazy $ evaluate context argument'
-          domain <- Evaluation.evaluateClosure domainClosure argument''
+          (argument', domain) <- checkApplication context argument source domainClosure
           f <- Unification.tryUnify context domain expectedType'
           pure $ f $ Syntax.App function' Explicit argument'
 
@@ -435,10 +432,7 @@ inferUnspanned context term until expectedTypeName =
 
         case functionType' of
           Domain.Pi _ source Explicit domainClosure -> do
-            source' <- force source
-            argument' <- check context argument source'
-            argument'' <- lazy $ evaluate context argument'
-            domain <- Evaluation.evaluateClosure domainClosure argument''
+            (argument', domain) <- checkApplication context argument source domainClosure
             pure
               ( Syntax.App function' Explicit argument'
               , domain
@@ -595,6 +589,19 @@ checkLambda context name source domainClosure = do
       domainClosure
       (Lazy $ pure $ Domain.var var)
   pure (context', source'', domain)
+
+checkApplication
+  :: Context v
+  -> Presyntax.Term
+  -> Lazy Domain.Type
+  -> Domain.Closure
+  -> M (Syntax.Term v, Domain.Value)
+checkApplication context argument source domainClosure = do
+  source' <- force source
+  argument' <- check context argument source'
+  argument'' <- lazy $ evaluate context argument'
+  domain <- Evaluation.evaluateClosure domainClosure argument''
+  pure (argument', domain)
 
 elaborateLet
   :: Context v
