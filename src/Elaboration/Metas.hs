@@ -546,7 +546,7 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
       inline2 (flip (Lam name var) plicity) type_ body
 
     App function plicity argument ->
-      inline2 (flip app plicity) function argument
+      inline2 (`app` plicity) function argument
 
     Case scrutinee branches -> do
       let
