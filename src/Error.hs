@@ -5,12 +5,14 @@ module Error where
 
 import Protolude
 
+import Data.HashMap.Lazy (HashMap)
 import Data.HashSet (HashSet)
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc as Doc
 import qualified Data.Text.Unsafe as Text
 
 import qualified Meta
+import Name (Name)
 import qualified Name
 import Plicity
 import qualified Position
@@ -32,6 +34,8 @@ data Elaboration
   | NonExhaustivePatterns
   | OverlappingPatterns
   | PlicityMismatch !PlicityMismatch
+  | UnableToInferImplicitLambda (HashMap Name ())
+  | ImplicitApplicationMismatch (HashMap Name ())
   deriving (Eq, Ord, Show, Generic, Hashable)
 
 data PlicityMismatch
@@ -102,6 +106,12 @@ pretty filePath span lineText err =
 
                 Extra ->
                   "Unexpected field"
+
+            UnableToInferImplicitLambda _ ->
+              "Unable to infer implicit lambda"
+
+            ImplicitApplicationMismatch _ ->
+              "Unable to match implicit argument with type"
 
     spannedLine =
       let

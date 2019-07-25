@@ -10,3 +10,10 @@ i = f @{X = Type} Type Type
 j = f @{Y = Type} Type
 
 k = f @{} Type Type
+
+the : (A : Type) -> A -> A
+the = \A a. a
+
+l : Type
+l =
+  the (Type -> Type -> Type) f @{Z = Type, W = Type} -- implicit application mismatch error expected

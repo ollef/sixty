@@ -17,4 +17,10 @@ the : (A : Type) -> A -> A
 the = \A a. a
 
 k = \@{X}. the Type X
+
 l = \@{}. Type
+
+m : Type
+m =
+  \@{x, y}. -- unable to infer implicit lambda error expected
+    x

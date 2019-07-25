@@ -402,8 +402,9 @@ inferUnspanned context term until expectedTypeName =
         [(name, ())] ->
           inferLambda context name Implicit body
 
-        _ ->
-          panic "TODO error message"
+        _ -> do
+          Context.report context $ Error.UnableToInferImplicitLambda argumentNames
+          inferenceFailed context
 
     Presyntax.App function argument ->
       insertMetasM context until $ do
@@ -452,7 +453,7 @@ inferUnspanned context term until expectedTypeName =
               pure (function', functionType)
 
             | otherwise = do
-              (function'', functionType') <- insertMetas context (InsertUntilImplicit arguments) function' functionType
+              (function'', functionType') <- insertMetas context (InsertUntilImplicit arguments') function' functionType
               case functionType' of
                 Domain.Pi name source Implicit domainClosure
                   | name `HashMap.member` arguments' -> do
@@ -478,7 +479,9 @@ inferUnspanned context term until expectedTypeName =
                     argument' <- check context argument source
                     pure (Syntax.App (f function'') Implicit argument', domain)
 
-                _ -> panic "TODO error message"
+                _ -> do
+                  Context.report context $ Error.ImplicitApplicationMismatch $ void arguments'
+                  inferenceFailed context
 
     Presyntax.Case scrutinee branches -> do
       (scrutinee', scrutineeType) <-
@@ -518,7 +521,7 @@ inferName context name expectedTypeName =
       case maybeScopeEntry of
         Nothing -> do
           Context.report context $ Error.NotInScope name
-          fail
+          inferenceFailed context
 
         Just (Scope.Name qualifiedName) -> do
           type_ <- fetch $ Query.ElaboratedType qualifiedName
@@ -532,7 +535,7 @@ inferName context name expectedTypeName =
           maybeConstr <- resolveConstructor context name candidates expectedTypeName
           case maybeConstr of
             Nothing ->
-              fail
+              inferenceFailed context
 
             Just constr -> do
               type_ <- fetch $ Query.ConstructorType constr
@@ -544,15 +547,16 @@ inferName context name expectedTypeName =
 
         Just (Scope.Ambiguous constrCandidates nameCandidates) -> do
           Context.report context $ Error.Ambiguous name constrCandidates nameCandidates
-          fail
-  where
-    fail = do
-      type_ <- Context.newMetaType context
-      type' <- readback context type_
-      pure
-        ( Syntax.App (Syntax.Global Builtin.fail) Explicit type'
-        , type_
-        )
+          inferenceFailed context
+
+inferenceFailed :: Context v -> M (Syntax.Term v, Domain.Type)
+inferenceFailed context = do
+  type_ <- Context.newMetaType context
+  type' <- readback context type_
+  pure
+    ( Syntax.App (Syntax.Global Builtin.fail) Explicit type'
+    , type_
+    )
 
 checkLambda
   :: Context v

@@ -100,6 +100,8 @@ data ExpectedError
   | NonExhaustivePatterns
   | OverlappingPatterns
   | PlicityMismatch
+  | UnableToInferImplicitLambda
+  | ImplicitApplicationMismatch
   deriving (Eq, Show)
 
 errorToExpectedError :: Error -> ExpectedError
@@ -136,6 +138,12 @@ errorToExpectedError err =
 
         Error.PlicityMismatch {} ->
           PlicityMismatch
+
+        Error.UnableToInferImplicitLambda {} ->
+          UnableToInferImplicitLambda
+
+        Error.ImplicitApplicationMismatch {} ->
+          ImplicitApplicationMismatch
 
 expectedErrorsFromSource
   :: Text
@@ -176,6 +184,12 @@ expectedErrorsFromSource sourceText =
 
             "plicity mismatch error expected" ->
               [(lineNumber, PlicityMismatch)]
+
+            "unable to infer implicit lambda error expected" ->
+              [(lineNumber, UnableToInferImplicitLambda)]
+
+            "implicit application mismatch error expected" ->
+              [(lineNumber, ImplicitApplicationMismatch)]
 
             _ ->
               mempty
