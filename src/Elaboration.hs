@@ -313,7 +313,7 @@ checkUnspanned context term expectedType = do
             domainClosure
             (Lazy $ pure $ Domain.var var)
         body' <- checkUnspanned context' (Presyntax.ImplicitLams (HashMap.delete name names) body) domain
-        pure $ Syntax.Lam name source'' Explicit body'
+        pure $ Syntax.Lam name source'' Implicit body'
 
     (_, Domain.Pi name source Implicit domainClosure) -> do
       (context', v) <- Context.extend context name source
