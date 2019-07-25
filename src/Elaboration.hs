@@ -25,6 +25,7 @@ import qualified Elaboration.Metas as Metas
 import Error (Error)
 import qualified Error
 import qualified Evaluation
+import Index
 import qualified Inlining
 import qualified Meta
 import Monad
@@ -266,15 +267,10 @@ checkUnspanned
 checkUnspanned context term expectedType = do
   expectedType' <- Context.forceHead context expectedType
   case (term, expectedType') of
-    (Presyntax.Let name term' body, _) -> do
-      (term'', type_) <- infer context term' InsertUntilExplicit $ Lazy $ pure Nothing
-      type' <- readback context type_
-
-      term''' <- lazy $ evaluate context term''
-      (context', _) <- Context.extendDef context name term''' $ Lazy $ pure type_
-
-      body' <- check context' body expectedType'
-      pure $ Syntax.Let name term'' type' body'
+    (Presyntax.Let name term' body, _) ->
+      elaborateLet context name term' $ \context' term'' type_ -> do
+        body' <- check context' body expectedType'
+        pure $ Syntax.Let name term'' type_ body'
 
     (Presyntax.Case scrutinee branches, _) -> do
       (scrutinee', scrutineeType) <-
@@ -387,18 +383,10 @@ inferUnspanned context term until expectedTypeName =
       insertMetasM context until $
         inferName context name expectedTypeName
 
-    Presyntax.Let name term' body -> do
-      (term'', type_) <- infer context term' InsertUntilExplicit $ Lazy $ pure Nothing
-      type' <- readback context type_
-
-      term''' <- lazy $ evaluate context term''
-      (context', _) <- Context.extendDef context name term''' $ Lazy $ pure type_
-
-      (body', bodyType) <- infer context' body until expectedTypeName
-      pure
-        ( Syntax.Let name term'' type' body'
-        , bodyType
-        )
+    Presyntax.Let name term' body ->
+      elaborateLet context name term' $ \context' term'' type_ -> do
+        (body', bodyType) <- infer context' body until expectedTypeName
+        pure (Syntax.Let name term'' type_ body', bodyType)
 
     Presyntax.Pi name plicity source domain -> do
       source' <- check context source Builtin.type_
@@ -605,6 +593,19 @@ inferName context name expectedTypeName =
         ( Syntax.App (Syntax.Global Builtin.fail) Explicit type'
         , type_
         )
+
+elaborateLet
+  :: Context v
+  -> Name
+  -> Presyntax.Term
+  -> (Context (Succ v) -> Syntax.Term v -> Syntax.Type v -> M k)
+  -> M k
+elaborateLet context name term k = do
+  (term', type_) <- infer context term InsertUntilExplicit $ Lazy $ pure Nothing
+  type' <- readback context type_
+  term'' <- lazy $ evaluate context term'
+  (context', _) <- Context.extendDef context name term'' $ Lazy $ pure type_
+  k context' term' type'
 
 resolveConstructor
   :: Context v
