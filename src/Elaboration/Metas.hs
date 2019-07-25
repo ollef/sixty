@@ -348,7 +348,7 @@ readback env metas (Value value _) =
     App function plicity argument ->
       Syntax.App (readback env metas function) plicity (readback env metas argument)
 
-    Case scrutinee branches -> do
+    Case scrutinee branches ->
       Syntax.Case
         (readback env metas scrutinee)
         (map (readbackBranch env metas) branches)
