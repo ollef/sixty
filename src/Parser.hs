@@ -7,6 +7,8 @@ import Prelude (String)
 import Protolude hiding (try)
 
 import Data.Char
+import Data.HashMap.Lazy (HashMap)
+import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.Set as Set
@@ -131,6 +133,7 @@ manyIndented p =
 sepByIndented :: Parser a -> Parser sep -> Parser [a]
 sepByIndented p sep =
   (:) <$> p <*> manyIndented (sep *>% p)
+  <|> pure []
 
 -- * Applicative style combinators for checking that the second argument parser
 --   is on the same line or indented compared to the anchor.
@@ -325,7 +328,7 @@ atomicTerm =
       <|> Let <$ reserved "let" <*>% name <*% symbol "=" <*>% term <*% reserved "in" <*>% term
       <|> Case <$ reserved "case" <*>% term <*% reserved "of" <*> blockOfMany branch
       <|> unspanned <$>
-        ( lams <$ symbol "\\" <*> someIndented (positioned name) <*% symbol "." <*>% term
+        ( lams <$ symbol "\\" <*> someIndented lamName <*% symbol "." <*>% term
         <|> implicitPis <$ reserved "forall" <*>
           someIndented
             ( (,) <$ symbol "(" <*> someIndented (positioned name) <*% symbol ":" <*>% term <*% symbol ")"
@@ -338,14 +341,28 @@ atomicTerm =
     implicitPis vss domain =
       foldr (\(vs, source) domain' -> pis Implicit vs source domain') domain vss
 
+    lamName =
+      positioned $
+        Right <$> name <|> Left <$> implicitNames
+
+    implicitNames =
+      HashSet.toMap . HashSet.fromList <$ symbol "@{" <*>% sepByIndented name (symbol ",") <*% symbol "}"
+
     branch :: Parser (Pattern, Term)
     branch =
       (,) <$> pattern <*% symbol "->" <*>% term
 
+plicitAtomicTerm :: Parser (Either (HashMap Name Term) Term)
+plicitAtomicTerm =
+  Left . HashMap.fromList <$ symbol "@{" <*>%
+    sepByIndented ((,) <$> name <*% symbol "=" <*>% term) (symbol ",") <*%
+    symbol "}"
+  <|> Right <$> atomicTerm
+
 term :: Parser Term
 term =
   spannedTerm (unspanned <$> (pis Explicit <$> try (symbol "(" *> someIndented (positioned name) <*% symbol ":") <*>% term <*% symbol ")" <*% symbol "->" <*>% term))
-  <|> apps <$> atomicTerm <*> manyIndented atomicTerm <**> fun
+  <|> apps <$> atomicTerm <*> manyIndented (spanned plicitAtomicTerm) <**> fun
   <?> "term"
   where
     fun =

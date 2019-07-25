@@ -7,6 +7,8 @@ module Elaboration where
 
 import Protolude hiding (Seq, force, check, evaluate, until)
 
+import Data.HashMap.Lazy (HashMap)
+import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import Data.IORef
@@ -40,7 +42,9 @@ import qualified Syntax.Telescope as Telescope
 import qualified Unification
 import Var (Var)
 
-newtype InstantiateUntil = InstantiateUntil Plicity
+data InsertUntil where
+  InsertUntilExplicit :: InsertUntil
+  InsertUntilImplicit :: HashMap Name a -> InsertUntil
 
 ---------------------------------------------------------------------------------
 
@@ -111,7 +115,7 @@ inferDefinition context def =
       pure (Syntax.TypeDeclaration type', Builtin.type_)
 
     Presyntax.ConstantDefinition term -> do
-      (term', type_) <- infer context term (InstantiateUntil Explicit) $ Lazy $ pure Nothing
+      (term', type_) <- infer context term InsertUntilExplicit $ Lazy $ pure Nothing
       pure (Syntax.ConstantDefinition term', type_)
 
     Presyntax.DataDefinition params constrs -> do
@@ -247,7 +251,7 @@ check context (Presyntax.Term span term) =
 infer
   :: Context v
   -> Presyntax.Term
-  -> InstantiateUntil
+  -> InsertUntil
   -> Lazy (Maybe Name.Qualified)
   -> M (Syntax.Term v, Domain.Type)
 infer context (Presyntax.Term span term) =
@@ -263,7 +267,7 @@ checkUnspanned context term expectedType = do
   expectedType' <- Context.forceHead context expectedType
   case (term, expectedType') of
     (Presyntax.Let name term' body, _) -> do
-      (term'', type_) <- infer context term' (InstantiateUntil Explicit) $ Lazy $ pure Nothing
+      (term'', type_) <- infer context term' InsertUntilExplicit $ Lazy $ pure Nothing
       type' <- readback context type_
 
       term''' <- lazy $ evaluate context term''
@@ -274,11 +278,36 @@ checkUnspanned context term expectedType = do
 
     (Presyntax.Case scrutinee branches, _) -> do
       (scrutinee', scrutineeType) <-
-        infer context scrutinee (InstantiateUntil Explicit) $ Lazy $ pure Nothing
+        infer context scrutinee InsertUntilExplicit $ Lazy $ pure Nothing
       Matching.elaborateCase context scrutinee' scrutineeType branches expectedType
 
-    (Presyntax.Lam name plicity body, Domain.Pi _ source typePlicity domainClosure)
-      | plicity == typePlicity -> do
+    (Presyntax.Lam name body, Domain.Pi _ source Explicit domainClosure) -> do
+      source' <- force source
+      source'' <- readback context source'
+      (context', var) <- Context.extend context name source
+
+      domain <-
+        Evaluation.evaluateClosure
+          domainClosure
+          (Lazy $ pure $ Domain.var var)
+      body' <- check context' body domain
+      pure $ Syntax.Lam name source'' Explicit body'
+
+    (Presyntax.Lam name body, Domain.Fun source domain) -> do
+      source' <- force source
+      source'' <- readback context source'
+      (context', _) <- Context.extend context name source
+
+      domain' <- force domain
+      body' <- check context' body domain'
+      pure $ Syntax.Lam name source'' Explicit body'
+
+    (Presyntax.ImplicitLams names body, _)
+      | HashMap.null names ->
+        check context body expectedType
+
+    (Presyntax.ImplicitLams names body, Domain.Pi name source Implicit domainClosure)
+      | name `HashMap.member` names -> do
         source' <- force source
         source'' <- readback context source'
         (context', var) <- Context.extend context name source
@@ -287,17 +316,8 @@ checkUnspanned context term expectedType = do
           Evaluation.evaluateClosure
             domainClosure
             (Lazy $ pure $ Domain.var var)
-        body' <- check context' body domain
-        pure $ Syntax.Lam name source'' plicity body'
-
-    (Presyntax.Lam name Explicit body, Domain.Fun source domain) -> do
-      source' <- force source
-      source'' <- readback context source'
-      (context', _) <- Context.extend context name source
-
-      domain' <- force domain
-      body' <- check context' body domain'
-      pure $ Syntax.Lam name source'' Explicit body'
+        body' <- checkUnspanned context' (Presyntax.ImplicitLams (HashMap.delete name names) body) domain
+        pure $ Syntax.Lam name source'' Explicit body'
 
     (_, Domain.Pi name source Implicit domainClosure) -> do
       (context', v) <- Context.extend context name source
@@ -307,46 +327,39 @@ checkUnspanned context term expectedType = do
       term' <- checkUnspanned context' term domain
       pure $ Syntax.Lam name source'' Implicit term'
 
-    (Presyntax.App function plicity argument, _) -> do
+    (Presyntax.App function argument, _) -> do
       expectedTypeName <- lazy $ getExpectedTypeName context expectedType'
-      (function', functionType) <- infer context function (InstantiateUntil plicity) expectedTypeName
+      (function', functionType) <- infer context function InsertUntilExplicit expectedTypeName
       functionType' <- Context.forceHead context functionType
 
       case functionType' of
-        Domain.Pi _ source typePlicity domainClosure
-          | plicity == typePlicity -> do
-            source' <- force source
-            argument' <- check context argument source'
-            argument'' <- lazy $ evaluate context argument'
-            domain <- Evaluation.evaluateClosure domainClosure argument''
-            f <- Unification.tryUnify context domain expectedType'
-            pure $ f $ Syntax.App function' plicity argument'
+        Domain.Pi _ source Explicit domainClosure -> do
+          source' <- force source
+          argument' <- check context argument source'
+          argument'' <- lazy $ evaluate context argument'
+          domain <- Evaluation.evaluateClosure domainClosure argument''
+          f <- Unification.tryUnify context domain expectedType'
+          pure $ f $ Syntax.App function' Explicit argument'
 
-        Domain.Fun source domain
-          | plicity == Explicit -> do
-            source' <- force source
-            domain' <- force domain
-            f <- Unification.tryUnify context domain' expectedType'
-            argument' <- check context argument source'
-            pure $ f $ Syntax.App function' plicity argument'
+        Domain.Fun source domain -> do
+          source' <- force source
+          domain' <- force domain
+          f <- Unification.tryUnify context domain' expectedType'
+          argument' <- check context argument source'
+          pure $ f $ Syntax.App function' Explicit argument'
 
         _ -> do
           source <- Context.newMetaType context
-          metaFunctionType <-
-            case plicity of
-              Explicit ->
-                pure $ Domain.Fun (Lazy $ pure source) (Lazy $ pure expectedType')
-
-              Implicit -> do
-                (context', _) <- Context.extend context "x" $ Lazy $ pure source
-                expectedType'' <- readback context' expectedType'
-                pure $
-                  Domain.Pi "x" (Lazy $ pure source) Implicit $
-                  Domain.Closure (Context.toEvaluationEnvironment context) expectedType''
-
+          let
+            metaFunctionType =
+              Domain.Fun (Lazy $ pure source) (Lazy $ pure expectedType')
           f <- Unification.tryUnify context functionType' metaFunctionType
           argument' <- check context argument source
-          pure $ Syntax.App (f function') plicity argument'
+          pure $ Syntax.App (f function') Explicit argument'
+
+    (Presyntax.ImplicitApps function arguments, _)
+      | HashMap.null arguments ->
+        check context function expectedType'
 
     (Presyntax.Wildcard, _) -> do
       term' <- Context.newMeta expectedType' context
@@ -358,24 +371,24 @@ checkUnspanned context term expectedType = do
 
     _ -> do
       expectedTypeName <- lazy $ getExpectedTypeName context expectedType'
-      (term', type_) <- inferUnspanned context term (InstantiateUntil Explicit) expectedTypeName
+      (term', type_) <- inferUnspanned context term InsertUntilExplicit expectedTypeName
       f <- Unification.tryUnify context type_ expectedType'
       pure $ f term'
 
 inferUnspanned
   :: Context v
   -> Presyntax.UnspannedTerm
-  -> InstantiateUntil
+  -> InsertUntil
   -> Lazy (Maybe Name.Qualified)
   -> M (Syntax.Term v, Domain.Type)
 inferUnspanned context term until expectedTypeName =
   case term of
     Presyntax.Var name ->
-      insertMetasForImplicitsM context $
+      insertMetasM context until $
         inferName context name expectedTypeName
 
     Presyntax.Let name term' body -> do
-      (term'', type_) <- infer context term' (InstantiateUntil Explicit) $ Lazy $ pure Nothing
+      (term'', type_) <- infer context term' InsertUntilExplicit $ Lazy $ pure Nothing
       type' <- readback context type_
 
       term''' <- lazy $ evaluate context term''
@@ -407,72 +420,121 @@ inferUnspanned context term until expectedTypeName =
         , Builtin.type_
         )
 
-    Presyntax.Lam name plicity body ->
-      insertMetasForImplicitsM context $ do
-        source <- Context.newMetaType context
-        source' <- readback context source
-        (context', _) <- Context.extend context name $ Lazy $ pure source
-        (body', domain) <- infer context' body (InstantiateUntil Explicit) $ Lazy $ pure Nothing
-        domain' <- readback context' domain
+    Presyntax.Lam name body -> do
+      source <- Context.newMetaType context
+      source' <- readback context source
+      (context', _) <- Context.extend context name $ Lazy $ pure source
+      (body', domain) <- infer context' body InsertUntilExplicit $ Lazy $ pure Nothing
+      domain' <- readback context' domain
 
-        pure
-          ( Syntax.Lam name source' plicity body'
-          , Domain.Pi name (Lazy $ pure source) plicity
-            $ Domain.Closure (Context.toEvaluationEnvironment context) domain'
-          )
+      pure
+        ( Syntax.Lam name source' Explicit body'
+        , Domain.Pi name (Lazy $ pure source) Explicit
+          $ Domain.Closure (Context.toEvaluationEnvironment context) domain'
+        )
 
-    Presyntax.App function plicity argument ->
-      insertMetasForImplicitsM context $ do
-        (function', functionType) <- infer context function (InstantiateUntil plicity) expectedTypeName
+    Presyntax.ImplicitLams argumentNames body ->
+      case HashMap.toList argumentNames of
+        [] ->
+          infer context body until expectedTypeName
+
+        [(name, ())] -> do
+          source <- Context.newMetaType context
+          source' <- readback context source
+          (context', _) <- Context.extend context name $ Lazy $ pure source
+          (body', domain) <- infer context' body InsertUntilExplicit $ Lazy $ pure Nothing
+          domain' <- readback context' domain
+
+          pure
+            ( Syntax.Lam name source' Implicit body'
+            , Domain.Pi name (Lazy $ pure source) Implicit
+              $ Domain.Closure (Context.toEvaluationEnvironment context) domain'
+            )
+
+        _ ->
+          panic "TODO error message"
+
+    Presyntax.App function argument ->
+      insertMetasM context until $ do
+        (function', functionType) <- infer context function InsertUntilExplicit expectedTypeName
         functionType' <- Context.forceHead context functionType
 
         case functionType' of
-          Domain.Pi _ source typePlicity domainClosure
-            | plicity == typePlicity -> do
-              source' <- force source
-              argument' <- check context argument source'
-              argument'' <- lazy $ evaluate context argument'
-              domain <- Evaluation.evaluateClosure domainClosure argument''
-              pure
-                ( Syntax.App function' plicity argument'
-                , domain
-                )
+          Domain.Pi _ source Explicit domainClosure -> do
+            source' <- force source
+            argument' <- check context argument source'
+            argument'' <- lazy $ evaluate context argument'
+            domain <- Evaluation.evaluateClosure domainClosure argument''
+            pure
+              ( Syntax.App function' Explicit argument'
+              , domain
+              )
 
-          Domain.Fun source domain
-            | plicity == Explicit -> do
-              source' <- force source
-              argument' <- check context argument source'
-              domain' <- force domain
-              pure
-                ( Syntax.App function' plicity argument'
-                , domain'
-                )
+          Domain.Fun source domain -> do
+            source' <- force source
+            argument' <- check context argument source'
+            domain' <- force domain
+            pure
+              ( Syntax.App function' Explicit argument'
+              , domain'
+              )
 
           _ -> do
             source <- Context.newMetaType context
             domain <- Context.newMetaType context
-            metaFunctionType <-
-              case plicity of
-                Explicit ->
-                  pure $ Domain.Fun (Lazy $ pure source) (Lazy $ pure domain)
-
-                Implicit -> do
-                  (context', _) <- Context.extend context "x" $ Lazy $ pure source
-                  domain' <- readback context' domain
-                  pure $
-                    Domain.Pi "x" (Lazy $ pure source) Implicit $
-                    Domain.Closure (Context.toEvaluationEnvironment context) domain'
+            let
+              metaFunctionType =
+                Domain.Fun (Lazy $ pure source) (Lazy $ pure domain)
 
             f <- Unification.tryUnify context functionType' metaFunctionType
             argument' <- check context argument source
             pure
-              ( Syntax.App (f function') plicity argument'
+              ( Syntax.App (f function') Explicit argument'
               , domain
               )
 
+    Presyntax.ImplicitApps function arguments ->
+      insertMetasM context until $ do
+        (function', functionType) <- infer context function (InsertUntilImplicit arguments) expectedTypeName
+        go function' arguments functionType
+
+        where
+          go function' arguments' functionType
+            | HashMap.null arguments' =
+              pure (function', functionType)
+
+            | otherwise = do
+              (function'', functionType') <- insertMetas context (InsertUntilImplicit arguments) function' functionType
+              case functionType' of
+                Domain.Pi name source Implicit domainClosure
+                  | name `HashMap.member` arguments' -> do
+                    source' <- force source
+                    argument' <- check context (arguments' HashMap.! name) source'
+                    argument'' <- lazy $ evaluate context argument'
+                    domain <- Evaluation.evaluateClosure domainClosure argument''
+                    go
+                      (Syntax.App function'' Implicit argument')
+                      (HashMap.delete name arguments')
+                      domain
+                _
+                  | [(name, argument)] <- HashMap.toList arguments' -> do
+                    source <- Context.newMetaType context
+                    domain <- Context.newMetaType context
+                    (context', _) <- Context.extend context name $ Lazy $ pure source
+                    domain' <- readback context' domain
+                    let
+                      metaFunctionType =
+                        Domain.Pi name (Lazy $ pure source) Implicit $
+                        Domain.Closure (Context.toEvaluationEnvironment context) domain'
+                    f <- Unification.tryUnify context functionType' metaFunctionType
+                    argument' <- check context argument source
+                    pure (Syntax.App (f function'') Implicit argument', domain)
+
+                _ -> panic "TODO error message"
+
     Presyntax.Case scrutinee branches -> do
       (scrutinee', scrutineeType) <-
-        infer context scrutinee (InstantiateUntil Explicit) $ Lazy $ pure Nothing
+        infer context scrutinee InsertUntilExplicit $ Lazy $ pure Nothing
       type_ <- Context.newMetaType context
       term' <- Matching.elaborateCase context scrutinee' scrutineeType branches type_
       pure (term', type_)
@@ -607,31 +669,40 @@ getExpectedTypeName context type_ = do
 -------------------------------------------------------------------------------
 -- Implicits
 
-insertMetasForImplicitsM
+insertMetasM
   :: Context v
+  -> InsertUntil
   -> M (Syntax.Term v, Domain.Type)
   -> M (Syntax.Term v, Domain.Type)
-insertMetasForImplicitsM context m = do
+insertMetasM context until m = do
   (term, type_) <- m
-  insertMetasForImplicits context term type_
+  insertMetas context until term type_
 
-insertMetasForImplicits
+insertMetas
   :: Context v
+  -> InsertUntil
   -> Syntax.Term v
   -> Domain.Type
   -> M (Syntax.Term v, Domain.Type)
-insertMetasForImplicits context term type_ = do
+insertMetas context until term type_ = do
   type' <- Context.forceHead context type_
-  case type' of
-    Domain.Pi _ source Implicit domainClosure -> do
+  case (until, type') of
+    (InsertUntilExplicit, Domain.Pi _ source Implicit domainClosure) ->
+      instantiate source domainClosure
+
+    (InsertUntilImplicit names, Domain.Pi name source Implicit domainClosure)
+      | not $ HashMap.member name names ->
+        instantiate source domainClosure
+
+    _ ->
+      pure (term, type')
+  where
+    instantiate source domainClosure = do
       source' <- force source
       meta <- Context.newMeta source' context
       domain <- Evaluation.evaluateClosure domainClosure (Lazy $ pure meta)
       meta' <- readback context meta
-      insertMetasForImplicits context (Syntax.App term Implicit meta') domain
-
-    _ ->
-      pure (term, type')
+      insertMetas context until (Syntax.App term Implicit meta') domain
 
 -------------------------------------------------------------------------------
 -- Meta solutions

@@ -1,0 +1,20 @@
+f : forall X Y. X -> Y -> X
+f = \@{X, Y} x y. x
+
+g : forall X Y. X -> Y -> X
+g = \@{Y, X} x y. x
+
+h : forall X Y. X -> Y -> X
+h = \@{X} x y. x
+
+i : forall X Y. X -> Y -> X
+i = \@{Y} x y. x
+
+j : forall X Y. X -> Y -> X
+j = \@{} x y. x
+
+the : (A : Type) -> A -> A
+the = \A a. a
+
+k = \@{X}. the Type X
+l = \@{}. Type

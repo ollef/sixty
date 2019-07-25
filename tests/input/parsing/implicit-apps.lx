@@ -1,0 +1,4 @@
+f : forall X Y. X -> Y -> X
+f = \@{X, Y} x y. x
+
+g = f @{Y = Type} Type

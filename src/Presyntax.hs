@@ -4,6 +4,8 @@ module Presyntax where
 
 import Protolude hiding (Type)
 
+import Data.HashMap.Lazy (HashMap)
+
 import qualified Error
 import Name (Name)
 import qualified Name
@@ -22,11 +24,13 @@ unspanned (Term _ term) =
 
 data UnspannedTerm
   = Var !Name.Pre
-  | Let !Name.Name !Term !Term
-  | Pi !Name.Name !Plicity !Type !Type
+  | Let !Name !Term !Term
+  | Pi !Name !Plicity !Type !Type
   | Fun !Type !Type
-  | Lam !Name.Name !Plicity !Term
-  | App !Term !Plicity !Term
+  | Lam !Name !Term
+  | ImplicitLams (HashMap Name ()) Term
+  | App !Term !Term
+  | ImplicitApps !Term (HashMap Name Term)
   | Case !Term [(Pattern, Term)]
   | Wildcard
   | ParseError !Error.Parsing
@@ -47,17 +51,17 @@ data UnspannedPattern
 
 app :: Term -> Term -> Term
 app fun@(Term span1 _) arg@(Term span2 _) =
-  Term (Span.add span1 span2) $ App fun Explicit arg
+  Term (Span.add span1 span2) $ App fun arg
 
-apps :: Foldable f => Term -> f Term -> Term
+apps :: Foldable f => Term -> f (Span.Relative, Either (HashMap Name Term) Term) -> Term
 apps fun@(Term funSpan _) =
-  foldl (\fun' arg@(Term argSpan _) -> Term (Span.add funSpan argSpan) $ App fun' Explicit arg) fun
+  foldl (\fun' (argSpan, arg) -> Term (Span.add funSpan argSpan) $ either (ImplicitApps fun') (App fun') arg) fun
 
-lams :: Foldable f => f (Position.Relative, Name.Name) -> Term -> Term
+lams :: Foldable f => f (Position.Relative, Either (HashMap Name ()) Name) -> Term -> Term
 lams vs body@(Term (Span.Relative _ end) _) =
-  foldr (\(start, v) -> Term (Span.Relative start end) . Lam v Explicit) body vs
+  foldr (\(start, v) -> Term (Span.Relative start end) . either ImplicitLams Lam v) body vs
 
-pis :: Foldable f => Plicity -> f (Position.Relative, Name.Name) -> Type -> Type -> Type
+pis :: Foldable f => Plicity -> f (Position.Relative, Name) -> Type -> Type -> Type
 pis plicity vs source domain@(Term (Span.Relative _ end) _) =
   foldr (\(start, v) -> Term (Span.Relative start end) . Pi v plicity source) domain vs
 
@@ -72,7 +76,7 @@ anno pat@(Pattern span1 _) type_@(Term span2 _) =
 data Definition
   = TypeDeclaration !Type
   | ConstantDefinition !Term
-  | DataDefinition [(Name.Name, Type, Plicity)] [(Name.Constructor, Type)]
+  | DataDefinition [(Name, Type, Plicity)] [(Name.Constructor, Type)]
   deriving (Show, Generic, Hashable)
 
 key :: Definition -> Scope.Key
