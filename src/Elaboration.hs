@@ -391,36 +391,16 @@ inferUnspanned context term until expectedTypeName =
         , Builtin.type_
         )
 
-    Presyntax.Lam name body -> do
-      source <- Context.newMetaType context
-      source' <- readback context source
-      (context', _) <- Context.extend context name $ Lazy $ pure source
-      (body', domain) <- infer context' body InsertUntilExplicit $ Lazy $ pure Nothing
-      domain' <- readback context' domain
-
-      pure
-        ( Syntax.Lam name source' Explicit body'
-        , Domain.Pi name (Lazy $ pure source) Explicit
-          $ Domain.Closure (Context.toEvaluationEnvironment context) domain'
-        )
+    Presyntax.Lam name body ->
+      inferLambda context name Explicit body
 
     Presyntax.ImplicitLams argumentNames body ->
       case HashMap.toList argumentNames of
         [] ->
           infer context body until expectedTypeName
 
-        [(name, ())] -> do
-          source <- Context.newMetaType context
-          source' <- readback context source
-          (context', _) <- Context.extend context name $ Lazy $ pure source
-          (body', domain) <- infer context' body InsertUntilExplicit $ Lazy $ pure Nothing
-          domain' <- readback context' domain
-
-          pure
-            ( Syntax.Lam name source' Implicit body'
-            , Domain.Pi name (Lazy $ pure source) Implicit
-              $ Domain.Closure (Context.toEvaluationEnvironment context) domain'
-            )
+        [(name, ())] ->
+          inferLambda context name Implicit body
 
         _ ->
           panic "TODO error message"
@@ -589,6 +569,25 @@ checkLambda context name source domainClosure = do
       domainClosure
       (Lazy $ pure $ Domain.var var)
   pure (context', source'', domain)
+
+inferLambda
+  :: Context v
+  -> Name
+  -> Plicity
+  -> Presyntax.Term
+  -> M (Syntax.Term v, Domain.Type)
+inferLambda context name plicity body = do
+    source <- Context.newMetaType context
+    source' <- readback context source
+    (context', _) <- Context.extend context name $ Lazy $ pure source
+    (body', domain) <- infer context' body InsertUntilExplicit $ Lazy $ pure Nothing
+    domain' <- readback context' domain
+
+    pure
+      ( Syntax.Lam name source' plicity body'
+      , Domain.Pi name (Lazy $ pure source) plicity
+        $ Domain.Closure (Context.toEvaluationEnvironment context) domain'
+      )
 
 checkApplication
   :: Context v
