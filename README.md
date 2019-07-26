@@ -33,6 +33,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Error tests
 - [x] Implicit arguments
   - [x] Position-independent application and abstraction syntax
+  - [ ] Implicits in patterns
 - [x] Errors
   - [x] Source location tracking
     - [x] Meta variable locations
@@ -51,6 +52,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Exhaustiveness check
   - [x] Redundant pattern check
   - [ ] Clause elaboration
+  - [ ] Pattern lambdas and pis
 - [ ] Inductive families
 - [ ] Generalisation?
 - [ ] Glued evaluation
