@@ -4,7 +4,7 @@ data Nat where
 
 data Vector n a where
   Nil : Vector Z a
-  Cons : a -> Vector n a -> Vector (S n) a
+  Cons : forall m. a -> Vector m a -> Vector (S m) a
 
 -- test =
   -- Cons Z (Cons Z (Cons Z Nil))
