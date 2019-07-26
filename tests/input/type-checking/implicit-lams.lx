@@ -1,20 +1,20 @@
+the : (A : Type) -> A -> A
+the = \A a. a
+
 f : forall X Y. X -> Y -> X
-f = \@{X, Y} x y. x
+f = \@{X, Y} x y. the X x
 
 g : forall X Y. X -> Y -> X
-g = \@{Y, X} x y. x
+g = \@{Y, X} x y. the X x
 
 h : forall X Y. X -> Y -> X
-h = \@{X} x y. x
+h = \@{X} x y. the X x
 
 i : forall X Y. X -> Y -> X
 i = \@{Y} x y. x
 
 j : forall X Y. X -> Y -> X
 j = \@{} x y. x
-
-the : (A : Type) -> A -> A
-the = \A a. a
 
 k = \@{X}. the Type X
 
