@@ -297,7 +297,10 @@ checkUnspanned context term expectedType = do
 
     (Presyntax.ImplicitLams names body, Domain.Pi name source Implicit domainClosure)
       | name `HashMap.member` names -> do
-        (context', source', domain) <- checkLambda context name source domainClosure
+        let
+          name' =
+            names HashMap.! name
+        (context', source', domain) <- checkLambda context name' source domainClosure
         body' <- checkUnspanned context' (Presyntax.ImplicitLams (HashMap.delete name names) body) domain
         pure $ Syntax.Lam name source' Implicit body'
 
@@ -392,15 +395,15 @@ inferUnspanned context term until expectedTypeName =
         )
 
     Presyntax.Lam name body ->
-      inferLambda context name Explicit body
+      inferLambda context name name Explicit body
 
     Presyntax.ImplicitLams argumentNames body ->
       case HashMap.toList argumentNames of
         [] ->
           infer context body until expectedTypeName
 
-        [(name, ())] ->
-          inferLambda context name Implicit body
+        [(name, name')] ->
+          inferLambda context name name' Implicit body
 
         _ -> do
           Context.report context $ Error.UnableToInferImplicitLambda argumentNames
@@ -577,19 +580,20 @@ checkLambda context name source domainClosure = do
 inferLambda
   :: Context v
   -> Name
+  -> Name
   -> Plicity
   -> Presyntax.Term
   -> M (Syntax.Term v, Domain.Type)
-inferLambda context name plicity body = do
+inferLambda context piName lamName plicity body = do
     source <- Context.newMetaType context
     source' <- readback context source
-    (context', _) <- Context.extend context name $ Lazy $ pure source
+    (context', _) <- Context.extend context lamName $ Lazy $ pure source
     (body', domain) <- infer context' body InsertUntilExplicit $ Lazy $ pure Nothing
     domain' <- readback context' domain
 
     pure
-      ( Syntax.Lam name source' plicity body'
-      , Domain.Pi name (Lazy $ pure source) plicity
+      ( Syntax.Lam piName source' plicity body'
+      , Domain.Pi piName (Lazy $ pure source) plicity
         $ Domain.Closure (Context.toEvaluationEnvironment context) domain'
       )
 

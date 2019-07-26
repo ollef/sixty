@@ -34,7 +34,7 @@ data Elaboration
   | NonExhaustivePatterns
   | OverlappingPatterns
   | PlicityMismatch !PlicityMismatch
-  | UnableToInferImplicitLambda (HashMap Name ())
+  | UnableToInferImplicitLambda (HashMap Name Name)
   | ImplicitApplicationMismatch (HashMap Name ())
   deriving (Eq, Ord, Show, Generic, Hashable)
 

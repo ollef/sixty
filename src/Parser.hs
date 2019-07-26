@@ -346,7 +346,13 @@ atomicTerm =
         Right <$> name <|> Left <$> implicitNames
 
     implicitNames =
-      HashSet.toMap . HashSet.fromList <$ symbol "@{" <*>% sepByIndented name (symbol ",") <*% symbol "}"
+      HashMap.fromList <$ symbol "@{" <*>% sepByIndented implicitName (symbol ",") <*% symbol "}"
+
+    implicitName =
+      name <**>
+        ((\n' n -> (n, n')) <$% symbol "=" <*>% name
+        <|> pure (\n -> (n, n))
+        )
 
     branch :: Parser (Pattern, Term)
     branch =

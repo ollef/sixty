@@ -1,0 +1,26 @@
+the : (A : Type) -> A -> A
+the = \A a. a
+
+f : forall X Y. X -> Y -> X
+f = \@{X = A, Y = B} x y. the A x
+
+g : forall X Y. X -> Y -> X
+g = \@{Y = A, X = B} x y. the B x
+
+h : forall X Y. X -> Y -> X
+h = \@{X = A} x y. the A x
+
+i : forall X Y. X -> Y -> X
+i = \@{Y = A} x y. x
+
+j : forall X Y. X -> Y -> X
+j = \@{} x y. x
+
+k = \@{X = A}. the Type A
+
+l = \@{}. Type
+
+m : Type
+m =
+  \@{x = a, y = b}. -- unable to infer implicit lambda error expected
+    a

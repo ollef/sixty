@@ -28,7 +28,7 @@ data UnspannedTerm
   | Pi !Name !Plicity !Type !Type
   | Fun !Type !Type
   | Lam !Name !Term
-  | ImplicitLams (HashMap Name ()) Term
+  | ImplicitLams (HashMap Name Name) Term
   | App !Term !Term
   | ImplicitApps !Term (HashMap Name Term)
   | Case !Term [(Pattern, Term)]
@@ -57,7 +57,7 @@ apps :: Foldable f => Term -> f (Span.Relative, Either (HashMap Name Term) Term)
 apps fun@(Term funSpan _) =
   foldl (\fun' (argSpan, arg) -> Term (Span.add funSpan argSpan) $ either (ImplicitApps fun') (App fun') arg) fun
 
-lams :: Foldable f => f (Position.Relative, Either (HashMap Name ()) Name) -> Term -> Term
+lams :: Foldable f => f (Position.Relative, Either (HashMap Name Name) Name) -> Term -> Term
 lams vs body@(Term (Span.Relative _ end) _) =
   foldr (\(start, v) -> Term (Span.Relative start end) . either ImplicitLams Lam v) body vs
 
