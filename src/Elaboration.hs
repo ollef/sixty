@@ -1,6 +1,5 @@
 {-# language DuplicateRecordFields #-}
 {-# language GADTs #-}
-{-# language OverloadedStrings #-}
 {-# language PackageImports #-}
 {-# language ScopedTypeVariables #-}
 module Elaboration where
