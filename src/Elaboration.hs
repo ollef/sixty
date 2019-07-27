@@ -584,17 +584,17 @@ inferLambda
   -> Presyntax.Term
   -> M (Syntax.Term v, Domain.Type)
 inferLambda context piName lamName plicity body = do
-    source <- Context.newMetaType context
-    source' <- readback context source
-    (context', _) <- Context.extend context lamName $ Lazy $ pure source
-    (body', domain) <- infer context' body InsertUntilExplicit $ Lazy $ pure Nothing
-    domain' <- readback context' domain
+  source <- Context.newMetaType context
+  source' <- readback context source
+  (context', _) <- Context.extend context lamName $ Lazy $ pure source
+  (body', domain) <- infer context' body InsertUntilExplicit $ Lazy $ pure Nothing
+  domain' <- readback context' domain
 
-    pure
-      ( Syntax.Lam piName source' plicity body'
-      , Domain.Pi piName (Lazy $ pure source) plicity
-        $ Domain.Closure (Context.toEvaluationEnvironment context) domain'
-      )
+  pure
+    ( Syntax.Lam piName source' plicity body'
+    , Domain.Pi piName (Lazy $ pure source) plicity
+      $ Domain.Closure (Context.toEvaluationEnvironment context) domain'
+    )
 
 checkApplication
   :: Context v
