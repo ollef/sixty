@@ -567,14 +567,14 @@ uninhabitedConstrType context fuel type_ =
     _ -> do
       type' <- Context.forceHead context type_
       case type' of
-        Domain.Pi _ source _ domainClosure -> do
+        Domain.Pi name source _ domainClosure -> do
           source' <- force source
           uninhabited <- uninhabitedType context (fuel - 1) source'
           if uninhabited then
             pure True
 
           else do
-            (context', var) <- Context.extendUnnamed context "x" source
+            (context', var) <- Context.extendUnnamed context name source
             domain <- Evaluation.evaluateClosure domainClosure $ Lazy $ pure $ Domain.var var
             uninhabitedConstrType context' fuel domain
 
