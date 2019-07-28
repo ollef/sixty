@@ -363,12 +363,7 @@ forceHead context value =
       scrutinee' <- forceHead context scrutinee
       case scrutinee' of
         Domain.Neutral (Domain.Con constr) spine -> do
-          value' <-
-            Evaluation.chooseBranch
-              branchEnv
-              constr
-              (toList spine)
-              brs
+          value' <- Evaluation.chooseBranch branchEnv constr (toList spine) brs
           forceHead context value'
 
         _ ->
