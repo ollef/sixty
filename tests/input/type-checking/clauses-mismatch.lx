@@ -1,0 +1,7 @@
+data Bool where
+  False : Bool
+  True : Bool
+
+test : Bool -> Type -> Type
+test False x = Type
+test True = Type -- plicity mismatch error expected

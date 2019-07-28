@@ -57,7 +57,8 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
             Evaluation.evaluateClosure
               domainClosure
               (Lazy $ pure $ Domain.var var)
-          body <- check context' (shiftExplicit value source' <$> clauses) domain
+          clauses' <- mapM (shiftExplicit context value source') clauses
+          body <- check context' clauses' domain
           pure $ Syntax.Lam name source'' Explicit body
 
       Domain.Fun source domain
@@ -69,7 +70,8 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
           source' <- force source
           source'' <- Elaboration.readback context source'
           domain' <- force domain
-          body <- check context' (shiftExplicit value source' <$> clauses) domain'
+          clauses' <- mapM (shiftExplicit context value source') clauses
+          body <- check context' clauses' domain'
           pure $ Syntax.Lam "x" source'' Explicit body
 
       Domain.Pi name source Implicit domainClosure -> do
@@ -119,7 +121,8 @@ infer context (fmap removeEmptyImplicits -> clauses)
         let
           value =
             Domain.var var
-        (body, domain) <- infer context' (shiftExplicit value source <$> clauses)
+        clauses' <- mapM (shiftExplicit context value source) clauses
+        (body, domain) <- infer context' clauses'
         domain' <- Elaboration.readback context' domain
 
         pure
@@ -201,13 +204,30 @@ shiftImplicit name value type_ (Clause (Presyntax.Clause span patterns term) mat
         (Presyntax.Clause span patterns term)
         (matches Tsil.:> Matching.Match value Implicit (Presyntax.Pattern span Presyntax.WildcardPattern) type_)
 
-shiftExplicit :: Domain.Value -> Domain.Type -> Clause -> Clause
-shiftExplicit value type_ (Clause (Presyntax.Clause span patterns term) matches) =
+shiftExplicit :: Context v -> Domain.Value -> Domain.Type -> Clause -> M Clause
+shiftExplicit context value type_ clause@(Clause (Presyntax.Clause span patterns term) matches) =
   case patterns of
     Presyntax.ExplicitPattern pat:patterns' ->
-      Clause
-        (Presyntax.Clause span patterns' term)
-        (matches Tsil.:> Matching.Match value Explicit pat type_)
+      pure $
+        Clause
+          (Presyntax.Clause span patterns' term)
+          (matches Tsil.:> Matching.Match value Explicit pat type_)
 
-    _ ->
-      panic "TODO error message"
+    Presyntax.ImplicitPattern _:patterns' -> do
+      Context.report
+        (Context.spanned span context)
+        (Error.PlicityMismatch $ Error.Mismatch Explicit Implicit)
+      shiftExplicit
+        context
+        value
+        type_
+        (Clause
+          (Presyntax.Clause span patterns' term)
+          matches
+        )
+
+    [] -> do
+      Context.report
+        (Context.spanned span context)
+        (Error.PlicityMismatch $ Error.Missing Explicit)
+      pure clause
