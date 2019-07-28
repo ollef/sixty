@@ -1,0 +1,8 @@
+data List a where
+  Nil : List a
+  Cons : a -> List a -> List a
+
+zipWith : forall a b c. (a -> b -> c) -> List a -> List b -> List c
+zipWith f Nil Nil = Nil
+zipWith f (Cons a as) (Cons b bs) = Cons (f a b) (zipWith f as bs)
+zipWith f _ _ = Nil
