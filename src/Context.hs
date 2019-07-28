@@ -101,6 +101,7 @@ emptyFrom context =
     , errors = errors context
     }
 
+-- TODO should this take a Name.Pre instead?
 extend
   :: Context v
   -> Name
