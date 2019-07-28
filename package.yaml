@@ -22,7 +22,9 @@ ghc-options:
   - -Wredundant-constraints
   - -Wtabs
   - -funbox-strict-fields
-  - -XNoImplicitPrelude
+
+default-extensions:
+  - NoImplicitPrelude
 
 dependencies:
   - base >= 4.7 && < 5
