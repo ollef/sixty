@@ -217,7 +217,7 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
       constrType' <- Context.forceHead context constrType
       case constrType' of
         Domain.Pi name source _ domainClosure -> do
-          (context'', var) <- Context.extend context' name source
+          (context'', var) <- Context.extendUnnamed context' name source
           domain <- Evaluation.evaluateClosure domainClosure $ Lazy $ pure $ Domain.var var
           go context'' domain
 
@@ -304,7 +304,7 @@ checkUnspanned context term expectedType = do
         pure $ Syntax.Lam name source' Implicit body'
 
     (_, Domain.Pi name source Implicit domainClosure) -> do
-      (context', v) <- Context.extend context name source
+      (context', v) <- Context.extendUnnamed context name source
       domain <- Evaluation.evaluateClosure domainClosure (Lazy $ pure $ Domain.var v)
       source' <- force source
       source'' <- readback context source'
@@ -667,7 +667,7 @@ getExpectedTypeName context type_ = do
       pure Nothing
 
     Domain.Pi name source _ domainClosure -> do
-      (context', var) <- Context.extend context name source
+      (context', var) <- Context.extendUnnamed context name source
       domain <- Evaluation.evaluateClosure domainClosure $ Lazy $ pure $ Domain.var var
       getExpectedTypeName context' domain
 

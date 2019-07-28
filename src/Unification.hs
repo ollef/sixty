@@ -92,7 +92,7 @@ unify context value1 value2 = do
     (Domain.Pi name1 source1 Explicit domainClosure1, Domain.Fun source2 domain2) -> do
       unifyForce context source2 source1
 
-      (context', var) <- Context.extend context name1 source1
+      (context', var) <- Context.extendUnnamed context name1 source1
       let
         lazyVar = Lazy $ pure $ Domain.var var
 
@@ -103,7 +103,7 @@ unify context value1 value2 = do
     (Domain.Fun source1 domain1, Domain.Pi name2 source2 Explicit domainClosure2) -> do
       unifyForce context source2 source1
 
-      (context', var) <- Context.extend context name2 source2
+      (context', var) <- Context.extendUnnamed context name2 source2
       let
         lazyVar = Lazy $ pure $ Domain.var var
 
@@ -117,7 +117,7 @@ unify context value1 value2 = do
 
     -- Eta expand
     (Domain.Lam name1 type1 plicity1 closure1, v2) -> do
-      (context', var) <- Context.extend context name1 type1
+      (context', var) <- Context.extendUnnamed context name1 type1
       let
         lazyVar = Lazy $ pure $ Domain.var var
 
@@ -127,7 +127,7 @@ unify context value1 value2 = do
       unify context' body1 body2
 
     (v1, Domain.Lam name2 type2 plicity2 closure2) -> do
-      (context', var) <- Context.extend context name2 type2
+      (context', var) <- Context.extendUnnamed context name2 type2
       let
         lazyVar = Lazy $ pure $ Domain.var var
 
@@ -169,7 +169,7 @@ unify context value1 value2 = do
     unifyAbstraction name type1 closure1 type2 closure2 = do
       unifyForce context type1 type2
 
-      (context', var) <- Context.extend context name type1
+      (context', var) <- Context.extendUnnamed context name type1
       let
         lazyVar = Lazy $ pure $ Domain.var var
 
@@ -446,9 +446,9 @@ pruneMeta context meta allowedArgs = do
                   source'
               (context'', _) <-
                 if allowed then
-                  Context.extend context' "x" source
+                  Context.extendUnnamed context' "x" source
                 else
-                  Context.extendDef
+                  Context.extendUnnamedDef
                     context'
                     "x"
                     (Lazy $ throwError Error.TypeMismatch)
@@ -462,7 +462,7 @@ pruneMeta context meta allowedArgs = do
                 if allowed then
                   Context.extend context' name source
                 else
-                  Context.extendDef
+                  Context.extendUnnamedDef
                     context'
                     name
                     (Lazy $ throwError Error.TypeMismatch)

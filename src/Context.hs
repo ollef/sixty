@@ -156,6 +156,24 @@ extendDef context name value type_ = do
     , var
     )
 
+extendUnnamedDef
+  :: Context v
+  -> Name
+  -> Lazy Domain.Value
+  -> Lazy Domain.Type
+  -> M (Context (Succ v), Var)
+extendUnnamedDef context name value type_ = do
+  var <- freshVar
+  pure
+    ( context
+      { varNames = IntMap.insert var name $ varNames context
+      , indices = indices context Index.Map.:> var
+      , values = IntMap.insert var value (values context)
+      , types = IntMap.insert var type_ (types context)
+      }
+    , var
+    )
+
 extendUnindexedDef
   :: Context v
   -> Name
