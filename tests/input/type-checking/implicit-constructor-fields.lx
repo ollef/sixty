@@ -1,0 +1,25 @@
+data Bool where
+  False : Bool
+  True : Bool
+
+data Wrapped where
+  MkWrapped : forall (a b : Bool). Wrapped
+
+notA : Wrapped -> Bool
+notA (MkWrapped @{a = False}) = True
+notA (MkWrapped @{a = True}) = False
+
+notB : Wrapped -> Bool
+notB (MkWrapped @{b = False}) = True
+notB (MkWrapped @{b = True}) = False
+
+or : Wrapped -> Bool
+or (MkWrapped @{a = False, b}) = b
+or (MkWrapped @{a = True}) = False
+
+or2 : Wrapped -> Bool
+or2 (MkWrapped @{b = False, a = aa}) = aa
+or2 (MkWrapped @{b = True}) = False
+
+swap : Wrapped -> Wrapped
+swap (MkWrapped @{a, b}) = MkWrapped @{a = b, b = a}

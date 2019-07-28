@@ -307,14 +307,9 @@ pattern =
     <|> pure identity
   ) <?> "pattern"
 
-plicitPattern :: Parser (Plicity, Pattern)
+plicitPattern :: Parser PlicitPattern
 plicitPattern =
-  (,) Explicit <$> atomicPattern
-  <?> "explicit or implicit pattern"
-
-plicitPattern' :: Parser PlicitPattern
-plicitPattern' =
-  ImplicitPattern . HashMap.fromList <$ symbol "@{" <*> sepByIndented patName (symbol ",") <*% symbol "}"
+  uncurry ImplicitPattern <$> spanned (HashMap.fromList <$ symbol "@{" <*> sepByIndented patName (symbol ",") <*% symbol "}")
   <|> ExplicitPattern <$> atomicPattern
   <?> "explicit or implicit pattern"
   where
@@ -428,4 +423,4 @@ definition =
       where
         clause =
           (\(span, (pats, rhs)) -> Clause span pats rhs) <$>
-          spanned ((,) <$> manyIndented plicitPattern' <*% symbol "=" <*>% recoveringTerm)
+          spanned ((,) <$> manyIndented plicitPattern <*% symbol "=" <*>% recoveringTerm)

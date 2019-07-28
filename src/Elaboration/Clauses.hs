@@ -170,7 +170,7 @@ isEmpty (Clause (Presyntax.Clause _ patterns _) _) =
 removeEmptyImplicits :: Clause -> Clause
 removeEmptyImplicits clause@(Clause (Presyntax.Clause span patterns term) matches) =
   case patterns of
-    Presyntax.ImplicitPattern namedPats:patterns'
+    Presyntax.ImplicitPattern _ namedPats:patterns'
       | HashMap.null namedPats ->
         removeEmptyImplicits $ Clause (Presyntax.Clause span patterns' term) matches
 
@@ -180,7 +180,7 @@ removeEmptyImplicits clause@(Clause (Presyntax.Clause span patterns term) matche
 clauseImplicits :: Clause -> HashMap Name Presyntax.Pattern
 clauseImplicits (Clause (Presyntax.Clause _ patterns _) _) =
   case patterns of
-    Presyntax.ImplicitPattern namedPats:_ ->
+    Presyntax.ImplicitPattern _ namedPats:_ ->
       namedPats
 
     _ ->
@@ -189,12 +189,12 @@ clauseImplicits (Clause (Presyntax.Clause _ patterns _) _) =
 shiftImplicit :: Name -> Domain.Value -> Domain.Type -> Clause -> Clause
 shiftImplicit name value type_ (Clause (Presyntax.Clause span patterns term) matches) =
   case patterns of
-    Presyntax.ImplicitPattern namedPats:patterns'
+    Presyntax.ImplicitPattern patSpan namedPats:patterns'
       | HashMap.member name namedPats ->
         Clause
           (Presyntax.Clause
             span
-            (Presyntax.ImplicitPattern (HashMap.delete name namedPats):patterns')
+            (Presyntax.ImplicitPattern patSpan (HashMap.delete name namedPats):patterns')
             term
           )
           (matches Tsil.:> Matching.Match value Implicit (namedPats HashMap.! name) type_)
@@ -213,9 +213,9 @@ shiftExplicit context value type_ clause@(Clause (Presyntax.Clause span patterns
           (Presyntax.Clause span patterns' term)
           (matches Tsil.:> Matching.Match value Explicit pat type_)
 
-    Presyntax.ImplicitPattern _:patterns' -> do
+    Presyntax.ImplicitPattern patSpan _:patterns' -> do
       Context.report
-        (Context.spanned span context)
+        (Context.spanned patSpan context)
         (Error.PlicityMismatch $ Error.Mismatch Explicit Implicit)
       shiftExplicit
         context

@@ -6,10 +6,11 @@ import Protolude hiding (force)
 
 import Control.Monad.Fail
 import Control.Monad.Trans.Maybe
+import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
+import Data.IORef
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.IORef
 import Rock
 
 import {-# source #-} qualified Elaboration
@@ -260,57 +261,75 @@ instantiateConstructorType env tele spine =
 matchPrepatterns
   :: Context v
   -> [(Plicity, Lazy Domain.Value)]
-  -> [(Plicity, Presyntax.Pattern)]
+  -> [Presyntax.PlicitPattern]
   -> Domain.Type
   -> M ([Match], Domain.Type)
 matchPrepatterns context values patterns type_ = do
   type' <- Context.forceHead context type_
-  case (values, patterns) of
-    ([], []) ->
+  case (patterns, values, type') of
+    ([], [], _) ->
       pure ([], type')
 
-    ([], (_, Presyntax.Pattern span _):_) -> do
-      Context.report (Context.spanned span context) $ Error.PlicityMismatch Error.Extra
-      pure ([], type')
-
-    ((plicity1, value):values', (plicity2, pattern):patterns')
-      | plicity1 == plicity2
-      , Domain.Pi _ source plicity3 domainClosure <- type'
-      , plicity2 == plicity3 -> do
+    ( Presyntax.ExplicitPattern pattern:patterns'
+      , (Explicit, value):values'
+      , Domain.Pi _ source Explicit domainClosure
+      ) -> do
         domain <- Evaluation.evaluateClosure domainClosure value
         (matches, type'') <- matchPrepatterns context values' patterns' domain
         value' <- force value
         source' <- force source
-        pure (Match value' plicity1 pattern source' : matches, type'')
+        pure (Match value' Explicit pattern source' : matches, type'')
 
-    ((Explicit, value):values', (Explicit, pattern):patterns')
-      | Domain.Fun source domain <- type' -> do
+    ( Presyntax.ExplicitPattern pattern:patterns'
+      , (Explicit, value):values'
+      , Domain.Fun source domain
+      ) -> do
         domain' <- force domain
         (matches, type'') <- matchPrepatterns context values' patterns' domain'
         value' <- force value
         source' <- force source
         pure (Match value' Explicit pattern source' : matches, type'')
 
-      | otherwise ->
-        panic "matchPrepatterns non-pi"
+    (Presyntax.ExplicitPattern _:_, (Explicit, _):_, _) ->
+      panic "matchPrepatterns non-pi"
 
-    ((Implicit, value):values', _)
-      | Domain.Pi _ source Implicit domainClosure <- type' -> do
+    (Presyntax.ImplicitPattern _ namedPats:patterns', _, _)
+      | HashMap.null namedPats ->
+        matchPrepatterns context values patterns' type'
+
+    ( Presyntax.ImplicitPattern patSpan namedPats:patterns'
+      , (Implicit, value):values'
+      , Domain.Pi name source Implicit domainClosure
+      )
+      | HashMap.member name namedPats -> do
         domain <- Evaluation.evaluateClosure domainClosure value
-        (matches, type'') <- matchPrepatterns context values' patterns domain
+        (matches, type'') <-
+          matchPrepatterns
+            context
+            values'
+            (Presyntax.ImplicitPattern patSpan (HashMap.delete name namedPats) : patterns')
+            domain
         value' <- force value
         source' <- force source
-        pure (Match value' Implicit (Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern) source' : matches, type'')
+        pure (Match value' Implicit (namedPats HashMap.! name) source' : matches, type'')
 
-      | otherwise ->
-        panic "matchPrepatterns non-pi"
+    (_, (Implicit, value):values', Domain.Pi _ _ Implicit domainClosure) -> do
+      domain <- Evaluation.evaluateClosure domainClosure value
+      matchPrepatterns context values' patterns domain
 
-    ((Explicit, _):_, []) -> do
-      Context.report context $ Error.PlicityMismatch (Error.Missing Explicit)
-      matchPrepatterns context values [(Explicit, Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern)] type'
+    (_, (Implicit, _):_, _) -> do
+      panic "matchPrepatterns non-pi"
 
-    ((Explicit, _):_, (Implicit, Presyntax.Pattern span _):patterns') -> do
-      Context.report (Context.spanned span context) $ Error.PlicityMismatch (Error.Mismatch Explicit Implicit)
+    (pattern:_, [], _) -> do
+      Context.report (Context.spanned (Presyntax.plicitPatternSpan pattern) context) $ Error.PlicityMismatch Error.Extra
+      pure ([], type')
+
+    ([], (Explicit, _):_, _) -> do
+      Context.report context $ Error.PlicityMismatch $ Error.Missing Explicit
+      matchPrepatterns context values [Presyntax.ExplicitPattern $ Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern] type'
+
+    (Presyntax.ImplicitPattern patSpan _:patterns', (Explicit, _):_, _) -> do
+      Context.report (Context.spanned patSpan context) $ Error.PlicityMismatch (Error.Mismatch Explicit Implicit)
       matchPrepatterns context values patterns' type'
 
 type PatternSubstitution = Tsil (Name, Lazy Domain.Value, Lazy Domain.Value)

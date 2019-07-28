@@ -43,7 +43,7 @@ data Pattern
   deriving (Show, Generic, Hashable)
 
 data UnspannedPattern
-  = ConOrVar !Name.Pre [(Plicity, Pattern)] -- TODO switch to PlicitPattern
+  = ConOrVar !Name.Pre [PlicitPattern]
   | WildcardPattern
   | Anno !Pattern !Type
   | Forced !Term
@@ -51,8 +51,17 @@ data UnspannedPattern
 
 data PlicitPattern
   = ExplicitPattern Pattern
-  | ImplicitPattern (HashMap Name Pattern)
+  | ImplicitPattern !Span.Relative (HashMap Name Pattern)
   deriving (Show, Generic, Hashable)
+
+plicitPatternSpan :: PlicitPattern -> Span.Relative
+plicitPatternSpan pattern =
+  case pattern of
+    ExplicitPattern (Pattern span _) ->
+      span
+
+    ImplicitPattern span _ ->
+      span
 
 app :: Term -> Term -> Term
 app fun@(Term span1 _) arg@(Term span2 _) =
