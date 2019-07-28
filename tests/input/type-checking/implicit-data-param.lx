@@ -1,0 +1,8 @@
+data Test forall (a : Type). (b : a) where
+  MkTest : Test @{a} b
+
+data Bool where
+  False : Bool
+  True : Bool
+
+test : Test @{a = Bool} True

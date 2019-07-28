@@ -31,10 +31,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [ ] Imports
 - [x] Tests
   - [x] Error tests
-- [x] Implicit arguments
-  - [x] Position-independent application and abstraction syntax
-  - [x] Implicits in patterns
-  - [ ] Implicit data parameters
+- [x] Position-independent implicit arguments
 - [x] Errors
   - [x] Source location tracking
     - [x] Meta variable locations

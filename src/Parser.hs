@@ -326,6 +326,12 @@ spannedTerm :: Parser UnspannedTerm -> Parser Term
 spannedTerm =
   fmap (uncurry Term) . spanned
 
+recoveringIndentedTerm :: Parser Term
+recoveringIndentedTerm =
+  Parsix.withRecovery
+    (\errorInfo -> spannedTerm . recover ParseError errorInfo)
+    (indented term)
+
 atomicTerm :: Parser Term
 atomicTerm =
   symbol "(" *>% term <*% symbol ")"
@@ -402,26 +408,15 @@ definition =
   sameLevel $
   withIndentationBlock $
   relativeTo $
-    (,) <$ reserved "data" <*>% name <*>
-      (DataDefinition <$> manyIndented param <*% reserved "where" <*> blockOfMany constr)
+    dataDefinition
     <|> do
       name_@(Name nameText) <- name
       (,) name_ <$>%
-        (TypeDeclaration <$ symbol ":" <*>% recoveringTerm
+        (TypeDeclaration <$ symbol ":" <*> recoveringIndentedTerm
         <|> ConstantDefinition <$> clauses nameText
         )
     <?> "definition"
   where
-    recoveringTerm =
-      Parsix.withRecovery
-        (\errorInfo -> spannedTerm . recover ParseError errorInfo)
-        (indented term)
-    param =
-      -- TODO support implicit parameters
-      (,, Explicit) <$ symbol "(" <*>% name <*% symbol ":" <*>% recoveringTerm <*% symbol ")"
-      <|> (\(span, name_) -> (name_, Term span Presyntax.Wildcard, Explicit)) <$> spanned name
-    constr =
-      (,) <$> constructor <*% symbol ":" <*>% recoveringTerm
     clauses nameText =
       (:) <$>
         clause <*>
@@ -429,4 +424,32 @@ definition =
       where
         clause =
           (\(span, (pats, rhs)) -> Clause span pats rhs) <$>
-          spanned ((,) <$> manyIndented plicitPattern <*% symbol "=" <*>% recoveringTerm)
+          spanned ((,) <$> manyIndented plicitPattern <*% symbol "=" <*> recoveringIndentedTerm)
+
+dataDefinition :: Parser (Name, Definition)
+dataDefinition =
+  (,) <$ reserved "data" <*>% name <*>
+    (DataDefinition <$> parameters <*% reserved "where"
+      <*> blockOfMany constructorDefinition)
+  where
+    parameters =
+      parameters1 <|> pure []
+
+    parameters1 =
+      implicitParameters
+      <|> (:) <$> explicitParameter <*> parameters
+
+    explicitParameter =
+      (,, Explicit) <$ symbol "(" <*>% name <*% symbol ":" <*> recoveringIndentedTerm <*% symbol ")"
+      <|> (\(span, name_) -> (name_, Term span Presyntax.Wildcard, Explicit)) <$> spanned name
+
+    implicitParameters =
+      (<>) . concat <$ reserved "forall" <*>
+        someIndented
+          ((\names type_ -> [(name_, type_, Implicit) | name_ <- names]) <$ symbol "(" <*> someIndented name <*% symbol ":" <*>% term <*% symbol ")"
+          <|> (\(span, name_) -> [(name_, Term span Wildcard, Implicit)]) <$> spanned name
+          ) <*% symbol "." <*>% parameters1
+
+    constructorDefinition =
+      withIndentationBlock $
+        (,) <$> someIndented constructor <*% symbol ":" <*> recoveringIndentedTerm

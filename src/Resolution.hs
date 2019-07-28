@@ -91,7 +91,8 @@ moduleScopes module_ definitions =
                   HashSet.singleton $
                   Name.QualifiedConstructor qualifiedName constr
                 )
-              | (constr@(Name.Constructor text), _) <- constrTypes
+              | (cs, _) <- constrTypes
+              , constr@(Name.Constructor text) <- cs
               ]
 
           in

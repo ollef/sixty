@@ -135,7 +135,7 @@ inferDefinition context def =
 inferDataDefinition
   :: Context v
   -> [(Name, Presyntax.Type, Plicity)]
-  -> [(Name.Constructor, Presyntax.Type)]
+  -> [([Name.Constructor], Presyntax.Type)]
   -> Tsil (Plicity, Var)
   -> M (Telescope Syntax.Type Syntax.ConstructorDefinitions v, Syntax.Type v)
 inferDataDefinition context preParams constrs paramVars =
@@ -160,11 +160,11 @@ inferDataDefinition context preParams constrs paramVars =
 
       (context', var) <- Context.extend context thisName $ Lazy $ pure thisType'
 
-      constrs' <- forM constrs $ \(constr, type_) -> do
+      constrs' <- forM constrs $ \(cs, type_) -> do
         type' <- checkConstructorType context' type_ var paramVars
-        pure (constr, Syntax.Let thisName this thisType type')
+        pure [(constr, Syntax.Let thisName this thisType type') | constr <- cs]
       pure
-        ( Telescope.Empty (Syntax.ConstructorDefinitions constrs')
+        ( Telescope.Empty (Syntax.ConstructorDefinitions $ concat constrs')
         , Syntax.Global Builtin.typeName
         )
 
@@ -177,8 +177,8 @@ inferDataDefinition context preParams constrs paramVars =
           paramVars Tsil.:> (plicity, paramVar)
       (tele, dataType) <- inferDataDefinition context' preParams' constrs paramVars'
       pure
-        ( Telescope.Extend name type' Explicit tele
-        , Syntax.Pi name type' Explicit dataType
+        ( Telescope.Extend name type' plicity tele
+        , Syntax.Pi name type' plicity dataType
         )
 
 varPis

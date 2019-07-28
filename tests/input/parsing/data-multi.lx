@@ -1,0 +1,2 @@
+data Bool where
+  False True : Bool
