@@ -314,7 +314,7 @@ plicitPattern =
 
 plicitPattern' :: Parser PlicitPattern
 plicitPattern' =
-  ImplicitPattern . HashMap.fromList <$ symbol "@{" <*> manyIndented patName <*% symbol "}"
+  ImplicitPattern . HashMap.fromList <$ symbol "@{" <*> sepByIndented patName (symbol ",") <*% symbol "}"
   <|> ExplicitPattern <$> atomicPattern
   <?> "explicit or implicit pattern"
   where
