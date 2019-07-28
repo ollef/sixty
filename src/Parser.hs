@@ -368,9 +368,15 @@ atomicTerm =
 plicitAtomicTerm :: Parser (Either (HashMap Name Term) Term)
 plicitAtomicTerm =
   Left . HashMap.fromList <$ symbol "@{" <*>%
-    sepByIndented ((,) <$> name <*% symbol "=" <*>% term) (symbol ",") <*%
+    sepByIndented implicitArgument  (symbol ",") <*%
     symbol "}"
   <|> Right <$> atomicTerm
+  where
+    implicitArgument =
+      spanned name <**>
+        ((\t (_, n) -> (n, t)) <$% symbol "=" <*>% term
+        <|> pure (\(span, n@(Name text)) -> (n, Term span $ Var $ Name.Pre text))
+        )
 
 term :: Parser Term
 term =
