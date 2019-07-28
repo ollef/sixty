@@ -16,7 +16,6 @@ import {-# source #-} qualified Elaboration
 import qualified Builtin
 import Context (Context)
 import qualified Context
-import qualified Data.IntSequence as IntSeq
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Domain
@@ -416,12 +415,13 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
   let
     goParams
       :: Context v
+      -> [(Plicity, Lazy Domain.Value)]
       -> Domain.Spine
       -> Domain.Telescope Domain.Type [(Name.Constructor, Domain.Type)]
       -> M (Syntax.Type v)
-    goParams context conArgs dataTele =
-      case dataTele of
-        Domain.Telescope.Empty constructors -> do
+    goParams context params conArgs dataTele =
+      case (params, dataTele) of
+        ([], Domain.Telescope.Empty constructors) -> do
           branches <- forM constructors $ \(constr, constrType) -> do
             let
               qualifiedConstr =
@@ -432,17 +432,13 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
           scrutinee' <- Elaboration.readback context (Domain.var scrutinee)
           pure $ Syntax.Case scrutinee' branches
 
-        Domain.Telescope.Extend _ source plicity domainClosure -> do
-          param <-
-            lazy $ Context.newMeta source context
-              { Context.boundVars =
-                -- Remove the scrutinee so it's not added to the meta variable
-                -- context, because that would create a circular value when
-                -- the scrutinee is defined later
-                IntSeq.delete scrutinee $ Context.boundVars context
-              }
-          domain <- domainClosure param
-          goParams context (conArgs Tsil.:> (implicitise plicity, param)) domain
+        ((plicity1, param):params', Domain.Telescope.Extend _ _ plicity2 domainClosure)
+          | plicity1 == plicity2 -> do
+            domain <- domainClosure param
+            goParams context params' (conArgs Tsil.:> (implicitise plicity1, param)) domain
+
+        _ ->
+          panic "goParams mismatch"
 
     goConstrFields
       :: Context v
@@ -486,15 +482,21 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
           let
             context' =
               Context.define context scrutinee $ Lazy $ pure $ Domain.Neutral (Domain.Con constr) conArgs
-          f <- Unification.tryUnify context' type_ outerType
           result <- elaborate context' config
-          pure $ Telescope.Empty $ f result
+          pure $ Telescope.Empty result
 
   maybeDefinition <- fetch $ Query.ElaboratedDefinition typeName
   case maybeDefinition of
     Just (Syntax.DataDefinition tele, _) -> do
       tele' <- Evaluation.evaluateConstructorDefinitions (Domain.empty $ Context.scopeKey outerContext) tele
-      goParams (Context.spanned span outerContext) mempty tele'
+      outerType' <- Context.forceHead outerContext outerType
+      case outerType' of
+        Domain.Neutral (Domain.Global typeName') spine
+          | typeName == typeName' ->
+            goParams (Context.spanned span outerContext) (toList spine) mempty tele'
+
+        _ ->
+          panic "Matching outerType"
 
     _ ->
       panic "splitConstructor no data definition"
