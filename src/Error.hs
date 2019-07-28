@@ -33,7 +33,7 @@ data Elaboration
   | UnsolvedMetaVariable !Meta.Index
   | NonExhaustivePatterns
   | OverlappingPatterns
-  | PlicityMismatch !PlicityMismatch
+  | PlicityMismatch !PlicityMismatch -- TODO needs field/argument distinction for printing
   | UnableToInferImplicitLambda
   | ImplicitApplicationMismatch (HashMap Name ())
   deriving (Eq, Ord, Show, Generic, Hashable)
