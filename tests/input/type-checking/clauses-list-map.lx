@@ -1,0 +1,7 @@
+data List a where
+  Nil : List a
+  Cons : a -> List a -> List a
+
+map : forall a b. (a -> b) -> List a -> List b
+map f Nil = Nil
+map f (Cons a as') = Cons (f a) (map f as')

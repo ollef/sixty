@@ -1,0 +1,7 @@
+data Maybe a where
+  Nothing : Maybe a
+  Just : a -> Maybe a
+
+fromMaybe : forall A. A -> Maybe A -> A
+fromMaybe @{A} (a : A) Nothing = a
+fromMaybe @{A} _ (Just (a : A)) = a

@@ -43,10 +43,15 @@ data Pattern
   deriving (Show, Generic, Hashable)
 
 data UnspannedPattern
-  = ConOrVar !Name.Pre [(Plicity, Pattern)]
+  = ConOrVar !Name.Pre [(Plicity, Pattern)] -- TODO switch to PlicitPattern
   | WildcardPattern
   | Anno !Pattern !Type
   | Forced !Term
+  deriving (Show, Generic, Hashable)
+
+data PlicitPattern
+  = ExplicitPattern Pattern
+  | ImplicitPattern (HashMap Name Pattern)
   deriving (Show, Generic, Hashable)
 
 app :: Term -> Term -> Term
@@ -75,9 +80,15 @@ anno pat@(Pattern span1 _) type_@(Term span2 _) =
 
 data Definition
   = TypeDeclaration !Type
-  | ConstantDefinition !Term
+  | ConstantDefinition [Clause]
   | DataDefinition [(Name, Type, Plicity)] [(Name.Constructor, Type)]
   deriving (Show, Generic, Hashable)
+
+data Clause = Clause
+  { _span :: !Span.Relative
+  , _patterns :: [PlicitPattern]
+  , _rhs :: !Term
+  } deriving (Show, Generic, Hashable)
 
 key :: Definition -> Scope.Key
 key def =

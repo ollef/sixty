@@ -13,6 +13,7 @@ import qualified Data.HashSet as HashSet
 import Data.IORef
 import Rock
 
+import qualified Elaboration.Clauses as Clauses
 import qualified Builtin
 import Context (Context)
 import qualified Context
@@ -88,8 +89,11 @@ checkDefinition context def expectedType =
       type' <- check context type_ expectedType
       pure $ Syntax.TypeDeclaration type'
 
-    Presyntax.ConstantDefinition term -> do
-      term' <- check context term expectedType
+    Presyntax.ConstantDefinition clauses -> do
+      let
+        clauses' =
+          [ Clauses.Clause clause mempty | clause <- clauses]
+      term' <- Clauses.check context clauses' expectedType
       pure $ Syntax.ConstantDefinition term'
 
     Presyntax.DataDefinition params constrs -> do
@@ -114,8 +118,11 @@ inferDefinition context def =
       type' <- check context type_ Builtin.type_
       pure (Syntax.TypeDeclaration type', Builtin.type_)
 
-    Presyntax.ConstantDefinition term -> do
-      (term', type_) <- infer context term InsertUntilExplicit $ Lazy $ pure Nothing
+    Presyntax.ConstantDefinition clauses -> do
+      let
+        clauses' =
+          [ Clauses.Clause clause mempty | clause <- clauses]
+      (term', type_) <- Clauses.infer context clauses'
       pure (Syntax.ConstantDefinition term', type_)
 
     Presyntax.DataDefinition params constrs -> do
@@ -405,7 +412,7 @@ inferUnspanned context term until expectedTypeName =
           inferLambda context name name' Implicit body
 
         _ -> do
-          Context.report context $ Error.UnableToInferImplicitLambda argumentNames
+          Context.report context Error.UnableToInferImplicitLambda
           inferenceFailed context
 
     Presyntax.App function argument ->

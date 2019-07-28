@@ -19,7 +19,7 @@ import Text.Parsix ((<?>), symbol, try)
 import qualified Text.Parsix as Parsix
 
 import qualified Error
-import Name (Name)
+import Name (Name(Name))
 import qualified Name
 import Plicity
 import qualified Position
@@ -312,6 +312,18 @@ plicitPattern =
   (,) Explicit <$> atomicPattern
   <?> "explicit or implicit pattern"
 
+plicitPattern' :: Parser PlicitPattern
+plicitPattern' =
+  ImplicitPattern . HashMap.fromList <$ symbol "@{" <*> manyIndented patName <*% symbol "}"
+  <|> ExplicitPattern <$> atomicPattern
+  <?> "explicit or implicit pattern"
+  where
+    patName =
+      spanned name <**>
+        ((\pat (_, name_) -> (name_, pat)) <$% symbol "=" <*>% pattern
+        <|> pure (\(span, name_@(Name n)) -> (name_, Pattern span $ ConOrVar (Name.Pre n) mempty))
+        )
+
 -------------------------------------------------------------------------------
 -- Terms
 
@@ -391,11 +403,12 @@ definition =
   relativeTo $
     (,) <$ reserved "data" <*>% name <*>
       (DataDefinition <$> manyIndented param <*% reserved "where" <*> blockOfMany constr)
-    <|>
-    (,) <$> name <*>%
-      (TypeDeclaration <$ symbol ":" <*> recoveringTerm
-      <|> ConstantDefinition <$ symbol "=" <*> recoveringTerm
-      )
+    <|> do
+      name_@(Name nameText) <- name
+      (,) name_ <$>%
+        (TypeDeclaration <$ symbol ":" <*>% recoveringTerm
+        <|> ConstantDefinition <$> clauses nameText
+        )
     <?> "definition"
   where
     recoveringTerm =
@@ -403,7 +416,16 @@ definition =
         (\errorInfo -> spannedTerm . recover ParseError errorInfo)
         (indented term)
     param =
+      -- TODO support implicit parameters
       (,, Explicit) <$ symbol "(" <*>% name <*% symbol ":" <*>% recoveringTerm <*% symbol ")"
       <|> (\(span, name_) -> (name_, Term span Presyntax.Wildcard, Explicit)) <$> spanned name
     constr =
       (,) <$> constructor <*% symbol ":" <*>% recoveringTerm
+    clauses nameText =
+      (:) <$>
+        clause <*>
+        manySame (withIndentationBlock $ reserved nameText *> clause)
+      where
+        clause =
+          (\(span, (pats, rhs)) -> Clause span pats rhs) <$>
+          spanned ((,) <$> manyIndented plicitPattern' <*% symbol "=" <*>% recoveringTerm)

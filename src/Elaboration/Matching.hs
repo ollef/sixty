@@ -40,7 +40,7 @@ import qualified Unification
 import Var
 
 data Config = Config
-  { _targetType :: !Domain.Value
+  { _expectedType :: !Domain.Value
   , _scrutinees :: ![Domain.Value]
   , _clauses :: [Clause]
   , _usedClauses :: !(IORef (Set Span.Relative))
@@ -72,7 +72,7 @@ elaborateCase context scrutinee scrutineeType branches expectedType =
       usedClauses <- liftIO $ newIORef mempty
 
       elaborateWithCoverage context Config
-        { _targetType = expectedType
+        { _expectedType = expectedType
         , _scrutinees = pure scrutineeValue
         , _clauses =
           [ Clause
@@ -93,6 +93,28 @@ elaborateCase context scrutinee scrutineeType branches expectedType =
       term <- elaborateCase context' (Syntax.Var index) scrutineeType branches expectedType
       scrutineeType' <- Readback.readback (Context.toReadbackEnvironment context) scrutineeType
       pure $ Syntax.Let "scrutinee" scrutinee scrutineeType' term
+
+elaborateClauses
+  :: Context v
+  -> [Clause]
+  -> Domain.Type
+  -> M (Syntax.Term v)
+elaborateClauses context clauses expectedType = do
+  usedClauses <- liftIO $ newIORef mempty
+
+  elaborateWithCoverage context Config
+    { _expectedType = expectedType
+    , _scrutinees =
+      case clauses of
+        firstClause:_ ->
+          [value | Match value _ _ _ <- _matches firstClause]
+
+        _ ->
+          mempty
+
+    , _clauses = clauses
+    , _usedClauses = usedClauses
+    }
 
 -------------------------------------------------------------------------------
 
@@ -119,7 +141,7 @@ elaborate context config = do
     [] -> do
       exhaustive <- anyM (uninhabitedScrutinee context) $ _scrutinees config
       unless exhaustive $ Context.report context Error.NonExhaustivePatterns
-      targetType <- Elaboration.readback context $ _targetType config
+      targetType <- Elaboration.readback context $ _expectedType config
       pure $ Syntax.App (Syntax.Global Builtin.fail) Explicit targetType
 
     firstClause:_ -> do
@@ -139,7 +161,7 @@ elaborate context config = do
             Just sub -> do
               context' <- Context.extendUnindexedDefs context sub
               mapM_ (checkForcedPattern context') matches
-              result <- Elaboration.check context' (_rhs firstClause) (_targetType config)
+              result <- Elaboration.check context' (_rhs firstClause) (_expectedType config)
               liftIO $ modifyIORef (_usedClauses config) $ Set.insert $ _span firstClause
               pure result
 

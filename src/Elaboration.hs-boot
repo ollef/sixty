@@ -38,3 +38,7 @@ resolveConstructor
   -> HashSet Name.QualifiedConstructor
   -> Lazy (Maybe Name.Qualified)
   -> M (Maybe Name.QualifiedConstructor)
+
+inferenceFailed
+  :: Context v
+  -> M (Syntax.Term v, Domain.Type)

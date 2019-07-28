@@ -34,7 +34,7 @@ data Elaboration
   | NonExhaustivePatterns
   | OverlappingPatterns
   | PlicityMismatch !PlicityMismatch
-  | UnableToInferImplicitLambda (HashMap Name Name)
+  | UnableToInferImplicitLambda
   | ImplicitApplicationMismatch (HashMap Name ())
   deriving (Eq, Ord, Show, Generic, Hashable)
 
@@ -107,7 +107,7 @@ pretty filePath span lineText err =
                 Extra ->
                   "Unexpected field"
 
-            UnableToInferImplicitLambda _ ->
+            UnableToInferImplicitLambda ->
               "Unable to infer implicit lambda"
 
             ImplicitApplicationMismatch _ ->

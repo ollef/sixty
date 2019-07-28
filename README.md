@@ -47,11 +47,11 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Elaboration of data definitions
   - [x] Constructors
     - [x] Type-based overloading
-- [ ] Pattern matching elaboration
+- [x] Pattern matching elaboration
   - [x] Case expressions
   - [x] Exhaustiveness check
   - [x] Redundant pattern check
-  - [ ] Clause elaboration
+  - [x] Clause elaboration
   - [ ] Pattern lambdas and pis
 - [ ] Inductive families
 - [ ] Generalisation?
