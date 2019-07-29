@@ -77,10 +77,10 @@ elaborateCase context scrutinee scrutineeType branches expectedType =
         , _clauses =
           [ Clause
             { _span = Span.add patSpan rhsSpan
-            , _matches = [Match scrutineeValue Explicit pattern scrutineeType]
+            , _matches = [Match scrutineeValue Explicit pat scrutineeType]
             , _rhs = rhs'
             }
-          | (pattern@(Presyntax.Pattern patSpan _), rhs'@(Presyntax.Term rhsSpan _)) <- branches
+          | (pat@(Presyntax.Pattern patSpan _), rhs'@(Presyntax.Term rhsSpan _)) <- branches
           ]
         , _usedClauses = usedClauses
         }
@@ -123,7 +123,7 @@ elaborateSingle
   -> Presyntax.Term
   -> Domain.Type
   -> M (Syntax.Term v)
-elaborateSingle context scrutinee pattern@(Presyntax.Pattern patSpan _) rhs@(Presyntax.Term rhsSpan _) expectedType = do
+elaborateSingle context scrutinee pat@(Presyntax.Pattern patSpan _) rhs@(Presyntax.Term rhsSpan _) expectedType = do
     let
       scrutineeValue =
         Domain.var scrutinee
@@ -137,7 +137,7 @@ elaborateSingle context scrutinee pattern@(Presyntax.Pattern patSpan _) rhs@(Pre
       , _clauses =
         [ Clause
           { _span = Span.add patSpan rhsSpan
-          , _matches = [Match scrutineeValue Explicit pattern scrutineeType]
+          , _matches = [Match scrutineeValue Explicit pat scrutineeType]
           , _rhs = rhs
           }
         ]
@@ -232,11 +232,11 @@ simplifyMatch
   :: Context v
   -> Match
   -> MaybeT M [Match]
-simplifyMatch context (Match value plicity pattern@(Presyntax.Pattern span unspannedPattern) type_) = do
+simplifyMatch context (Match value plicity pat@(Presyntax.Pattern span unspannedPattern) type_) = do
   value' <- lift $ Context.forceHead context value
   let
     match' =
-      Match value' plicity pattern type_
+      Match value' plicity pat type_
   case (value', unspannedPattern) of
     (Domain.Neutral (Domain.Con constr) spine, Presyntax.ConOrVar name pats) -> do
       maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
@@ -298,7 +298,7 @@ matchPrepatterns context values patterns type_ = do
     ([], [], _) ->
       pure ([], type')
 
-    ( Presyntax.ExplicitPattern pattern:patterns'
+    ( Presyntax.ExplicitPattern pat:patterns'
       , (Explicit, value):values'
       , Domain.Pi _ source Explicit domainClosure
       ) -> do
@@ -306,9 +306,9 @@ matchPrepatterns context values patterns type_ = do
         (matches, type'') <- matchPrepatterns context values' patterns' domain
         value' <- force value
         source' <- force source
-        pure (Match value' Explicit pattern source' : matches, type'')
+        pure (Match value' Explicit pat source' : matches, type'')
 
-    ( Presyntax.ExplicitPattern pattern:patterns'
+    ( Presyntax.ExplicitPattern pat:patterns'
       , (Explicit, value):values'
       , Domain.Fun source domain
       ) -> do
@@ -316,7 +316,7 @@ matchPrepatterns context values patterns type_ = do
         (matches, type'') <- matchPrepatterns context values' patterns' domain'
         value' <- force value
         source' <- force source
-        pure (Match value' Explicit pattern source' : matches, type'')
+        pure (Match value' Explicit pat source' : matches, type'')
 
     (Presyntax.ExplicitPattern _:_, (Explicit, _):_, _) ->
       panic "matchPrepatterns non-pi"
@@ -348,8 +348,8 @@ matchPrepatterns context values patterns type_ = do
     (_, (Implicit, _):_, _) -> do
       panic "matchPrepatterns non-pi"
 
-    (pattern:_, [], _) -> do
-      Context.report (Context.spanned (Presyntax.plicitPatternSpan pattern) context) $ Error.PlicityMismatch Error.Extra
+    (pat:_, [], _) -> do
+      Context.report (Context.spanned (Presyntax.plicitPatternSpan pat) context) $ Error.PlicityMismatch Error.Extra
       pure ([], type')
 
     ([], (Explicit, _):_, _) -> do

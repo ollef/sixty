@@ -289,7 +289,7 @@ spannedPattern =
 
 atomicPattern :: Parser Pattern
 atomicPattern =
-  symbol "(" *>% pattern <*% symbol ")"
+  symbol "(" *>% pattern_ <*% symbol ")"
   <|> spannedPattern
     ((`ConOrVar` mempty) <$> prename
     <|> WildcardPattern <$ reserved "_"
@@ -297,8 +297,8 @@ atomicPattern =
     )
   <?> "pattern"
 
-pattern :: Parser Pattern
-pattern =
+pattern_ :: Parser Pattern
+pattern_ =
   ( spannedPattern (ConOrVar <$> prename <*> manyIndented plicitPattern)
     <|> atomicPattern
   )
@@ -315,7 +315,7 @@ plicitPattern =
   where
     patName =
       spanned name <**>
-        ((\pat (_, name_) -> (name_, pat)) <$% symbol "=" <*>% pattern
+        ((\pat (_, name_) -> (name_, pat)) <$% symbol "=" <*>% pattern_
         <|> pure (\(span, name_@(Name n)) -> (name_, Pattern span $ ConOrVar (Name.Pre n) mempty))
         )
 
@@ -356,7 +356,7 @@ atomicTerm =
 
     branch :: Parser (Pattern, Term)
     branch =
-      (,) <$> pattern <*% symbol "->" <*>% term
+      (,) <$> pattern_ <*% symbol "->" <*>% term
 
 plicitAtomicTerm :: Parser (Either (HashMap Name Term) Term)
 plicitAtomicTerm =

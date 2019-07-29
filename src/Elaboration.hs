@@ -284,15 +284,15 @@ checkUnspanned context term expectedType = do
         infer context scrutinee InsertUntilExplicit $ Lazy $ pure Nothing
       Matching.elaborateCase context scrutinee' scrutineeType branches expectedType'
 
-    (Presyntax.Lam (Presyntax.ExplicitPattern pattern) body, Domain.Pi name source Explicit domainClosure) ->
-      checkLambda context name source Explicit pattern domainClosure body
+    (Presyntax.Lam (Presyntax.ExplicitPattern pat) body, Domain.Pi name source Explicit domainClosure) ->
+      checkLambda context name source Explicit pat domainClosure body
 
-    (Presyntax.Lam (Presyntax.ExplicitPattern pattern) body, Domain.Fun source domain) -> do
+    (Presyntax.Lam (Presyntax.ExplicitPattern pat) body, Domain.Fun source domain) -> do
       source' <- force source
       source'' <- readback context source'
       (context', var) <- Context.extendUnnamed context "x" source
       domain' <- force domain
-      body' <- Matching.elaborateSingle context' var pattern body domain'
+      body' <- Matching.elaborateSingle context' var pat body domain'
       pure $ Syntax.Lam "x" source'' Explicit body'
 
     (Presyntax.Lam (Presyntax.ImplicitPattern _ namedPats) body, _)
@@ -302,13 +302,13 @@ checkUnspanned context term expectedType = do
     (Presyntax.Lam (Presyntax.ImplicitPattern span namedPats) body, Domain.Pi name source Implicit domainClosure)
       | name `HashMap.member` namedPats -> do
         let
-          pattern =
+          pat =
             namedPats HashMap.! name
 
           body' =
             Presyntax.Term (Context.span context) $
               Presyntax.Lam (Presyntax.ImplicitPattern span (HashMap.delete name namedPats)) body
-        checkLambda context name source Implicit pattern domainClosure body'
+        checkLambda context name source Implicit pat domainClosure body'
 
     (_, Domain.Pi name source Implicit domainClosure) -> do
       (context', v) <- Context.extendUnnamed context name source
@@ -400,16 +400,16 @@ inferUnspanned context term until expectedTypeName =
         , Builtin.type_
         )
 
-    Presyntax.Lam (Presyntax.ExplicitPattern pattern) body ->
-      inferLambda context "x" Explicit pattern body
+    Presyntax.Lam (Presyntax.ExplicitPattern pat) body ->
+      inferLambda context "x" Explicit pat body
 
     Presyntax.Lam (Presyntax.ImplicitPattern span argumentNames) body ->
       case HashMap.toList argumentNames of
         [] ->
           infer context body until expectedTypeName
 
-        [(name, pattern)] ->
-          inferLambda context name Implicit pattern body
+        [(name, pat)] ->
+          inferLambda context name Implicit pat body
 
         _ -> do
           Context.report (Context.spanned span context) Error.UnableToInferImplicitLambda
@@ -576,7 +576,7 @@ checkLambda
   -> Domain.Closure
   -> Presyntax.Term
   -> M (Syntax.Term v)
-checkLambda context name source plicity pattern domainClosure body = do
+checkLambda context name source plicity pat domainClosure body = do
   (context', var) <- Context.extendUnnamed context name source
   source' <- force source
   source'' <- readback context source'
@@ -584,7 +584,7 @@ checkLambda context name source plicity pattern domainClosure body = do
     Evaluation.evaluateClosure
       domainClosure
       (Lazy $ pure $ Domain.var var)
-  body' <- Matching.elaborateSingle context' var pattern body domain
+  body' <- Matching.elaborateSingle context' var pat body domain
   pure $ Syntax.Lam name source'' plicity body'
 
 inferLambda
@@ -594,12 +594,12 @@ inferLambda
   -> Presyntax.Pattern
   -> Presyntax.Term
   -> M (Syntax.Term v, Domain.Type)
-inferLambda context name plicity pattern body = do
+inferLambda context name plicity pat body = do
   source <- Context.newMetaType context
   source' <- readback context source
   (context', var) <- Context.extendUnnamed context name $ Lazy $ pure source
   domain <- Context.newMetaType context
-  body' <- Matching.elaborateSingle context' var pattern body domain
+  body' <- Matching.elaborateSingle context' var pat body domain
   domain' <- readback context' domain
 
   pure

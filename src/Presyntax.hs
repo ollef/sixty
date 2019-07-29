@@ -54,8 +54,8 @@ data PlicitPattern
   deriving (Show, Generic, Hashable)
 
 plicitPatternSpan :: PlicitPattern -> Span.Relative
-plicitPatternSpan pattern =
-  case pattern of
+plicitPatternSpan pat =
+  case pat of
     ExplicitPattern (Pattern span _) ->
       span
 
