@@ -48,31 +48,17 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
       Domain.Pi name source Explicit domainClosure
         | HashMap.null implicits -> do
           (context', var) <- Context.extendUnnamed context name source
-          let
-            value =
-              Domain.var var
-          source' <- force source
-          source'' <- Elaboration.readback context source'
           domain <-
             Evaluation.evaluateClosure
               domainClosure
               (Lazy $ pure $ Domain.var var)
-          clauses' <- mapM (shiftExplicit context value source') clauses
-          body <- check context' clauses' domain
-          pure $ Syntax.Lam name source'' Explicit body
+          explicitFunCase context' name var source domain
 
       Domain.Fun source domain
         | HashMap.null implicits -> do
           (context', var) <- Context.extendUnnamed context "x" source
-          let
-            value =
-              Domain.var var
-          source' <- force source
-          source'' <- Elaboration.readback context source'
           domain' <- force domain
-          clauses' <- mapM (shiftExplicit context value source') clauses
-          body <- check context' clauses' domain'
-          pure $ Syntax.Lam "x" source'' Explicit body
+          explicitFunCase context' "x" var source domain'
 
       Domain.Pi name source Implicit domainClosure -> do
         (context', var) <- Context.extendUnnamed context name source
@@ -92,6 +78,16 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
   where
     implicits =
       foldMap clauseImplicits clauses
+
+    explicitFunCase context' name var source domain = do
+      let
+        value =
+          Domain.var var
+      source' <- force source
+      source'' <- Elaboration.readback context source'
+      clauses' <- mapM (shiftExplicit context value source') clauses
+      body <- check context' clauses' domain
+      pure $ Syntax.Lam name source'' Explicit body
 
 infer
   :: Context v
