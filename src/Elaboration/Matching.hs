@@ -303,20 +303,14 @@ matchPrepatterns context values patterns type_ = do
       , Domain.Pi _ source Explicit domainClosure
       ) -> do
         domain <- Evaluation.evaluateClosure domainClosure value
-        (matches, type'') <- matchPrepatterns context values' patterns' domain
-        value' <- force value
-        source' <- force source
-        pure (Match value' Explicit pat source' : matches, type'')
+        explicitFunCase value values' pat patterns' source domain
 
     ( Presyntax.ExplicitPattern pat:patterns'
       , (Explicit, value):values'
       , Domain.Fun source domain
       ) -> do
         domain' <- force domain
-        (matches, type'') <- matchPrepatterns context values' patterns' domain'
-        value' <- force value
-        source' <- force source
-        pure (Match value' Explicit pat source' : matches, type'')
+        explicitFunCase value values' pat patterns' source domain'
 
     (Presyntax.ExplicitPattern _:_, (Explicit, _):_, _) ->
       panic "matchPrepatterns non-pi"
@@ -359,6 +353,12 @@ matchPrepatterns context values patterns type_ = do
     (Presyntax.ImplicitPattern patSpan _:patterns', (Explicit, _):_, _) -> do
       Context.report (Context.spanned patSpan context) $ Error.PlicityMismatch (Error.Mismatch Explicit Implicit)
       matchPrepatterns context values patterns' type'
+  where
+    explicitFunCase value values' pat patterns' source domain = do
+      (matches, type'') <- matchPrepatterns context values' patterns' domain
+      value' <- force value
+      source' <- force source
+      pure (Match value' Explicit pat source' : matches, type'')
 
 type PatternSubstitution = Tsil (Name, Lazy Domain.Value, Lazy Domain.Value)
 
