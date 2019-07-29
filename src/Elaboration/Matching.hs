@@ -345,7 +345,7 @@ matchPrepatterns context values patterns type_ = do
       domain <- Evaluation.evaluateClosure domainClosure value
       matchPrepatterns context values' patterns domain
 
-    (_, (Implicit, _):_, _) -> do
+    (_, (Implicit, _):_, _) ->
       panic "matchPrepatterns non-pi"
 
     (pat:_, [], _) -> do
