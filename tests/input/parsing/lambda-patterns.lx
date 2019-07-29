@@ -1,0 +1,5 @@
+data Unit where
+  MkUnit : Unit
+
+f : forall (a b : Unit). Unit -> Unit
+f = \@{a = MkUnit, b = MkUnit} MkUnit. MkUnit

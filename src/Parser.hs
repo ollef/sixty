@@ -341,7 +341,7 @@ atomicTerm =
       <|> Let <$ reserved "let" <*>% name <*% symbol "=" <*>% term <*% reserved "in" <*>% term
       <|> Case <$ reserved "case" <*>% term <*% reserved "of" <*> blockOfMany branch
       <|> unspanned <$>
-        ( lams <$ symbol "\\" <*> someIndented lamName <*% symbol "." <*>% term
+        ( lams <$ symbol "\\" <*> someIndented (positioned plicitPattern) <*% symbol "." <*>% term
         <|> implicitPis <$ reserved "forall" <*>
           someIndented
             ( (,) <$ symbol "(" <*> someIndented (positioned name) <*% symbol ":" <*>% term <*% symbol ")"
@@ -353,19 +353,6 @@ atomicTerm =
   where
     implicitPis vss domain =
       foldr (\(vs, source) domain' -> pis Implicit vs source domain') domain vss
-
-    lamName =
-      positioned $
-        Right <$> name <|> Left <$> implicitNames
-
-    implicitNames =
-      HashMap.fromList <$ symbol "@{" <*>% sepByIndented implicitName (symbol ",") <*% symbol "}"
-
-    implicitName =
-      name <**>
-        ((\n' n -> (n, n')) <$% symbol "=" <*>% name
-        <|> pure (\n -> (n, n))
-        )
 
     branch :: Parser (Pattern, Term)
     branch =

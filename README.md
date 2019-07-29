@@ -50,7 +50,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Exhaustiveness check
   - [x] Redundant pattern check
   - [x] Clause elaboration
-  - [ ] Pattern lambdas and pis
+  - [x] Pattern lambdas
 - [ ] Inductive families
 - [ ] Generalisation?
 - [ ] Glued evaluation

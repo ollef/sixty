@@ -4,6 +4,3 @@ data List a where
 
 test : forall t. t -> List t
 test = \@{t = T} x. Cons @{a = T} x (Nil @{a = T})
-
-test2 : forall t. t -> List t
-test2 = \@{a = T} x. Cons @{a = T} x (Nil @{a = T}) -- type mismatch error expected

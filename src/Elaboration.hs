@@ -1,5 +1,6 @@
 {-# language DuplicateRecordFields #-}
 {-# language GADTs #-}
+{-# language OverloadedStrings #-}
 {-# language PackageImports #-}
 {-# language ScopedTypeVariables #-}
 module Elaboration where
@@ -281,34 +282,33 @@ checkUnspanned context term expectedType = do
     (Presyntax.Case scrutinee branches, _) -> do
       (scrutinee', scrutineeType) <-
         infer context scrutinee InsertUntilExplicit $ Lazy $ pure Nothing
-      Matching.elaborateCase context scrutinee' scrutineeType branches expectedType
+      Matching.elaborateCase context scrutinee' scrutineeType branches expectedType'
 
-    (Presyntax.Lam name body, Domain.Pi _ source Explicit domainClosure) -> do
-      (context', source', domain) <- checkLambda context name source domainClosure
-      body' <- check context' body domain
-      pure $ Syntax.Lam name source' Explicit body'
+    (Presyntax.Lam (Presyntax.ExplicitPattern pattern) body, Domain.Pi name source Explicit domainClosure) ->
+      checkLambda context name source Explicit pattern domainClosure body
 
-    (Presyntax.Lam name body, Domain.Fun source domain) -> do
+    (Presyntax.Lam (Presyntax.ExplicitPattern pattern) body, Domain.Fun source domain) -> do
       source' <- force source
       source'' <- readback context source'
-      (context', _) <- Context.extend context name source
-
+      (context', var) <- Context.extendUnnamed context "x" source
       domain' <- force domain
-      body' <- check context' body domain'
-      pure $ Syntax.Lam name source'' Explicit body'
+      body' <- Matching.elaborateSingle context' var pattern body domain'
+      pure $ Syntax.Lam "x" source'' Explicit body'
 
-    (Presyntax.ImplicitLams names body, _)
-      | HashMap.null names ->
-        check context body expectedType
+    (Presyntax.Lam (Presyntax.ImplicitPattern _ namedPats) body, _)
+      | HashMap.null namedPats ->
+        check context body expectedType'
 
-    (Presyntax.ImplicitLams names body, Domain.Pi name source Implicit domainClosure)
-      | name `HashMap.member` names -> do
+    (Presyntax.Lam (Presyntax.ImplicitPattern span namedPats) body, Domain.Pi name source Implicit domainClosure)
+      | name `HashMap.member` namedPats -> do
         let
-          name' =
-            names HashMap.! name
-        (context', source', domain) <- checkLambda context name' source domainClosure
-        body' <- checkUnspanned context' (Presyntax.ImplicitLams (HashMap.delete name names) body) domain
-        pure $ Syntax.Lam name source' Implicit body'
+          pattern =
+            namedPats HashMap.! name
+
+          body' =
+            Presyntax.Term (Context.span context) $
+              Presyntax.Lam (Presyntax.ImplicitPattern span (HashMap.delete name namedPats)) body
+        checkLambda context name source Implicit pattern domainClosure body'
 
     (_, Domain.Pi name source Implicit domainClosure) -> do
       (context', v) <- Context.extendUnnamed context name source
@@ -400,19 +400,19 @@ inferUnspanned context term until expectedTypeName =
         , Builtin.type_
         )
 
-    Presyntax.Lam name body ->
-      inferLambda context name name Explicit body
+    Presyntax.Lam (Presyntax.ExplicitPattern pattern) body ->
+      inferLambda context "x" Explicit pattern body
 
-    Presyntax.ImplicitLams argumentNames body ->
+    Presyntax.Lam (Presyntax.ImplicitPattern span argumentNames) body ->
       case HashMap.toList argumentNames of
         [] ->
           infer context body until expectedTypeName
 
-        [(name, name')] ->
-          inferLambda context name name' Implicit body
+        [(name, pattern)] ->
+          inferLambda context name Implicit pattern body
 
         _ -> do
-          Context.report context Error.UnableToInferImplicitLambda
+          Context.report (Context.spanned span context) Error.UnableToInferImplicitLambda
           inferenceFailed context
 
     Presyntax.App function argument ->
@@ -571,35 +571,40 @@ checkLambda
   :: Context v
   -> Name
   -> Lazy Domain.Type
+  -> Plicity
+  -> Presyntax.Pattern
   -> Domain.Closure
-  -> M (Context (Succ v), Syntax.Term v, Domain.Type)
-checkLambda context name source domainClosure = do
-  (context', var) <- Context.extend context name source
+  -> Presyntax.Term
+  -> M (Syntax.Term v)
+checkLambda context name source plicity pattern domainClosure body = do
+  (context', var) <- Context.extendUnnamed context name source
   source' <- force source
   source'' <- readback context source'
   domain <-
     Evaluation.evaluateClosure
       domainClosure
       (Lazy $ pure $ Domain.var var)
-  pure (context', source'', domain)
+  body' <- Matching.elaborateSingle context' var pattern body domain
+  pure $ Syntax.Lam name source'' plicity body'
 
 inferLambda
   :: Context v
   -> Name
-  -> Name
   -> Plicity
+  -> Presyntax.Pattern
   -> Presyntax.Term
   -> M (Syntax.Term v, Domain.Type)
-inferLambda context piName lamName plicity body = do
+inferLambda context name plicity pattern body = do
   source <- Context.newMetaType context
   source' <- readback context source
-  (context', _) <- Context.extend context lamName $ Lazy $ pure source
-  (body', domain) <- infer context' body InsertUntilExplicit $ Lazy $ pure Nothing
+  (context', var) <- Context.extendUnnamed context name $ Lazy $ pure source
+  domain <- Context.newMetaType context
+  body' <- Matching.elaborateSingle context' var pattern body domain
   domain' <- readback context' domain
 
   pure
-    ( Syntax.Lam piName source' plicity body'
-    , Domain.Pi piName (Lazy $ pure source) plicity
+    ( Syntax.Lam name source' plicity body'
+    , Domain.Pi name (Lazy $ pure source) plicity
       $ Domain.Closure (Context.toEvaluationEnvironment context) domain'
     )
 

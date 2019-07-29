@@ -116,6 +116,34 @@ elaborateClauses context clauses expectedType = do
     , _usedClauses = usedClauses
     }
 
+elaborateSingle
+  :: Context v
+  -> Var
+  -> Presyntax.Pattern
+  -> Presyntax.Term
+  -> Domain.Type
+  -> M (Syntax.Term v)
+elaborateSingle context scrutinee pattern@(Presyntax.Pattern patSpan _) rhs@(Presyntax.Term rhsSpan _) expectedType = do
+    let
+      scrutineeValue =
+        Domain.var scrutinee
+    scrutineeType <- force $ Context.lookupVarType scrutinee context
+
+    usedClauses <- liftIO $ newIORef mempty
+
+    elaborateWithCoverage context Config
+      { _expectedType = expectedType
+      , _scrutinees = pure scrutineeValue
+      , _clauses =
+        [ Clause
+          { _span = Span.add patSpan rhsSpan
+          , _matches = [Match scrutineeValue Explicit pattern scrutineeType]
+          , _rhs = rhs
+          }
+        ]
+      , _usedClauses = usedClauses
+      }
+
 -------------------------------------------------------------------------------
 
 elaborateWithCoverage :: Context v -> Config -> M (Syntax.Term v)
