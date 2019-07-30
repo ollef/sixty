@@ -598,7 +598,7 @@ inferLambda context name plicity pat body = do
   source <- Context.newMetaType context
   source' <- readback context source
   (context', var) <- Context.extendUnnamed context name $ Lazy $ pure source
-  domain <- Context.newMetaType context
+  domain <- Context.newMetaType context'
   body' <- Matching.elaborateSingle context' var pat body domain
   domain' <- readback context' domain
 
