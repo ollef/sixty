@@ -21,7 +21,7 @@ import qualified Syntax
 import Syntax.Telescope (Telescope)
 
 data Query a where
-  ReadFile :: FilePath -> Query Text
+  FileText :: FilePath -> Query Text
   ParsedModule :: Name.Module -> Query [(Position.Absolute, (Name, Presyntax.Definition))]
   ParsedModuleMap :: Name.Module -> Query (HashMap (Scope.Key, Name) Presyntax.Definition)
   ModulePositionMap :: Name.Module -> Query (HashMap (Scope.Key, Name) Position.Absolute)
@@ -43,7 +43,7 @@ deriveGCompare ''Query
 instance HashTag Query where
   hashTagged query =
     case query of
-      ReadFile {} -> hash
+      FileText {} -> hash
       ParsedModule {} -> hash
       ParsedModuleMap {} -> hash
       ModulePositionMap {} -> hash

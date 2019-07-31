@@ -38,7 +38,7 @@ runTask task = do
           errs
     spannedErrors <- forM errors $ \err -> do
       (filePath, span) <- fetch $ Query.ErrorSpan err
-      text <- fetch $ Query.ReadFile filePath
+      text <- fetch $ Query.FileText filePath
       let
         trimmedSpan =
           Span.trim text span

@@ -35,7 +35,7 @@ import qualified Syntax.Telescope as Telescope
 rules :: GenRules (Writer [Error] Query) Query
 rules (Writer query) =
   case query of
-    ReadFile filePath ->
+    FileText filePath ->
       noError $ liftIO $ readFile filePath
 
     ParsedModule module_ -> do
@@ -43,7 +43,7 @@ rules (Writer query) =
         filePath =
           moduleFilePath module_
 
-      text <- fetch $ ReadFile filePath
+      text <- fetch $ FileText filePath
       pure $
         case Parser.parseText Parser.module_ text filePath of
           Right (_header, errorsAndDefinitions) -> do
