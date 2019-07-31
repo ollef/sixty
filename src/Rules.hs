@@ -46,7 +46,7 @@ rules (Writer query) =
       text <- fetch $ ReadFile filePath
       pure $
         case Parser.parseText Parser.module_ text filePath of
-          Right errorsAndDefinitions -> do
+          Right (_header, errorsAndDefinitions) -> do
             let
               (errors, definitions) =
                 partitionEithers errorsAndDefinitions
@@ -111,7 +111,6 @@ rules (Writer query) =
         pure $
           fromMaybe (panic "Fetching Visibility for name without visibility") $
           HashMap.lookup qualifiedName visibility
-
 
     ElaboratedType name
       -- TODO

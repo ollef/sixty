@@ -4,7 +4,7 @@
 module Parser where
 
 import Prelude (String)
-import Protolude hiding (try)
+import Protolude hiding (try, moduleName)
 
 import Data.Char
 import Data.HashMap.Lazy (HashMap)
@@ -19,6 +19,7 @@ import Text.Parsix ((<?>), symbol, try)
 import qualified Text.Parsix as Parsix
 
 import qualified Error
+import qualified Module
 import Name (Name(Name))
 import qualified Name
 import Plicity
@@ -226,7 +227,7 @@ qidLetter = idLetter
 
 reservedIds :: HashSet String
 reservedIds =
-  HashSet.fromList ["let", "in", "_", "data", "where", "forall", "case", "of"]
+  HashSet.fromList ["let", "in", "_", "data", "where", "forall", "case", "of", "import"]
 
 idStyle :: Parsix.IdentifierStyle Parser
 idStyle
@@ -278,6 +279,10 @@ constructor =
 
 prename :: Parser Name.Pre
 prename =
+  Parsix.ident qidStyle
+
+moduleName :: Parser Name.Module
+moduleName =
   Parsix.ident qidStyle
 
 -------------------------------------------------------------------------------
@@ -384,10 +389,6 @@ term =
 -------------------------------------------------------------------------------
 -- Definitions
 
-module_ :: Parser [Either Error.Parsing (Position.Absolute, (Name, Definition))]
-module_ =
-  many definition
-
 definition :: Parser (Either Error.Parsing (Position.Absolute, (Name, Definition)))
 definition =
   Parsix.withRecovery (recover Left) $
@@ -440,3 +441,38 @@ dataDefinition =
     constructorDefinition =
       withIndentationBlock $
         (,) <$> someIndented constructor <*% symbol ":" <*> recoveringIndentedTerm
+
+-------------------------------------------------------------------------------
+-- * Module
+--
+
+module_ :: Parser (Module.Header, [Either Error.Parsing (Position.Absolute, (Name, Definition))])
+module_ =
+  (,) <$> moduleHeader <*> many definition
+
+moduleHeader :: Parser Module.Header
+moduleHeader = moduleExposing <*> manySame import_
+  where
+    moduleExposing =
+      Module.Header <$ reserved "module" <*>% moduleName <*% reserved "exposing" <*>% exposedNames
+      <|> pure (Module.Header "Main" Module.AllExposed)
+
+import_ :: Parser Module.Import
+import_ =
+  withIndentationBlock $
+    mkImport
+      <$ reserved "import" <*>% moduleName
+      <*> optionalIndented (reserved "as" *>% prename)
+      <*> optionalIndented (reserved "exposing" *>% exposedNames)
+  where
+    mkImport n@(Name.Module text) malias mexposed =
+      Module.Import n (fromMaybe (Name.Pre text) malias) (fromMaybe Module.noneExposed mexposed)
+
+exposedNames :: Parser Module.ExposedNames
+exposedNames =
+  symbol "(" *>% inner <*% symbol ")"
+  where
+    inner =
+      Module.AllExposed <$ symbol ".."
+      <|> Module.Exposed . HashSet.fromList <$> sepByIndented prename (symbol ",")
+      <|> pure (Module.Exposed mempty)
