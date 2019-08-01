@@ -59,6 +59,8 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [ ] Strings
 - [ ] Command-line parser
 - [ ] Language server
+- [ ] REPL
+- [ ] File watcher
 - [ ] Integrate into Sixten
 
 ## Inspiration
