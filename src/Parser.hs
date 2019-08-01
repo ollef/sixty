@@ -425,11 +425,11 @@ dataDefinition =
 
     parameters1 =
       implicitParameters
-      <|> (:) <$> explicitParameter <*> parameters
+      <|> (<>) <$> explicitParameter <*> parameters
 
     explicitParameter =
-      (,, Explicit) <$ symbol "(" <*>% name <*% symbol ":" <*> recoveringIndentedTerm <*% symbol ")"
-      <|> (\(span, name_) -> (name_, Term span Presyntax.Wildcard, Explicit)) <$> spanned name
+      (\names type_ -> [(name_, type_, Explicit) | name_ <- names]) <$ symbol "(" <*> someIndented name <*% symbol ":" <*> recoveringIndentedTerm <*% symbol ")"
+      <|> (\(span, name_) -> pure (name_, Term span Presyntax.Wildcard, Explicit)) <$> spanned name
 
     implicitParameters =
       (<>) . concat <$ reserved "forall" <*>

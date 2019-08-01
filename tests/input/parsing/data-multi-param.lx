@@ -1,0 +1,6 @@
+data Tuple (a b : Type) where
+  MkTuple : a -> b -> Tuple a b
+
+data Either (a b : Type) where
+  Left : a -> Either a b
+  Right : b -> Either a b
