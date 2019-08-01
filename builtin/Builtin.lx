@@ -1,0 +1,8 @@
+module Sixten.Builtin exposing (Type)
+
+Type : Type
+
+fail : (A : Type) -> A
+
+data Equals forall (A : Type). (a b : A) where
+  Refl : Equals a b
