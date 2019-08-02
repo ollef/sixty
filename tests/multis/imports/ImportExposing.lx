@@ -1,0 +1,14 @@
+module ImportExposing exposing (..)
+
+import Lib exposing (b, c)
+import LibExposingAll exposing (..)
+
+aa = a
+bb : Type
+bb = b -- ambiguous name error expected
+cc : Type
+cc = c -- ambiguous name error expected
+dd : Type
+dd = d -- not in scope error expected
+
+liba = Lib.a

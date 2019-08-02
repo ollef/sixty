@@ -1,0 +1,5 @@
+module LibExposingAll exposing (..)
+
+a = Type
+b = Type
+c = Type

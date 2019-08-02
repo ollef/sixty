@@ -25,38 +25,56 @@ import qualified Span
 main :: IO ()
 main = do
   let
-    inputDirectory =
-      "tests/input/"
-  inputFiles <- listDirectoryRecursive inputDirectory $ (== ".lx") . takeExtension
+    singlesDirectory =
+      "tests/singles/"
+
+    multisDirectory =
+      "tests/multis/"
+
+    isSourceFile =
+      (== ".lx") . takeExtension
+
+  singleFiles <- listDirectoryRecursive isSourceFile singlesDirectory
+  multiFiles <- listDirectoriesWithFilesMatching isSourceFile multisDirectory
   Tasty.defaultMain $
-    Tasty.testGroup "Test files" $
-      foreach inputFiles $ \inputFile -> do
-        let
-          inputModule = dropExtension inputFile
-        Tasty.testCase (drop (length inputDirectory) inputModule) $
-          checkFile inputFile
+    Tasty.testGroup "tests"
+      [ Tasty.testGroup "singles" $
+        foreach singleFiles $ \inputFile ->
+          Tasty.testCase (drop (length singlesDirectory) $ dropExtension inputFile) $
+            checkFiles [inputFile]
+      , Tasty.testGroup "multis" $
+        foreach multiFiles $ \(dir, inputFiles) ->
+          Tasty.testCase (drop (length multisDirectory) dir) $
+            checkFiles inputFiles
+      ]
 
-checkFile :: FilePath -> IO ()
-checkFile filePath = do
-  (moduleSource, errs) <- Driver.runTask [filePath] $ do
-    (module_, _, defs) <- fetch $ Query.ParsedFile filePath
+checkFiles :: [FilePath] -> IO ()
+checkFiles files = do
+  (moduleSources, errs) <- Driver.runTask files $
+    forM files $ \filePath -> do
+      (module_, _, defs) <- fetch $ Query.ParsedFile filePath
+      let
+        names =
+          HashSet.fromList $
+            Name.Qualified module_ . fst . snd <$> defs
+      forM_ names $ \name -> do
+        _type <- fetch $ Query.ElaboratedType name
+        _maybeDef <- fetch $ Query.ElaboratedDefinition name
+        pure ()
+      moduleSource <- fetch $ Query.FileText filePath
+      pure (filePath, moduleSource)
+
+  forM_ moduleSources $ \(filePath, moduleSource) -> do
     let
-      names =
-        HashSet.fromList $
-          Name.Qualified module_ . fst . snd <$> defs
-    forM_ names $ \name -> do
-      _type <- fetch $ Query.ElaboratedType name
-      _maybeDef <- fetch $ Query.ElaboratedDefinition name
-      pure ()
-    fetch $ Query.FileText filePath
+      expectedErrors =
+        expectedErrorsFromSource moduleSource
 
-  let
-    expectedErrors =
-      expectedErrorsFromSource moduleSource
-  verifyErrors errs expectedErrors
+      moduleErrs =
+        filter (\(errFilePath, _, _, _) -> filePath == errFilePath) errs
+    verifyErrors filePath moduleErrs expectedErrors
 
-verifyErrors :: [(FilePath, Span.LineColumn, Text, Error)] -> HashMap Int ExpectedError -> IO ()
-verifyErrors errs expectedErrors = do
+verifyErrors :: FilePath -> [(FilePath, Span.LineColumn, Text, Error)] -> HashMap Int ExpectedError -> IO ()
+verifyErrors filePath errs expectedErrors = do
   let
     errorsMap =
       HashMap.fromList
@@ -72,13 +90,14 @@ verifyErrors errs expectedErrors = do
 
       _ ->
         Tasty.assertFailure $
-          "Expected " <> show expectedError <> " error on line " <> show (lineNumber + 1)
+          toS filePath <> ":" <> show (lineNumber + 1) <> ": " <>
+          "Expected " <> show expectedError <> " error"
 
-  forM_ errs $ \(filePath, lineColumn@(Span.LineColumns (Position.LineColumn lineNumber _) _), lineText, err) ->
+  forM_ errs $ \(errFilePath, lineColumn@(Span.LineColumns (Position.LineColumn lineNumber _) _), lineText, err) ->
     let
       failure =
         Tasty.assertFailure $
-          "Unexpected error:\n" <> show (Error.pretty filePath lineColumn lineText err <> line)
+          "Unexpected error:\n" <> show (Error.pretty errFilePath lineColumn lineText err <> line)
     in
     case HashMap.lookup lineNumber expectedErrors of
       Just expectedError
@@ -196,14 +215,35 @@ expectedErrorsFromSource sourceText =
         _ ->
           mempty
 
-listDirectoryRecursive :: FilePath -> (FilePath -> Bool) -> IO [FilePath]
-listDirectoryRecursive dir p = do
+listDirectoryRecursive :: (FilePath -> Bool) -> FilePath -> IO [FilePath]
+listDirectoryRecursive p dir = do
   files <- listDirectory dir
   fmap concat $ forM files $ \file -> do
     let path = dir </> file
     isDir <- doesDirectoryExist path
     if isDir then
-      listDirectoryRecursive path p
+      listDirectoryRecursive p path
 
     else
       pure [path | p path]
+
+listDirectoriesWithFilesMatching
+  :: (FilePath -> Bool)
+  -> FilePath
+  -> IO [(FilePath, [FilePath])]
+listDirectoriesWithFilesMatching p dir = do
+  files <- listDirectory dir
+  let
+    paths = (dir </>) <$> files
+  if any p paths then do
+    recursiveFiles <- listDirectoryRecursive p dir
+    pure [(dir, recursiveFiles)]
+
+  else
+    fmap concat $ forM paths $ \path -> do
+      isDir <- doesDirectoryExist path
+      if isDir then
+        listDirectoriesWithFilesMatching p path
+
+      else
+        pure []

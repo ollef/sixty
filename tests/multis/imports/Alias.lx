@@ -1,0 +1,13 @@
+module Alias exposing (..)
+
+import Lib as Alias
+
+unqualifieda : Type
+unqualifieda = a -- not in scope error expected
+liba : Type
+liba = Lib.a -- not in scope error expected
+aliasa = Alias.a
+aliasb = Alias.b
+aliasc = Alias.c
+aliasd : Type
+aliasd = Alias.d -- not in scope error expected

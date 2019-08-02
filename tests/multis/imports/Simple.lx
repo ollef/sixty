@@ -1,0 +1,24 @@
+module Simple exposing (..)
+
+import Lib
+import LibExposingAll
+
+unqualifieda : Type
+unqualifieda = a -- not in scope error expected
+unqualifiedd : Type
+unqualifiedd = d -- not in scope error expected
+
+liba = Lib.a
+libb = Lib.b
+libc = Lib.c
+libd : Type
+libd = Lib.d -- not in scope error expected
+
+a : Type
+a = LibExposingAll.a
+b : Type
+b = LibExposingAll.b
+c : Type
+c = LibExposingAll.c
+d : Type
+d = LibExposingAll.d -- not in scope error expected
