@@ -15,7 +15,7 @@ import Orphans ()
 
 newtype Pre = Pre Text
   deriving stock (Eq, Ord, Show, Generic)
-  deriving newtype (Hashable, IsString)
+  deriving newtype (Hashable, IsString, Semigroup)
 
 newtype Name = Name Text
   deriving stock (Eq, Ord, Show, Generic)

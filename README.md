@@ -24,11 +24,10 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [ ] Rigidity tracking
 - [x] Basic type checking
 - [x] Query architecture
-- [ ] Simple modules
+- [x] Simple modules
   - [x] Top-level definitions
   - [x] Name resolution
-  - [ ] Error for circular values
-  - [ ] Imports
+  - [x] Imports
 - [x] Tests
   - [x] Error tests
 - [x] Position-independent implicit arguments
@@ -52,6 +51,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Clause elaboration
   - [x] Pattern lambdas
 - [ ] Inductive families
+- [ ] Prevent CBV-incompatible circular values
 - [ ] Generalisation?
 - [ ] Glued evaluation
 - [ ] Literals

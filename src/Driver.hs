@@ -13,8 +13,8 @@ import qualified Query
 import qualified Rules
 import qualified Span
 
-runTask :: Task Query a -> IO (a, [(FilePath, Span.LineColumn, Text, Error)])
-runTask task = do
+runTask :: [FilePath] -> Task Query a -> IO (a, [(FilePath, Span.LineColumn, Text, Error)])
+runTask files task = do
   startedVar <- newMVar mempty
   errorsVar <- newMVar mempty
   let
@@ -27,7 +27,8 @@ runTask task = do
     rules =
       -- traceFetch (\q -> liftIO $ putText $ "fetching " <> show q) (\q _ -> liftIO $ putText $ "fetched " <> show q) $
       memoise startedVar $
-      writer writeErrors Rules.rules
+      writer writeErrors $
+      Rules.rules files
 
   Rock.runTask sequentially rules $ do
     result <- task

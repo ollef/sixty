@@ -40,6 +40,7 @@ library:
   dependencies:
     - containers
     - dependent-map
+    - dependent-sum
     - dependent-sum-template
     - fingertree
     - parsers

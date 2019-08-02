@@ -1,6 +1,5 @@
 {-# language GeneralizedNewtypeDeriving #-}
 {-# language OverloadedStrings #-}
-{-# language TupleSections #-}
 module Parser where
 
 import Prelude (String)
@@ -446,16 +445,19 @@ dataDefinition =
 -- * Module
 --
 
-module_ :: Parser (Module.Header, [Either Error.Parsing (Position.Absolute, (Name, Definition))])
+module_ :: Parser ((Name.Module, Module.Header), [Either Error.Parsing (Position.Absolute, (Name, Definition))])
 module_ =
   (,) <$> moduleHeader <*> many definition
 
-moduleHeader :: Parser Module.Header
-moduleHeader = moduleExposing <*> manySame import_
+moduleHeader :: Parser (Name.Module, Module.Header)
+moduleHeader =
+  mkModuleHeader <$> moduleExposing <*> manySame import_
   where
+    mkModuleHeader (mname, exposed) imports =
+      (mname, Module.Header exposed imports)
     moduleExposing =
-      Module.Header <$ reserved "module" <*>% moduleName <*% reserved "exposing" <*>% exposedNames
-      <|> pure (Module.Header "Main" Module.AllExposed)
+      (,) <$ reserved "module" <*>% moduleName <*% reserved "exposing" <*>% exposedNames
+      <|> pure ("Main", Module.AllExposed)
 
 import_ :: Parser Module.Import
 import_ =
@@ -466,7 +468,7 @@ import_ =
       <*> optionalIndented (reserved "exposing" *>% exposedNames)
   where
     mkImport n@(Name.Module text) malias mexposed =
-      Module.Import n (fromMaybe (Name.Pre text) malias) (fromMaybe Module.noneExposed mexposed)
+      Module.Import n (fromMaybe (Name.Pre text) malias) (fold mexposed)
 
 exposedNames :: Parser Module.ExposedNames
 exposedNames =

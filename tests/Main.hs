@@ -6,7 +6,6 @@ import Protolude
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
-import Data.String
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
 import Rock
@@ -35,12 +34,12 @@ main = do
         let
           inputModule = dropExtension inputFile
         Tasty.testCase (drop (length inputDirectory) inputModule) $
-          checkModule (fromString inputModule)
+          checkFile inputFile
 
-checkModule :: Name.Module -> IO ()
-checkModule module_ = do
-  (moduleSource, errs) <- Driver.runTask $ do
-    defs <- fetch $ Query.ParsedModule module_
+checkFile :: FilePath -> IO ()
+checkFile filePath = do
+  (moduleSource, errs) <- Driver.runTask [filePath] $ do
+    (module_, _, defs) <- fetch $ Query.ParsedFile filePath
     let
       names =
         HashSet.fromList $
@@ -49,7 +48,7 @@ checkModule module_ = do
       _type <- fetch $ Query.ElaboratedType name
       _maybeDef <- fetch $ Query.ElaboratedDefinition name
       pure ()
-    fetch $ Query.ReadFile $ Query.moduleFilePath module_
+    fetch $ Query.FileText filePath
 
   let
     expectedErrors =

@@ -10,21 +10,42 @@ import Data.HashSet (HashSet)
 import qualified Name
 
 data Header = Header
-  { _name :: !Name.Module
-  , _exposedNames :: !ExposedNames
+  { _exposedNames :: !ExposedNames
   , _imports :: [Import]
   } deriving (Eq, Show, Generic, Hashable)
+
+instance Semigroup Header where
+  Header exposed1 imports1 <> Header exposed2 imports2 =
+    Header (exposed1 <> exposed2) (imports1 <> imports2)
+
+instance Monoid Header where
+  mempty =
+    Header
+      { _exposedNames = mempty
+      , _imports = mempty
+      }
 
 data ExposedNames
   = Exposed (HashSet Name.Pre)
   | AllExposed
   deriving (Eq, Show, Generic, Hashable)
 
-noneExposed :: ExposedNames
-noneExposed = Exposed mempty
+instance Semigroup ExposedNames where
+  Exposed names1 <> Exposed names2 =
+    Exposed $ names1 <> names2
+
+  AllExposed <> _ =
+    AllExposed
+
+  _ <> AllExposed =
+    AllExposed
+
+instance Monoid ExposedNames where
+  mempty =
+    Exposed mempty
 
 data Import = Import
   { _module :: !Name.Module
   , _alias :: !Name.Pre
-  , _exposedNames :: !ExposedNames
+  , _importedNames :: !ExposedNames
   } deriving (Eq, Show, Generic, Hashable)

@@ -1,8 +1,10 @@
 {-# language BangPatterns #-}
+{-# language OverloadedStrings #-}
 module Resolution where
 
 import Protolude
 
+import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 
@@ -11,18 +13,20 @@ import qualified Error
 import Name (Name(Name))
 import qualified Name
 import qualified Presyntax
+import Scope (Scope)
+import qualified Module
 import qualified Scope
 
 moduleScopes
   :: Name.Module
   -> [(Name, Presyntax.Definition)]
-  -> (Scope.Module, [Error])
+  -> (((Scope, Scope.Visibility), Scope.Module), [Error])
 moduleScopes module_ definitions =
   let
-    (_, _, scopes, errs) =
+    (finalScope, finalVisibility, scopes, errs) =
       foldl' go (mempty, mempty, mempty, mempty) definitions
   in
-  (scopes, reverse errs)
+  (((finalScope, finalVisibility), scopes), reverse errs)
   where
     duplicate key qualifiedName =
       Error.DuplicateName
@@ -97,3 +101,26 @@ moduleScopes module_ definitions =
 
           in
           (HashMap.unionWith (<>) constrs scope', visibility', scopes', errs')
+
+-- TODO: Error for names that aren't exposed
+exposedNames :: Module.ExposedNames -> HashMap Name.Pre a -> HashMap Name.Pre a
+exposedNames exposed m =
+  case exposed of
+    Module.AllExposed ->
+      m
+
+    Module.Exposed names ->
+      HashMap.intersection m (HashSet.toMap names)
+
+importedNames :: Semigroup a => Module.Import -> HashMap Name.Pre a -> HashMap Name.Pre a
+importedNames import_ m =
+  HashMap.unionWith (<>) unqualifiedNames qualifiedNames
+  where
+    unqualifiedNames =
+      exposedNames (Module._importedNames import_) m
+
+    qualifiedNames =
+      HashMap.fromList
+        [ (Module._alias import_ <> "." <> prename, a)
+        | (prename, a) <- HashMap.toList m
+        ]

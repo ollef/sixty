@@ -1,5 +1,7 @@
+{-# language DuplicateRecordFields #-}
 {-# language GADTs #-}
 {-# language OverloadedStrings #-}
+{-# language RankNTypes #-}
 {-# language TupleSections #-}
 module Rules where
 
@@ -7,6 +9,7 @@ import Protolude hiding (force)
 
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.List as List
+import Data.String
 import Data.Text.Unsafe as Text
 import Rock
 
@@ -16,15 +19,17 @@ import qualified Elaboration
 import Error (Error)
 import qualified Error
 import qualified Evaluation
-import qualified Index
+import qualified Module
 import Monad
 import Name (Name(Name))
 import qualified Name
 import qualified Parser
-import qualified Position
+import qualified Paths_sixty as Paths
 import Plicity
+import qualified Position
 import qualified Presyntax
 import Query
+import qualified Query.Mapped as Mapped
 import qualified Resolution
 import qualified Scope
 import qualified Span
@@ -32,32 +37,70 @@ import qualified Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
 
-rules :: GenRules (Writer [Error] Query) Query
-rules (Writer query) =
+rules :: [FilePath] -> GenRules (Writer [Error] Query) Query
+rules files (Writer query) =
   case query of
+    InputFiles ->
+      noError $ do
+        builtinFile <- liftIO $ Paths.getDataFileName "builtin/Builtin.lx"
+        pure $ builtinFile : files
+
     FileText filePath ->
       noError $ liftIO $ readFile filePath
 
-    ParsedModule module_ -> do
-      let
-        filePath =
-          moduleFilePath module_
+    ModuleFile subQuery ->
+      noError $ Mapped.rule ModuleFile subQuery $ do
+        filePaths <- fetch InputFiles
+        -- TODO check and remove duplicates
+        moduleFiles <- forM filePaths $ \filePath -> do
+          (module_, _, _) <- fetch $ ParsedFile filePath
+          pure (module_, filePath)
+        pure $ HashMap.fromList moduleFiles
 
+    ParsedFile filePath -> do
       text <- fetch $ FileText filePath
       pure $
         case Parser.parseText Parser.module_ text filePath of
-          Right (_header, errorsAndDefinitions) -> do
+          Right ((module_, header), errorsAndDefinitions) -> do
             let
               (errors, definitions) =
                 partitionEithers errorsAndDefinitions
-            (definitions, map (Error.Parse filePath) errors)
+
+              header'
+                | module_ == Builtin.module_ =
+                  header
+                | otherwise =
+                  header
+                    { Module._imports =
+                      Module.Import Builtin.module_ "Sixten.Builtin" Module.AllExposed
+                      : Module._imports header
+                    }
+            ((module_, header', definitions), map (Error.Parse filePath) errors)
 
           Left err ->
-            (mempty, pure $ Error.Parse filePath err)
+            ((Name.Module $ fromString filePath, mempty, mempty), pure $ Error.Parse filePath err)
+    ModuleHeader module_ ->
+      noError $ do
+        filePath <- fetchModuleFile module_
+        (_, header, _) <- fetch $ ParsedFile filePath
+        pure header
+
+    ImportedNames module_ subQuery ->
+      noError $ Mapped.rule (ImportedNames module_) subQuery $ do
+        header <- fetch $ ModuleHeader module_
+        scopes <- forM (Module._imports header) $ \import_ -> do
+          importedHeader <- fetch $ ModuleHeader $ Module._module import_
+          ((scope, _), _) <- fetch $ Scopes $ Module._module import_
+          pure $
+            Resolution.importedNames import_ $
+            Resolution.exposedNames (Module._exposedNames importedHeader) scope
+
+        pure $ foldl' (HashMap.unionWith (<>)) mempty scopes
 
     ParsedModuleMap module_ ->
       noError $ do
-        defs <- fetch $ ParsedModule module_
+        filePath <- fetchModuleFile module_
+        (_, _, defs) <- fetch $ ParsedFile filePath
         pure $ HashMap.fromList
           [ ((Presyntax.key def, name), def)
           | (_, (name, def)) <- defs
@@ -65,7 +108,8 @@ rules (Writer query) =
 
     ModulePositionMap module_ ->
       noError $ do
-        defs <- fetch $ ParsedModule module_
+        filePath <- fetchModuleFile module_
+        (_, _, defs) <- fetch $ ParsedFile filePath
         pure $
           HashMap.fromList
             [ ((Presyntax.key def, name), loc)
@@ -78,45 +122,38 @@ rules (Writer query) =
         pure $ HashMap.lookup (key, name) defs
 
     Scopes module_ -> do
-      defs <- fetch $ ParsedModule module_
+      filePath <- fetchModuleFile module_
+      (_, _, defs) <- fetch $ ParsedFile filePath
       pure $ Resolution.moduleScopes module_ $ snd <$> defs
-
-    -- TODO
-    ResolvedName _ name
-      | name == "Type" ->
-        pure (Just $ Scope.Name Builtin.typeName, mempty)
 
     ResolvedName (Scope.KeyedName key (Name.Qualified module_ keyName)) prename ->
       noError $ do
-        scopes <- fetch $ Scopes module_
+        (_, scopes) <- fetch $ Scopes module_
+        importedScopeEntry <- fetchImportedName module_ prename
         let
           (scope, _) = scopes HashMap.! (keyName, key)
 
-        pure $ HashMap.lookup prename scope
+        pure $ importedScopeEntry <> HashMap.lookup prename scope
 
-    Visibility _ qualifiedName
-      -- TODO
-      | qualifiedName == Builtin.typeName ->
-        pure (Scope.Type, mempty)
+    Visibility (Scope.KeyedName key (Name.Qualified keyModule keyName)) qualifiedName@(Name.Qualified nameModule _)
+      | keyModule == nameModule ->
+        noError $ do
+          (_, scopes) <- fetch $ Scopes keyModule
+          let
+            (_, visibility) = scopes HashMap.! (keyName, key)
 
-      | qualifiedName == Builtin.fail ->
-        pure (Scope.Type, mempty)
+          pure $
+            fromMaybe (panic "Fetching Visibility for name without visibility") $
+            HashMap.lookup qualifiedName visibility
 
-    Visibility (Scope.KeyedName key (Name.Qualified module_ keyName)) qualifiedName ->
-      noError $ do
-        scopes <- fetch $ Scopes module_
-        let
-          (_, visibility) = scopes HashMap.! (keyName, key)
-
-        pure $
-          fromMaybe (panic "Fetching Visibility for name without visibility") $
-          HashMap.lookup qualifiedName visibility
+      | otherwise ->
+        noError $ do
+          ((_, finalVisibility), _) <- fetch $ Scopes nameModule
+          pure $
+            fromMaybe (panic "Fetching Visibility for name without visibility") $
+            HashMap.lookup qualifiedName finalVisibility
 
     ElaboratedType name
-      -- TODO
-      | name == Builtin.fail ->
-        pure (Syntax.Pi "x" (Syntax.Global Builtin.typeName) Explicit $ Syntax.Var Index.Zero, mempty)
-
       | name == Builtin.typeName ->
         pure (Syntax.Global Builtin.typeName, mempty)
 
@@ -220,8 +257,9 @@ rules (Writer query) =
     KeyedNameSpan (Scope.KeyedName key (Name.Qualified module_ name@(Name textName))) ->
       noError $ do
         positions <- fetch $ ModulePositionMap module_
+        filePath <- fetchModuleFile module_
         pure
-          ( moduleFilePath module_
+          ( filePath
           , case HashMap.lookup (key, name) positions of
             Nothing ->
               Span.Absolute 0 0

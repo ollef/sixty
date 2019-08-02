@@ -386,17 +386,16 @@ report context err =
     (errs Tsil.:> err', ())
 
 reportParseError :: Context v -> Error.Parsing -> M ()
-reportParseError context err =
+reportParseError context err = do
   let
     Scope.KeyedName _ (Name.Qualified module_ _) =
       Context.scopeKey context
 
-    filePath =
-      Query.moduleFilePath module_
+  filePath <- Query.fetchModuleFile module_
 
+  let
     err' =
       Error.Parse filePath err
-  in
   liftIO $ atomicModifyIORef (errors context) $ \errs ->
     (errs Tsil.:> err', ())
 
