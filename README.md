@@ -27,6 +27,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Top-level definitions
   - [x] Name resolution
   - [x] Imports
+  - [ ] Multi-module tests
 - [x] Tests
   - [x] Error tests
 - [x] Position-independent implicit arguments
