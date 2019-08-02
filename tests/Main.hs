@@ -32,7 +32,7 @@ main = do
       "tests/multis/"
 
     isSourceFile =
-      (== ".lx") . takeExtension
+      (== ".vix") . takeExtension
 
   singleFiles <- listDirectoryRecursive isSourceFile singlesDirectory
   multiFiles <- listDirectoriesWithFilesMatching isSourceFile multisDirectory

@@ -11,7 +11,7 @@ category:            Web
 extra-source-files:
 - README.md
 data-files:
-- builtin/Builtin.lx
+- builtin/Builtin.vix
 
 ghc-options:
   - -Wall

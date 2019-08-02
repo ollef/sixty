@@ -42,7 +42,7 @@ rules files (Writer query) =
   case query of
     InputFiles ->
       noError $ do
-        builtinFile <- liftIO $ Paths.getDataFileName "builtin/Builtin.lx"
+        builtinFile <- liftIO $ Paths.getDataFileName "builtin/Builtin.vix"
         pure $ builtinFile : files
 
     FileText filePath ->
