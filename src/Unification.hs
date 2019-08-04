@@ -77,6 +77,8 @@ unify context value1 value2 = do
             can'tUnify
 
     -- Same heads
+    -- TODO: Should we check for invertible heads? This might be a bit too
+    -- eager in certain circumstances.
     (Domain.Neutral head1 spine1, Domain.Neutral head2 spine2)
       | head1 == head2 ->
         Tsil.zipWithM_ (\(_, v1) (_, v2) -> unifyForce context v1 v2) spine1 spine2
