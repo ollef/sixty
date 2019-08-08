@@ -23,3 +23,11 @@ cons = Cons Z Nil
 
 cons' : Vector (S Z) Nat
 cons' = Cons Z Nil
+
+add : Nat -> Nat -> Nat
+add Z n = n
+add (S m) n = S (add m n)
+
+sum : forall n. Vector n Nat -> Nat
+sum Nil = Z
+sum (Cons x xs) = add x (sum xs)

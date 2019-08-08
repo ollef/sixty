@@ -1,0 +1,35 @@
+data Nat where
+  Z : Nat
+  S : Nat -> Nat
+
+n = S (S Z)
+
+data Equals forall T. (a b : T) where
+  Refl : Equals a a
+
+lhs1 : forall a b. a -> Equals a b -> b
+lhs1 x Refl = x
+
+rhs1 : Equals Nat ((\x. x) Nat)
+rhs1 = Refl
+
+lhs2 : (a : Nat) -> Equals a n -> Equals n a
+lhs2 a Refl = Refl
+
+rhs2 : Equals n n
+rhs2 = Refl
+
+reflexive : forall T (a : T). Equals a a
+reflexive = Refl
+
+symmetric : forall T (a b : T). Equals a b -> Equals b a
+symmetric Refl = Refl
+
+transitive : forall T (a b c : T). Equals a b -> Equals b c -> Equals a c
+transitive Refl Refl = Refl
+
+mismatch1 : forall a b. a -> Equals a b -> b
+mismatch1 a _ = a -- type mismatch error expected
+
+mismatch2 : forall T (a b : T). Equals a b
+mismatch2 = Refl -- type mismatch error expected

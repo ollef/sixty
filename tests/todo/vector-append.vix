@@ -1,0 +1,15 @@
+data Nat where
+  Z : Nat
+  S : Nat -> Nat
+
+data Vector n a where
+  Nil : Vector Z a
+  Cons : forall m. a -> Vector m a -> Vector (S m) a
+
+add : Nat -> Nat -> Nat
+add Z n = n
+add (S m) n = S (add m n)
+
+append : forall m n a. Vector m a -> Vector n a -> Vector (add m n) a
+append Nil ys = ys
+append (Cons x xs) ys = Cons x (append xs ys)

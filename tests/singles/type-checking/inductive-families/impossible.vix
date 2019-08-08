@@ -1,0 +1,29 @@
+data Equals forall T. (a b : T) where
+  Refl : Equals a a
+
+data Nat where
+  Z : Nat
+  S : Nat -> Nat
+
+two = S (S Z)
+three = S two
+
+impossible : forall a. Equals two three -> a
+impossible eq = case eq of
+
+data Maybe a where
+  Nothing : Maybe a
+  Just : a -> Maybe a
+
+impossible2 : forall a. Equals (Nothing @{a = Nat}) (Just three) -> a
+impossible2 eq = case eq of
+
+impossible3 : forall a. Equals (Just two) (Just three) -> a
+impossible3 eq = case eq of
+
+data List a where
+  Nil : List a
+  Cons : a -> List a -> List a
+
+notImpossible : forall a b. List a -> b
+notImpossible xs = case xs of -- non-exhaustive patterns error expected

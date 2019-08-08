@@ -1,0 +1,23 @@
+data Nat where
+  Zero : Nat
+  Succ : Nat -> Nat
+
+data Fin (n : Nat) where
+  Zero : forall m. Fin (Succ m)
+  Succ : forall m. Fin m -> Fin (Succ m)
+
+addNat : Nat -> Nat -> Nat
+addNat Zero n = n
+addNat (Succ m) n = Succ (addNat m n)
+
+succIndex : forall n. Fin n -> Fin (Succ n)
+succIndex Zero = Zero
+succIndex (Succ x) = Succ (succIndex x)
+
+addIndex : forall n. (m : Nat) -> Fin n -> Fin (addNat m n)
+addIndex Zero x = x
+addIndex (Succ n) x = succIndex (addIndex n x)
+
+addFin : forall m n. Fin m -> Fin n -> Fin (addNat m n)
+addFin @{m} Zero y = addIndex m y
+addFin (Succ x) y = Succ (addFin x y)

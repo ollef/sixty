@@ -1,0 +1,31 @@
+data Equals forall T. (a b : T) where
+  Refl : Equals a a
+
+data Unit where
+  MkUnit : Unit
+
+data Nat where
+  S : Nat -> Nat
+  Z : Nat
+
+data List a where
+  Nil : List a
+  Cons : a -> List a -> List a
+
+two = S (S Z)
+three = S two
+
+forced1 : (a b : Type) -> Equals a b -> Equals b a
+forced1 ~a a Refl = Refl
+
+forced2 : (a b : Type) -> Equals a b -> Equals b a
+forced2 a ~a Refl = Refl
+
+forced3 : (a : Nat) -> Equals a two -> Equals two a
+forced3 ~two Refl = Refl
+
+forced4 : (a : List Nat) -> Equals (Cons two Nil) a -> Unit
+forced4 ~(Cons _ _) Refl = MkUnit
+
+wrongForced : (a : Nat) -> Equals a two -> Equals two a
+wrongForced ~three Refl = Refl -- type mismatch error expected

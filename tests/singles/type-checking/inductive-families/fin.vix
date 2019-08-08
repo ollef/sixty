@@ -1,0 +1,39 @@
+data Nat where
+  Zero : Nat
+  Succ : Nat -> Nat
+
+data Fin (n : Nat) where
+  Zero : forall m. Fin (Succ m)
+  Succ : forall m. Fin m -> Fin (Succ m)
+
+data Unit where
+  MkUnit : Unit
+
+f1 : Fin (Succ (Succ (Succ Zero)))
+f1 = Succ Zero
+
+f2 : Fin (Succ (Succ (Succ Zero)))
+f2 = Succ (Succ Zero)
+
+addNat : Nat -> Nat -> Nat
+addNat Zero n = n
+addNat (Succ m) n = Succ (addNat m n)
+
+succIndex : forall n. Fin n -> Fin (Succ n)
+succIndex Zero = Zero
+succIndex (Succ x) = Succ (succIndex x)
+
+toNat : forall n. Fin n -> Nat
+toNat Zero = Zero
+toNat (Succ n) = Succ (toNat n)
+
+impossible : forall a. Fin Zero -> a
+impossible fz = case fz of
+
+onlyZero : Fin (Succ Zero) -> Unit
+onlyZero Zero = MkUnit
+onlyZero (Succ f) = case f of
+
+typeIncorrect : Fin (Succ Zero) -> Unit
+typeIncorrect Zero = MkUnit
+typeIncorrect (Succ Zero) = MkUnit
