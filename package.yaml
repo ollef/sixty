@@ -43,6 +43,7 @@ library:
     - dependent-sum
     - dependent-sum-template
     - fingertree
+    - mtl
     - parsers
     - parsix
     - text

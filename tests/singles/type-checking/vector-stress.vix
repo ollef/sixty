@@ -1,0 +1,118 @@
+data Nat where
+  Z : Nat
+  S : Nat -> Nat
+
+data Vector n a where
+  Nil : Vector Z a
+  Cons : forall m. a -> Vector m a -> Vector (S m) a
+
+v500 =
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z (Cons Z
+  Nil
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))
+  ))))))))))

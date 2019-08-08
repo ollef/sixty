@@ -50,8 +50,8 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Redundant pattern check
   - [x] Clause elaboration
   - [x] Pattern lambdas
+- [x] Inductive families
 - [ ] Recursive let bindings
-- [ ] Inductive families
 - [ ] Prevent CBV-incompatible circular values
 - [ ] Generalisation?
 - [ ] Glued evaluation

@@ -10,6 +10,7 @@ import Data.Text.Prettyprint.Doc
 data Plicity
   = Implicit
   | Explicit
+  | Constraint
   deriving (Eq, Ord, Show, Generic, Hashable)
 
 instance Pretty Plicity where
@@ -21,6 +22,9 @@ instance Pretty Plicity where
       Explicit ->
         "explicit"
 
+      Constraint ->
+        "constraint"
+
 prettyAnnotation :: Plicity -> Doc ann
 prettyAnnotation plicity =
   case plicity of
@@ -30,6 +34,17 @@ prettyAnnotation plicity =
     Explicit ->
       ""
 
+    Constraint ->
+      "!"
+
 implicitise :: Plicity -> Plicity
-implicitise _ =
-  Implicit
+implicitise plicity =
+  case plicity of
+    Explicit ->
+      Implicit
+
+    Implicit ->
+      Implicit
+
+    Constraint ->
+      Constraint

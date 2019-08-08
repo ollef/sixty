@@ -37,6 +37,7 @@ import qualified Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
 import qualified Unification
+import qualified Unification.Indices as Indices
 import Var
 
 data Config = Config
@@ -175,23 +176,30 @@ elaborate context config = do
     firstClause:_ -> do
       let
         matches = _matches firstClause
-      maybeConMatch <- findConstructorMatches context matches
-      case maybeConMatch of
-        Just (var, span, constr, typ) ->
-          splitConstructor context config' var span constr typ
+
+      maybeEqMatch <- findEqualityMatch context matches
+      case maybeEqMatch of
+        Just (context', var, type_, value1, value2) ->
+          splitEquality context' config' var type_ value1 value2
 
         Nothing -> do
-          maybeSub <- solved context matches
-          case maybeSub of
-            Nothing ->
-              panic "matching: no solution"
+          maybeConMatch <- findConstructorMatch context matches
+          case maybeConMatch of
+            Just (var, span, constr, type_) ->
+              splitConstructor context config' var span constr type_
 
-            Just sub -> do
-              context' <- Context.extendUnindexedDefs context sub
-              mapM_ (checkForcedPattern context') matches
-              result <- Elaboration.check context' (_rhs firstClause) (_expectedType config)
-              liftIO $ modifyIORef (_usedClauses config) $ Set.insert $ _span firstClause
-              pure result
+            Nothing -> do
+              maybeInst <- solved context matches
+              case maybeInst of
+                Nothing ->
+                  panic "matching: no solution"
+
+                Just inst -> do
+                  context' <- Context.extendUnindexedDefs context inst
+                  mapM_ (checkForcedPattern context') matches
+                  result <- Elaboration.check context' (_rhs firstClause) (_expectedType config)
+                  liftIO $ modifyIORef (_usedClauses config) $ Set.insert $ _span firstClause
+                  pure result
 
 checkForcedPattern :: Context v -> Match -> M ()
 checkForcedPattern context match =
@@ -342,6 +350,24 @@ matchPrepatterns context values patterns type_ = do
     (_, (Implicit, _):_, _) ->
       panic "matchPrepatterns non-pi"
 
+    (_, (Constraint, value):values', Domain.Pi _ source Constraint domainClosure) -> do
+      domain <- Evaluation.evaluateClosure domainClosure value
+      (matches, type'') <-
+        matchPrepatterns
+          context
+          values'
+          patterns
+          domain
+      value' <- force value
+      source' <- force source
+      let
+        pattern_ =
+          Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern
+      pure (Match value' Constraint pattern_ source' : matches, type'')
+
+    (_, (Constraint, _):_, _) ->
+      panic "matchPrepatterns non-pi"
+
     (pat:_, [], _) -> do
       Context.report (Context.spanned (Presyntax.plicitPatternSpan pat) context) $ Error.PlicityMismatch Error.Extra
       pure ([], type')
@@ -360,7 +386,7 @@ matchPrepatterns context values patterns type_ = do
       source' <- force source
       pure (Match value' Explicit pat source' : matches, type'')
 
-type PatternSubstitution = Tsil (Name, Lazy Domain.Value, Lazy Domain.Value)
+type PatternInstantiation = Tsil (Name, Lazy Domain.Value, Lazy Domain.Value)
 
 expandAnnotations
   :: Context v
@@ -372,10 +398,10 @@ expandAnnotations context matches =
       fail "expanded nothing"
 
     match:matches' -> do
-      maybeSub <- lift $ runMaybeT $ matchSubstitution context match
-      case maybeSub of
-        Just sub -> do
-          context' <- lift $ Context.extendUnindexedDefs context sub
+      maybeInst <- lift $ runMaybeT $ matchInstantiation context match
+      case maybeInst of
+        Just inst -> do
+          context' <- lift $ Context.extendUnindexedDefs context inst
           matches'' <- expandAnnotations context' matches'
           pure $ match : matches''
 
@@ -393,10 +419,10 @@ expandAnnotations context matches =
               pure $ Match term plicity pat type_ : matches'
 
             _ ->
-              fail "couldn't create substitution for prefix"
+              fail "couldn't create instantitation for prefix"
 
-matchSubstitution :: Context v -> Match -> MaybeT M PatternSubstitution
-matchSubstitution context match =
+matchInstantiation :: Context v -> Match -> MaybeT M PatternInstantiation
+matchInstantiation context match =
   case match of
     (Match _ _ (Presyntax.Pattern _ Presyntax.WildcardPattern) _) ->
       pure mempty
@@ -405,7 +431,7 @@ matchSubstitution context match =
       maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) prename
       case maybeScopeEntry of
         Just (Scope.Constructors _) ->
-          fail "No match substitution"
+          fail "No match instantitation"
 
         _ ->
           pure $ pure (Name name, Lazy $ pure term, Lazy $ pure type_)
@@ -414,19 +440,19 @@ matchSubstitution context match =
       pure mempty
 
     _ ->
-      fail "No match substitution"
+      fail "No match instantitation"
 
-solved :: Context v -> [Match] -> M (Maybe PatternSubstitution)
+solved :: Context v -> [Match] -> M (Maybe PatternInstantiation)
 solved context =
-  runMaybeT . fmap mconcat . traverse (matchSubstitution context)
+  runMaybeT . fmap mconcat . traverse (matchInstantiation context)
 
 -------------------------------------------------------------------------------
 
-findConstructorMatches
+findConstructorMatch
   :: Context v
   -> [Match]
   -> M (Maybe (Var, Span.Relative, Name.QualifiedConstructor, Domain.Type))
-findConstructorMatches context matches =
+findConstructorMatch context matches =
     case matches of
       [] ->
         pure Nothing
@@ -435,20 +461,22 @@ findConstructorMatches context matches =
         maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
         case maybeScopeEntry of
           Just (Scope.Constructors constrs) -> do
-            expectedTypeName <- lazy $ Elaboration.getExpectedTypeName context type_
+            let
+              expectedTypeName =
+                Elaboration.getExpectedTypeName context type_
             maybeConstr <- Elaboration.resolveConstructor context name constrs expectedTypeName
             case maybeConstr of
               Nothing ->
-                findConstructorMatches context matches'
+                findConstructorMatch context matches'
 
               Just constr ->
                 pure $ Just (x, span, constr, type_)
 
           _ ->
-            findConstructorMatches context matches'
+            findConstructorMatch context matches'
 
       _:matches' ->
-        findConstructorMatches context matches'
+        findConstructorMatch context matches'
 
 splitConstructor
   :: Context v
@@ -457,7 +485,7 @@ splitConstructor
   -> Span.Relative
   -> Name.QualifiedConstructor
   -> Domain.Type
-  -> M (Syntax.Type v)
+  -> M (Syntax.Term v)
 splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor typeName _) outerType = do
   let
     goParams
@@ -550,6 +578,53 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
 
 -------------------------------------------------------------------------------
 
+findEqualityMatch
+  :: Context v
+  -> [Match]
+  -> M (Maybe (Context v, Var, Lazy Domain.Type, Lazy Domain.Value, Lazy Domain.Value))
+findEqualityMatch context matches =
+  case matches of
+    [] ->
+      pure Nothing
+
+    Match
+      (Domain.Neutral (Domain.Var x) Tsil.Empty)
+      _
+      (Presyntax.Pattern _ Presyntax.WildcardPattern)
+      (Builtin.Equals type_ value1 value2):matches' -> do
+        value1' <- force value1
+        value2' <- force value2
+        result <- Indices.runResultT $ Indices.unify context value1' value2'
+        case result of
+          Indices.Nope ->
+            pure Nothing
+
+          Indices.Dunno ->
+            findEqualityMatch context matches'
+
+          Indices.Yup context' ->
+            pure $ Just (context', x, type_, value1, value2)
+
+    _:matches' ->
+      findEqualityMatch context matches'
+
+splitEquality
+  :: Context v
+  -> Config
+  -> Var
+  -> Lazy Domain.Type
+  -> Lazy Domain.Value
+  -> Lazy Domain.Value
+  -> M (Syntax.Term v)
+splitEquality context config var type_ value1 value2 = do
+  let
+    context' =
+      Context.define context var $ Lazy $ pure $ Builtin.Refl type_ value1 value2
+
+  elaborate context' config
+
+-------------------------------------------------------------------------------
+
 uninhabitedScrutinee :: Context v -> Domain.Value -> M Bool
 uninhabitedScrutinee context value = do
   value' <- Context.forceHead context value
@@ -558,6 +633,13 @@ uninhabitedScrutinee context value = do
       varType <- force $ Context.lookupVarType var context
       type_ <- applySpine varType spine
       uninhabitedType context 1 type_
+
+    Domain.Neutral (Domain.Con constr) spine -> do
+      constrType <- fetch $ Query.ConstructorType constr
+      let
+        args = snd <$> drop (Telescope.length constrType) (toList spine)
+      args' <- mapM force args
+      anyM (uninhabitedScrutinee context) args'
 
     _ ->
       pure False
@@ -586,6 +668,20 @@ uninhabitedType :: Context v -> Int -> Domain.Type -> M Bool
 uninhabitedType context fuel type_ = do
   type' <- Context.forceHead context type_
   case type' of
+    Builtin.Equals _ value1 value2 -> do
+      value1' <- force value1
+      value2' <- force value2
+      result <- Indices.runResultT $ Indices.unify context value1' value2'
+      pure $ case result of
+        Indices.Nope ->
+          True
+
+        Indices.Dunno ->
+          False
+
+        Indices.Yup _ ->
+          False
+
     Domain.Neutral (Domain.Global global) spine -> do
       maybeDefinitions <- fetch $ Query.ElaboratedDefinition global
       case maybeDefinitions of

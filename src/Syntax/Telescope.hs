@@ -49,3 +49,12 @@ fold f tele =
 
 fromVoid :: Telescope t k Void -> Telescope t k v
 fromVoid = unsafeCoerce
+
+length :: Telescope t k v -> Int
+length tele =
+  case tele of
+    Empty _ ->
+      0
+
+    Extend _ _ _ tele' ->
+      1 + Syntax.Telescope.length tele'

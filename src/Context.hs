@@ -10,6 +10,8 @@ import Protolude hiding (IntMap, force)
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef
+import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq
 
 import "this" Data.IntMap (IntMap)
 import qualified Builtin
@@ -29,6 +31,7 @@ import Monad
 import Name (Name(Name))
 import qualified Name
 import Plicity
+import qualified Pretty
 import qualified "this" Data.IntMap as IntMap
 import qualified Query
 import qualified Readback
@@ -68,6 +71,24 @@ toReadbackEnvironment context =
     { indices = indices context
     , values = values context
     }
+
+toPrettyEnvironment
+  :: Context v
+  -> Pretty.Environment v
+toPrettyEnvironment context =
+  Pretty.Environment
+    { varNames = go $ indices context
+    , usedNames = mempty
+    }
+  where
+    go :: Index.Map v Var -> Seq Name
+    go (Index.Map.Map indices') =
+      case indices' of
+        IntSeq.Empty ->
+          mempty
+
+        indices'' IntSeq.:> var ->
+          go (Index.Map.Map indices'') Seq.|> lookupVarName var context
 
 empty :: Scope.KeyedName -> M (Context Void)
 empty key = do

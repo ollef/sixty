@@ -3,13 +3,14 @@ module Elaboration where
 import Protolude
 
 import Data.HashSet (HashSet)
+import Data.Text.Prettyprint.Doc (Doc)
 
 import Context (Context)
 import qualified Domain
 import Monad
+import qualified Name
 import qualified Presyntax
 import qualified Syntax
-import qualified Name
 
 check
   :: Context v
@@ -36,9 +37,11 @@ resolveConstructor
   :: Context v
   -> Name.Pre
   -> HashSet Name.QualifiedConstructor
-  -> Lazy (Maybe Name.Qualified)
+  -> M (Maybe Name.Qualified)
   -> M (Maybe Name.QualifiedConstructor)
 
 inferenceFailed
   :: Context v
   -> M (Syntax.Term v, Domain.Type)
+
+prettyValue :: Context v -> Domain.Value -> M (Doc ann)

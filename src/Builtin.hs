@@ -1,8 +1,12 @@
 {-# language OverloadedStrings #-}
+{-# language PatternSynonyms #-}
 module Builtin where
 
+import qualified Data.Tsil as Tsil
 import qualified Domain
+import Monad
 import qualified Name
+import Plicity
 
 module_ :: Name.Module
 module_ =
@@ -19,3 +23,31 @@ type_ =
 fail :: Name.Qualified
 fail =
   "Sixten.Builtin.fail"
+
+pattern EqualsName :: Name.Qualified
+pattern EqualsName =
+  "Sixten.Builtin.Equals"
+
+pattern Equals
+  :: Lazy Domain.Type
+  -> Lazy Domain.Value
+  -> Lazy Domain.Value
+  -> Domain.Value
+pattern Equals k a b =
+  Domain.Neutral
+    (Domain.Global EqualsName)
+    (Tsil.Empty Tsil.:> (Implicit, k) Tsil.:> (Explicit, a) Tsil.:> (Explicit, b))
+
+pattern ReflName :: Name.QualifiedConstructor
+pattern ReflName =
+  Name.QualifiedConstructor EqualsName "Refl"
+
+pattern Refl
+  :: Lazy Domain.Type
+  -> Lazy Domain.Value
+  -> Lazy Domain.Value
+  -> Domain.Value
+pattern Refl k a b =
+  Domain.Neutral
+    (Domain.Con ReflName)
+    (Tsil.Empty Tsil.:> (Implicit, k) Tsil.:> (Explicit, a) Tsil.:> (Explicit, b))
