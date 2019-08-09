@@ -4,13 +4,14 @@
 {-# language OverloadedStrings #-}
 module Unification.Indices where
 
-import Protolude hiding (force)
+import Protolude hiding (force, IntSet)
 
 import Control.Monad.Trans
 
 import Context (Context)
 import qualified Context
-import qualified Data.IntMap as IntMap
+import Data.IntSet (IntSet)
+import qualified Data.IntSet as IntSet
 import qualified Data.Tsil as Tsil
 import qualified Domain
 import Evaluation
@@ -60,15 +61,20 @@ instance MonadTrans ResultT where
   lift =
     ResultT . fmap Yup
 
-unify :: Context v -> Domain.Value -> Domain.Value -> ResultT M (Context v)
-unify context value1 value2 = do
+unify
+  :: Context v
+  -> IntSet Var
+  -> Domain.Value
+  -> Domain.Value
+  -> ResultT M (Context v)
+unify context untouchables value1 value2 = do
   value1' <- lift $ Context.forceHead context value1
   value2' <- lift $ Context.forceHead context value2
   case (value1', value2') of
     (Domain.Neutral head1 spine1, Domain.Neutral head2 spine2)
       | head1 == head2 ->
         foldM
-          (\context' -> uncurry (unifyForce context' `on` snd))
+          (\context' -> uncurry (unifyForce context' untouchables `on` snd))
           context
           (Tsil.zip spine1 spine2)
 
@@ -85,7 +91,7 @@ unify context value1 value2 = do
       unifyAbstraction name1 source1 domainClosure1 source2 domainClosure2
 
     (Domain.Pi name1 source1 Explicit domainClosure1, Domain.Fun source2 domain2) -> do
-      context1 <- unifyForce context source2 source1
+      context1 <- unifyForce context untouchables source2 source1
 
       (context2, var) <- lift $ Context.extendUnnamed context1 name1 source1
       let
@@ -93,11 +99,11 @@ unify context value1 value2 = do
 
       domain1 <- lift $ Evaluation.evaluateClosure domainClosure1 lazyVar
       domain2' <- lift $ force domain2
-      context3 <- unify context2 domain1 domain2'
-      exclude var context3
+      context3 <- unify context2 (IntSet.insert var untouchables) domain1 domain2'
+      pure $ unextend context3
 
     (Domain.Fun source1 domain1, Domain.Pi name2 source2 Explicit domainClosure2) -> do
-      context1 <- unifyForce context source2 source1
+      context1 <- unifyForce context untouchables source2 source1
 
       (context2, var) <- lift $ Context.extendUnnamed context1 name2 source2
       let
@@ -105,12 +111,12 @@ unify context value1 value2 = do
 
       domain1' <- lift $ force domain1
       domain2 <- lift $ Evaluation.evaluateClosure domainClosure2 lazyVar
-      context3 <- unify context2 domain1' domain2
-      exclude var context3
+      context3 <- unify context2 (IntSet.insert var untouchables) domain1' domain2
+      pure $ unextend context3
 
     (Domain.Fun source1 domain1, Domain.Fun source2 domain2) -> do
-      context1 <- unifyForce context source2 source1
-      unifyForce context1 domain1 domain2
+      context1 <- unifyForce context untouchables source2 source1
+      unifyForce context1 untouchables domain1 domain2
 
     -- Eta expand
     (Domain.Lam name1 type1 plicity1 closure1, v2) -> do
@@ -121,8 +127,8 @@ unify context value1 value2 = do
       body1 <- lift $ Evaluation.evaluateClosure closure1 lazyVar
       body2 <- lift $ Evaluation.apply v2 plicity1 lazyVar
 
-      context2 <- unify context1 body1 body2
-      exclude var context2
+      context2 <- unify context1 (IntSet.insert var untouchables) body1 body2
+      pure $ unextend context2
 
     (v1, Domain.Lam name2 type2 plicity2 closure2) -> do
       (context1, var) <- lift $ Context.extendUnnamed context name2 type2
@@ -132,8 +138,8 @@ unify context value1 value2 = do
       body1 <- lift $ Evaluation.apply v1 plicity2 lazyVar
       body2 <- lift $ Evaluation.evaluateClosure closure2 lazyVar
 
-      context2 <- unify context1 body1 body2
-      exclude var context2
+      context2 <- unify context1 (IntSet.insert var untouchables) body1 body2
+      pure $ unextend context2
 
     -- Vars
     (Domain.Neutral (Domain.Var var1) Tsil.Empty, _) ->
@@ -146,13 +152,13 @@ unify context value1 value2 = do
       dunno
 
   where
-    unifyForce sz lazyValue1 lazyValue2 = do
+    unifyForce context' untouchables' lazyValue1 lazyValue2 = do
       v1 <- lift $ force lazyValue1
       v2 <- lift $ force lazyValue2
-      unify sz v1 v2
+      unify context' untouchables' v1 v2
 
     unifyAbstraction name type1 closure1 type2 closure2 = do
-      context1 <- unifyForce context type1 type2
+      context1 <- unifyForce context untouchables type1 type2
 
       (context2, var) <- lift $ Context.extendUnnamed context1 name type1
       let
@@ -160,37 +166,36 @@ unify context value1 value2 = do
 
       body1 <- lift $ Evaluation.evaluateClosure closure1 lazyVar
       body2 <- lift $ Evaluation.evaluateClosure closure2 lazyVar
-      context3 <- unify context2 body1 body2
+      context3 <- unify context2 (IntSet.insert var untouchables) body1 body2
+      pure $ unextend context3
 
-      exclude var context3
+    unextend :: Context (Succ v) -> Context v
+    unextend context' =
+      case Context.indices context' of
+        indices Index.Map.:> _ ->
+          context' { Context.indices = indices }
 
-    exclude :: Var -> Context (Succ v) -> ResultT M (Context v)
-    exclude var context'
-      | IntMap.member var (Context.values context') =
-        nope
+        _ ->
+          panic "Unification.Indices.unify.unextend"
 
-      | otherwise =
-        case Context.indices context' of
-          indices Index.Map.:> _ ->
-            pure context' { Context.indices = indices }
-
-          _ ->
-            panic "Unification.Indices.unify.exclude"
-
-    solve var value = do
-      Any occs <- lift $ occurs context var value
-      if occs then
+    solve var value
+      | IntSet.member var untouchables =
         dunno
 
-      else
-        pure $ Context.define context var $ Lazy $ pure value
+      | otherwise = do
+        Any occs <- lift $ occurs context (IntSet.insert var untouchables) value
+        if occs then
+          dunno
 
-occurs :: Context v -> Var -> Domain.Value -> M Any
-occurs context var value = do
+        else
+          pure $ Context.define context var $ Lazy $ pure value
+
+occurs :: Context v -> IntSet Var -> Domain.Value -> M Any
+occurs context untouchables value = do
   value' <- Context.forceHead context value
   case value' of
-    Domain.Neutral (Domain.Var var') _
-      | var == var' ->
+    Domain.Neutral (Domain.Var var) _
+      | IntSet.member var untouchables ->
         pure $ Any True
 
     Domain.Neutral _ spine -> do
@@ -215,14 +220,14 @@ occurs context var value = do
   where
     occursForce lazyValue = do
       value' <- force lazyValue
-      occurs context var value'
+      occurs context untouchables value'
 
     occursAbstraction name type_ closure = do
       typeResult <- occursForce type_
-      (context', var') <- Context.extendUnnamed context name type_
+      (context', var) <- Context.extendUnnamed context name type_
       let
-        lazyVar' = Lazy $ pure $ Domain.var var'
+        lazyVar = Lazy $ pure $ Domain.var var
 
-      body <- Evaluation.evaluateClosure closure lazyVar'
-      bodyResult <- occurs context' var body
+      body <- Evaluation.evaluateClosure closure lazyVar
+      bodyResult <- occurs context' untouchables body
       pure $ typeResult <> bodyResult

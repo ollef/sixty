@@ -594,7 +594,7 @@ findEqualityMatch context matches =
       (Builtin.Equals type_ value1 value2):matches' -> do
         value1' <- force value1
         value2' <- force value2
-        result <- Indices.runResultT $ Indices.unify context value1' value2'
+        result <- Indices.runResultT $ Indices.unify context mempty value1' value2'
         case result of
           Indices.Nope ->
             pure Nothing
@@ -671,7 +671,7 @@ uninhabitedType context fuel type_ = do
     Builtin.Equals _ value1 value2 -> do
       value1' <- force value1
       value2' <- force value2
-      result <- Indices.runResultT $ Indices.unify context value1' value2'
+      result <- Indices.runResultT $ Indices.unify context mempty value1' value2'
       pure $ case result of
         Indices.Nope ->
           True
