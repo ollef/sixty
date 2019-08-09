@@ -132,7 +132,7 @@ inferDefinition context def =
 inferDataDefinition
   :: Context v
   -> [(Name, Presyntax.Type, Plicity)]
-  -> [([Name.Constructor], Presyntax.Type)]
+  -> [Presyntax.ConstructorDefinition]
   -> Tsil (Plicity, Var)
   -> M (Telescope Syntax.Type Syntax.ConstructorDefinitions v, Syntax.Type v)
 inferDataDefinition context preParams constrs paramVars =
@@ -157,9 +157,27 @@ inferDataDefinition context preParams constrs paramVars =
 
       (context', var) <- Context.extend context thisName $ Lazy $ pure thisType'
 
-      constrs' <- forM constrs $ \(cs, type_) -> do
-        type' <- checkConstructorType context' type_ var paramVars
-        pure [(constr, Syntax.Let thisName this thisType type') | constr <- cs]
+      lazyReturnType <-
+        lazy $
+          readback context' $
+          Domain.Neutral (Domain.Global qualifiedThisName) $
+          second (Lazy . pure . Domain.var) <$> paramVars
+
+      constrs' <- forM constrs $ \constrDef ->
+        case constrDef of
+          Presyntax.GADTConstructors cs type_ -> do
+            type' <- checkConstructorType context' type_ var paramVars
+            pure [(constr, Syntax.Let thisName this thisType type') | constr <- cs]
+
+          Presyntax.ADTConstructor constr types -> do
+            types' <- forM types $ \type_ ->
+              check context' type_ Builtin.type_
+
+            returnType <- force lazyReturnType
+            let
+              type_ =
+                Syntax.funs types' returnType
+            pure [(constr, Syntax.Let thisName this thisType type_)]
       pure
         ( Telescope.Empty (Syntax.ConstructorDefinitions $ concat constrs')
         , Syntax.Global Builtin.typeName

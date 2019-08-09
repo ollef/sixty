@@ -43,7 +43,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Elaboration of data definitions
   - [x] Constructors
     - [x] Type-based overloading
-  - [ ] ADT-style data definitions
+  - [x] ADT-style data definitions
 - [x] Pattern matching elaboration
   - [x] Case expressions
   - [x] Exhaustiveness check

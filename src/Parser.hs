@@ -130,9 +130,13 @@ manyIndented :: Parser a -> Parser [a]
 manyIndented p =
   Parsix.many (indented p)
 
+someSepByIndented :: Parser a -> Parser sep -> Parser [a]
+someSepByIndented p sep =
+  (:) <$>% p <*> manyIndented (sep *>% p)
+
 sepByIndented :: Parser a -> Parser sep -> Parser [a]
 sepByIndented p sep =
-  (:) <$> p <*> manyIndented (sep *>% p)
+  someSepByIndented p sep
   <|> pure []
 
 -- * Applicative style combinators for checking that the second argument parser
@@ -416,8 +420,11 @@ definition =
 dataDefinition :: Parser (Name, Definition)
 dataDefinition =
   (,) <$ reserved "data" <*>% name <*>
-    (DataDefinition <$> parameters <*% reserved "where"
-      <*> blockOfMany constructorDefinition)
+    (DataDefinition <$> parameters <*>%
+      (reserved "where" *> blockOfMany gadtConstructors
+      <|> symbol "=" *> someSepByIndented adtConstructor (symbol "|")
+      )
+    )
   where
     parameters =
       parameters1 <|> pure []
@@ -437,9 +444,14 @@ dataDefinition =
           <|> (\(span, name_) -> [(name_, Term span Wildcard, Implicit)]) <$> spanned name
           ) <*% symbol "." <*>% parameters1
 
-    constructorDefinition =
+    gadtConstructors =
       withIndentationBlock $
-        (,) <$> someIndented constructor <*% symbol ":" <*> recoveringIndentedTerm
+        GADTConstructors <$> someIndented constructor <*% symbol ":" <*> recoveringIndentedTerm
+
+    adtConstructor =
+      ADTConstructor <$> constructor <*> manyIndented atomicTerm
+
+    
 
 -------------------------------------------------------------------------------
 -- * Module

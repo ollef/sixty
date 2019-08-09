@@ -47,6 +47,9 @@ appsView = go []
     go args (App t1 _ t2) = go (t2 : args) t1
     go args t = (t, args)
 
+funs :: Foldable f => f (Term v) -> Term v -> Term v
+funs args res = foldr Fun res args
+
 succ :: Term v -> Term (Succ v)
 succ = coerce
 

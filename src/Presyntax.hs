@@ -89,7 +89,7 @@ anno pat@(Pattern span1 _) type_@(Term span2 _) =
 data Definition
   = TypeDeclaration !Type
   | ConstantDefinition [Clause]
-  | DataDefinition [(Name, Type, Plicity)] [([Name.Constructor], Type)]
+  | DataDefinition [(Name, Type, Plicity)] [ConstructorDefinition]
   deriving (Show, Generic, Hashable)
 
 data Clause = Clause
@@ -97,6 +97,11 @@ data Clause = Clause
   , _patterns :: [PlicitPattern]
   , _rhs :: !Term
   } deriving (Show, Generic, Hashable)
+
+data ConstructorDefinition
+  = GADTConstructors [Name.Constructor] Type
+  | ADTConstructor Name.Constructor [Type]
+  deriving (Show, Generic, Hashable)
 
 key :: Definition -> Scope.Key
 key def =

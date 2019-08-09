@@ -1,0 +1,12 @@
+data Bool
+  = False
+  | True
+
+data List a
+  = Nil
+  | Cons a (List a)
+
+data Bool =
+
+catchTheParseError -- parse error expected
+  = False
