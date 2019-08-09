@@ -9,6 +9,7 @@ import Protolude
 
 import Data.GADT.Compare.TH
 import Data.HashMap.Lazy (HashMap)
+import Data.HashSet (HashSet)
 import Rock
 
 import Error (Error)
@@ -31,6 +32,7 @@ data Query a where
   ParsedFile :: FilePath -> Query (Name.Module, Module.Header, [(Position.Absolute, (Name, Presyntax.Definition))])
   ModuleHeader :: Name.Module -> Query Module.Header
   ImportedNames :: Name.Module -> Mapped.Query Name.Pre Scope.Entry a -> Query a
+  NameAliases :: Name.Module -> Query (HashMap Name.QualifiedConstructor (HashSet Name.Pre), HashMap Name.Qualified (HashSet Name.Pre))
   ParsedModuleMap :: Name.Module -> Query (HashMap (Scope.Key, Name) Presyntax.Definition)
   ModulePositionMap :: Name.Module -> Query (HashMap (Scope.Key, Name) Position.Absolute)
   ParsedDefinition :: Scope.KeyedName -> Query (Maybe Presyntax.Definition)
@@ -74,6 +76,7 @@ instance HashTag Query where
       ParsedFile {} -> hash
       ModuleHeader {} -> hash
       ImportedNames _ q -> hashTagged q
+      NameAliases {} -> hash
       ParsedModuleMap {} -> hash
       ModulePositionMap {} -> hash
       ParsedDefinition {} -> hash

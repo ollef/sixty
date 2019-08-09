@@ -5,6 +5,7 @@ module Scope where
 import Protolude
 
 import Data.HashMap.Lazy (HashMap)
+import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 
@@ -59,3 +60,30 @@ instance Semigroup Entry where
 
   Ambiguous constrs1 names1 <> Ambiguous constrs2 names2 =
     Ambiguous (constrs1 <> constrs2) (names1 <> names2)
+
+aliases
+  :: Scope
+  -> (HashMap Name.QualifiedConstructor (HashSet Name.Pre), HashMap Name.Qualified (HashSet Name.Pre))
+aliases scope =
+  bimap (HashMap.fromListWith (<>)) (HashMap.fromListWith (<>)) $
+    partitionEithers $
+    concat
+    [ case entry of
+        Name name ->
+          [Right (name, HashSet.singleton prename)]
+
+        Constructors constrs ->
+          [ Left (constr, HashSet.singleton prename)
+          | constr <- HashSet.toList constrs
+          ]
+
+        Ambiguous constrs names ->
+          [ Left (constr, HashSet.singleton prename)
+          | constr <- HashSet.toList constrs
+          ]
+          <>
+          [ Right (name, HashSet.singleton prename)
+          | name <- HashSet.toList names
+          ]
+    | (prename, entry) <- HashMap.toList scope
+    ]

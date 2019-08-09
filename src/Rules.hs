@@ -97,6 +97,12 @@ rules files (Writer query) =
 
         pure $ foldl' (HashMap.unionWith (<>)) mempty scopes
 
+    NameAliases module_ ->
+      noError $ do
+        importedNames <- fetch $ ImportedNames module_ Mapped.Map
+        ((localScope, _), _) <- fetch $ Scopes module_
+        pure $ Scope.aliases $ HashMap.unionWith (<>) localScope importedNames
+
     ParsedModuleMap module_ ->
       noError $ do
         filePath <- fetchModuleFile module_

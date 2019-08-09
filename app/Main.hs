@@ -15,6 +15,7 @@ import qualified Error
 import qualified Name
 import qualified Pretty
 import qualified Query
+import qualified Syntax
 
 main :: IO ()
 main = do
@@ -30,11 +31,15 @@ parseAndTypeCheck filePaths = do
         names =
           HashSet.fromList $
             Name.Qualified module_ . fst . snd <$> defs
+      emptyPrettyEnv <- Pretty.emptyM module_
+      liftIO $ putDoc $ "module" <+> pretty module_ <> line <> line
       forM_ names $ \name -> do
         type_ <- fetch $ Query.ElaboratedType name
-        liftIO $ putDoc $ pretty name <> " : " <> Pretty.prettyTerm 0 Pretty.empty type_ <> line
+        liftIO $ putDoc $ Pretty.prettyDefinition emptyPrettyEnv name (Syntax.TypeDeclaration type_) <> line
         maybeDef <- fetch $ Query.ElaboratedDefinition name
-        liftIO $ forM_ maybeDef $ \(def, _) ->
-          putDoc $ Pretty.prettyDefinition name def <> line
+        liftIO $ do
+          forM_ maybeDef $ \(def, _) ->
+            putDoc $ Pretty.prettyDefinition emptyPrettyEnv name def <> line
+          putDoc line
   forM_ errs $ \(filePath, lineColumn, lineText, err) ->
     liftIO $ putDoc $ Error.pretty filePath lineColumn lineText err <> line

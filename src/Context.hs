@@ -7,11 +7,10 @@ module Context where
 
 import Protolude hiding (IntMap, force)
 
+import Data.Coerce
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef
-import Data.Sequence (Seq)
-import qualified Data.Sequence as Seq
 
 import "this" Data.IntMap (IntMap)
 import qualified Builtin
@@ -74,21 +73,26 @@ toReadbackEnvironment context =
 
 toPrettyEnvironment
   :: Context v
-  -> Pretty.Environment v
-toPrettyEnvironment context =
-  Pretty.Environment
-    { varNames = go $ indices context
-    , usedNames = mempty
-    }
+  -> M (Pretty.Environment v)
+toPrettyEnvironment context = do
+  let
+    Scope.KeyedName _ (Name.Qualified module_ _) =
+      Context.scopeKey context
+  env <- Pretty.emptyM module_
+  pure $ go (indices context) env
   where
-    go :: Index.Map v Var -> Seq Name
-    go (Index.Map.Map indices') =
+    go :: Index.Map v Var -> Pretty.Environment Void -> Pretty.Environment v
+    go (Index.Map.Map indices') env =
       case indices' of
         IntSeq.Empty ->
-          mempty
+          coerce env
 
-        indices'' IntSeq.:> var ->
-          go (Index.Map.Map indices'') Seq.|> lookupVarName var context
+        indices'' IntSeq.:> var -> do
+          let
+            env' =
+              go (Index.Map.Map indices'') env
+
+          coerce $ fst $ Pretty.extend env' $ lookupVarName var context
 
 empty :: Scope.KeyedName -> M (Context Void)
 empty key = do

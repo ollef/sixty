@@ -903,11 +903,12 @@ readback :: Context v -> Domain.Value -> M (Syntax.Term v)
 readback context =
   Readback.readback (Context.toReadbackEnvironment context)
 
-prettyTerm :: Context v -> Syntax.Term v -> Doc ann
-prettyTerm context =
-  Pretty.prettyTerm 0 (Context.toPrettyEnvironment context)
+prettyTerm :: Context v -> Syntax.Term v -> M (Doc ann)
+prettyTerm context term = do
+  env <- Context.toPrettyEnvironment context
+  pure $ Pretty.prettyTerm 0 env term
 
 prettyValue :: Context v -> Domain.Value -> M (Doc ann)
 prettyValue context value = do
   term <- readback context value
-  pure $ prettyTerm context term
+  prettyTerm context term

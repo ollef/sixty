@@ -15,7 +15,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [x] Parsing
   - [x] Indentation-sensitivity
 - [x] Pretty printing
-  - [ ] Scope-aware name printing
+  - [x] Scope-aware name printing
 - [x] Unification and meta variables
   - [x] Pruning
   - [x] The "same meta variable" rule
