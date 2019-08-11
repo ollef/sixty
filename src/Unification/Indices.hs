@@ -172,33 +172,23 @@ unify context flexibility untouchables value1 value2 = do
         throwError Dunno
 
       | otherwise = do
-        Any occs <- lift $ occurs context (IntSet.insert var untouchables) value
-        if occs then
-          throwError Dunno
+        occurs context (IntSet.insert var untouchables) value
+        pure $ Context.define context var $ Lazy $ pure value
 
-        else
-          pure $ Context.define context var $ Lazy $ pure value
-
-occurs :: Context v -> IntSet Var -> Domain.Value -> M Any
+occurs :: Context v -> IntSet Var -> Domain.Value -> E M ()
 occurs context untouchables value = do
-  value' <- Context.forceHead context value
+  value' <- lift $ Context.forceHead context value
   case value' of
     Domain.Neutral (Domain.Var var) _
       | IntSet.member var untouchables ->
-        pure $ Any True
+        throwError Dunno
 
-    Domain.Glued hd spine value'' -> do
-      Any occs <- occurs context untouchables $ Domain.Neutral hd spine
-      if occs then do
-        value''' <- force value''
-        occurs context untouchables value'''
+    Domain.Glued hd spine value'' ->
+      occurs context untouchables (Domain.Neutral hd spine) `catchError` \_ ->
+        occursForce value''
 
-      else
-        pure $ Any occs
-
-    Domain.Neutral _ spine -> do
-      results <- traverse (occursForce . snd) spine
-      pure $ fold results
+    Domain.Neutral _ spine ->
+      mapM_ (occursForce . snd) spine
 
     Domain.Lam name type_ _ closure ->
       occursAbstraction name type_ closure
@@ -207,25 +197,23 @@ occurs context untouchables value = do
       occursAbstraction name source domainClosure
 
     Domain.Fun source domain -> do
-      sourceResult <- occursForce source
-      domainResult <- occursForce domain
-      pure $ sourceResult <> domainResult
+      occursForce source
+      occursForce domain
 
     Domain.Case _ _ ->
       -- TODO actually implement this
-      pure $ Any True
+      throwError Dunno
 
   where
     occursForce lazyValue = do
-      value' <- force lazyValue
+      value' <- lift $ force lazyValue
       occurs context untouchables value'
 
     occursAbstraction name type_ closure = do
-      typeResult <- occursForce type_
-      (context', var) <- Context.extendUnnamed context name type_
+      occursForce type_
+      (context', var) <- lift $ Context.extendUnnamed context name type_
       let
         lazyVar = Lazy $ pure $ Domain.var var
 
-      body <- Evaluation.evaluateClosure closure lazyVar
-      bodyResult <- occurs context' untouchables body
-      pure $ typeResult <> bodyResult
+      body <- lift $ Evaluation.evaluateClosure closure lazyVar
+      occurs context' untouchables body
