@@ -1,4 +1,5 @@
 {-# language GADTs #-}
+{-# language LambdaCase #-}
 {-# language PackageImports #-}
 module Domain where
 
@@ -7,15 +8,17 @@ import Protolude hiding (Type, Seq, IntMap)
 import "this" Data.IntMap (IntMap)
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
+import Flexibility (Flexibility)
+import qualified Flexibility
 import Index
+import qualified Index.Map
+import qualified Index.Map as Index
 import qualified Meta
 import Monad
 import Name (Name)
-import qualified Index.Map
-import qualified Index.Map as Index
 import qualified Name
-import qualified "this" Data.IntMap as IntMap
 import Plicity
+import qualified "this" Data.IntMap as IntMap
 import qualified Scope
 import qualified Syntax
 import Var (Var)
@@ -61,6 +64,20 @@ meta i = Neutral (Meta i) mempty
 singleVarView :: Value -> Maybe Var
 singleVarView (Neutral (Var v) Tsil.Empty) = Just v
 singleVarView _ = Nothing
+
+headFlexibility :: Head -> Flexibility
+headFlexibility = \case
+  Var _ ->
+    Flexibility.Rigid
+
+  Global _ ->
+    Flexibility.Rigid
+
+  Con _ ->
+    Flexibility.Rigid
+
+  Meta _ ->
+    Flexibility.Flexible
 
 -------------------------------------------------------------------------------
 -- Evaluation environments

@@ -83,22 +83,8 @@ unify context flexibility value1 value2 = do
     (Domain.Neutral head1 spine1, Domain.Neutral head2 spine2)
       | head1 == head2 -> do
         let
-          headFlexibility =
-            case head1 of
-              Domain.Var _ ->
-                Flexibility.Rigid
-
-              Domain.Global _ ->
-                Flexibility.Rigid
-
-              Domain.Con _ ->
-                Flexibility.Rigid
-
-              Domain.Meta _ ->
-                Flexibility.Flexible
-
           flexibility' =
-            max headFlexibility flexibility
+            max (Domain.headFlexibility head1) flexibility
 
         unifySpines flexibility' spine1 spine2
 
