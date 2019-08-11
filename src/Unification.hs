@@ -196,10 +196,10 @@ unify context flexibility value1 value2 = do
           _ ->
             can'tUnify
 
-    -- -- Case expressions
-    -- (Domain.Case scrutinee1 branches1, Domain.Case scrutinee2 branches2) -> do
-    --   unify context Flexible scrutinee1 scrutinee2
-    --   _ branches1 branches2
+    -- Case expressions
+    (Domain.Case scrutinee1 branches1, Domain.Case scrutinee2 branches2) -> do
+      unify context Flexible scrutinee1 scrutinee2
+      unifyBranches context flexibility branches1 branches2
 
     _ ->
       can'tUnify
@@ -231,6 +231,56 @@ unify context flexibility value1 value2 = do
       -- putText $ show pvalue1
       -- putText $ show pvalue2
       throwError Error.TypeMismatch
+
+unifyBranches
+  :: Context v
+  -> Flexibility
+  -> Domain.Branches
+  -> Domain.Branches
+  -> M ()
+unifyBranches
+  context
+  flexibility
+  (Domain.Branches env1 branches1)
+  (Domain.Branches env2 branches2) =
+    zipWithM_ unifyBranch branches1 branches2
+  where
+    unifyBranch (Syntax.Branch constr1 tele1) (Syntax.Branch constr2 tele2)
+      | constr1 == constr2 =
+        unifyTele context env1 env2 tele1 tele2
+
+      | otherwise =
+        panic "unifyBranch"
+
+    unifyTele
+      :: Context v
+      -> Domain.Environment v1
+      -> Domain.Environment v2
+      -> Telescope Syntax.Type Syntax.Term v1
+      -> Telescope Syntax.Type Syntax.Term v2
+      -> M ()
+    unifyTele context' env1' env2' tele1 tele2 =
+      case (tele1, tele2) of
+        (Telescope.Extend name1 type1 plicity1 tele1', Telescope.Extend _name2 type2 plicity2 tele2')
+          | plicity1 == plicity2 -> do
+            type1' <- Evaluation.evaluate env1' type1
+            type2' <- Evaluation.evaluate env2' type2
+            unify context' flexibility type1' type2'
+            (context'', var) <- Context.extendUnnamed context' name1 $ Lazy $ pure type1'
+            unifyTele
+              context''
+              (Domain.extendVar env1' var)
+              (Domain.extendVar env2' var)
+              tele1'
+              tele2'
+
+        (Telescope.Empty body1, Telescope.Empty body2) -> do
+          body1' <- Evaluation.evaluate env1' body1
+          body2' <- Evaluation.evaluate env2' body2
+          unify context' flexibility body1' body2'
+
+        _ ->
+          panic "unifyTele"
 
 shouldKeepMetaArgument :: Domain.Value -> Domain.Value -> Bool
 shouldKeepMetaArgument value1 value2 =
