@@ -134,6 +134,11 @@ unify context flexibility untouchables value1 value2 = do
       | Flexibility.Rigid <- flexibility ->
         solve var2 value1'
 
+    -- Case expressions
+    (Domain.Case scrutinee1 branches1, Domain.Case scrutinee2 branches2) -> do
+      context' <- unify context Flexibility.Flexible untouchables scrutinee1 scrutinee2
+      unifyBranches context' flexibility untouchables branches1 branches2
+
     _ ->
       throwError Dunno
 
@@ -161,15 +166,6 @@ unify context flexibility untouchables value1 value2 = do
       context3 <- unify context2 flexibility (IntSet.insert var untouchables) body1 body2
       pure $ unextend context3
 
-    unextend :: Context (Succ v) -> Context v
-    unextend context' =
-      case Context.indices context' of
-        indices Index.Map.:> _ ->
-          context' { Context.indices = indices }
-
-        _ ->
-          panic "Unification.Indices.unify.unextend"
-
     solve var value
       | IntSet.member var untouchables =
         throwError Dunno
@@ -177,6 +173,74 @@ unify context flexibility untouchables value1 value2 = do
       | otherwise = do
         occurs context (IntSet.insert var untouchables) value
         pure $ Context.define context var $ Lazy $ pure value
+
+unifyBranches
+  :: Context v
+  -> Flexibility
+  -> IntSet Var
+  -> Domain.Branches
+  -> Domain.Branches
+  -> E M (Context v)
+unifyBranches
+  outerContext
+  flexibility
+  outerUntouchables
+  (Domain.Branches outerEnv1 branches1)
+  (Domain.Branches outerEnv2 branches2) =
+    foldM
+      (uncurry . unifyBranch)
+      outerContext
+      (zip branches1 branches2)
+  where
+    unifyBranch context (Syntax.Branch constr1 tele1) (Syntax.Branch constr2 tele2)
+      | constr1 == constr2 =
+        unifyTele context outerEnv1 outerEnv2 outerUntouchables tele1 tele2
+
+      | otherwise =
+        panic "unifyBranch"
+
+    unifyTele
+      :: Context v
+      -> Domain.Environment v1
+      -> Domain.Environment v2
+      -> IntSet Var
+      -> Telescope Syntax.Type Syntax.Term v1
+      -> Telescope Syntax.Type Syntax.Term v2
+      -> E M (Context v)
+    unifyTele context env1 env2 untouchables tele1 tele2 =
+      case (tele1, tele2) of
+        (Telescope.Extend name1 type1 plicity1 tele1', Telescope.Extend _name2 type2 plicity2 tele2')
+          | plicity1 == plicity2 -> do
+            type1' <- lift $ Evaluation.evaluate env1 type1
+            type2' <- lift $ Evaluation.evaluate env2 type2
+            context' <- unify context flexibility untouchables type1' type2'
+            (context'', var) <- lift $ Context.extendUnnamed context' name1 $ Lazy $ pure type1'
+            context''' <-
+              unifyTele
+                context''
+                (Domain.extendVar env1 var)
+                (Domain.extendVar env2 var)
+                (IntSet.insert var untouchables)
+                tele1'
+                tele2'
+            pure $ unextend context'''
+
+        (Telescope.Empty body1, Telescope.Empty body2) -> do
+          body1' <- lift $ Evaluation.evaluate env1 body1
+          body2' <- lift $ Evaluation.evaluate env2 body2
+          unify context flexibility untouchables body1' body2'
+
+        _ ->
+          panic "unifyTele"
+
+unextend :: Context (Succ v) -> Context v
+unextend context' =
+  case Context.indices context' of
+    indices Index.Map.:> _ ->
+      context' { Context.indices = indices }
+
+    _ ->
+      panic "Unification.Indices.unextend"
 
 occurs :: Context v -> IntSet Var -> Domain.Value -> E M ()
 occurs context untouchables value = do
