@@ -294,7 +294,7 @@ newMeta type_ context = do
   closedType <- piBoundVars context type_
   liftIO $ do
     i <- atomicModifyIORef (metas context) $ Meta.insert closedType (span context)
-    pure $ Domain.Neutral (Domain.Meta i) ((Explicit,) . Lazy . pure . Domain.var <$> IntSeq.toTsil (boundVars context))
+    pure $ Domain.Neutral (Domain.Meta i) ((Explicit,) . eager . Domain.var <$> IntSeq.toTsil (boundVars context))
 
 newMetaType :: Context v -> M Domain.Value
 newMetaType =

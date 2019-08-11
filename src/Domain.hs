@@ -129,5 +129,5 @@ lookupVar index env =
 lookupValue :: Var -> Environment v -> Lazy Domain.Value
 lookupValue v env =
   fromMaybe
-    (Lazy $ pure $ var v)
+    (eager $ var v)
     (IntMap.lookup v $ values env)

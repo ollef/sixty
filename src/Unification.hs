@@ -114,7 +114,7 @@ unify context flexibility value1 value2 = do
 
       (context', var) <- Context.extendUnnamed context name1 source1
       let
-        lazyVar = Lazy $ pure $ Domain.var var
+        lazyVar = eager $ Domain.var var
 
       domain1 <- Evaluation.evaluateClosure domainClosure1 lazyVar
       domain2' <- force domain2
@@ -125,7 +125,7 @@ unify context flexibility value1 value2 = do
 
       (context', var) <- Context.extendUnnamed context name2 source2
       let
-        lazyVar = Lazy $ pure $ Domain.var var
+        lazyVar = eager $ Domain.var var
 
       domain1' <- force domain1
       domain2 <- Evaluation.evaluateClosure domainClosure2 lazyVar
@@ -139,7 +139,7 @@ unify context flexibility value1 value2 = do
     (Domain.Lam name1 type1 plicity1 closure1, v2) -> do
       (context', var) <- Context.extendUnnamed context name1 type1
       let
-        lazyVar = Lazy $ pure $ Domain.var var
+        lazyVar = eager $ Domain.var var
 
       body1 <- Evaluation.evaluateClosure closure1 lazyVar
       body2 <- Evaluation.apply v2 plicity1 lazyVar
@@ -149,7 +149,7 @@ unify context flexibility value1 value2 = do
     (v1, Domain.Lam name2 type2 plicity2 closure2) -> do
       (context', var) <- Context.extendUnnamed context name2 type2
       let
-        lazyVar = Lazy $ pure $ Domain.var var
+        lazyVar = eager $ Domain.var var
 
       body1 <- Evaluation.apply v1 plicity2 lazyVar
       body2 <- Evaluation.evaluateClosure closure2 lazyVar
@@ -201,7 +201,7 @@ unify context flexibility value1 value2 = do
 
       (context', var) <- Context.extendUnnamed context name type1
       let
-        lazyVar = Lazy $ pure $ Domain.var var
+        lazyVar = eager $ Domain.var var
 
       body1 <- Evaluation.evaluateClosure closure1 lazyVar
       body2 <- Evaluation.evaluateClosure closure2 lazyVar
@@ -249,7 +249,7 @@ unifyBranches
             type1' <- Evaluation.evaluate env1 type1
             type2' <- Evaluation.evaluate env2 type2
             unify context flexibility type1' type2'
-            (context', var) <- Context.extendUnnamed context name1 $ Lazy $ pure type1'
+            (context', var) <- Context.extendUnnamed context name1 $ eager type1'
             unifyTele
               context'
               (Domain.extendVar env1 var)
@@ -451,7 +451,7 @@ checkInnerClosure
   -> M (Scope Syntax.Term v')
 checkInnerClosure outerContext occurs env flexibility closure = do
   (env', v) <- Readback.extend env
-  closure' <- Evaluation.evaluateClosure closure $ Lazy $ pure $ Domain.var v
+  closure' <- Evaluation.evaluateClosure closure $ eager $ Domain.var v
   checkInnerSolution outerContext occurs env' flexibility closure'
 
 checkInnerNeutral
@@ -570,7 +570,7 @@ pruneMeta context meta allowedArgs = do
               domain <-
                 Evaluation.evaluateClosure
                   domainClosure
-                  (Lazy $ pure $ Domain.var v)
+                  (eager $ Domain.var v)
               source' <- force source
               source'' <-
                 Readback.readback

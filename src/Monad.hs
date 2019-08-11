@@ -28,6 +28,9 @@ lazy m = liftIO $ do
     pure result
   pure $ Lazy $ join $ liftIO $ readIORef ref
 
+eager :: a -> Lazy a
+eager = Lazy . pure
+
 freshVar :: M Var
 freshVar = do
   ref <- asks nextVar

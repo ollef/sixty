@@ -51,7 +51,7 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
           domain <-
             Evaluation.evaluateClosure
               domainClosure
-              (Lazy $ pure $ Domain.var var)
+              (eager $ Domain.var var)
           explicitFunCase context' name var source domain
 
       Domain.Fun source domain
@@ -65,7 +65,7 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
         let
           value =
             Domain.var var
-        domain <- Evaluation.evaluateClosure domainClosure $ Lazy $ pure value
+        domain <- Evaluation.evaluateClosure domainClosure $ eager value
         source' <- force source
         source'' <- Elaboration.readback context source'
         body <- check context' (shiftImplicit name value source' <$> clauses) domain
@@ -113,7 +113,7 @@ infer context (fmap removeEmptyImplicits -> clauses)
       [] -> do
         source <- Context.newMetaType context
         source' <- Elaboration.readback context source
-        (context', var) <- Context.extendUnnamed context "x" $ Lazy $ pure source
+        (context', var) <- Context.extendUnnamed context "x" $ eager source
         let
           value =
             Domain.var var
@@ -123,14 +123,14 @@ infer context (fmap removeEmptyImplicits -> clauses)
 
         pure
           ( Syntax.Lam "x" source' Explicit body
-          , Domain.Pi "x" (Lazy $ pure source) Explicit
+          , Domain.Pi "x" (eager source) Explicit
             $ Domain.Closure (Context.toEvaluationEnvironment context) domain'
           )
 
       [(name, _)] -> do
         source <- Context.newMetaType context
         source' <- Elaboration.readback context source
-        (context', var) <- Context.extendUnnamed context name $ Lazy $ pure source
+        (context', var) <- Context.extendUnnamed context name $ eager source
         let
           value =
             Domain.var var
@@ -139,7 +139,7 @@ infer context (fmap removeEmptyImplicits -> clauses)
 
         pure
           ( Syntax.Lam name source' Implicit body
-          , Domain.Pi name (Lazy $ pure source) Implicit
+          , Domain.Pi name (eager source) Implicit
             $ Domain.Closure (Context.toEvaluationEnvironment context) domain'
           )
 

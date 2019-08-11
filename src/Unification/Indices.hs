@@ -79,7 +79,7 @@ unify context flexibility untouchables value1 value2 = do
 
       (context2, var) <- lift $ Context.extendUnnamed context1 name1 source1
       let
-        lazyVar = Lazy $ pure $ Domain.var var
+        lazyVar = eager $ Domain.var var
 
       domain1 <- lift $ Evaluation.evaluateClosure domainClosure1 lazyVar
       domain2' <- lift $ force domain2
@@ -91,7 +91,7 @@ unify context flexibility untouchables value1 value2 = do
 
       (context2, var) <- lift $ Context.extendUnnamed context1 name2 source2
       let
-        lazyVar = Lazy $ pure $ Domain.var var
+        lazyVar = eager $ Domain.var var
 
       domain1' <- lift $ force domain1
       domain2 <- lift $ Evaluation.evaluateClosure domainClosure2 lazyVar
@@ -106,7 +106,7 @@ unify context flexibility untouchables value1 value2 = do
     (Domain.Lam name1 type1 plicity1 closure1, v2) -> do
       (context1, var) <- lift $ Context.extendUnnamed context name1 type1
       let
-        lazyVar = Lazy $ pure $ Domain.var var
+        lazyVar = eager $ Domain.var var
 
       body1 <- lift $ Evaluation.evaluateClosure closure1 lazyVar
       body2 <- lift $ Evaluation.apply v2 plicity1 lazyVar
@@ -117,7 +117,7 @@ unify context flexibility untouchables value1 value2 = do
     (v1, Domain.Lam name2 type2 plicity2 closure2) -> do
       (context1, var) <- lift $ Context.extendUnnamed context name2 type2
       let
-        lazyVar = Lazy $ pure $ Domain.var var
+        lazyVar = eager $ Domain.var var
 
       body1 <- lift $ Evaluation.apply v1 plicity2 lazyVar
       body2 <- lift $ Evaluation.evaluateClosure closure2 lazyVar
@@ -159,7 +159,7 @@ unify context flexibility untouchables value1 value2 = do
 
       (context2, var) <- lift $ Context.extendUnnamed context1 name type1
       let
-        lazyVar = Lazy $ pure $ Domain.var var
+        lazyVar = eager $ Domain.var var
 
       body1 <- lift $ Evaluation.evaluateClosure closure1 lazyVar
       body2 <- lift $ Evaluation.evaluateClosure closure2 lazyVar
@@ -172,7 +172,7 @@ unify context flexibility untouchables value1 value2 = do
 
       | otherwise = do
         occurs context (IntSet.insert var untouchables) value
-        pure $ Context.define context var $ Lazy $ pure value
+        pure $ Context.define context var $ eager value
 
 unifyBranches
   :: Context v
@@ -214,7 +214,7 @@ unifyBranches
             type1' <- lift $ Evaluation.evaluate env1 type1
             type2' <- lift $ Evaluation.evaluate env2 type2
             context' <- unify context flexibility untouchables type1' type2'
-            (context'', var) <- lift $ Context.extendUnnamed context' name1 $ Lazy $ pure type1'
+            (context'', var) <- lift $ Context.extendUnnamed context' name1 $ eager type1'
             context''' <-
               unifyTele
                 context''
@@ -283,7 +283,7 @@ occurs context untouchables value = do
       occursForce type_
       (context', var) <- lift $ Context.extendUnnamed context name type_
       let
-        lazyVar = Lazy $ pure $ Domain.var var
+        lazyVar = eager $ Domain.var var
 
       body <- lift $ Evaluation.evaluateClosure closure lazyVar
       occurs context' untouchables body

@@ -118,7 +118,7 @@ readbackClosure :: Environment v -> Domain.Closure -> M (Scope Syntax.Term v)
 readbackClosure env closure = do
   (env', v) <- extend env
 
-  closure' <- Evaluation.evaluateClosure closure $ Lazy $ pure $ Domain.var v
+  closure' <- Evaluation.evaluateClosure closure $ eager $ Domain.var v
   readback env' closure'
 
 readbackHead :: Environment v -> Domain.Head -> M (Syntax.Term v)

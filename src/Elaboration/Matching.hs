@@ -88,7 +88,7 @@ elaborateCase context scrutinee scrutineeType branches expectedType =
         }
 
     _ -> do
-      (context', var) <- Context.extendUnnamed context "scrutinee" $ Lazy $ pure scrutineeType
+      (context', var) <- Context.extendUnnamed context "scrutinee" $ eager scrutineeType
       let
         index =
           fromMaybe (panic "matching lookupVarIndex") $ Context.lookupVarIndex var context'
@@ -435,7 +435,7 @@ matchInstantiation context match =
           fail "No match instantitation"
 
         _ ->
-          pure $ pure (Name name, Lazy $ pure term, Lazy $ pure type_)
+          pure $ pure (Name name, eager term, eager type_)
 
     (Match _ _ (Presyntax.Pattern _ (Presyntax.Forced _)) _) ->
       pure mempty
@@ -530,7 +530,7 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
           (context' , fieldVar) <- Context.extendBefore context scrutinee name source
           let
             fieldValue =
-              Lazy $ pure $ Domain.var fieldVar
+              eager $ Domain.var fieldVar
 
             conArgs' =
               conArgs Tsil.:> (plicity, fieldValue)
@@ -545,7 +545,7 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
           (context' , fieldVar) <- Context.extendBefore context scrutinee "x" source
           let
             fieldValue =
-              Lazy $ pure $ Domain.var fieldVar
+              eager $ Domain.var fieldVar
 
             conArgs' =
               conArgs Tsil.:> (Explicit, fieldValue)
@@ -557,7 +557,7 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
         _ -> do
           let
             context' =
-              Context.define context scrutinee $ Lazy $ pure $ Domain.Neutral (Domain.Con constr) conArgs
+              Context.define context scrutinee $ eager $ Domain.Neutral (Domain.Con constr) conArgs
           result <- elaborate context' config
           pure $ Telescope.Empty result
 
@@ -620,7 +620,7 @@ splitEquality
 splitEquality context config var type_ value1 value2 = do
   let
     context' =
-      Context.define context var $ Lazy $ pure $ Builtin.Refl type_ value1 value2
+      Context.define context var $ eager $ Builtin.Refl type_ value1 value2
 
   elaborate context' config
 
@@ -719,7 +719,7 @@ uninhabitedConstrType context fuel type_ =
 
           else do
             (context', var) <- Context.extendUnnamed context name source
-            domain <- Evaluation.evaluateClosure domainClosure $ Lazy $ pure $ Domain.var var
+            domain <- Evaluation.evaluateClosure domainClosure $ eager $ Domain.var var
             uninhabitedConstrType context' fuel domain
 
         Domain.Fun source domain -> do
