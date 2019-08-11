@@ -1,5 +1,6 @@
 {-# language DuplicateRecordFields #-}
 {-# language GADTs #-}
+{-# language LambdaCase #-}
 {-# language OverloadedStrings #-}
 {-# language PackageImports #-}
 {-# language ScopedTypeVariables #-}
@@ -163,21 +164,20 @@ inferDataDefinition context preParams constrs paramVars =
           Domain.Neutral (Domain.Global qualifiedThisName) $
           second (Lazy . pure . Domain.var) <$> paramVars
 
-      constrs' <- forM constrs $ \constrDef ->
-        case constrDef of
-          Presyntax.GADTConstructors cs type_ -> do
-            type' <- checkConstructorType context' type_ var paramVars
-            pure [(constr, Syntax.Let thisName this thisType type') | constr <- cs]
+      constrs' <- forM constrs $ \case
+        Presyntax.GADTConstructors cs type_ -> do
+          type' <- checkConstructorType context' type_ var paramVars
+          pure [(constr, Syntax.Let thisName this thisType type') | constr <- cs]
 
-          Presyntax.ADTConstructor constr types -> do
-            types' <- forM types $ \type_ ->
-              check context' type_ Builtin.type_
+        Presyntax.ADTConstructor constr types -> do
+          types' <- forM types $ \type_ ->
+            check context' type_ Builtin.type_
 
-            returnType <- force lazyReturnType
-            let
-              type_ =
-                Syntax.funs types' returnType
-            pure [(constr, Syntax.Let thisName this thisType type_)]
+          returnType <- force lazyReturnType
+          let
+            type_ =
+              Syntax.funs types' returnType
+          pure [(constr, Syntax.Let thisName this thisType type_)]
       pure
         ( Telescope.Empty (Syntax.ConstructorDefinitions $ concat constrs')
         , Syntax.Global Builtin.typeName
