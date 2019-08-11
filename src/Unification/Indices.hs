@@ -10,13 +10,16 @@ import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
 import qualified Data.Tsil as Tsil
 import qualified Domain
+import Evaluation
 import Flexibility (Flexibility)
 import qualified Flexibility
-import Evaluation
 import Index
 import qualified Index.Map
 import Monad
 import Plicity
+import qualified Syntax
+import Syntax.Telescope (Telescope)
+import qualified Syntax.Telescope as Telescope
 import Var
 
 data Error
@@ -200,9 +203,9 @@ occurs context untouchables value = do
       occursForce source
       occursForce domain
 
-    Domain.Case _ _ ->
-      -- TODO actually implement this
-      throwError Dunno
+    Domain.Case scrutinee branches -> do
+      occurs context untouchables scrutinee
+      occursBranches context untouchables branches
 
   where
     occursForce lazyValue = do
@@ -217,3 +220,28 @@ occurs context untouchables value = do
 
       body <- lift $ Evaluation.evaluateClosure closure lazyVar
       occurs context' untouchables body
+
+occursBranches :: Context v -> IntSet Var -> Domain.Branches -> E M ()
+occursBranches outerContext outerUntouchables (Domain.Branches outerEnv branches) =
+  forM_ branches $ \(Syntax.Branch _constr tele) ->
+    occursTele outerContext outerUntouchables outerEnv tele
+  where
+    occursTele
+      :: Context v
+      -> IntSet Var
+      -> Domain.Environment v1
+      -> Telescope Syntax.Type Syntax.Term v1
+      -> E M ()
+    occursTele context untouchables env tele =
+      case tele of
+        Telescope.Extend name type_ _plicity tele' -> do
+          type' <- lazy $ Evaluation.evaluate env type_
+          (context'', var) <- lift $ Context.extendUnnamed context name type'
+          occursTele
+            context''
+            (IntSet.insert var untouchables)
+            (Domain.extendVar env var)
+            tele'
+        Telescope.Empty body -> do
+          body' <- lift $ Evaluation.evaluate env body
+          occurs context untouchables body'
