@@ -16,6 +16,8 @@ import qualified Domain
 import qualified Error
 import qualified Evaluation
 import Extra
+import Flexibility (Flexibility)
+import qualified Flexibility
 import Index
 import qualified Index.Map as Index
 import qualified Meta
@@ -28,14 +30,9 @@ import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
 import Var
 
-data Flexibility
-  = Rigid
-  | Flexible
-  deriving (Eq, Ord, Show)
-
 tryUnify :: Context v -> Domain.Value -> Domain.Value -> M (Syntax.Term v -> Syntax.Term v)
 tryUnify context value1 value2 = do
-  success <- Context.try_ context $ unify context Rigid value1 value2
+  success <- Context.try_ context $ unify context Flexibility.Rigid value1 value2
   if success then
     pure identity
   else do
@@ -49,7 +46,7 @@ unify context flexibility value1 value2 = do
   case (value1', value2') of
     -- Both metas
     (Domain.Neutral (Domain.Meta metaIndex1) spine1, Domain.Neutral (Domain.Meta metaIndex2) spine2)
-      | Rigid <- flexibility -> do
+      | Flexibility.Rigid <- flexibility -> do
         spine1' <- mapM ((force >=> Context.forceHead context) . snd) spine1
         spine2' <- mapM ((force >=> Context.forceHead context) . snd) spine2
         if metaIndex1 == metaIndex2 then do
@@ -60,7 +57,7 @@ unify context flexibility value1 value2 = do
             keep = Tsil.zipWith shouldKeepMetaArgument spine1' spine2'
 
           if and keep then
-            unifySpines Flexible spine1 spine2
+            unifySpines Flexibility.Flexible spine1 spine2
 
           else
             pruneMeta context metaIndex1 keep
@@ -89,16 +86,16 @@ unify context flexibility value1 value2 = do
           headFlexibility =
             case head1 of
               Domain.Var _ ->
-                Rigid
+                Flexibility.Rigid
 
               Domain.Global _ ->
-                Rigid
+                Flexibility.Rigid
 
               Domain.Con _ ->
-                Rigid
+                Flexibility.Rigid
 
               Domain.Meta _ ->
-                Flexible
+                Flexibility.Flexible
 
           flexibility' =
             max headFlexibility flexibility
@@ -107,7 +104,7 @@ unify context flexibility value1 value2 = do
 
     (Domain.Glued head1 spine1 value1'', Domain.Glued head2 spine2 value2'')
       | head1 == head2 ->
-        unifySpines Flexible spine1 spine2 `catchError` \_ ->
+        unifySpines Flexibility.Flexible spine1 spine2 `catchError` \_ ->
           unifyForce flexibility value1'' value2''
 
     (Domain.Glued _ _ value1'', _) -> do
@@ -175,7 +172,7 @@ unify context flexibility value1 value2 = do
 
     -- Metas
     (Domain.Neutral (Domain.Meta metaIndex1) spine1, v2)
-      | Rigid <- flexibility -> do
+      | Flexibility.Rigid <- flexibility -> do
         spine1' <- mapM ((force >=> Context.forceHead context) . snd) spine1
         case traverse Domain.singleVarView spine1' of
           Just vars1
@@ -186,7 +183,7 @@ unify context flexibility value1 value2 = do
             can'tUnify
 
     (v1, Domain.Neutral (Domain.Meta metaIndex2) spine2)
-      | Rigid <- flexibility -> do
+      | Flexibility.Rigid <- flexibility -> do
         spine2' <- mapM ((force >=> Context.forceHead context) . snd) spine2
         case traverse Domain.singleVarView spine2' of
           Just vars2
@@ -198,7 +195,7 @@ unify context flexibility value1 value2 = do
 
     -- Case expressions
     (Domain.Case scrutinee1 branches1, Domain.Case scrutinee2 branches2) -> do
-      unify context Flexible scrutinee1 scrutinee2
+      unify context Flexibility.Flexible scrutinee1 scrutinee2
       unifyBranches context flexibility branches1 branches2
 
     _ ->
@@ -334,7 +331,7 @@ checkSolution outerContext meta vars value = do
         { indices = Index.Map vars
         , values = Context.values outerContext
         }
-      Rigid
+      Flexibility.Rigid
       value
   addAndCheckLambdas outerContext meta vars solution
 
@@ -365,7 +362,7 @@ addAndCheckLambdas outerContext meta vars term =
             { indices = Index.Map vars'
             , values = Context.values outerContext
             }
-          Rigid
+          Flexibility.Rigid
           type'
       let
         term' = Syntax.Lam name type'' Explicit (Syntax.succ term)
@@ -382,7 +379,7 @@ checkInnerSolution outerContext occurs env flexibility value = do
   value' <- Context.forceHeadGlue outerContext value
   case value' of
     Domain.Neutral hd@(Domain.Meta i) spine
-      | Rigid <- flexibility -> do
+      | Flexibility.Rigid <- flexibility -> do
         spine' <- mapM ((force >=> Context.forceHead outerContext) . snd) spine
         case traverse Domain.singleVarView spine' of
           Just vars
@@ -399,7 +396,7 @@ checkInnerSolution outerContext occurs env flexibility value = do
       checkInnerNeutral outerContext occurs env flexibility hd spine
 
     Domain.Glued hd spine value'' ->
-      checkInnerNeutral outerContext occurs env Flexible hd spine `catchError` \_ -> do
+      checkInnerNeutral outerContext occurs env Flexibility.Flexible hd spine `catchError` \_ -> do
         value''' <- force value''
         checkInnerSolution outerContext occurs env flexibility value'''
 

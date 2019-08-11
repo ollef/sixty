@@ -27,6 +27,7 @@ import qualified Elaboration.Metas as Metas
 import Error (Error)
 import qualified Error
 import qualified Evaluation
+import qualified Flexibility
 import Index
 import qualified Inlining
 import qualified Meta
@@ -96,7 +97,7 @@ checkDefinition context def expectedType =
     Presyntax.DataDefinition params constrs -> do
       (tele, type_) <- inferDataDefinition context params constrs mempty
       type' <- evaluate context type_
-      success <- Context.try_ context $ Unification.unify context Unification.Rigid type' expectedType
+      success <- Context.try_ context $ Unification.unify context Flexibility.Rigid type' expectedType
       if success then
         pure $ Syntax.DataDefinition tele
 
@@ -262,7 +263,7 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
         _ -> do
           Unification.unify
             context'
-            Unification.Rigid
+            Flexibility.Rigid
             constrType'
             (Domain.Neutral
               (Domain.Var dataVar)
