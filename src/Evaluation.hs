@@ -39,8 +39,12 @@ evaluateConstructorDefinitions env tele =
 evaluate :: Domain.Environment v -> Syntax.Term v -> M Domain.Value
 evaluate env term =
   case term of
-    Syntax.Var v ->
-      force $ Domain.lookupValue (Domain.lookupVar v env) env
+    Syntax.Var index -> do
+      let
+        var =
+          Domain.lookupVar index env
+
+      pure $ Domain.Glued (Domain.Var var) mempty $ Domain.lookupValue var env
 
     Syntax.Global name -> do
       visibility <- fetch $ Query.Visibility (Domain.scopeKey env) name

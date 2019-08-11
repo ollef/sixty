@@ -5,7 +5,6 @@ module Readback where
 import Protolude hiding (IntMap, Seq, force, evaluate)
 
 import "this" Data.IntMap (IntMap)
-import qualified Data.Tsil as Tsil
 import qualified Domain
 import qualified Evaluation
 import Index
@@ -76,11 +75,19 @@ fromEvaluationEnvironment env =
 readback :: Environment v -> Domain.Value -> M (Syntax.Term v)
 readback env value =
   case value of
-    Domain.Neutral hd spine ->
-      readbackNeutral env hd spine
+    Domain.Neutral hd spine -> do
+      hd' <- readbackHead env hd
+      readbackSpine hd' spine
 
-    Domain.Glued hd spine _ ->
-      readbackNeutral env hd spine
+    Domain.Glued hd spine value' -> do
+      maybeHead <- readbackMaybeHead env hd
+      case maybeHead of
+        Nothing -> do
+          value'' <- force value'
+          readback env value''
+
+        Just hd' ->
+          readbackSpine hd' spine
 
     Domain.Lam name type_ plicity closure -> do
       type' <- force type_
@@ -100,6 +107,12 @@ readback env value =
       branches' <- forM branches $ \(Syntax.Branch constr tele) ->
         Syntax.Branch constr <$> readbackBranch env env' tele
       pure $ Syntax.Case scrutinee' branches'
+  where
+    readbackSpine =
+      foldM $ \fun (plicity, lazyArg) -> do
+        arg <- force lazyArg
+        arg' <- readback env arg
+        pure $ Syntax.App fun plicity arg'
 
 readbackClosure :: Environment v -> Domain.Closure -> M (Scope Syntax.Term v)
 readbackClosure env closure = do
@@ -108,39 +121,40 @@ readbackClosure env closure = do
   closure' <- Evaluation.evaluateClosure closure $ Lazy $ pure $ Domain.var v
   readback env' closure'
 
-readbackNeutral :: Environment v -> Domain.Head -> Domain.Spine -> M (Syntax.Term v)
-readbackNeutral env hd spine =
-  case spine of
-    Tsil.Empty ->
-      readbackHead env hd
-
-    spine' Tsil.:> (plicity, arg) -> do
-      arg' <- force arg
-      Syntax.App <$> readbackNeutral env hd spine' <*> pure plicity <*> readback env arg'
-
 readbackHead :: Environment v -> Domain.Head -> M (Syntax.Term v)
-readbackHead env hd =
+readbackHead env hd = do
+  maybeTerm <- readbackMaybeHead env hd
+  case maybeTerm of
+    Nothing ->
+      panic "readbackHead: Nothing"
+
+    Just term ->
+      pure term
+
+readbackMaybeHead :: Environment v -> Domain.Head -> M (Maybe (Syntax.Term v))
+readbackMaybeHead env hd =
   case hd of
     Domain.Var v ->
       case (lookupVarIndex v env, lookupVarValue v env) of
         (Just i, _) ->
-          pure $ Syntax.Var i
+          pure $ Just $ Syntax.Var i
 
         (Nothing, Just value) -> do
           value' <- force value
-          readback env value'
+          term <- readback env value'
+          pure $ Just term
 
         (Nothing, Nothing) ->
-          panic $ "readbackHead: Scoping error (" <> show v <> ")"
+          pure Nothing
 
     Domain.Global g ->
-      pure $ Syntax.Global g
+      pure $ Just $ Syntax.Global g
 
     Domain.Con c ->
-      pure $ Syntax.Con c
+      pure $ Just $ Syntax.Con c
 
     Domain.Meta m ->
-      pure $ Syntax.Meta m
+      pure $ Just $ Syntax.Meta m
 
 readbackBranch
   :: Environment v
