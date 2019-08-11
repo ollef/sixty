@@ -51,8 +51,9 @@ evaluate env term =
         Scope.Definition -> do
           maybeDefinition <- fetch $ Query.ElaboratedDefinition name
           case maybeDefinition of
-            Just (Syntax.ConstantDefinition term', _) ->
-              evaluate (Domain.empty $ Domain.scopeKey env) term'
+            Just (Syntax.ConstantDefinition term', _) -> do
+              value <- lazy $ evaluate (Domain.empty $ Domain.scopeKey env) term'
+              pure $ Domain.Glued (Domain.Global name) mempty value
 
             _ ->
               pure $ Domain.global name
@@ -137,6 +138,12 @@ apply fun plicity arg =
 
     Domain.Neutral hd args ->
       pure $ Domain.Neutral hd (args Tsil.:> (plicity, arg))
+
+    Domain.Glued hd args value -> do
+      appliedValue <- lazy $ do
+        value' <- force value
+        apply value' plicity arg
+      pure $ Domain.Glued hd (args Tsil.:> (plicity, arg)) appliedValue
 
     _ ->
       panic "applying non-function"

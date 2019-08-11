@@ -51,10 +51,10 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Clause elaboration
   - [x] Pattern lambdas
 - [x] Inductive families
+- [x] Glued evaluation
 - [ ] Recursive let bindings
 - [ ] Prevent CBV-incompatible circular values
 - [ ] Generalisation?
-- [ ] Glued evaluation
 - [ ] Literals
   - [ ] Numbers
   - [ ] Strings

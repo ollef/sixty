@@ -384,6 +384,53 @@ forceHead context value =
         Meta.Unsolved {} ->
           pure value
 
+    Domain.Glued _ _ value' -> do
+      value'' <- force value'
+      forceHead context value''
+
+    Domain.Case scrutinee branches@(Domain.Branches branchEnv brs)  -> do
+      scrutinee' <- forceHead context scrutinee
+      case scrutinee' of
+        Domain.Neutral (Domain.Con constr) spine -> do
+          value' <- Evaluation.chooseBranch branchEnv constr (toList spine) brs
+          forceHead context value'
+
+        _ ->
+          pure $ Domain.Case scrutinee' branches
+
+    _ ->
+      pure value
+
+-- | Evaluate the head of a value further, if (now) possible due to meta
+-- solutions or new value bindings, returning glued values.
+forceHeadGlue
+  :: Context v
+  -> Domain.Value
+  -> M Domain.Value
+forceHeadGlue context value =
+  case value of
+    Domain.Neutral (Domain.Var var) spine
+      | Just headValue <- Context.lookupVarValue var context -> do
+        value' <- lazy $ do
+          headValue' <- force headValue
+          value' <- Evaluation.applySpine headValue' spine
+          forceHead context value'
+        pure $ Domain.Glued (Domain.Var var) spine value'
+
+    Domain.Neutral (Domain.Meta metaIndex) spine -> do
+      meta <- Context.lookupMeta metaIndex context
+
+      case meta of
+        Meta.Solved headValue _ -> do
+          value' <- lazy $ do
+            headValue' <- Evaluation.evaluate (Domain.empty $ scopeKey context) headValue
+            value' <- Evaluation.applySpine headValue' spine
+            forceHead context value'
+          pure $ Domain.Glued (Domain.Meta metaIndex) spine value'
+
+        Meta.Unsolved {} ->
+          pure value
+
     Domain.Case scrutinee branches@(Domain.Branches branchEnv brs)  -> do
       scrutinee' <- forceHead context scrutinee
       case scrutinee' of

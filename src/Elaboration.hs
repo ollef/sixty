@@ -95,7 +95,7 @@ checkDefinition context def expectedType =
     Presyntax.DataDefinition params constrs -> do
       (tele, type_) <- inferDataDefinition context params constrs mempty
       type' <- evaluate context type_
-      success <- Context.try_ context $ Unification.unify context type' expectedType
+      success <- Context.try_ context $ Unification.unify context Unification.Rigid type' expectedType
       if success then
         pure $ Syntax.DataDefinition tele
 
@@ -262,6 +262,7 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
         _ -> do
           Unification.unify
             context'
+            Unification.Rigid
             constrType'
             (Domain.Neutral
               (Domain.Var dataVar)
@@ -771,6 +772,10 @@ getExpectedTypeName context type_ = do
 
     Domain.Neutral {} ->
       pure Nothing
+
+    Domain.Glued _ _ value -> do
+      value' <- force value
+      getExpectedTypeName context value'
 
     Domain.Pi name source _ domainClosure -> do
       (context', var) <- Context.extendUnnamed context name source

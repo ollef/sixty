@@ -19,6 +19,7 @@ import Var
 
 data Value
   = Neutral !Domain.Head Spine
+  | Glued !Domain.Head Spine !Value
   | Lam !Name !Type !Plicity !Closure
   | Pi !Name !Type !Plicity !Closure
   | Fun !Type !Type
@@ -44,6 +45,9 @@ to value =
   case value of
     Domain.Neutral hd spine ->
       Neutral hd <$> mapM (mapM lazyTo) spine
+
+    Domain.Glued hd spine value' ->
+      Glued hd <$> mapM (mapM lazyTo) spine <*> lazyTo value'
 
     Domain.Lam name type_ plicity closure ->
       Lam name <$> lazyTo type_ <*> pure plicity <*> closureTo closure

@@ -211,7 +211,7 @@ checkForcedPattern context match =
 
       term' <- Elaboration.check context' term type_
       value2 <- Elaboration.evaluate context term'
-      _ <- Context.try_ context' $ Unification.unify context' value1 value2
+      _ <- Context.try_ context' $ Unification.unify context' Unification.Rigid value1 value2
       pure ()
 
     _ ->
@@ -263,7 +263,7 @@ simplifyMatch context (Match value plicity pat@(Presyntax.Pattern span unspanned
               let
                 context' =
                   Context.spanned span context
-              _ <- Context.try_ context' $ Unification.unify context' type_ type'
+              _ <- Context.try_ context' $ Unification.unify context' Unification.Rigid type_ type'
               pure matches'
 
           | otherwise ->
@@ -414,7 +414,7 @@ expandAnnotations context matches =
                 let
                   context' =
                     Context.spanned span context
-                _ <- Context.try_ context' $ Unification.unify context' annoType'' type_
+                _ <- Context.try_ context' $ Unification.unify context' Unification.Rigid annoType'' type_
                 pure ()
               pure $ Match term plicity pat type_ : matches'
 

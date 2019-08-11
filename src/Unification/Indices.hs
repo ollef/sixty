@@ -198,6 +198,10 @@ occurs context untouchables value = do
       | IntSet.member var untouchables ->
         pure $ Any True
 
+    Domain.Glued _ _ value'' -> do
+      value''' <- force value''
+      occurs context untouchables value'''
+
     Domain.Neutral _ spine -> do
       results <- traverse (occursForce . snd) spine
       pure $ fold results

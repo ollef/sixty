@@ -79,6 +79,9 @@ readback env value =
     Domain.Neutral hd spine ->
       readbackNeutral env hd spine
 
+    Domain.Glued hd spine _ ->
+      readbackNeutral env hd spine
+
     Domain.Lam name type_ plicity closure -> do
       type' <- force type_
       Syntax.Lam name <$> readback env type' <*> pure plicity <*> readbackClosure env closure

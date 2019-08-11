@@ -23,6 +23,7 @@ import qualified Var
 
 data Value
   = Neutral !Head Spine
+  | Glued !Head Spine !(Lazy Value)
   | Lam !Name !(Lazy Type) !Plicity !Closure
   | Pi !Name !(Lazy Type) !Plicity !Closure
   | Fun !(Lazy Type) !(Lazy Type)
