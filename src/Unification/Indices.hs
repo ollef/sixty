@@ -1,12 +1,8 @@
-{-# language DeriveFoldable #-}
-{-# language DeriveFunctor #-}
-{-# language DeriveTraversable #-}
+{-# language FlexibleContexts #-}
 {-# language OverloadedStrings #-}
 module Unification.Indices where
 
 import Protolude hiding (force, IntSet)
-
-import Control.Monad.Trans
 
 import Context (Context)
 import qualified Context
@@ -21,52 +17,19 @@ import Monad
 import Plicity
 import Var
 
-data Result a
+data Error
   = Nope
   | Dunno
-  | Yup a
-  deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
+  deriving (Eq, Ord, Show)
 
-newtype ResultT m a = ResultT { runResultT :: m (Result a) }
-  deriving (Functor, Foldable, Traversable)
-
-nope :: Applicative m => ResultT m a
-nope = ResultT $ pure Nope
-
-dunno :: Applicative m => ResultT m a
-dunno = ResultT $ pure Dunno
-
-instance Monad m => Applicative (ResultT m) where
-  pure =
-    ResultT . pure . Yup
-
-  (<*>) =
-    ap
-
-instance Monad m => Monad (ResultT m) where
-  ResultT m >>= f =
-    ResultT $ do
-      res <- m
-      case res of
-        Nope ->
-          pure Nope
-
-        Dunno ->
-          pure Dunno
-
-        Yup a ->
-          runResultT $ f a
-
-instance MonadTrans ResultT where
-  lift =
-    ResultT . fmap Yup
+type E = ExceptT Error
 
 unify
   :: Context v
   -> IntSet Var
   -> Domain.Value
   -> Domain.Value
-  -> ResultT M (Context v)
+  -> E M (Context v)
 unify context untouchables value1 value2 = do
   value1' <- lift $ Context.forceHead context value1
   value2' <- lift $ Context.forceHead context value2
@@ -80,7 +43,7 @@ unify context untouchables value1 value2 = do
 
     (Domain.Neutral (Domain.Con con1) _, Domain.Neutral (Domain.Con con2) _)
       | con1 /= con2 ->
-        nope
+        throwError Nope
 
     (Domain.Lam name1 type1 plicity1 closure1, Domain.Lam _ type2 plicity2 closure2)
       | plicity1 == plicity2 ->
@@ -149,7 +112,7 @@ unify context untouchables value1 value2 = do
       solve var2 value1'
 
     _ ->
-      dunno
+      throwError Dunno
 
   where
     unifyForce context' untouchables' lazyValue1 lazyValue2 = do
@@ -180,12 +143,12 @@ unify context untouchables value1 value2 = do
 
     solve var value
       | IntSet.member var untouchables =
-        dunno
+        throwError Dunno
 
       | otherwise = do
         Any occs <- lift $ occurs context (IntSet.insert var untouchables) value
         if occs then
-          dunno
+          throwError Dunno
 
         else
           pure $ Context.define context var $ Lazy $ pure value
