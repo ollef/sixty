@@ -250,6 +250,9 @@ occurs context untouchables value = do
       | IntSet.member var untouchables ->
         throwError Dunno
 
+    Domain.Glued (Domain.Var _) _ value'' ->
+      occursForce value''
+
     Domain.Glued hd spine value'' ->
       occurs context untouchables (Domain.Neutral hd spine) `catchError` \_ ->
         occursForce value''

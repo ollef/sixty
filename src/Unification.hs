@@ -381,10 +381,14 @@ checkInnerSolution outerContext occurs env flexibility value = do
     Domain.Neutral hd spine ->
       checkInnerNeutral outerContext occurs env flexibility hd spine
 
-    Domain.Glued hd spine value'' ->
+    Domain.Glued hd@(Domain.Global _) spine value'' ->
       checkInnerNeutral outerContext occurs env Flexibility.Flexible hd spine `catchError` \_ -> do
         value''' <- force value''
         checkInnerSolution outerContext occurs env flexibility value'''
+
+    Domain.Glued _ _ value'' -> do
+      value''' <- force value''
+      checkInnerSolution outerContext occurs env flexibility value'''
 
     Domain.Lam name type_ plicity closure -> do
       type' <- force type_
