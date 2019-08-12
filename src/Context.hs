@@ -414,7 +414,7 @@ forceHeadGlue context value =
         value' <- lazy $ do
           headValue' <- force headValue
           value' <- Evaluation.applySpine headValue' spine
-          forceHead context value'
+          forceHeadGlue context value'
         pure $ Domain.Glued (Domain.Var var) spine value'
 
     Domain.Neutral (Domain.Meta metaIndex) spine -> do
@@ -425,7 +425,7 @@ forceHeadGlue context value =
           value' <- lazy $ do
             headValue' <- Evaluation.evaluate (Domain.empty $ scopeKey context) headValue
             value' <- Evaluation.applySpine headValue' spine
-            forceHead context value'
+            forceHeadGlue context value'
           pure $ Domain.Glued (Domain.Meta metaIndex) spine value'
 
         Meta.Unsolved {} ->
@@ -436,7 +436,7 @@ forceHeadGlue context value =
       case scrutinee' of
         Domain.Neutral (Domain.Con constr) spine -> do
           value' <- Evaluation.chooseBranch branchEnv constr (toList spine) brs
-          forceHead context value'
+          forceHeadGlue context value'
 
         _ ->
           pure $ Domain.Case scrutinee' branches
