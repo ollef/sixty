@@ -47,10 +47,10 @@ tryUnify context value1 value2 = do
 tryUnifyD :: Context v -> Domain.Value -> Domain.Value -> M (Domain.Value -> Domain.Value)
 tryUnifyD context value1 value2 = do
   success <- Context.try_ context $ unify context Flexibility.Rigid value1 value2
-  if success then
-    pure identity
-  else do
-    pure $ const $ Domain.Neutral (Domain.Global Builtin.fail) $ pure (Explicit, eager value2)
+  pure $ if success then
+    identity
+  else
+    const $ Domain.Neutral (Domain.Global Builtin.fail) $ pure (Explicit, eager value2)
 
 unify :: Context v -> Flexibility -> Domain.Value -> Domain.Value -> M ()
 unify context flexibility value1 value2 = do
