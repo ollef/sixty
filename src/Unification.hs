@@ -5,6 +5,9 @@ module Unification where
 
 import Protolude hiding (force, check, evaluate)
 
+import Rock
+
+import {-# source #-} qualified Elaboration
 import qualified Builtin
 import Context (Context)
 import qualified Context
@@ -22,7 +25,9 @@ import Index
 import qualified Index.Map as Index
 import qualified Meta
 import Monad
+import qualified Name
 import Plicity
+import qualified Query
 import qualified Readback
 import Readback (readback)
 import qualified Syntax
@@ -38,6 +43,14 @@ tryUnify context value1 value2 = do
   else do
     type_ <- Readback.readback (Context.toReadbackEnvironment context) value2
     pure $ const $ Syntax.App (Syntax.Global Builtin.fail) Explicit type_
+
+tryUnifyD :: Context v -> Domain.Value -> Domain.Value -> M (Domain.Value -> Domain.Value)
+tryUnifyD context value1 value2 = do
+  success <- Context.try_ context $ unify context Flexibility.Rigid value1 value2
+  if success then
+    pure identity
+  else do
+    pure $ const $ Domain.Neutral (Domain.Global Builtin.fail) $ pure (Explicit, eager value2)
 
 unify :: Context v -> Flexibility -> Domain.Value -> Domain.Value -> M ()
 unify context flexibility value1 value2 = do
@@ -184,6 +197,32 @@ unify context flexibility value1 value2 = do
       unify context Flexibility.Flexible scrutinee1 scrutinee2
       unifyBranches context flexibility branches1 branches2
 
+    (Domain.Case scrutinee@(Domain.Neutral (Domain.Meta meta) spine) branches, _)
+      | Flexibility.Rigid <- flexibility -> do
+        matches <- potentiallyMatchingBranches context value2' branches
+        case matches of
+          [constr] -> do
+            metaType <- instantiatedMetaType context meta spine
+            appliedConstr <- fullyApplyToMetas context constr metaType
+            unify context flexibility scrutinee appliedConstr
+            unify context flexibility value1' value2'
+
+          _ ->
+            can'tUnify
+
+    (_, Domain.Case scrutinee@(Domain.Neutral (Domain.Meta meta) spine) branches)
+      | Flexibility.Rigid <- flexibility -> do
+        matches <- potentiallyMatchingBranches context value1' branches
+        case matches of
+          [constr] -> do
+            metaType <- instantiatedMetaType context meta spine
+            appliedConstr <- fullyApplyToMetas context constr metaType
+            unify context flexibility scrutinee appliedConstr
+            unify context flexibility value1' value2'
+
+          _ ->
+            can'tUnify
+
     _ ->
       can'tUnify
 
@@ -265,6 +304,124 @@ unifyBranches
         _ ->
           panic "unifyTele"
 
+-------------------------------------------------------------------------------
+-- Case expression inversion
+
+-- case scrutinee of
+--   con1 vs1 -> con1' es1
+--   con2 vs2 -> con2' es2
+-- ==
+-- con1' es1'
+--
+-- =>
+--
+-- scrutinee == con1 metas1
+-- &&
+-- con1' es1[metas1/vs1] == con1' es1'
+
+potentiallyMatchingBranches
+  :: Context v
+  -> Domain.Value
+  -> Domain.Branches
+  -> M [Name.QualifiedConstructor]
+potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv branches) =
+  fmap catMaybes $ forM branches $ \(Syntax.Branch constr tele) -> do
+    isMatch <- branchMatches outerContext outerEnv tele
+    pure $
+      if isMatch then
+        Just constr
+
+      else
+        Nothing
+
+  where
+    branchMatches
+      :: Context v
+      -> Domain.Environment v'
+      -> Telescope Syntax.Type Syntax.Term v'
+      -> M Bool
+    branchMatches context env tele =
+      case tele of
+        Telescope.Empty body -> do
+          body' <- Evaluation.evaluate env body
+          body'' <- Context.forceHead context body'
+          case (body'', resultValue) of
+            (Domain.Neutral (Domain.Meta _) _, _) ->
+              pure True
+
+            (Domain.Neutral hd1 _, Domain.Neutral hd2 _)
+              | hd1 == hd2 ->
+                pure True
+
+            (Domain.Lam {}, Domain.Lam {}) ->
+              pure True
+
+            (Domain.Pi {}, Domain.Pi {}) ->
+              pure True
+
+            (Domain.Pi {}, Domain.Fun {}) ->
+              pure True
+
+            (Domain.Fun {}, Domain.Pi {}) ->
+              pure True
+
+            (Domain.Fun {}, Domain.Fun {}) ->
+              pure True
+
+            (Domain.Case _ branches', _) -> do
+              matches <- potentiallyMatchingBranches context resultValue branches'
+              pure $ not $ null matches
+
+            _ ->
+              pure False
+
+        Telescope.Extend name type_ _ tele' -> do
+          type' <- lazy $ Evaluation.evaluate env type_
+          (context', var) <- Context.extendUnnamed context name type'
+          branchMatches context' (Domain.extendVar env var) tele'
+
+instantiatedMetaType
+  :: Context v
+  -> Meta.Index
+  -> Domain.Spine
+  -> M Domain.Type
+instantiatedMetaType context meta args = do
+  solution <- Context.lookupMeta meta context
+  case solution of
+    Meta.Unsolved metaType _ -> do
+      metaType' <-
+        Evaluation.evaluate
+          (Domain.empty $ Context.scopeKey context)
+          metaType
+
+      Context.instantiateType context metaType' $ toList args
+
+    Meta.Solved {} ->
+      panic "instantiatedMetaType already solved"
+
+fullyApplyToMetas
+  :: Context v
+  -> Name.QualifiedConstructor
+  -> Domain.Type
+  -> M Domain.Value
+fullyApplyToMetas context constr type_ = do
+  type' <- Context.forceHead context type_
+  case type' of
+    Domain.Neutral (Domain.Global _typeName) typeArgs -> do
+      constrType <- fetch $ Query.ConstructorType constr
+      constrType' <-
+        Evaluation.evaluate
+          (Domain.empty $ Context.scopeKey context)
+          (Syntax.fromVoid $ Telescope.fold Syntax.Pi constrType)
+      instantiatedConstrType <- Context.instantiateType context constrType' $ toList typeArgs
+      (metas, _) <- Elaboration.insertMetas context Elaboration.UntilTheEnd instantiatedConstrType
+      pure $ Domain.Neutral (Domain.Con constr) $ typeArgs <> Tsil.fromList (second eager <$> metas)
+
+    _ ->
+      panic "fullyApplyToMetas"
+
+-------------------------------------------------------------------------------
+
 shouldKeepMetaArgument :: Domain.Value -> Domain.Value -> Bool
 shouldKeepMetaArgument value1 value2 =
   case (value1, value2) of
@@ -293,6 +450,9 @@ shouldKeepMetaArgument value1 value2 =
 
         _ ->
           False
+
+-------------------------------------------------------------------------------
+-- Solution checking and pruning
 
 -- | Solve `meta = \vars. value`.
 solve :: Context v -> Meta.Index -> Tsil Var -> Domain.Value -> M ()

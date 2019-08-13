@@ -21,6 +21,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] The "same meta variable" rule
   - [x] Solution inlining
   - [x] Elaboration of meta variable solutions to local definitions
+  - [x] Case expression inversion
 - [x] Basic type checking
 - [x] Query architecture
 - [x] Simple modules

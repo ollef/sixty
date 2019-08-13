@@ -1,0 +1,17 @@
+data Tuple a b = MkTuple a b
+
+data Unit = MkUnit
+
+data Nat = Z | S Nat
+
+data Equals forall (T : Type). (a b : T) where
+  Refl : Equals a a
+
+Vector : Nat -> Type -> Type
+Vector Z _ = Unit
+Vector (S n) A = Tuple A (Vector n A)
+
+the : (A : Type) -> A -> A
+the A a = a
+
+test = the (Equals (Vector _ Unit) (Tuple _ (Tuple _ Unit))) Refl

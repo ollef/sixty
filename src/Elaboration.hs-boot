@@ -8,7 +8,9 @@ import Data.Text.Prettyprint.Doc (Doc)
 import Context (Context)
 import qualified Domain
 import Monad
+import Name (Name)
 import qualified Name
+import Plicity
 import qualified Presyntax
 import qualified Syntax
 
@@ -43,5 +45,16 @@ resolveConstructor
 inferenceFailed
   :: Context v
   -> M (Syntax.Term v, Domain.Type)
+
+data InsertUntil
+  = UntilTheEnd
+  | UntilExplicit
+  | UntilImplicit (Name -> Bool)
+
+insertMetas
+  :: Context v
+  -> InsertUntil
+  -> Domain.Type
+  -> M ([(Plicity, Domain.Value)], Domain.Type)
 
 prettyValue :: Context v -> Domain.Value -> M (Doc ann)

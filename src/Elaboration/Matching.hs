@@ -632,7 +632,7 @@ uninhabitedScrutinee context value = do
   case value' of
     Domain.Neutral (Domain.Var var) spine -> do
       varType <- force $ Context.lookupVarType var context
-      type_ <- applySpine varType spine
+      type_ <- Context.instantiateType context varType $ toList spine
       uninhabitedType context 1 type_
 
     Domain.Neutral (Domain.Con constr) spine -> do
@@ -644,26 +644,6 @@ uninhabitedScrutinee context value = do
 
     _ ->
       pure False
-
-  where
-    applySpine :: Domain.Type -> Domain.Spine -> M Domain.Type
-    applySpine type_ spine = do
-      type' <- Context.forceHead context type_
-      case (type', spine) of
-        (_, Tsil.Empty) ->
-          pure type'
-
-        (Domain.Fun _ domain, spine' Tsil.:> (Explicit, _)) -> do
-          domain' <- force domain
-          applySpine domain' spine'
-
-        (Domain.Pi _ _ plicity1 domainClosure, spine' Tsil.:> (plicity2, arg))
-          | plicity1 == plicity2 -> do
-            domain <- Evaluation.evaluateClosure domainClosure arg
-            applySpine domain spine'
-
-        _ ->
-          panic "uninhabitedScrutinee.applySpine"
 
 uninhabitedType :: Context v -> Int -> Domain.Type -> M Bool
 uninhabitedType context fuel type_ = do

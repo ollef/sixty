@@ -1,5 +1,4 @@
 {-# language DuplicateRecordFields #-}
-{-# language GADTs #-}
 {-# language LambdaCase #-}
 {-# language OverloadedStrings #-}
 {-# language PackageImports #-}
@@ -553,7 +552,7 @@ inferUnspanned context term expectedTypeName =
 
           | otherwise = do
             (metaArgs, functionType') <-
-              insertMetas context (UntilImplicit (`HashMap.member` arguments')) mempty functionType
+              insertMetasReturningSyntax context (UntilImplicit (`HashMap.member` arguments')) functionType
 
             let
               function'' =
@@ -796,9 +795,10 @@ getExpectedTypeName context type_ = do
 -------------------------------------------------------------------------------
 -- Implicits
 
-data InsertUntil where
-  UntilExplicit :: InsertUntil
-  UntilImplicit :: (Name -> Bool) -> InsertUntil
+data InsertUntil
+  = UntilTheEnd
+  | UntilExplicit
+  | UntilImplicit (Name -> Bool)
 
 insertMetasM
   :: Context v
@@ -807,24 +807,45 @@ insertMetasM
   -> M (Syntax.Term v, Domain.Type)
 insertMetasM context until m = do
   (term, type_) <- m
-  (args, type') <- insertMetas context until mempty type_
+  (args, type') <- insertMetasReturningSyntax context until type_
   pure (Syntax.apps term args, type')
+
+insertMetasReturningSyntax
+  :: Context v
+  -> InsertUntil
+  -> Domain.Type
+  -> M ([(Plicity, Syntax.Term v)], Domain.Type)
+insertMetasReturningSyntax context until type_ = do
+  (args, res) <- insertMetas context until type_
+  args' <- forM args $ \(plicity, arg) -> do
+    arg' <- readback context arg
+    pure (plicity, arg')
+  pure (args', res)
 
 insertMetas
   :: Context v
   -> InsertUntil
-  -> [(Plicity, Syntax.Term v)]
   -> Domain.Type
-  -> M ([(Plicity, Syntax.Term v)], Domain.Type)
-insertMetas context until args type_ = do
+  -> M ([(Plicity, Domain.Value)], Domain.Type)
+insertMetas context until type_ = do
   type' <- Context.forceHead context type_
   case (until, type') of
+    (UntilTheEnd, Domain.Pi _ source plicity domainClosure) ->
+      instantiate source plicity domainClosure
+
+    (UntilTheEnd, Domain.Fun source domain) -> do
+      source' <- force source
+      meta <- Context.newMeta source' context
+      domain' <- force domain
+      (args, res) <- insertMetas context until domain'
+      pure ((Explicit, meta) : args, res)
+
     (UntilExplicit, Domain.Pi _ source Implicit domainClosure) ->
-      instantiate source domainClosure
+      instantiate source Implicit domainClosure
 
     (UntilImplicit stopAt, Domain.Pi name source Implicit domainClosure)
       | not $ stopAt name ->
-        instantiate source domainClosure
+        instantiate source Implicit domainClosure
 
     (_, Domain.Pi _ source Constraint domainClosure) -> do
       source' <- force source
@@ -833,26 +854,26 @@ insertMetas context until args type_ = do
         Builtin.Equals kind term1 term2 -> do
           term1' <- force term1
           term2' <- force term2
-          f <- Unification.tryUnify context term1' term2'
+          f <- Unification.tryUnifyD context term1' term2'
           let
             value =
               Builtin.Refl kind term1 term2
           domain <- Evaluation.evaluateClosure domainClosure $ eager value
-          value' <- readback context value
-          insertMetas context until ((Constraint, f value') : args) domain
+          (args, res) <- insertMetas context until domain
+          pure ((Constraint, f value) : args, res)
 
         _ ->
           panic "insertMetas: non-equality constraint"
 
     _ ->
-      pure (args, type')
+      pure ([], type')
   where
-    instantiate source domainClosure = do
+    instantiate source plicity domainClosure = do
       source' <- force source
       meta <- Context.newMeta source' context
       domain <- Evaluation.evaluateClosure domainClosure (eager meta)
-      meta' <- readback context meta
-      insertMetas context until ((Implicit, meta') : args) domain
+      (args, res) <- insertMetas context until domain
+      pure ((plicity, meta) : args, res)
 
 subtype
   :: Context v
@@ -874,7 +895,7 @@ subtype context type1 type2 = do
         _ ->
           UntilExplicit
 
-  (args, type1'') <- insertMetas context until mempty type1'
+  (args, type1'') <- insertMetasReturningSyntax context until type1'
   f <- Unification.tryUnify context type1'' type2'
   pure $ \term -> f $ Syntax.apps term args
 

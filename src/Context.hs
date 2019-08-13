@@ -444,6 +444,29 @@ forceHeadGlue context value =
     _ ->
       pure value
 
+instantiateType
+  :: Context v
+  -> Domain.Type
+  -> [(Plicity, Lazy Domain.Value)]
+  -> M Domain.Type
+instantiateType context type_ spine = do
+  type' <- Context.forceHead context type_
+  case (type', spine) of
+    (_, []) ->
+      pure type'
+
+    (Domain.Fun _ domain, (Explicit, _):spine') -> do
+      domain' <- force domain
+      instantiateType context domain' spine'
+
+    (Domain.Pi _ _ plicity1 domainClosure, (plicity2, arg):spine')
+      | plicity1 == plicity2 -> do
+        domain <- Evaluation.evaluateClosure domainClosure arg
+        instantiateType context domain spine'
+
+    _ ->
+      panic "instantiateType"
+
 -------------------------------------------------------------------------------
 -- Error reporting
 
