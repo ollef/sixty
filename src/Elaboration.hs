@@ -229,12 +229,10 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
   constrType <- check context' term Builtin.type_
   constrType' <- evaluate context' constrType
   maybeConstrType'' <- Context.try context' $ go context' constrType'
-  pure $ case maybeConstrType'' of
-    Nothing ->
-      Syntax.App (Syntax.Global Builtin.fail) Explicit (Syntax.Global Builtin.typeName)
-
-    Just constrType'' ->
-      constrType''
+  pure $
+    fromMaybe
+      (Syntax.App (Syntax.Global Builtin.fail) Explicit $ Syntax.Global Builtin.typeName)
+      maybeConstrType''
   where
     go :: Context v -> Domain.Value -> M (Syntax.Term v)
     go context' constrType = do
