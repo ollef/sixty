@@ -1,3 +1,4 @@
 sixty.cabal
 .stack-work
 tags
+stack.yaml.lock
