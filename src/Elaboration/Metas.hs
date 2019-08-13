@@ -213,7 +213,8 @@ makeValue innerValue =
         occurrences function <>
         occurrences argument
 
-      Case _scrutinee branches ->
+      Case scrutinee branches ->
+        occurrences scrutinee <>
         mconcat
           [ foldMap (\(_, _, type_, _) -> occurrences type_) bindings <>
             occurrences body
