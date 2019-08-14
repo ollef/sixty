@@ -411,7 +411,7 @@ definition =
     clauses nameText =
       (:) <$>
         clause <*>
-        manySame (withIndentationBlock $ reserved nameText *> clause)
+        manySame (withIndentationBlock $ try (reserved nameText *> Parsix.notFollowedBy (symbol ":")) *> clause)
       where
         clause =
           (\(span, (pats, rhs)) -> Clause span pats rhs) <$>
