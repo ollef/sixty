@@ -66,14 +66,14 @@ moduleScopes module_ definitions =
       case def of
         Presyntax.TypeDeclaration {} ->
           case HashMap.lookup qualifiedName visibility of
-            Just _ ->
+            Just key ->
               ( scope
               , visibility
               , scopes
-              , duplicate (visibility HashMap.! qualifiedName) qualifiedName : errs
+              , duplicate key qualifiedName : errs
               )
 
-            _ ->
+            Nothing ->
               ( HashMap.insertWith (<>) prename (Scope.Name qualifiedName) scope
               , HashMap.insertWith max qualifiedName Scope.Type visibility
               , HashMap.insert (name, Scope.Type) (scope, visibility) scopes
