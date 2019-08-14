@@ -320,13 +320,15 @@ check context (Presyntax.Term span term) =
   checkUnspanned (Context.spanned span context) term
 
 -- check context (Presyntax.Term span term) type_ = do
+--   putText $ "check "  <> show term
 --   result <- checkUnspanned (Context.spanned span context) term type_
 --   prettyType <- prettyValue context type_
+--   prettyResult <- prettyTerm context result
 --   putText ""
 --   putText "check"
 --   putText $ "    " <> show term
 --   putText $ "    " <> show prettyType
---   putText $ "  = " <> show (prettyTerm context result)
+--   putText $ "  = " <> show prettyResult
 --   pure result
 
 infer
@@ -339,12 +341,14 @@ infer context (Presyntax.Term span term) =
   inferUnspanned (Context.spanned span context) term
 
 -- infer context (Presyntax.Term span term) expectedTypeName = do
+--   putText $ "infer "  <> show term
 --   (term', type_) <- inferUnspanned (Context.spanned span context) term expectedTypeName
 --   prettyType <- prettyValue context type_
+--   prettyResult <- prettyTerm context term'
 --   putText ""
 --   putText "infer"
 --   putText $ "    " <> show term
---   putText $ "  = " <> show (prettyTerm context term')
+--   putText $ "  = " <> show prettyResult
 --   putText $ "  , " <> show prettyType
 --   pure (term', type_)
 

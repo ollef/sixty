@@ -136,28 +136,30 @@ rules files (Writer query) =
       noError $ do
         (_, scopes) <- fetch $ Scopes module_
         importedScopeEntry <- fetchImportedName module_ prename
-        let
-          (scope, _) = scopes HashMap.! (keyName, key)
+        pure $
+          case HashMap.lookup (keyName, key) scopes of
+            Nothing ->
+              importedScopeEntry
 
-        pure $ importedScopeEntry <> HashMap.lookup prename scope
+            Just (scope, _) ->
+              importedScopeEntry <> HashMap.lookup prename scope
 
-    Visibility (Scope.KeyedName key (Name.Qualified keyModule keyName)) qualifiedName@(Name.Qualified nameModule _)
+    IsDefinitionVisible (Scope.KeyedName key (Name.Qualified keyModule keyName)) qualifiedName@(Name.Qualified nameModule _)
       | keyModule == nameModule ->
         noError $ do
           (_, scopes) <- fetch $ Scopes keyModule
           let
-            (_, visibility) = scopes HashMap.! (keyName, key)
+            (_, visibility) =
+              HashMap.lookupDefault mempty (keyName, key) scopes
 
           pure $
-            fromMaybe (panic "Fetching Visibility for name without visibility") $
-            HashMap.lookup qualifiedName visibility
+            HashMap.lookup qualifiedName visibility == Just Scope.Definition
 
       | otherwise ->
         noError $ do
           ((_, finalVisibility), _) <- fetch $ Scopes nameModule
           pure $
-            fromMaybe (panic "Fetching Visibility for name without visibility") $
-            HashMap.lookup qualifiedName finalVisibility
+            HashMap.lookup qualifiedName finalVisibility == Just Scope.Definition
 
     ElaboratedType name
       | name == Builtin.typeName ->

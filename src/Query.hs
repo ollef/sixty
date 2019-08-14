@@ -38,7 +38,7 @@ data Query a where
   ParsedDefinition :: Scope.KeyedName -> Query (Maybe Presyntax.Definition)
   Scopes :: Name.Module -> Query ((Scope, Scope.Visibility), Scope.Module)
   ResolvedName :: Scope.KeyedName -> Name.Pre -> Query (Maybe Scope.Entry)
-  Visibility :: Scope.KeyedName -> Name.Qualified -> Query Scope.Key
+  IsDefinitionVisible :: Scope.KeyedName -> Name.Qualified -> Query Bool
   ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void)
   ElaboratedDefinition :: Name.Qualified -> Query (Maybe (Syntax.Definition, Syntax.Type Void))
   ConstructorType :: Name.QualifiedConstructor -> Query (Telescope Syntax.Type Syntax.Type Void)
@@ -82,7 +82,7 @@ instance HashTag Query where
       ParsedDefinition {} -> hash
       Scopes {} -> hash
       ResolvedName {} -> hash
-      Visibility {} -> hash
+      IsDefinitionVisible {} -> hash
       ElaboratedType {} -> hash
       ElaboratedDefinition {} -> hash
       ConstructorType {} -> hash

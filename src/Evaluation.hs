@@ -11,7 +11,6 @@ import Monad
 import qualified Name
 import Plicity
 import qualified Query
-import qualified Scope
 import qualified Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
@@ -47,20 +46,20 @@ evaluate env term =
       pure $ Domain.Glued (Domain.Var var) mempty $ Domain.lookupValue var env
 
     Syntax.Global name -> do
-      visibility <- fetch $ Query.Visibility (Domain.scopeKey env) name
-      case visibility of
-        Scope.Type ->
-          pure $ Domain.global name
+      definitionVisible <- fetch $ Query.IsDefinitionVisible (Domain.scopeKey env) name
+      if definitionVisible then do
+        maybeDefinition <- fetch $ Query.ElaboratedDefinition name
+        case maybeDefinition of
+          Just (Syntax.ConstantDefinition term', _) -> do
+            value <- lazy $ evaluate (Domain.empty $ Domain.scopeKey env) term'
+            pure $ Domain.Glued (Domain.Global name) mempty value
 
-        Scope.Definition -> do
-          maybeDefinition <- fetch $ Query.ElaboratedDefinition name
-          case maybeDefinition of
-            Just (Syntax.ConstantDefinition term', _) -> do
-              value <- lazy $ evaluate (Domain.empty $ Domain.scopeKey env) term'
-              pure $ Domain.Glued (Domain.Global name) mempty value
+          _ ->
+            pure $ Domain.global name
 
-            _ ->
-              pure $ Domain.global name
+      else
+        pure $ Domain.global name
+
 
     Syntax.Con c ->
       pure $ Domain.con c
