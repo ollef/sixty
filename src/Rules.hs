@@ -103,8 +103,8 @@ rules files (Writer query) =
         ((localScope, _), _) <- fetch $ Scopes module_
         pure $ Scope.aliases $ HashMap.unionWith (<>) localScope importedNames
 
-    ParsedModuleMap module_ ->
-      noError $ do
+    ParsedDefinition module_ subQuery ->
+      noError $ Mapped.rule (ParsedDefinition module_) subQuery $ do
         filePath <- fetchModuleFile module_
         (_, _, defs) <- fetch $ ParsedFile filePath
         pure $ HashMap.fromList
@@ -121,11 +121,6 @@ rules files (Writer query) =
             [ ((Presyntax.key def, name), loc)
             | (loc, (name, def)) <- defs
             ]
-
-    ParsedDefinition (Scope.KeyedName key (Name.Qualified module_ name)) ->
-      noError $ do
-        defs <- fetch $ ParsedModuleMap module_
-        pure $ HashMap.lookup (key, name) defs
 
     Scopes module_ -> do
       filePath <- fetchModuleFile module_
@@ -161,18 +156,18 @@ rules files (Writer query) =
           pure $
             HashMap.lookup qualifiedName finalVisibility == Just Scope.Definition
 
-    ElaboratedType name
-      | name == Builtin.typeName ->
+    ElaboratedType qualifiedName@(Name.Qualified module_ name)
+      | qualifiedName == Builtin.typeName ->
         pure (Syntax.Global Builtin.typeName, mempty)
 
       | otherwise -> do
+        mtype <- fetch $ ParsedDefinition module_ $ Mapped.Query (Scope.Type, name)
         let
           key =
-            Scope.KeyedName Scope.Type name
-        mtype <- fetch $ ParsedDefinition key
+            Scope.KeyedName Scope.Type qualifiedName
         case mtype of
           Nothing -> do
-            mdef <- fetch $ ElaboratedDefinition name
+            mdef <- fetch $ ElaboratedDefinition qualifiedName
             case mdef of
               Nothing ->
                 panic $ "ElaboratedType: No type or definition " <> show key
@@ -199,26 +194,23 @@ rules files (Writer query) =
                 Just _ ->
                   panic "ElaboratedType: Not a type declaration"
 
-    ElaboratedDefinition name -> do
-      let
-        defKey =
-          Scope.KeyedName Scope.Definition name
-      mdef <- fetch $ ParsedDefinition defKey
+    ElaboratedDefinition qualifiedName@(Name.Qualified module_ name) -> do
+      mdef <- fetch $ ParsedDefinition module_ $ Mapped.Query (Scope.Definition, name)
       case mdef of
         Nothing ->
           pure (Nothing, mempty)
 
         Just def -> do
+          mtype <- fetch $ ParsedDefinition module_ $ Mapped.Query (Scope.Type, name)
           let
-            typeKey =
-              Scope.KeyedName Scope.Type name
-          mtype <- fetch $ ParsedDefinition typeKey
+            defKey =
+              Scope.KeyedName Scope.Definition qualifiedName
           case mtype of
             Nothing ->
               runElaborator defKey $ Elaboration.inferTopLevelDefinition defKey def
 
             Just _ -> do
-              type_ <- fetch $ ElaboratedType name
+              type_ <- fetch $ ElaboratedType qualifiedName
               runElaborator defKey $ do
                 typeValue <- Evaluation.evaluate (Domain.empty defKey) type_
                 (def', errs) <- Elaboration.checkTopLevelDefinition defKey def typeValue

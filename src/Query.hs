@@ -33,9 +33,8 @@ data Query a where
   ModuleHeader :: Name.Module -> Query Module.Header
   ImportedNames :: Name.Module -> Mapped.Query Name.Pre Scope.Entry a -> Query a
   NameAliases :: Name.Module -> Query (HashMap Name.QualifiedConstructor (HashSet Name.Pre), HashMap Name.Qualified (HashSet Name.Pre))
-  ParsedModuleMap :: Name.Module -> Query (HashMap (Scope.Key, Name) Presyntax.Definition)
   ModulePositionMap :: Name.Module -> Query (HashMap (Scope.Key, Name) Position.Absolute)
-  ParsedDefinition :: Scope.KeyedName -> Query (Maybe Presyntax.Definition)
+  ParsedDefinition :: Name.Module -> Mapped.Query (Scope.Key, Name) Presyntax.Definition a -> Query a
   Scopes :: Name.Module -> Query ((Scope, Scope.Visibility), Scope.Module)
   ResolvedName :: Scope.KeyedName -> Name.Pre -> Query (Maybe Scope.Entry)
   IsDefinitionVisible :: Scope.KeyedName -> Name.Qualified -> Query Bool
@@ -77,9 +76,8 @@ instance HashTag Query where
       ModuleHeader {} -> hash
       ImportedNames _ q -> hashTagged q
       NameAliases {} -> hash
-      ParsedModuleMap {} -> hash
+      ParsedDefinition _ q -> hashTagged q
       ModulePositionMap {} -> hash
-      ParsedDefinition {} -> hash
       Scopes {} -> hash
       ResolvedName {} -> hash
       IsDefinitionVisible {} -> hash
