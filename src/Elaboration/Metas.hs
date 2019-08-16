@@ -476,32 +476,26 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
 
     Meta index' args
       | index == index' ->
-        case IntMap.lookup index $ occurrencesMap value of
-          Just varArgs ->
-            let
-              varArgsList =
-                toList varArgs
+        let
+          varArgs =
+            toList $ occurrencesMap value IntMap.! index
 
-              remainingArgs =
-                snd <$>
-                  filter
-                    (isNothing . fst)
-                    (zip (varArgsList <> repeat Nothing) (toList args))
+          remainingArgs =
+            snd <$>
+              filter
+                (isNothing . fst)
+                (zip (varArgs <> repeat Nothing) (toList args))
 
-              (inlinedSolutionValue, _) =
-                inlineArguments solutionValue solutionType varArgsList mempty
-            in
-            pure $
-              foldl' (\v1 v2 -> makeValue $ app v1 Explicit v2) inlinedSolutionValue remainingArgs
-
-          Nothing ->
-            panic "Elaboration.Metas.inlineIndex Nothing"
+          (inlinedSolutionValue, _) =
+            inlineArguments solutionValue solutionType varArgs mempty
+        in
+        pure $
+          foldl' (\v1 v2 -> makeValue $ app v1 Explicit v2) inlinedSolutionValue remainingArgs
 
       | otherwise ->
         case Tsil.filter ((index `IntMap.member`) . occurrencesMap) args of
           Tsil.Empty ->
-            pure $
-              foldl' (\v1 v2 -> makeValue $ app v1 Explicit v2) value args
+            pure value
 
           Tsil.Empty Tsil.:> _ -> do
             args' <- mapM (inlineIndex index solution) args
@@ -523,7 +517,7 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
       inline2 (flip (Lam name var) plicity) type_ body
 
     App function plicity argument ->
-      inline2 (`app` plicity) function argument
+      inline2 (`App` plicity) function argument
 
     Case scrutinee branches -> do
       let
