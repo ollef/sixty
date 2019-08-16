@@ -132,15 +132,6 @@ instance Monoid Occurrences where
 
 data Value = Value !InnerValue Occurrences
 
-app :: Value -> Plicity -> Value -> InnerValue
-app fun@(Value fun' _) plicity arg =
-  case (fun', plicity) of
-    (Meta index args, Explicit) ->
-      Meta index $ args Tsil.:> arg
-
-    _ ->
-      App fun plicity arg
-
 instance Show Value where
   showsPrec d (Value v _) = showsPrec d v
 
@@ -152,113 +143,134 @@ occurrencesMap = unoccurrences . occurrences
 
 type Type = Value
 
-makeValue :: InnerValue -> Value
-makeValue innerValue =
-  Value innerValue $
-    case innerValue of
-      Var _ ->
-        mempty
+makeVar :: Var -> Value
+makeVar v =
+  Value (Var v) mempty
 
-      Global _ ->
-        mempty
+makeGlobal :: Name.Qualified -> Value
+makeGlobal n =
+  Value (Global n) mempty
 
-      Con _ ->
-        mempty
+makeCon :: Name.QualifiedConstructor -> Value
+makeCon c =
+  Value (Con c) mempty
 
-      Meta index arguments ->
-        let
-          varView (Value arg _) =
-            case arg of
-              Var v ->
-                Just v
+makeMeta :: Meta.Index -> Tsil Value -> Value
+makeMeta index arguments =
+  Value (Meta index arguments) $
+    let
+      varView (Value arg _) =
+        case arg of
+          Var v ->
+            Just v
 
-              _ ->
-                Nothing
-        in
-        Occurrences (IntMap.singleton index (varView <$> arguments)) <>
-        foldMap occurrences arguments
+          _ ->
+            Nothing
+    in
+    Occurrences (IntMap.singleton index (varView <$> arguments)) <>
+    foldMap occurrences arguments
 
-      Let _ _ term type_ body ->
-        occurrences term <>
-        occurrences type_ <>
+makeLet :: Name -> Var -> Value -> Type -> Value -> Value
+makeLet name var value type_ body =
+  Value (Let name var value type_ body) $
+    occurrences value <>
+    occurrences type_ <>
+    occurrences body
+
+makePi :: Name -> Var -> Type -> Plicity -> Value -> Value
+makePi name var source plicity domain =
+  Value (Pi name var source plicity domain) $
+    occurrences source <>
+    occurrences domain
+
+makeFun :: Type -> Type -> Value
+makeFun source domain =
+  Value (Fun source domain) $
+    occurrences source <>
+    occurrences domain
+
+makeLam :: Name -> Var -> Type -> Plicity -> Value -> Value
+makeLam name var type_ plicity body =
+  Value (Lam name var type_ plicity body) $
+    occurrences type_ <>
+    occurrences body
+
+makeApp0 :: Value -> Plicity -> Value -> Value
+makeApp0 fun@(Value fun' _) plicity arg =
+  case (fun', plicity) of
+    (Meta index args, Explicit) ->
+      makeMeta index $ args Tsil.:> arg
+
+    _ ->
+      makeApp fun plicity arg
+
+makeApp :: Value -> Plicity -> Value -> Value
+makeApp fun plicity arg =
+  Value (App fun plicity arg) $
+    occurrences fun <>
+    occurrences arg
+
+makeCase :: Value -> [Branch] -> Value
+makeCase scrutinee branches =
+  Value (Case scrutinee branches) $
+    occurrences scrutinee <>
+    mconcat
+      [ foldMap (\(_, _, type_, _) -> occurrences type_) bindings <>
         occurrences body
-
-      Pi _ _ source _ domain ->
-        occurrences source <>
-        occurrences domain
-
-      Fun source domain ->
-        occurrences source <>
-        occurrences domain
-
-      Lam _ _ type_ _ body ->
-        occurrences type_ <>
-        occurrences body
-
-      App function _ argument ->
-        occurrences function <>
-        occurrences argument
-
-      Case scrutinee branches ->
-        occurrences scrutinee <>
-        mconcat
-          [ foldMap (\(_, _, type_, _) -> occurrences type_) bindings <>
-            occurrences body
-          | Branch _ bindings body <- branches
-          ]
+      | Branch _ bindings body <- branches
+      ]
 
 evaluate :: Readback.Environment v -> Syntax.Term v -> M Value
 evaluate env term =
-  makeValue <$>
-    case term of
-      Syntax.Var index ->
-        pure $ Var $ Readback.lookupIndexVar index env
+  case term of
+    Syntax.Var index ->
+      pure $ makeVar $ Readback.lookupIndexVar index env
 
-      Syntax.Global global ->
-        pure $ Global global
+    Syntax.Global global ->
+      pure $ makeGlobal global
 
-      Syntax.Con con ->
-        pure $ Con con
+    Syntax.Con con ->
+      pure $ makeCon con
 
-      Syntax.Meta index ->
-        pure $ Meta index mempty
+    Syntax.Meta index ->
+      pure $ makeMeta index mempty
 
-      Syntax.Let name value type_ body -> do
-        (env', var) <- Readback.extend env
-        Let name var <$>
-          evaluate env value <*>
-          evaluate env type_ <*>
-          evaluate env' body
+    Syntax.Let name value type_ body -> do
+      (env', var) <- Readback.extend env
+      makeLet name var <$>
+        evaluate env value <*>
+        evaluate env type_ <*>
+        evaluate env' body
 
-      Syntax.Pi name source plicity domain -> do
-        (env', var) <- Readback.extend env
-        Pi name var <$>
-          evaluate env source <*>
-          pure plicity <*>
-          evaluate env' domain
+    Syntax.Pi name source plicity domain -> do
+      (env', var) <- Readback.extend env
+      makePi name var <$>
+        evaluate env source <*>
+        pure plicity <*>
+        evaluate env' domain
 
-      Syntax.Fun source domain ->
-        Fun <$>
-          evaluate env source <*>
-          evaluate env domain
+    Syntax.Fun source domain ->
+      makeFun <$>
+        evaluate env source <*>
+        evaluate env domain
 
-      Syntax.Lam name type_ plicity body -> do
-        (env', var) <- Readback.extend env
-        Lam name var <$>
-          evaluate env type_ <*>
-          pure plicity <*>
-          evaluate env' body
+    Syntax.Lam name type_ plicity body -> do
+      (env', var) <- Readback.extend env
+      makeLam name var <$>
+        evaluate env type_ <*>
+        pure plicity <*>
+        evaluate env' body
 
-      Syntax.App function plicity argument ->
-        app <$>
-          evaluate env function <*>
-          pure plicity <*>
-          evaluate env argument
+    Syntax.App function plicity argument ->
+      makeApp0 <$>
+        evaluate env function <*>
+        pure plicity <*>
+        evaluate env argument
 
-      Syntax.Case scrutinee branches ->
-        Case <$>
-          evaluate env scrutinee <*>
-          mapM (evaluateBranch env) branches
+    Syntax.Case scrutinee branches ->
+      makeCase <$>
+        evaluate env scrutinee <*>
+        mapM (evaluateBranch env) branches
 
 evaluateBranch :: Readback.Environment v -> Syntax.Branch v -> M Branch
 evaluateBranch outerEnv (Syntax.Branch constr outerTele) =
@@ -380,8 +392,8 @@ inlineArguments value@(Value innerValue _) type_@(Value innerType _) args subst 
         (Lam _ var _ _ body, Pi _ var' _ _ domain) ->
           let
             subst' =
-              IntMap.insert var (makeValue $ Var argVar) $
-              IntMap.insert var' (makeValue $ Var argVar) subst
+              IntMap.insert var (makeVar argVar) $
+              IntMap.insert var' (makeVar argVar) subst
           in
           inlineArguments body domain args' subst'
 
@@ -402,8 +414,8 @@ inlineArguments value@(Value innerValue _) type_@(Value innerType _) args subst 
               (body', domain') =
                 inlineArguments body domain args' subst
             in
-            ( makeValue $ Lam name var argType' plicity1 body'
-            , makeValue $ Pi name' var' source' plicity1 domain'
+            ( makeLam name var argType' plicity1 body'
+            , makePi name' var' source' plicity1 domain'
             )
 
         _ ->
@@ -428,35 +440,34 @@ substitute subst
           value
 
         Meta index args ->
-          makeValue $ Meta index $ go <$> args
+          makeMeta index $ go <$> args
 
         Let name var value' type_ body ->
-          makeValue $ Let name var (go value') (go type_) (go body)
+          makeLet name var (go value') (go type_) (go body)
 
         Pi name var source plicity domain ->
-          makeValue $ Pi name var (go source) plicity (go domain)
+          makePi name var (go source) plicity (go domain)
 
         Fun source domain ->
-          makeValue $ Fun (go source) (go domain)
+          makeFun (go source) (go domain)
 
         Lam name var type_ plicity body ->
-          makeValue $ Lam name var (go type_) plicity (go body)
+          makeLam name var (go type_) plicity (go body)
 
         App function plicity argument ->
-          makeValue $ App (go function) plicity (go argument)
+          makeApp (go function) plicity (go argument)
 
         Case scrutinee branches ->
-          makeValue $
-            Case
-              (go scrutinee)
-              [ Branch
-                constr
-                [ (name, var, go type_, plicity)
-                | (name, var, type_, plicity) <- bindings
-                ]
-                (go body)
-              | Branch constr bindings body <- branches
+          makeCase
+            (go scrutinee)
+            [ Branch
+              constr
+              [ (name, var, go type_, plicity)
+              | (name, var, type_, plicity) <- bindings
               ]
+              (go body)
+            | Branch constr bindings body <- branches
+            ]
 
 inlineIndex
   :: Meta.Index
@@ -490,7 +501,7 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
             inlineArguments solutionValue solutionType varArgs mempty
         in
         pure $
-          foldl' (\v1 v2 -> makeValue $ app v1 Explicit v2) inlinedSolutionValue remainingArgs
+          foldl' (\v1 v2 -> makeApp v1 Explicit v2) inlinedSolutionValue remainingArgs
 
       | otherwise ->
         case Tsil.filter ((index `IntMap.member`) . occurrencesMap) args of
@@ -499,25 +510,25 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
 
           Tsil.Empty Tsil.:> _ -> do
             args' <- mapM (inlineIndex index solution) args
-            pure $ makeValue $ Meta index' args'
+            pure $ makeMeta index' args'
 
           _ ->
             letSolution
 
     Let name var value' type_ body ->
-      inline3 (Let name var) value' type_ body
+      inline3 (makeLet name var) value' type_ body
 
     Pi name var source plicity domain ->
-      inline2 (flip (Pi name var) plicity) source domain
+      inline2 (flip (makePi name var) plicity) source domain
 
     Fun source domain ->
-      inline2 Fun source domain
+      inline2 makeFun source domain
 
     Lam name var type_ plicity body ->
-      inline2 (flip (Lam name var) plicity) type_ body
+      inline2 (flip (makeLam name var) plicity) type_ body
 
     App function plicity argument ->
-      inline2 (`App` plicity) function argument
+      inline2 (`makeApp` plicity) function argument
 
     Case scrutinee branches -> do
       let
@@ -534,8 +545,7 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
 
         (True, []) -> do
           scrutinee' <- inlineIndex index solution scrutinee
-          pure $
-            makeValue $ Case scrutinee' branches
+          pure $ makeCase scrutinee' branches
 
         (False, [_]) -> do
           branches' <- forM branches $ \(Branch constr bindings body) -> do
@@ -550,8 +560,7 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
               pure $ Branch constr bindings' body'
             else
               pure $ Branch constr bindings' body
-          pure $
-             makeValue $ Case scrutinee branches'
+          pure $ makeCase scrutinee branches'
 
         _ ->
           letSolution
@@ -571,7 +580,7 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
           solutionVar <- lift freshVar
           modify $ IntMap.insert index (solutionVar, varArgsList)
           pure $
-             makeValue $ Let "meta" solutionVar inlinedSolutionValue inlinedSolutionType value
+             makeLet "meta" solutionVar inlinedSolutionValue inlinedSolutionType value
 
     inline2 con value1 value2 =
       case
@@ -583,11 +592,11 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
 
         (True, False) -> do
           value1' <- inlineIndex index solution value1
-          pure $ makeValue $ con value1' value2
+          pure $ con value1' value2
 
         (False, True) -> do
           value2' <- inlineIndex index solution value2
-          pure $ makeValue $ con value1 value2'
+          pure $ con value1 value2'
 
         _ ->
           letSolution
@@ -603,15 +612,15 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
 
         (True, False, False) -> do
           value1' <- inlineIndex index solution value1
-          pure $ makeValue $ con value1' value2 value3
+          pure $ con value1' value2 value3
 
         (False, True, False) -> do
           value2' <- inlineIndex index solution value2
-          pure $ makeValue $ con value1 value2' value3
+          pure $ con value1 value2' value3
 
         (False, False, True) -> do
           value3' <- inlineIndex index solution value3
-          pure $ makeValue $ con value1 value2 value3'
+          pure $ con value1 value2 value3'
 
         _ ->
           letSolution
