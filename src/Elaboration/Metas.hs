@@ -52,18 +52,30 @@ inlineSolutions solutions def type_ = do
     inlineTermSolutions :: Readback.Environment v -> Syntax.Term v -> M (Syntax.Term v)
     inlineTermSolutions env term = do
       let
-        go :: (Meta.Index, (Value, Type)) -> Value -> StateT (IntMap Meta.Index (Var, [Maybe Var])) M Value
-        go (index, solution) value =
+        go :: (Meta.Index, (Value, Type)) -> (Value, IntMap Meta.Index (Var, [Maybe Var])) -> M (Value, IntMap Meta.Index (Var, [Maybe Var]))
+        go (index, (solutionValue, solutionType)) (value, metaVars) =
           case IntMap.lookup index $ occurrencesMap value of
             Nothing ->
-              pure value
+              pure (value, metaVars)
 
             Just varArgs -> do
-              solutionVar <- lift freshVar
-              modify $ IntMap.insert index (solutionVar, toList varArgs)
-              pure $ inlineIndex index solutionVar solution value
+              solutionVar <- freshVar
+              let
+                varArgsList =
+                  toList varArgs
+
+                (inlinedSolutionValue, inlinedSolutionType) =
+                  inlineArguments solutionValue solutionType varArgsList mempty
+
+                value' =
+                  inlineIndex index (solutionVar, varArgsList, inlinedSolutionValue, inlinedSolutionType) value
+
+                metaVars' =
+                  IntMap.insert index (solutionVar, varArgsList) metaVars
+
+              pure (value', metaVars')
       value <- evaluate env term
-      (inlinedValue, metaVars) <- runStateT (foldrM go value sortedSolutions) mempty
+      (inlinedValue, metaVars) <- foldrM go (value, mempty) sortedSolutions
       pure $
         readback env (lookupMetaIndex metaVars) inlinedValue
 
@@ -482,11 +494,10 @@ substitute subst
 
 inlineIndex
   :: Meta.Index
-  -> Var
-  -> (Value, Value)
+  -> (Var, [Maybe Var], Value, Value)
   -> Value
   -> Value
-inlineIndex index solutionVar solution@(solutionValue, solutionType) value@(Value innerValue _) =
+inlineIndex index solution@ ~(solutionVar, varArgs, solutionValue, solutionType) value@(Value innerValue _) =
   case innerValue of
     Var _ ->
       value
@@ -500,19 +511,13 @@ inlineIndex index solutionVar solution@(solutionValue, solutionType) value@(Valu
     Meta index' args
       | index == index' ->
         let
-          varArgs =
-            toList $ occurrencesMap value IntMap.! index
-
           remainingArgs =
             snd <$>
               filter
                 (isNothing . fst)
                 (zip (varArgs <> repeat Nothing) (toList args))
-
-          (inlinedSolutionValue, _) =
-            inlineArguments solutionValue solutionType varArgs mempty
         in
-        foldl' (\v1 v2 -> makeApp v1 Explicit v2) inlinedSolutionValue remainingArgs
+        foldl' (\v1 v2 -> makeApp v1 Explicit v2) solutionValue remainingArgs
 
       | otherwise -> do
         let
@@ -527,7 +532,7 @@ inlineIndex index solutionVar solution@(solutionValue, solutionType) value@(Valu
               args' =
                 foreach argOccurrences $ \(arg, occurs) ->
                   if occurs then
-                    inlineIndex index solutionVar solution arg
+                    inlineIndex index solution arg
 
                   else
                     arg
@@ -567,7 +572,7 @@ inlineIndex index solutionVar solution@(solutionValue, solutionType) value@(Valu
         (True, []) -> do
           let
             scrutinee' =
-              inlineIndex index solutionVar solution scrutinee
+              inlineIndex index solution scrutinee
           makeCase scrutinee' branches
 
         (False, [_]) -> do
@@ -579,14 +584,14 @@ inlineIndex index solutionVar solution@(solutionValue, solutionType) value@(Valu
                     if index `IntMap.member` occurrencesMap type_ then do
                       let
                         type' =
-                          inlineIndex index solutionVar solution type_
+                          inlineIndex index solution type_
                       (name, var, type', plicity)
                     else
                       (name, var, type_, plicity)
               if index `IntMap.member` occurrencesMap body then do
                 let
                   body' =
-                    inlineIndex index solutionVar solution body
+                    inlineIndex index solution body
                 Branch constr bindings' body'
               else
                 Branch constr bindings' body
@@ -596,15 +601,7 @@ inlineIndex index solutionVar solution@(solutionValue, solutionType) value@(Valu
           letSolution
   where
     letSolution =
-      case IntMap.lookup index $ occurrencesMap value of
-        Nothing ->
-          value
-
-        Just varArgs -> do
-          let
-            (inlinedSolutionValue, inlinedSolutionType) =
-              inlineArguments solutionValue solutionType (toList varArgs) mempty
-          makeLet "meta" solutionVar inlinedSolutionValue inlinedSolutionType value
+      makeLet "meta" solutionVar solutionValue solutionType value
 
     inline2 con value1 value2 =
       case
@@ -617,13 +614,13 @@ inlineIndex index solutionVar solution@(solutionValue, solutionType) value@(Valu
         (True, False) -> do
           let
             value1' =
-              inlineIndex index solutionVar solution value1
+              inlineIndex index solution value1
           con value1' value2
 
         (False, True) -> do
           let
             value2' =
-              inlineIndex index solutionVar solution value2
+              inlineIndex index solution value2
           con value1 value2'
 
         _ ->
@@ -641,19 +638,19 @@ inlineIndex index solutionVar solution@(solutionValue, solutionType) value@(Valu
         (True, False, False) -> do
           let
             value1' =
-              inlineIndex index solutionVar solution value1
+              inlineIndex index solution value1
           con value1' value2 value3
 
         (False, True, False) -> do
           let
             value2' =
-              inlineIndex index solutionVar solution value2
+              inlineIndex index solution value2
           con value1 value2' value3
 
         (False, False, True) -> do
           let
             value3' =
-              inlineIndex index solutionVar solution value3
+              inlineIndex index solution value3
           con value1 value2 value3'
 
         _ ->
