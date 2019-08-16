@@ -59,11 +59,8 @@ inlineSolutions solutions def type_ = do
               pure value
 
             Just varArgs -> do
-              let
-                varArgsList =
-                  toList varArgs
               solutionVar <- lift freshVar
-              modify $ IntMap.insert index (solutionVar, varArgsList)
+              modify $ IntMap.insert index (solutionVar, toList varArgs)
               pure $ inlineIndex index solutionVar solution value
       value <- evaluate env term
       (inlinedValue, metaVars) <- runStateT (foldrM go value sortedSolutions) mempty
