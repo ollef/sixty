@@ -503,13 +503,21 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
         pure $
           foldl' (\v1 v2 -> makeApp v1 Explicit v2) inlinedSolutionValue remainingArgs
 
-      | otherwise ->
-        case Tsil.filter ((index `IntMap.member`) . occurrencesMap) args of
+      | otherwise -> do
+        let
+          argOccurrences =
+            map (\arg -> (arg, IntMap.member index $ occurrencesMap arg)) args
+        case Tsil.filter snd argOccurrences of
           Tsil.Empty ->
             pure value
 
           Tsil.Empty Tsil.:> _ -> do
-            args' <- mapM (inlineIndex index solution) args
+            args' <- forM argOccurrences $ \(arg, occurs) ->
+              if occurs then
+                inlineIndex index solution arg
+
+              else
+                pure arg
             pure $ makeMeta index' args'
 
           _ ->
