@@ -6,7 +6,6 @@ import Prelude (Show (showsPrec))
 import Protolude hiding (Type, IntMap, evaluate)
 
 import Data.Graph
-import Data.IORef
 
 import "this" Data.IntMap (IntMap)
 import Data.Tsil (Tsil)
@@ -44,19 +43,6 @@ inlineSolutions solutions def type_ = do
         (\(_, (metaValue, metaType)) -> fst <$> IntMap.toList (void $ unoccurrences $ occurrences metaValue <> occurrences metaType))
         (IntMap.toList solutionValues)
 
-    go (index, meta) (value', metaVars) = do
-      (result, maybeSolution) <- inlineIndex index meta value'
-      let
-        metaVars' =
-          case maybeSolution of
-            Nothing ->
-              metaVars
-
-            Just solution ->
-              IntMap.insert index solution metaVars
-
-      pure (result, metaVars')
-
     lookupMetaIndex metas index =
       IntMap.lookupDefault
         (panic "Elaboration.Metas.inlineSolutions: unknown index")
@@ -66,7 +52,7 @@ inlineSolutions solutions def type_ = do
     inlineTermSolutions :: Readback.Environment v -> Syntax.Term v -> M (Syntax.Term v)
     inlineTermSolutions env term = do
       value <- evaluate env term
-      (inlinedValue, metaVars) <- foldrM go (value, mempty) sortedSolutions
+      (inlinedValue, metaVars) <- runStateT (foldrM (uncurry inlineIndex) value sortedSolutions) mempty
       pure $
         readback env (lookupMetaIndex metaVars) inlinedValue
 
@@ -476,17 +462,17 @@ inlineIndex
   :: Meta.Index
   -> (Value, Value)
   -> Value
-  -> M (Value, Maybe (Var, [Maybe Var]))
+  -> StateT (IntMap Meta.Index (Var, [Maybe Var])) M Value
 inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue _) =
   case innerValue of
     Var _ ->
-      pure (value, Nothing)
+      pure value
 
     Global _ ->
-      pure (value, Nothing)
+      pure value
 
     Con _ ->
-      pure (value, Nothing)
+      pure value
 
     Meta index' args
       | index == index' ->
@@ -505,10 +491,8 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
               (inlinedSolutionValue, _) =
                 inlineArguments solutionValue solutionType varArgsList mempty
             in
-            pure
-              ( foldl' (\v1 v2 -> makeValue $ app v1 Explicit v2) inlinedSolutionValue remainingArgs
-              , Nothing
-              )
+            pure $
+              foldl' (\v1 v2 -> makeValue $ app v1 Explicit v2) inlinedSolutionValue remainingArgs
 
           Nothing ->
             panic "Elaboration.Metas.inlineIndex Nothing"
@@ -516,20 +500,12 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
       | otherwise ->
         case Tsil.filter ((index `IntMap.member`) . occurrencesMap) args of
           Tsil.Empty ->
-            pure
-              ( foldl' (\v1 v2 -> makeValue $ app v1 Explicit v2) value args
-              , Nothing
-              )
+            pure $
+              foldl' (\v1 v2 -> makeValue $ app v1 Explicit v2) value args
 
           Tsil.Empty Tsil.:> _ -> do
-            argResults <- mapM (inlineIndex index solution) args
-            let
-              (args', results) =
-                Tsil.unzip argResults
-            pure
-              ( makeValue $ Meta index' args'
-              , listToMaybe $ catMaybes $ toList results
-              )
+            args' <- mapM (inlineIndex index solution) args
+            pure $ makeValue $ Meta index' args'
 
           _ ->
             letSolution
@@ -560,36 +536,28 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
         , filter (index `IntMap.member`) branchOccurrences
         ) of
         (False, []) ->
-          pure (value, Nothing)
+          pure value
 
         (True, []) -> do
-          (scrutinee', result) <- inlineIndex index solution scrutinee
-          pure
-            ( makeValue $ Case scrutinee' branches
-            , result
-            )
+          scrutinee' <- inlineIndex index solution scrutinee
+          pure $
+            makeValue $ Case scrutinee' branches
 
         (False, [_]) -> do
-          resultRef <- liftIO $ newIORef $ panic "Elaboration.Metas inlineIndex Case"
           branches' <- forM branches $ \(Branch constr bindings body) -> do
             bindings' <- forM bindings $ \(name, var, type_, plicity) ->
               if index `IntMap.member` occurrencesMap type_ then do
-                (type', result) <- inlineIndex index solution type_
-                liftIO $ writeIORef resultRef result
+                type' <- inlineIndex index solution type_
                 pure (name, var, type', plicity)
               else
                 pure (name, var, type_, plicity)
             if index `IntMap.member` occurrencesMap body then do
-              (body', result) <- inlineIndex index solution body
-              liftIO $ writeIORef resultRef result
+              body' <- inlineIndex index solution body
               pure $ Branch constr bindings' body'
             else
               pure $ Branch constr bindings' body
-          result <- liftIO $ readIORef resultRef
-          pure
-            ( makeValue $ Case scrutinee branches'
-            , result
-            )
+          pure $
+             makeValue $ Case scrutinee branches'
 
         _ ->
           letSolution
@@ -597,7 +565,7 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
     letSolution =
       case IntMap.lookup index $ occurrencesMap value of
         Nothing ->
-          pure (value, Nothing)
+          pure value
 
         Just varArgs -> do
           let
@@ -606,11 +574,10 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
 
             (inlinedSolutionValue, inlinedSolutionType) =
               inlineArguments solutionValue solutionType varArgsList mempty
-          solutionVar <- freshVar
-          pure
-            ( makeValue $ Let "meta" solutionVar inlinedSolutionValue inlinedSolutionType value
-            , Just (solutionVar, varArgsList)
-            )
+          solutionVar <- lift freshVar
+          modify $ IntMap.insert index (solutionVar, varArgsList)
+          pure $
+             makeValue $ Let "meta" solutionVar inlinedSolutionValue inlinedSolutionType value
 
     inline2 con value1 value2 =
       case
@@ -618,21 +585,15 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
         , index `IntMap.member` occurrencesMap value2
         ) of
         (False, False) ->
-          pure (value, Nothing)
+          pure value
 
         (True, False) -> do
-          (value1', result) <- inlineIndex index solution value1
-          pure
-            ( makeValue $ con value1' value2
-            , result
-            )
+          value1' <- inlineIndex index solution value1
+          pure $ makeValue $ con value1' value2
 
         (False, True) -> do
-          (value2', result) <- inlineIndex index solution value2
-          pure
-            ( makeValue $ con value1 value2'
-            , result
-            )
+          value2' <- inlineIndex index solution value2
+          pure $ makeValue $ con value1 value2'
 
         _ ->
           letSolution
@@ -644,28 +605,19 @@ inlineIndex index solution@(solutionValue, solutionType) value@(Value innerValue
         , index `IntMap.member` occurrencesMap value3
         ) of
         (False, False, False) ->
-          pure (value, Nothing)
+          pure value
 
         (True, False, False) -> do
-          (value1', result) <- inlineIndex index solution value1
-          pure
-            ( makeValue $ con value1' value2 value3
-            , result
-            )
+          value1' <- inlineIndex index solution value1
+          pure $ makeValue $ con value1' value2 value3
 
         (False, True, False) -> do
-          (value2', result) <- inlineIndex index solution value2
-          pure
-            ( makeValue $ con value1 value2' value3
-            , result
-            )
+          value2' <- inlineIndex index solution value2
+          pure $ makeValue $ con value1 value2' value3
 
         (False, False, True) -> do
-          (value3', result) <- inlineIndex index solution value3
-          pure
-            ( makeValue $ con value1 value2 value3'
-            , result
-            )
+          value3' <- inlineIndex index solution value3
+          pure $ makeValue $ con value1 value2 value3'
 
         _ ->
           letSolution
