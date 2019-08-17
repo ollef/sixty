@@ -101,19 +101,6 @@ unify context flexibility value1 value2 = do
 
         unifySpines flexibility' spine1 spine2
 
-    (Domain.Glued head1 spine1 value1'', Domain.Glued head2 spine2 value2'')
-      | head1 == head2 ->
-        unifySpines Flexibility.Flexible spine1 spine2 `catchError` \_ ->
-          unifyForce flexibility value1'' value2''
-
-    (Domain.Glued _ _ value1'', _) -> do
-      value1''' <- force value1''
-      unify context flexibility value1''' value2'
-
-    (_, Domain.Glued _ _ value2'') -> do
-      value2''' <- force value2''
-      unify context flexibility value1' value2'''
-
     (Domain.Lam name1 type1 plicity1 closure1, Domain.Lam _ type2 plicity2 closure2)
       | plicity1 == plicity2 ->
       unifyAbstraction name1 type1 closure1 type2 closure2
@@ -222,6 +209,20 @@ unify context flexibility value1 value2 = do
 
           _ ->
             can'tUnify
+
+    -- Glued values
+    (Domain.Glued head1 spine1 value1'', Domain.Glued head2 spine2 value2'')
+      | head1 == head2 ->
+        unifySpines Flexibility.Flexible spine1 spine2 `catchError` \_ ->
+          unifyForce flexibility value1'' value2''
+
+    (Domain.Glued _ _ value1'', _) -> do
+      value1''' <- force value1''
+      unify context flexibility value1''' value2'
+
+    (_, Domain.Glued _ _ value2'') -> do
+      value2''' <- force value2''
+      unify context flexibility value1' value2'''
 
     _ ->
       can'tUnify
