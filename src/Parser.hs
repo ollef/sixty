@@ -14,7 +14,7 @@ import qualified Data.Set as Set
 import Data.String
 import qualified Text.Parser.LookAhead as LookAhead
 import qualified Text.Parser.Token.Highlight as Highlight
-import Text.Parsix ((<?>), symbol, try)
+import Text.Parsix ((<?>), try, sepBy, sepBy1)
 import qualified Text.Parsix as Parsix
 
 import qualified Error
@@ -103,68 +103,18 @@ indented p = do
 -- | One or more at the same indentation level.
 someSame :: Parser a -> Parser [a]
 someSame p =
-  Parsix.some (sameLevel p)
+  Parsix.some (sameLevel $ withIndentationBlock p)
 
 -- | Zero or more at the same indentation level.
 manySame :: Parser a -> Parser [a]
 manySame p =
-  Parsix.many (sameLevel p)
+  Parsix.many (sameLevel $ withIndentationBlock p)
 
 blockOfMany :: Parser a -> Parser [a]
 blockOfMany p =
   Parsix.option [] $
   indented $
   withIndentationBlock (someSame p)
-
-optionalIndented :: Parser a -> Parser (Maybe a)
-optionalIndented p =
-  Parsix.optional (indented p)
-
--- | One or more on the same line or a successive but indented line.
-someIndented :: Parser a -> Parser [a]
-someIndented p =
-  Parsix.some (indented p)
-
--- | Zero or more on the same line or a successive but indented line.
-manyIndented :: Parser a -> Parser [a]
-manyIndented p =
-  Parsix.many (indented p)
-
-someSepByIndented :: Parser a -> Parser sep -> Parser [a]
-someSepByIndented p sep =
-  (:) <$>% p <*> manyIndented (sep *>% p)
-
-sepByIndented :: Parser a -> Parser sep -> Parser [a]
-sepByIndented p sep =
-  someSepByIndented p sep
-  <|> pure []
-
--- * Applicative style combinators for checking that the second argument parser
---   is on the same line or indented compared to the anchor.
-infixl 4 <$>%, <$%, <*>%, <*%, *>%, <**>%
-(<$>%) :: (a -> b) -> Parser a -> Parser b
-f <$>% p =
-  f <$> indented p
-
-(<$%) :: a -> Parser b -> Parser a
-f <$% p =
-  f <$ indented p
-
-(<*>%) :: Parser (a -> b) -> Parser a -> Parser b
-p <*>% q =
-  p <*> indented q
-
-(<*%) :: Parser a -> Parser b -> Parser a
-p <*% q =
-  p <* indented q
-
-(*>%) :: Parser a -> Parser b -> Parser b
-p *>% q =
-  p *> indented q
-
-(<**>%) :: Parser a -> Parser (a -> b) -> Parser b
-p <**>% q =
-  p <**> indented q
 
 -------------------------------------------------------------------------------
 -- Error recovery
@@ -268,25 +218,29 @@ multilineComment =
       <|> multilineComment *> inner
       <|> Parsix.anyChar *> inner
 
+symbol :: String -> Parser String
+symbol =
+  indented . Parsix.symbol
+
 reserved :: Text -> Parser ()
 reserved =
-  Parsix.reserveText idStyle
+  indented . Parsix.reserveText idStyle
 
 name :: Parser Name
 name =
-  Parsix.ident idStyle
+  indented $ Parsix.ident idStyle
 
 constructor :: Parser Name.Constructor
 constructor =
-  Parsix.ident idStyle
+  indented $ Parsix.ident idStyle
 
 prename :: Parser Name.Pre
 prename =
-  Parsix.ident qidStyle
+  indented $ Parsix.ident qidStyle
 
 moduleName :: Parser Name.Module
 moduleName =
-  Parsix.ident qidStyle
+  indented $ Parsix.ident qidStyle
 
 -------------------------------------------------------------------------------
 -- Patterns
@@ -297,33 +251,33 @@ spannedPattern =
 
 atomicPattern :: Parser Pattern
 atomicPattern =
-  symbol "(" *>% pattern_ <*% symbol ")"
+  symbol "(" *> pattern_ <* symbol ")"
   <|> spannedPattern
     ((`ConOrVar` mempty) <$> prename
     <|> WildcardPattern <$ reserved "_"
-    <|> Forced <$ symbol "~" <*>% atomicTerm
+    <|> Forced <$ symbol "~" <*> atomicTerm
     )
   <?> "pattern"
 
 pattern_ :: Parser Pattern
 pattern_ =
-  ( spannedPattern (ConOrVar <$> prename <*> manyIndented plicitPattern)
+  ( spannedPattern (ConOrVar <$> prename <*> many plicitPattern)
     <|> atomicPattern
   )
   <**>
-  ( flip anno <$% symbol ":" <*> term
+  ( flip anno <$ symbol ":" <*> term
     <|> pure identity
   ) <?> "pattern"
 
 plicitPattern :: Parser PlicitPattern
 plicitPattern =
-  uncurry ImplicitPattern <$> spanned (HashMap.fromList <$ symbol "@{" <*> sepByIndented patName (symbol ",") <*% symbol "}")
+  uncurry ImplicitPattern <$> spanned (HashMap.fromList <$ symbol "@{" <*> sepBy patName (symbol ",") <* symbol "}")
   <|> ExplicitPattern <$> atomicPattern
   <?> "explicit or implicit pattern"
   where
     patName =
       spanned name <**>
-        ((\pat (_, name_) -> (name_, pat)) <$% symbol "=" <*>% pattern_
+        ((\pat (_, name_) -> (name_, pat)) <$ symbol "=" <*> pattern_
         <|> pure (\(span, name_@(Name n)) -> (name_, Pattern span $ ConOrVar (Name.Pre n) mempty))
         )
 
@@ -342,19 +296,19 @@ recoveringIndentedTerm =
 
 atomicTerm :: Parser Term
 atomicTerm =
-  symbol "(" *>% term <*% symbol ")"
+  symbol "(" *> term <* symbol ")"
   <|> spannedTerm
     ( Wildcard <$ reserved "_"
       <|> Var <$> prename
-      <|> Let <$ reserved "let" <*>% name <*% symbol "=" <*>% term <*% reserved "in" <*>% term
-      <|> Case <$ reserved "case" <*>% term <*% reserved "of" <*> blockOfMany branch
+      <|> Let <$ reserved "let" <*> name <* symbol "=" <*> term <* reserved "in" <*> term
+      <|> Case <$ reserved "case" <*> term <* reserved "of" <*> blockOfMany branch
       <|> unspanned <$>
-        ( lams <$ symbol "\\" <*> someIndented (positioned plicitPattern) <*% symbol "." <*>% term
+        ( lams <$ symbol "\\" <*> some (positioned plicitPattern) <* symbol "." <*> term
         <|> implicitPis <$ reserved "forall" <*>
-          someIndented
-            ( (,) <$ symbol "(" <*> someIndented (positioned name) <*% symbol ":" <*>% term <*% symbol ")"
+          some
+            ( (,) <$ symbol "(" <*> some (positioned name) <* symbol ":" <*> term <* symbol ")"
             <|> (\(span@(Span.Relative pos _), name_) -> ([(pos, name_)], Term span Wildcard)) <$> spanned name
-            ) <*% symbol "." <*>% term
+            ) <* symbol "." <*> term
         )
     )
   <?> "term"
@@ -364,29 +318,29 @@ atomicTerm =
 
     branch :: Parser (Pattern, Term)
     branch =
-      (,) <$> pattern_ <*% symbol "->" <*>% term
+      (,) <$> pattern_ <* symbol "->" <*> term
 
 plicitAtomicTerm :: Parser (Either (HashMap Name Term) Term)
 plicitAtomicTerm =
-  Left . HashMap.fromList <$ symbol "@{" <*>%
-    sepByIndented implicitArgument  (symbol ",") <*%
+  Left . HashMap.fromList <$ symbol "@{" <*>
+    sepBy implicitArgument  (symbol ",") <*
     symbol "}"
   <|> Right <$> atomicTerm
   where
     implicitArgument =
       spanned name <**>
-        ((\t (_, n) -> (n, t)) <$% symbol "=" <*>% term
+        ((\t (_, n) -> (n, t)) <$ symbol "=" <*> term
         <|> pure (\(span, n@(Name text)) -> (n, Term span $ Var $ Name.Pre text))
         )
 
 term :: Parser Term
 term =
-  spannedTerm (unspanned <$> (pis Explicit <$> try (symbol "(" *> someIndented (positioned name) <*% symbol ":") <*>% term <*% symbol ")" <*% symbol "->" <*>% term))
-  <|> apps <$> atomicTerm <*> manyIndented (spanned plicitAtomicTerm) <**> fun
+  spannedTerm (unspanned <$> (pis Explicit <$> try (symbol "(" *> some (positioned name) <* symbol ":") <*> term <* symbol ")" <* symbol "->" <*> term))
+  <|> apps <$> atomicTerm <*> many (spanned plicitAtomicTerm) <**> fun
   <?> "term"
   where
     fun =
-      flip function <$% symbol "->" <*>% term
+      flip function <$ symbol "->" <*> term
       <|> pure identity
 
 -------------------------------------------------------------------------------
@@ -402,7 +356,7 @@ definition =
     dataDefinition
     <|> do
       name_@(Name nameText) <- name
-      (,) name_ <$>%
+      (,) name_ <$>
         (TypeDeclaration <$ symbol ":" <*> recoveringIndentedTerm
         <|> ConstantDefinition <$> clauses nameText
         )
@@ -411,18 +365,18 @@ definition =
     clauses nameText =
       (:) <$>
         clause <*>
-        manySame (withIndentationBlock $ try (reserved nameText *> Parsix.notFollowedBy (symbol ":")) *> clause)
+        manySame (try (reserved nameText *> Parsix.notFollowedBy (symbol ":")) *> clause)
       where
         clause =
           (\(span, (pats, rhs)) -> Clause span pats rhs) <$>
-          spanned ((,) <$> manyIndented plicitPattern <*% symbol "=" <*> recoveringIndentedTerm)
+          spanned ((,) <$> many plicitPattern <* symbol "=" <*> recoveringIndentedTerm)
 
 dataDefinition :: Parser (Name, Definition)
 dataDefinition =
-  (,) <$ reserved "data" <*>% name <*>
-    (DataDefinition <$> parameters <*>%
+  (,) <$ reserved "data" <*> name <*>
+    (DataDefinition <$> parameters <*>
       (reserved "where" *> blockOfMany gadtConstructors
-      <|> symbol "=" *> someSepByIndented adtConstructor (symbol "|")
+      <|> symbol "=" *> sepBy1 adtConstructor (symbol "|")
       )
     )
   where
@@ -434,22 +388,22 @@ dataDefinition =
       <|> (<>) <$> explicitParameter <*> parameters
 
     explicitParameter =
-      (\names type_ -> [(name_, type_, Explicit) | name_ <- names]) <$ symbol "(" <*> someIndented name <*% symbol ":" <*> recoveringIndentedTerm <*% symbol ")"
+      (\names type_ -> [(name_, type_, Explicit) | name_ <- names]) <$ symbol "(" <*> some name <* symbol ":" <*> recoveringIndentedTerm <* symbol ")"
       <|> (\(span, name_) -> pure (name_, Term span Presyntax.Wildcard, Explicit)) <$> spanned name
 
     implicitParameters =
       (<>) . concat <$ reserved "forall" <*>
-        someIndented
-          ((\names type_ -> [(name_, type_, Implicit) | name_ <- names]) <$ symbol "(" <*> someIndented name <*% symbol ":" <*>% term <*% symbol ")"
+        some
+          ((\names type_ -> [(name_, type_, Implicit) | name_ <- names]) <$ symbol "(" <*> some name <* symbol ":" <*> term <* symbol ")"
           <|> (\(span, name_) -> [(name_, Term span Wildcard, Implicit)]) <$> spanned name
-          ) <*% symbol "." <*>% parameters1
+          ) <* symbol "." <*> parameters1
 
     gadtConstructors =
       withIndentationBlock $
-        GADTConstructors <$> someIndented constructor <*% symbol ":" <*> recoveringIndentedTerm
+        GADTConstructors <$> some constructor <* symbol ":" <*> recoveringIndentedTerm
 
     adtConstructor =
-      ADTConstructor <$> constructor <*> manyIndented atomicTerm
+      ADTConstructor <$> constructor <*> many atomicTerm
 
     
 
@@ -468,25 +422,25 @@ moduleHeader =
     mkModuleHeader (mname, exposed) imports =
       (mname, Module.Header exposed imports)
     moduleExposing =
-      (,) <$ reserved "module" <*>% moduleName <*% reserved "exposing" <*>% exposedNames
+      (,) <$ reserved "module" <*> moduleName <* reserved "exposing" <*> exposedNames
       <|> pure ("Main", Module.AllExposed)
 
 import_ :: Parser Module.Import
 import_ =
   withIndentationBlock $
     mkImport
-      <$ reserved "import" <*>% moduleName
-      <*> optionalIndented (reserved "as" *>% prename)
-      <*> optionalIndented (reserved "exposing" *>% exposedNames)
+      <$ reserved "import" <*> moduleName
+      <*> Parsix.optional (reserved "as" *> prename)
+      <*> Parsix.optional (reserved "exposing" *> exposedNames)
   where
     mkImport n@(Name.Module text) malias mexposed =
       Module.Import n (fromMaybe (Name.Pre text) malias) (fold mexposed)
 
 exposedNames :: Parser Module.ExposedNames
 exposedNames =
-  symbol "(" *>% inner <*% symbol ")"
+  symbol "(" *> inner <* symbol ")"
   where
     inner =
       Module.AllExposed <$ symbol ".."
-      <|> Module.Exposed . HashSet.fromList <$> sepByIndented prename (symbol ",")
+      <|> Module.Exposed . HashSet.fromList <$> sepBy prename (symbol ",")
       <|> pure (Module.Exposed mempty)
