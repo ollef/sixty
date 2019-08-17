@@ -1,13 +1,18 @@
+{-# language DeriveFoldable #-}
+{-# language DeriveFunctor #-}
+{-# language DeriveTraversable #-}
 {-# language OverloadedStrings #-}
 {-# language PackageImports #-}
 module Elaboration.Metas where
 
 import Prelude (Show (showsPrec))
-import Protolude hiding (Type, IntMap, evaluate)
+import Protolude hiding (Type, IntMap, IntSet, evaluate)
 
 import Data.Graph
 
 import "this" Data.IntMap (IntMap)
+import Data.IntSet (IntSet)
+import qualified Data.IntSet as IntSet
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import Extra
@@ -67,8 +72,9 @@ inlineSolutions solutions def type_ = do
                 (inlinedSolutionValue, inlinedSolutionType) =
                   inlineArguments solutionValue solutionType varArgsList mempty
 
-                value' =
-                  inlineIndex index (solutionVar, varArgsList, inlinedSolutionValue, inlinedSolutionType) value
+                Shared _ value' =
+                  sharing value' $
+                    inlineIndex index (IntSet.fromList $ catMaybes varArgsList) (solutionVar, varArgsList, inlinedSolutionValue, inlinedSolutionType) value
 
                 metaVars' =
                   IntMap.insert index (solutionVar, varArgsList) metaVars
@@ -492,166 +498,123 @@ substitute subst
             | Branch constr bindings body <- branches
             ]
 
+data Shared a = Shared !Bool a
+  deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
+
+instance Applicative Shared where
+  pure =
+    Shared False
+
+  (<*>) =
+    ap
+
+instance Monad Shared where
+  Shared p a >>= f = do
+    let
+      Shared q b =
+        f a
+    Shared (p || q) b
+
+modified :: Shared ()
+modified =
+  Shared True ()
+
+sharing :: a -> Shared a -> Shared a
+sharing a (Shared modified_ a') =
+  Shared modified_ $
+    if modified_ then
+      a'
+
+    else
+      a
+
 inlineIndex
   :: Meta.Index
+  -> IntSet Var
   -> (Var, [Maybe Var], Value, Value)
   -> Value
-  -> Value
-inlineIndex index solution@ ~(solutionVar, varArgs, solutionValue, solutionType) value@(Value innerValue _) =
-  case innerValue of
-    Var _ ->
-      value
+  -> Shared Value
+inlineIndex index targetScope solution@ ~(solutionVar, varArgs, solutionValue, solutionType) value@(Value innerValue _)
+  | IntSet.null targetScope = do
+    modified
+    pure $ makeLet "meta" solutionVar solutionValue solutionType value
+  | otherwise = do
+    let
+      recurse value' =
+        sharing value' $
+          inlineIndex index targetScope solution value'
 
-    Global _ ->
-      value
+      recurseScope var value' =
+        sharing value' $
+          inlineIndex index (IntSet.delete var targetScope) solution value'
 
-    Con _ ->
-      value
+    case innerValue of
+      Var _ ->
+        pure value
 
-    Meta index' args
-      | index == index' ->
-        let
-          remainingArgs =
-            snd <$>
-              filter
-                (isNothing . fst)
-                (zip (varArgs <> repeat Nothing) (toList args))
-        in
-        foldl' (\v1 v2 -> makeApp v1 Explicit v2) solutionValue remainingArgs
+      Global _ ->
+        pure value
 
-      | otherwise -> do
-        let
-          argOccurrences =
-            map (\arg -> (arg, IntMap.member index $ occurrencesMap arg)) args
-        case Tsil.filter snd argOccurrences of
-          Tsil.Empty ->
-            value
+      Con _ ->
+        pure value
 
-          Tsil.Empty Tsil.:> _ -> do
-            let
-              args' =
-                foreach argOccurrences $ \(arg, occurs) ->
-                  if occurs then
-                    inlineIndex index solution arg
-
-                  else
-                    arg
-            makeMeta index' args'
-
-          _ ->
-            letSolution
-
-    Let name var value' type_ body ->
-      inline3 (makeLet name var) value' type_ body
-
-    Pi name var source plicity domain ->
-      inline2 (flip (makePi name var) plicity) source domain
-
-    Fun source domain ->
-      inline2 makeFun source domain
-
-    Lam name var type_ plicity body ->
-      inline2 (flip (makeLam name var) plicity) type_ body
-
-    App function plicity argument ->
-      inline2 (`makeApp` plicity) function argument
-
-    Case scrutinee branches -> do
-      let
-        branchOccurrences =
-          flip concatMap branches $ \(Branch _ bindings body) ->
-            occurrencesMap body :
-            [occurrencesMap type_ | (_, _, type_, _) <- bindings]
-      case
-        ( index `IntMap.member` occurrencesMap scrutinee
-        , filter (index `IntMap.member`) branchOccurrences
-        ) of
-        (False, []) ->
-          value
-
-        (True, []) -> do
+      Meta index' args
+        | index == index' -> do
+          modified
           let
-            scrutinee' =
-              inlineIndex index solution scrutinee
-          makeCase scrutinee' branches
+            remainingArgs =
+              snd <$>
+                filter
+                  (isNothing . fst)
+                  (zip (varArgs <> repeat Nothing) (toList args))
+          pure $ foldl' (\v1 v2 -> makeApp v1 Explicit v2) solutionValue remainingArgs
 
-        (False, [_]) -> do
+        | otherwise -> do
+          args' <- forM args $ inlineIndex index targetScope solution
+          pure $ makeMeta index' args'
+
+      Let name var value' type_ body -> do
+        value'' <- recurse value'
+        type' <- recurse type_
+        body' <- recurseScope var body
+        pure $ makeLet name var value'' type' body'
+
+      Pi name var source plicity domain -> do
+        source' <- recurse source
+        domain' <- recurseScope var domain
+        pure $ makePi name var source' plicity domain'
+
+      Fun source domain -> do
+        source' <- recurse source
+        domain' <- recurse domain
+        pure $ makeFun source' domain'
+
+      Lam name var type_ plicity body -> do
+        type' <- recurse type_
+        body' <- recurseScope var body
+        pure $ makeLam name var type' plicity body'
+
+      App function plicity argument -> do
+        function' <- recurse function
+        argument' <- recurse argument
+        pure $ makeApp function' plicity argument'
+
+      Case scrutinee branches -> do
+        scrutinee' <- recurse scrutinee
+        branches' <- forM branches $ \(Branch constr bindings body) -> do
           let
-            branches' = foreach branches $ \(Branch constr bindings body) -> do
-              let
-                bindings' =
-                  foreach bindings $ \(name, var, type_, plicity) ->
-                    if index `IntMap.member` occurrencesMap type_ then do
-                      let
-                        type' =
-                          inlineIndex index solution type_
-                      (name, var, type', plicity)
-                    else
-                      (name, var, type_, plicity)
-              if index `IntMap.member` occurrencesMap body then do
-                let
-                  body' =
-                    inlineIndex index solution body
-                Branch constr bindings' body'
-              else
-                Branch constr bindings' body
-          makeCase scrutinee branches'
+            go targetScope' bindings' =
+              case bindings' of
+                [] -> do
+                  body' <- sharing body $ inlineIndex index targetScope' solution body
+                  pure ([], body')
 
-        _ ->
-          letSolution
-  where
-    letSolution =
-      makeLet "meta" solutionVar solutionValue solutionType value
+                (name, var, type_, plicity):bindings'' -> do
+                  type' <- sharing type_ $ inlineIndex index targetScope' solution type_
+                  (bindings''', body') <- go (IntSet.delete var targetScope') bindings''
+                  pure ((name, var, type', plicity):bindings''', body')
 
-    inline2 con value1 value2 =
-      case
-        ( index `IntMap.member` occurrencesMap value1
-        , index `IntMap.member` occurrencesMap value2
-        ) of
-        (False, False) ->
-          value
+          (bindings', body') <- go targetScope bindings
+          pure $ Branch constr bindings' body'
 
-        (True, False) -> do
-          let
-            value1' =
-              inlineIndex index solution value1
-          con value1' value2
-
-        (False, True) -> do
-          let
-            value2' =
-              inlineIndex index solution value2
-          con value1 value2'
-
-        _ ->
-          letSolution
-
-    inline3 con value1 value2 value3 =
-      case
-        ( index `IntMap.member` occurrencesMap value1
-        , index `IntMap.member` occurrencesMap value2
-        , index `IntMap.member` occurrencesMap value3
-        ) of
-        (False, False, False) ->
-          value
-
-        (True, False, False) -> do
-          let
-            value1' =
-              inlineIndex index solution value1
-          con value1' value2 value3
-
-        (False, True, False) -> do
-          let
-            value2' =
-              inlineIndex index solution value2
-          con value1 value2' value3
-
-        (False, False, True) -> do
-          let
-            value3' =
-              inlineIndex index solution value3
-          con value1 value2 value3'
-
-        _ ->
-          letSolution
+        pure $ makeCase scrutinee' branches'
