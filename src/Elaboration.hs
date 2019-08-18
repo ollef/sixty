@@ -360,10 +360,10 @@ checkUnspanned
 checkUnspanned context term expectedType = do
   expectedType' <- Context.forceHead context expectedType
   case (term, expectedType') of
-    (Presyntax.Let name term' body, _) -> do
-      (context', term'', type_) <- elaborateLet context name term'
+    (Presyntax.Let name maybeType clauses body, _) -> do
+      (context', boundTerm, typeTerm) <- elaborateLet context name maybeType clauses
       body' <- check context' body expectedType'
-      pure $ Syntax.Let name term'' type_ body'
+      pure $ Syntax.Let name boundTerm typeTerm body'
 
     (Presyntax.Case scrutinee branches, _) -> do
       (scrutinee', scrutineeType) <-
@@ -466,10 +466,10 @@ inferUnspanned context term expectedTypeName =
     Presyntax.Var name ->
       inferName context name expectedTypeName
 
-    Presyntax.Let name term' body -> do
-      (context', term'', type_) <- elaborateLet context name term'
-      (body', bodyType) <- infer context' body expectedTypeName
-      pure (Syntax.Let name term'' type_ body', bodyType)
+    Presyntax.Let name maybeType clauses body -> do
+      (context', boundTerm, typeTerm) <- elaborateLet context name maybeType clauses
+      (body', type_) <- infer context' body expectedTypeName
+      pure (Syntax.Let name boundTerm typeTerm body', type_)
 
     Presyntax.Pi name plicity source domain -> do
       source' <- check context source Builtin.type_
@@ -720,15 +720,29 @@ checkApplication context argument source domainClosure = do
 elaborateLet
   :: Context v
   -> Name
-  -> Presyntax.Term
+  -> Maybe Presyntax.Type
+  -> [Presyntax.Clause]
   -> M (Context (Succ v), Syntax.Term v, Syntax.Type v)
-elaborateLet context name term = do
-  (term', type_) <-
-    insertMetasM context UntilExplicit $ infer context term $ pure Nothing
-  type' <- readback context type_
-  term'' <- lazy $ evaluate context term'
-  (context', _) <- Context.extendDef context name term'' $ eager type_
-  pure (context', term', type')
+elaborateLet context name maybeType clauses = do
+  let
+    clauses' =
+      [ Clauses.Clause clause mempty | clause <- clauses]
+  (boundTerm, typeTerm, typeValue) <-
+    case maybeType of
+      Nothing -> do
+        (boundTerm, typeValue) <- Clauses.infer context clauses'
+        typeTerm <- readback context typeValue
+        pure (boundTerm, typeTerm, typeValue)
+
+      Just type_ -> do
+        typeTerm <- check context type_ Builtin.type_
+        typeValue <- evaluate context typeTerm
+        boundTerm <- Clauses.check context clauses' typeValue
+        pure (boundTerm, typeTerm, typeValue)
+
+  boundTerm' <- lazy $ evaluate context boundTerm
+  (context', _) <- Context.extendDef context name boundTerm' $ eager typeValue
+  pure (context', boundTerm, typeTerm)
 
 resolveConstructor
   :: Context v

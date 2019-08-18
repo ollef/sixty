@@ -297,10 +297,10 @@ recoveringIndentedTerm =
 atomicTerm :: Parser Term
 atomicTerm =
   symbol "(" *> term <* symbol ")"
+  <|> lets
   <|> spannedTerm
     ( Wildcard <$ reserved "_"
       <|> Var <$> prename
-      <|> Let <$ reserved "let" <*> name <* symbol "=" <*> term <* reserved "in" <*> term
       <|> Case <$ reserved "case" <*> term <* reserved "of" <*> blockOfMany branch
       <|> unspanned <$>
         ( lams <$ symbol "\\" <*> some (positioned plicitPattern) <* symbol "." <*> term
@@ -319,6 +319,16 @@ atomicTerm =
     branch :: Parser (Pattern, Term)
     branch =
       (,) <$> pattern_ <* symbol "->" <*> term
+
+    lets =
+      flip (foldr $ \(span, binding) rhs -> Term span $ binding rhs) <$ reserved "let" <*> blockOfMany letBinding <* reserved "in" <*> term
+
+    letBinding = spanned $ do
+      name_@(Name nameText) <- name
+      Let name_ . Just <$ symbol ":" <*> recoveringIndentedTerm <*>
+        sameLevel (withIndentationBlock $ reserved nameText *> clauses nameText)
+        <|> Let name_ Nothing <$> clauses nameText
+      <?> "let binding"
 
 plicitAtomicTerm :: Parser (Either (HashMap Name Term) Term)
 plicitAtomicTerm =
@@ -361,15 +371,17 @@ definition =
         <|> ConstantDefinition <$> clauses nameText
         )
     <?> "definition"
-  where
-    clauses nameText =
-      (:) <$>
-        clause <*>
-        manySame (try (reserved nameText *> Parsix.notFollowedBy (symbol ":")) *> clause)
-      where
-        clause =
-          (\(span, (pats, rhs)) -> Clause span pats rhs) <$>
-          spanned ((,) <$> many plicitPattern <* symbol "=" <*> recoveringIndentedTerm)
+
+clauses :: Text -> Parser [Clause]
+clauses nameText =
+  (:) <$>
+    clause <*>
+    manySame (try (reserved nameText *> Parsix.notFollowedBy (symbol ":")) *> clause)
+
+clause :: Parser Clause
+clause =
+  (\(span, (pats, rhs)) -> Clause span pats rhs) <$>
+  spanned ((,) <$> many plicitPattern <* symbol "=" <*> recoveringIndentedTerm)
 
 dataDefinition :: Parser (Name, Definition)
 dataDefinition =
@@ -405,11 +417,8 @@ dataDefinition =
     adtConstructor =
       ADTConstructor <$> constructor <*> many atomicTerm
 
-    
-
 -------------------------------------------------------------------------------
--- * Module
---
+-- Module
 
 module_ :: Parser ((Name.Module, Module.Header), [Either Error.Parsing (Position.Absolute, (Name, Definition))])
 module_ =

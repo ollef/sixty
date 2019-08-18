@@ -1,0 +1,15 @@
+data Nat = Z | S Nat
+
+g : Nat
+g =
+  let
+    pred : Nat -> Nat
+    pred Z = Z
+    pred (S n) = n
+
+    succ : Nat -> Nat
+    succ n = S n
+
+    x = Z
+  in
+  pred x

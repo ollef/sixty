@@ -53,7 +53,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Pattern lambdas
 - [x] Inductive families
 - [x] Glued evaluation
-- [ ] Recursive let bindings
+- [x] Let definitions by clauses (non-recursive)
 - [ ] Prevent CBV-incompatible circular values
 - [ ] Generalisation?
 - [ ] Literals
