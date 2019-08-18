@@ -1,0 +1,4 @@
+data Nat = Z | S Nat
+
+pred Z = Z
+pred (S n) = n
