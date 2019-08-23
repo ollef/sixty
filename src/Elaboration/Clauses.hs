@@ -73,7 +73,7 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
 
       _ -> do
         (term', type_) <- infer context clauses
-        f <- Unification.tryUnify context type_ expectedType'
+        f <- Unification.tryUnify context type_ expectedType
         pure $ f term'
   where
     implicits =

@@ -340,7 +340,7 @@ matchPrepatterns context values patterns type_ = do
   type' <- Context.forceHead context type_
   case (patterns, values, type') of
     ([], [], _) ->
-      pure ([], type')
+      pure ([], type_)
 
     ( Presyntax.ExplicitPattern pat:patterns'
       , (Explicit, value):values'
@@ -361,7 +361,7 @@ matchPrepatterns context values patterns type_ = do
 
     (Presyntax.ImplicitPattern _ namedPats:patterns', _, _)
       | HashMap.null namedPats ->
-        matchPrepatterns context values patterns' type'
+        matchPrepatterns context values patterns' type_
 
     ( Presyntax.ImplicitPattern patSpan namedPats:patterns'
       , (Implicit, value):values'
@@ -406,15 +406,15 @@ matchPrepatterns context values patterns type_ = do
 
     (pat:_, [], _) -> do
       Context.report (Context.spanned (Presyntax.plicitPatternSpan pat) context) $ Error.PlicityMismatch Error.Extra
-      pure ([], type')
+      pure ([], type_)
 
     ([], (Explicit, _):_, _) -> do
       Context.report context $ Error.PlicityMismatch $ Error.Missing Explicit
-      matchPrepatterns context values [Presyntax.ExplicitPattern $ Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern] type'
+      matchPrepatterns context values [Presyntax.ExplicitPattern $ Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern] type_
 
     (Presyntax.ImplicitPattern patSpan _:patterns', (Explicit, _):_, _) -> do
       Context.report (Context.spanned patSpan context) $ Error.PlicityMismatch (Error.Mismatch Explicit Implicit)
-      matchPrepatterns context values patterns' type'
+      matchPrepatterns context values patterns' type_
   where
     explicitFunCase value values' pat patterns' source domain = do
       (matches, type'') <- matchPrepatterns context values' patterns' domain

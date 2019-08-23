@@ -261,11 +261,11 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
           Unification.unify
             context'
             Flexibility.Rigid
-            constrType'
+            constrType
             (Domain.Neutral
               (Domain.Var dataVar)
               ((\(plicity, var) -> (plicity, eager $ Domain.var var)) <$> paramVars))
-          readback context' constrType'
+          readback context' constrType
 
     indexEqualities
       :: Context v
@@ -362,13 +362,13 @@ checkUnspanned context term expectedType = do
   case (term, expectedType') of
     (Presyntax.Let name maybeType clauses body, _) -> do
       (context', boundTerm, typeTerm) <- elaborateLet context name maybeType clauses
-      body' <- check context' body expectedType'
+      body' <- check context' body expectedType
       pure $ Syntax.Let name boundTerm typeTerm body'
 
     (Presyntax.Case scrutinee branches, _) -> do
       (scrutinee', scrutineeType) <-
         insertMetasM context UntilExplicit $ infer context scrutinee $ pure Nothing
-      Matching.elaborateCase context scrutinee' scrutineeType branches expectedType'
+      Matching.elaborateCase context scrutinee' scrutineeType branches expectedType
 
     (Presyntax.Lam (Presyntax.ExplicitPattern pat) body, Domain.Pi name source Explicit domainClosure) ->
       checkLambda context name source Explicit pat domainClosure body
@@ -383,7 +383,7 @@ checkUnspanned context term expectedType = do
 
     (Presyntax.Lam (Presyntax.ImplicitPattern _ namedPats) body, _)
       | HashMap.null namedPats ->
-        check context body expectedType'
+        check context body expectedType
 
     (Presyntax.Lam (Presyntax.ImplicitPattern span namedPats) body, Domain.Pi name source Implicit domainClosure)
       | name `HashMap.member` namedPats -> do
@@ -415,13 +415,13 @@ checkUnspanned context term expectedType = do
       case functionType' of
         Domain.Pi _ source Explicit domainClosure -> do
           (argument', domain) <- checkApplication context argument source domainClosure
-          f <- subtype context domain expectedType'
+          f <- subtype context domain expectedType
           pure $ f $ Syntax.App function' Explicit argument'
 
         Domain.Fun source domain -> do
           source' <- force source
           domain' <- force domain
-          f <- subtype context domain' expectedType'
+          f <- subtype context domain' expectedType
           argument' <- check context argument source'
           pure $ f $ Syntax.App function' Explicit argument'
 
@@ -430,30 +430,30 @@ checkUnspanned context term expectedType = do
           domain <- Context.newMetaType context
           let
             metaFunctionType =
-              Domain.Fun (eager source) (eager expectedType')
-          f <- Unification.tryUnify context functionType' metaFunctionType
-          g <- subtype context domain expectedType'
+              Domain.Fun (eager source) (eager expectedType)
+          f <- Unification.tryUnify context functionType metaFunctionType
+          g <- subtype context domain expectedType
           argument' <- check context argument source
           pure $ g $ Syntax.App (f function') Explicit argument'
 
     (Presyntax.ImplicitApps function arguments, _)
       | HashMap.null arguments ->
-        check context function expectedType'
+        check context function expectedType
 
     (Presyntax.Wildcard, _) -> do
-      term' <- Context.newMeta expectedType' context
+      term' <- Context.newMeta expectedType context
       readback context term'
 
     (Presyntax.ParseError err, _) -> do
       Context.reportParseError context err
-      checkUnspanned context Presyntax.Wildcard expectedType'
+      checkUnspanned context Presyntax.Wildcard expectedType
 
     _ -> do
       let
         expectedTypeName =
           getExpectedTypeName context expectedType'
       (term', type_) <- inferUnspanned context term expectedTypeName
-      f <- subtype context type_ expectedType'
+      f <- subtype context type_ expectedType
       pure $ f term'
 
 inferUnspanned
@@ -535,7 +535,7 @@ inferUnspanned context term expectedTypeName =
             metaFunctionType =
               Domain.Fun (eager source) (eager domain)
 
-          f <- Unification.tryUnify context functionType' metaFunctionType
+          f <- Unification.tryUnify context functionType metaFunctionType
           argument' <- check context argument source
           pure
             ( Syntax.App (f function') Explicit argument'
@@ -882,7 +882,7 @@ insertMetas context until type_ = do
           panic "insertMetas: non-equality constraint"
 
     _ ->
-      pure ([], type')
+      pure ([], type_)
   where
     instantiate source plicity domainClosure = do
       source' <- force source
@@ -897,7 +897,6 @@ subtype
   -> Domain.Type
   -> M (Syntax.Term v -> Syntax.Term v)
 subtype context type1 type2 = do
-  type1' <- Context.forceHead context type1
   type2' <- Context.forceHead context type2
   let
     until =
@@ -911,8 +910,8 @@ subtype context type1 type2 = do
         _ ->
           UntilExplicit
 
-  (args, type1'') <- insertMetasReturningSyntax context until type1'
-  f <- Unification.tryUnify context type1'' type2'
+  (args, type1') <- insertMetasReturningSyntax context until type1
+  f <- Unification.tryUnify context type1' type2
   pure $ \term -> f $ Syntax.apps term args
 
 -------------------------------------------------------------------------------
