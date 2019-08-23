@@ -565,33 +565,28 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
     goParams context params conArgs dataTele =
       case (params, dataTele) of
         ([], Domain.Telescope.Empty constructors) -> do
-          matchedConstructorsSet <-
+          matchedConstructors <-
             HashSet.fromList . concat . takeWhile (not . null) <$>
               mapM
                 (findVarConstructorMatches context scrutinee . _matches)
                 (_clauses config)
 
-          let
-            matchedConstructors =
-              toList matchedConstructorsSet
-
-          branches <- forM matchedConstructors $ \qualifiedConstr@(Name.QualifiedConstructor _ constr) -> do
+          branches <- flip HashMap.traverseWithKey (HashSet.toMap matchedConstructors) $ \qualifiedConstr@(Name.QualifiedConstructor _ constr) () -> do
             let
               constrType =
                 fromMaybe (panic "Matching constrType") $
                   List.lookup constr constructors
 
-            branchTele <- goConstrFields context qualifiedConstr conArgs constrType
-            pure $ Syntax.Branch qualifiedConstr branchTele
+            goConstrFields context qualifiedConstr conArgs constrType
 
           defaultBranch <-
-            if HashSet.size matchedConstructorsSet == length constructors then
+            if HashSet.size matchedConstructors == length constructors then
               pure Nothing
 
             else
               Just <$> elaborate context config
                 { _coveredConstructors =
-                  IntMap.insertWith (<>) scrutinee matchedConstructorsSet $
+                  IntMap.insertWith (<>) scrutinee matchedConstructors $
                   _coveredConstructors config
                 }
 

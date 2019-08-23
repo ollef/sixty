@@ -128,7 +128,7 @@ prettyTerm prec env term =
           indent 2
             (vcat $
               [ prettyConstr env constr <+> prettyBranch env tele
-              | Syntax.Branch constr tele <- branches
+              | (constr, tele) <- HashMap.toList branches
               ]
               <>
               [ "_" <+> "->" <> line <>

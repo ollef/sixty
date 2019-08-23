@@ -6,6 +6,7 @@ module Unification where
 import Protolude hiding (force, check, evaluate)
 
 import Rock
+import qualified Data.HashMap.Lazy as HashMap
 
 import {-# source #-} qualified Elaboration
 import qualified Builtin
@@ -266,8 +267,21 @@ unifyBranches
   flexibility
   (Domain.Branches outerEnv1 branches1 defaultBranch1)
   (Domain.Branches outerEnv2 branches2 defaultBranch2) = do
-    unless (length branches1 == length branches2) can'tUnify
-    zipWithM_ unifyBranch branches1 branches2
+    let
+      branches =
+        HashMap.intersectionWith (,) branches1 branches2
+
+      missing1 =
+        HashMap.difference branches1 branches
+
+      missing2 =
+        HashMap.difference branches2 branches
+    unless (HashMap.null missing1 && HashMap.null missing2) $
+      can'tUnify
+
+    forM_ branches $
+      uncurry $ unifyTele outerContext outerEnv1 outerEnv2
+
     case (defaultBranch1, defaultBranch2) of
       (Just branch1, Just branch2) -> do
         branch1' <- Evaluation.evaluate outerEnv1 branch1
@@ -280,13 +294,6 @@ unifyBranches
       _ ->
         can'tUnify
   where
-    unifyBranch (Syntax.Branch constr1 tele1) (Syntax.Branch constr2 tele2)
-      | constr1 == constr2 =
-        unifyTele outerContext outerEnv1 outerEnv2 tele1 tele2
-
-      | otherwise =
-        can'tUnify
-
     unifyTele
       :: Context v
       -> Domain.Environment v1
@@ -350,7 +357,7 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
       else
         Nothing
 
-  branches' <- fmap catMaybes $ forM branches $ \(Syntax.Branch constr tele) -> do
+  branches' <- fmap catMaybes $ forM (HashMap.toList branches) $ \(constr, tele) -> do
     isMatch <- branchMatches outerContext outerEnv tele
     pure $
       if isMatch then
@@ -599,8 +606,8 @@ checkInnerSolution outerContext occurs env flexibility value = do
 
     Domain.Case scrutinee (Domain.Branches env' branches defaultBranch) -> do
       scrutinee' <- checkInnerSolution outerContext occurs env flexibility scrutinee
-      branches' <- forM branches $ \(Syntax.Branch constr tele) ->
-        Syntax.Branch constr <$> checkInnerBranch outerContext occurs env env' flexibility tele
+      branches' <- forM branches $
+        checkInnerBranch outerContext occurs env env' flexibility
       defaultBranch' <- forM defaultBranch $ \branch -> do
         branch' <- Evaluation.evaluate env' branch
         checkInnerSolution outerContext occurs env flexibility branch'

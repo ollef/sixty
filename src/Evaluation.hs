@@ -3,10 +3,13 @@ module Evaluation where
 
 import Protolude hiding (Seq, force, evaluate)
 
+import qualified Data.HashMap.Lazy as HashMap
 import Rock
 
 import qualified Data.Tsil as Tsil
 import qualified Domain
+import qualified Domain.Telescope as Domain (Telescope)
+import qualified Domain.Telescope
 import Monad
 import qualified Name
 import Plicity
@@ -14,8 +17,6 @@ import qualified Query
 import qualified Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
-import qualified Domain.Telescope as Domain (Telescope)
-import qualified Domain.Telescope
 
 evaluateConstructorDefinitions
   :: Domain.Environment v
@@ -106,18 +107,18 @@ chooseBranch
   :: Domain.Environment v
   -> Name.QualifiedConstructor
   -> [(Plicity, Lazy Domain.Value)]
-  -> [Syntax.Branch v]
+  -> Syntax.Branches v
   -> Maybe (Syntax.Term v)
   -> M Domain.Value
 chooseBranch outerEnv constr outerArgs branches defaultBranch =
-  case (filter (\(Syntax.Branch c _)-> c == constr) branches, defaultBranch) of
-    ([], Nothing) ->
+  case (HashMap.lookup constr branches, defaultBranch) of
+    (Nothing, Nothing) ->
       panic "chooseBranch no branches"
 
-    ([], Just branch) ->
+    (Nothing, Just branch) ->
       evaluate outerEnv branch
 
-    (Syntax.Branch _ tele:_, _) ->
+    (Just tele, _) ->
       go outerEnv outerArgs tele
   where
     go

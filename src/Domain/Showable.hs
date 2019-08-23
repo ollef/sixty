@@ -36,7 +36,7 @@ data Closure where
 deriving instance Show Closure
 
 data Branches where
-  Branches :: Environment v -> [Syntax.Branch v] -> Maybe (Syntax.Term v) -> Branches
+  Branches :: Environment v -> Syntax.Branches v -> Maybe (Syntax.Term v) -> Branches
 
 deriving instance Show Branches
 

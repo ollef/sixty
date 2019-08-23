@@ -47,7 +47,7 @@ data Closure where
   Closure :: Environment v -> Scope Syntax.Term v -> Closure
 
 data Branches where
-  Branches :: Environment v -> [Syntax.Branch v] -> Maybe (Syntax.Term v) -> Branches
+  Branches :: Environment v -> Syntax.Branches v -> Maybe (Syntax.Term v) -> Branches
 
 var :: Var -> Value
 var v = Neutral (Domain.Var v) mempty

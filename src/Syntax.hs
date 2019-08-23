@@ -6,6 +6,7 @@ module Syntax where
 
 import Protolude hiding (Type, IntMap)
 
+import Data.HashMap.Lazy (HashMap)
 import Unsafe.Coerce
 
 import "this" Data.IntMap (IntMap)
@@ -26,13 +27,12 @@ data Term v
   | Fun !(Type v) !(Type v)
   | Lam !Name !(Type v) !Plicity !(Scope Term v)
   | App !(Term v) !Plicity !(Term v)
-  | Case !(Term v) [Branch v] !(Maybe (Term v))
+  | Case !(Term v) (Branches v) !(Maybe (Term v))
   deriving (Show, Generic, Hashable)
 
 type Type = Term
 
-data Branch v = Branch !Name.QualifiedConstructor (Telescope Type Term v)
-  deriving (Show, Generic, Hashable)
+type Branches v = HashMap Name.QualifiedConstructor (Telescope Type Term v)
 
 implicitPi :: Name -> Type v -> Plicity -> Scope Type v -> Type v
 implicitPi name type_ plicity =

@@ -8,6 +8,7 @@ module Elaboration.Metas where
 import Prelude (Show (showsPrec))
 import Protolude hiding (Type, IntMap, IntSet, evaluate)
 
+import Data.HashMap.Lazy (HashMap)
 import Data.Graph
 
 import "this" Data.IntMap (IntMap)
@@ -140,11 +141,10 @@ data InnerValue
   | Fun !Type !Type
   | Lam !Name !Var !Type !Plicity !Value
   | App !Value !Plicity !Value
-  | Case !Value [Branch] !(Maybe Value)
+  | Case !Value Branches !(Maybe Value)
   deriving Show
 
-data Branch = Branch !Name.QualifiedConstructor [(Name, Var, Type, Plicity)] !Value
-  deriving Show
+type Branches = HashMap Name.QualifiedConstructor ([(Name, Var, Type, Plicity)], Value)
 
 newtype Occurrences = Occurrences { unoccurrences :: IntMap Meta.Index (Tsil (Maybe Var)) }
 
@@ -239,15 +239,16 @@ makeApp fun plicity arg =
     occurrences fun <>
     occurrences arg
 
-makeCase :: Value -> [Branch] -> Maybe Value -> Value
+makeCase :: Value -> Branches -> Maybe Value -> Value
 makeCase scrutinee branches defaultBranch =
   Value (Case scrutinee branches defaultBranch) $
     occurrences scrutinee <>
-    mconcat
-      [ foldMap (\(_, _, type_, _) -> occurrences type_) bindings <>
-        occurrences body
-      | Branch _ bindings body <- branches
-      ] <>
+    foldMap
+      (\(bindings, body) ->
+        foldMap (\(_, _, type_, _) -> occurrences type_) bindings <>
+          occurrences body
+      )
+      branches <>
     foldMap occurrences defaultBranch
 
 evaluate :: Readback.Environment v -> Syntax.Term v -> M Value
@@ -303,25 +304,21 @@ evaluate env term =
         mapM (evaluateBranch env) branches <*>
         mapM (evaluate env) defaultBranch
 
-evaluateBranch :: Readback.Environment v -> Syntax.Branch v -> M Branch
-evaluateBranch outerEnv (Syntax.Branch constr outerTele) =
-  uncurry (Branch constr) <$> go outerEnv outerTele
-  where
-    go
-      :: Readback.Environment v
-      -> Telescope Syntax.Type Syntax.Term v
-      -> M ([(Name, Var, Type, Plicity)], Value)
-    go env tele =
-      case tele of
-        Telescope.Empty body -> do
-          body' <- evaluate env body
-          pure ([], body')
+evaluateBranch
+  :: Readback.Environment v
+  -> Telescope Syntax.Type Syntax.Term v
+  -> M ([(Name, Var, Type, Plicity)], Value)
+evaluateBranch env tele =
+  case tele of
+    Telescope.Empty body -> do
+      body' <- evaluate env body
+      pure ([], body')
 
-        Telescope.Extend name type_ plicity tele' -> do
-          type' <- evaluate env type_
-          (env', var) <- Readback.extend env
-          (bindings, body) <- go env' tele'
-          pure ((name, var, type', plicity):bindings, body)
+    Telescope.Extend name type_ plicity tele' -> do
+      type' <- evaluate env type_
+      (env', var) <- Readback.extend env
+      (bindings, body) <- evaluateBranch env' tele'
+      pure ((name, var, type', plicity):bindings, body)
 
 readback :: Readback.Environment v -> (Meta.Index -> (Var, [Maybe var])) -> Value -> Syntax.Term v
 readback env metas (Value value _) =
@@ -381,32 +378,25 @@ readback env metas (Value value _) =
     Case scrutinee branches defaultBranch ->
       Syntax.Case
         (readback env metas scrutinee)
-        (map (readbackBranch env metas) branches)
+        (map (uncurry $ readbackBranch env metas) branches)
         (readback env metas <$> defaultBranch)
 
 readbackBranch
   :: Readback.Environment v
   -> (Meta.Index -> (Var, [Maybe var]))
-  -> Branch
-  -> Syntax.Branch v
-readbackBranch outerEnv metas (Branch constr outerBindings body) =
-  Syntax.Branch constr $
-    go outerEnv outerBindings
-  where
-    go
-      :: Readback.Environment v
-      -> [(Name, Var, Type, Plicity)]
-      -> Telescope Syntax.Type Syntax.Term v
-    go env bindings =
-      case bindings of
-        [] ->
-          Telescope.Empty $ readback env metas body
+  -> [(Name, Var, Type, Plicity)]
+  -> Value
+  -> Telescope Syntax.Type Syntax.Term v
+readbackBranch env metas bindings body =
+  case bindings of
+    [] ->
+      Telescope.Empty $ readback env metas body
 
-        (name, var, type_, plicity):bindings' -> do
-          let
-            env' =
-              Readback.extendVar env var
-          Telescope.Extend name (readback env metas type_) plicity (go env' bindings')
+    (name, var, type_, plicity):bindings' -> do
+      let
+        env' =
+          Readback.extendVar env var
+      Telescope.Extend name (readback env metas type_) plicity (readbackBranch env' metas bindings' body)
 
 inlineArguments
   :: Value
@@ -492,14 +482,13 @@ substitute subst
         Case scrutinee branches defaultBranch ->
           makeCase
             (go scrutinee)
-            [ Branch
-              constr
-              [ (name, var, go type_, plicity)
-              | (name, var, type_, plicity) <- bindings
-              ]
-              (go body)
-            | Branch constr bindings body <- branches
-            ]
+            (foreach branches $ \(bindings, body) ->
+              ( [ (name, var, go type_, plicity)
+                | (name, var, type_, plicity) <- bindings
+                ]
+              , go body
+              )
+            )
             (go <$> defaultBranch)
 
 data Shared a = Shared !Bool a
@@ -605,7 +594,7 @@ inlineIndex index targetScope solution@ ~(solutionVar, varArgs, solutionValue, s
 
       Case scrutinee branches defaultBranch -> do
         scrutinee' <- recurse scrutinee
-        branches' <- forM branches $ \(Branch constr bindings body) -> do
+        branches' <- forM branches $ \(bindings, body) -> do
           let
             go targetScope' bindings' =
               case bindings' of
@@ -619,6 +608,6 @@ inlineIndex index targetScope solution@ ~(solutionVar, varArgs, solutionValue, s
                   pure ((name, var, type', plicity):bindings''', body')
 
           (bindings', body') <- go targetScope bindings
-          pure $ Branch constr bindings' body'
+          pure (bindings', body')
         defaultBranch' <- forM defaultBranch recurse
         pure $ makeCase scrutinee' branches' defaultBranch'
