@@ -185,12 +185,24 @@ unifyBranches
   outerContext
   flexibility
   outerUntouchables
-  (Domain.Branches outerEnv1 branches1)
-  (Domain.Branches outerEnv2 branches2) =
-    foldM
+  (Domain.Branches outerEnv1 branches1 defaultBranch1)
+  (Domain.Branches outerEnv2 branches2 defaultBranch2) = do
+    unless (length branches1 == length branches2) $ throwError Dunno
+    outerContext' <- foldM
       (uncurry . unifyBranch)
       outerContext
       (zip branches1 branches2)
+    case (defaultBranch1, defaultBranch2) of
+      (Just branch1, Just branch2) -> do
+        branch1' <- lift $ Evaluation.evaluate outerEnv1 branch1
+        branch2' <- lift $ Evaluation.evaluate outerEnv2 branch2
+        unify outerContext' flexibility outerUntouchables branch1' branch2'
+
+      (Nothing, Nothing) ->
+        pure outerContext'
+
+      _ ->
+        throwError Dunno
   where
     unifyBranch context (Syntax.Branch constr1 tele1) (Syntax.Branch constr2 tele2)
       | constr1 == constr2 =
@@ -289,9 +301,11 @@ occurs context untouchables value = do
       occurs context' untouchables body
 
 occursBranches :: Context v -> IntSet Var -> Domain.Branches -> E M ()
-occursBranches outerContext outerUntouchables (Domain.Branches outerEnv branches) =
+occursBranches outerContext outerUntouchables (Domain.Branches outerEnv branches defaultBranch) = do
   forM_ branches $ \(Syntax.Branch _constr tele) ->
     occursTele outerContext outerUntouchables outerEnv tele
+  forM_ defaultBranch $ \branch ->
+    occursTele outerContext outerUntouchables outerEnv $ Telescope.Empty branch
   where
     occursTele
       :: Context v

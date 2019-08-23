@@ -69,7 +69,7 @@ data Value
   | Fun !Type !Type
   | Lam !Name !Var !Type !Plicity !Value
   | App !Value !Plicity !Value
-  | Case !Value [Branch]
+  | Case !Value [Branch] !(Maybe Value)
   deriving Show
 
 data Branch = Branch !Name.QualifiedConstructor [(Name, Var, Type, Plicity)] !Value
@@ -164,10 +164,12 @@ evaluate env term =
     Syntax.App fun plicity arg ->
       App <$> evaluate env fun <*> pure plicity <*> evaluate env arg
 
-    Syntax.Case scrutinee branches -> do
+    Syntax.Case scrutinee branches defaultBranch -> do
       scrutinee' <- evaluate env scrutinee
       -- TODO choose branch if variable is inlined to constructor
-      Case scrutinee' <$> mapM (evaluateBranch env) branches
+      Case scrutinee' <$>
+        mapM (evaluateBranch env) branches <*>
+        mapM (evaluate env) defaultBranch
 
 evaluateBranch :: Environment v -> Syntax.Branch v -> M Branch
 evaluateBranch outerEnv (Syntax.Branch constr outerTele) =
@@ -233,8 +235,11 @@ readback env value =
     App fun plicity arg ->
       Syntax.App (readback env fun) plicity (readback env arg)
 
-    Case scrutinee branches ->
-      Syntax.Case (readback env scrutinee) (map (readbackBranch env) branches)
+    Case scrutinee branches defaultBranch ->
+      Syntax.Case
+        (readback env scrutinee)
+        (map (readbackBranch env) branches)
+        (map (readback env) defaultBranch)
 
 readbackBranch :: Readback.Environment v -> Branch -> Syntax.Branch v
 readbackBranch outerEnv (Branch constr outerBindings body) =

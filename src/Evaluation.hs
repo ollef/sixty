@@ -90,29 +90,35 @@ evaluate env term =
       t2' <- lazy $ evaluate env t2
       apply t1' p t2'
 
-    Syntax.Case scrutinee branches -> do
+    Syntax.Case scrutinee branches defaultBranch -> do
       scrutineeValue <- evaluate env scrutinee
       case scrutineeValue of
         Domain.Neutral (Domain.Con constr) spine ->
-          chooseBranch env constr (toList spine) branches
+          chooseBranch env constr (toList spine) branches defaultBranch
 
         _ ->
-          pure $ Domain.Case scrutineeValue $ Domain.Branches env branches
+          pure $
+            Domain.Case
+              scrutineeValue
+              (Domain.Branches env branches defaultBranch)
 
 chooseBranch
   :: Domain.Environment v
   -> Name.QualifiedConstructor
   -> [(Plicity, Lazy Domain.Value)]
   -> [Syntax.Branch v]
+  -> Maybe (Syntax.Term v)
   -> M Domain.Value
-chooseBranch outerEnv constr outerArgs branches =
-  go outerEnv outerArgs $
-    case filter (\(Syntax.Branch c _)-> c == constr) branches of
-      [] ->
-        panic "chooseBranch no branches"
+chooseBranch outerEnv constr outerArgs branches defaultBranch =
+  case (filter (\(Syntax.Branch c _)-> c == constr) branches, defaultBranch) of
+    ([], Nothing) ->
+      panic "chooseBranch no branches"
 
-      Syntax.Branch _ tele:_ ->
-        tele
+    ([], Just branch) ->
+      evaluate outerEnv branch
+
+    (Syntax.Branch _ tele:_, _) ->
+      go outerEnv outerArgs tele
   where
     go
       :: Domain.Environment v

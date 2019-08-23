@@ -1,14 +1,17 @@
 {-# language OverloadedStrings #-}
+{-# language PackageImports #-}
 {-# language RankNTypes #-}
 module Elaboration.Matching where
 
-import Protolude hiding (force)
+import Protolude hiding (IntMap, force)
 
 import Control.Monad.Fail
 import Control.Monad.Trans.Maybe
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
+import Data.HashSet (HashSet)
 import Data.IORef
+import qualified Data.List as List
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Rock
@@ -30,6 +33,8 @@ import Name (Name(Name))
 import qualified Name
 import Plicity
 import qualified Presyntax
+import "this" Data.IntMap (IntMap)
+import qualified "this" Data.IntMap as IntMap
 import qualified Query
 import qualified Readback
 import qualified Scope
@@ -46,7 +51,10 @@ data Config = Config
   , _scrutinees :: ![Domain.Value]
   , _clauses :: [Clause]
   , _usedClauses :: !(IORef (Set Span.Relative))
+  , _coveredConstructors :: CoveredConstructors
   }
+
+type CoveredConstructors = IntMap Var (HashSet Name.QualifiedConstructor)
 
 data Clause = Clause
   { _span :: !Span.Relative
@@ -85,6 +93,7 @@ elaborateCase context scrutinee scrutineeType branches expectedType =
           | (pat@(Presyntax.Pattern patSpan _), rhs'@(Presyntax.Term rhsSpan _)) <- branches
           ]
         , _usedClauses = usedClauses
+        , _coveredConstructors = mempty
         }
 
     _ -> do
@@ -116,6 +125,7 @@ elaborateClauses context clauses expectedType = do
 
     , _clauses = clauses
     , _usedClauses = usedClauses
+    , _coveredConstructors = mempty
     }
 
 elaborateSingle
@@ -144,6 +154,7 @@ elaborateSingle context scrutinee pat@(Presyntax.Pattern patSpan _) rhs@(Presynt
           }
         ]
       , _usedClauses = usedClauses
+      , _coveredConstructors = mempty
       }
 
 -------------------------------------------------------------------------------
@@ -164,12 +175,12 @@ elaborateWithCoverage context config = do
 
 elaborate :: Context v -> Config -> M (Syntax.Term v)
 elaborate context config = do
-  clauses <- catMaybes <$> mapM (simplifyClause context) (_clauses config)
+  clauses <- catMaybes <$> mapM (simplifyClause context $ _coveredConstructors config) (_clauses config)
   let
     config' = config { _clauses = clauses }
   case clauses of
     [] -> do
-      exhaustive <- anyM (uninhabitedScrutinee context) $ _scrutinees config
+      exhaustive <- anyM (uninhabitedScrutinee context $ _coveredConstructors config) $ _scrutinees config
       unless exhaustive $ Context.report context Error.NonExhaustivePatterns
       targetType <- Elaboration.readback context $ _expectedType config
       pure $ Syntax.App (Syntax.Global Builtin.fail) Explicit targetType
@@ -220,10 +231,10 @@ checkForcedPattern context match =
 
 -------------------------------------------------------------------------------
 
-simplifyClause :: Context v -> Clause -> M (Maybe Clause)
-simplifyClause context clause = do
+simplifyClause :: Context v -> CoveredConstructors -> Clause -> M (Maybe Clause)
+simplifyClause context coveredConstructors clause = do
   maybeMatches <- runMaybeT $
-    concat <$> mapM (simplifyMatch context) (_matches clause)
+    concat <$> mapM (simplifyMatch context coveredConstructors) (_matches clause)
   case maybeMatches of
     Nothing ->
       pure Nothing
@@ -235,13 +246,14 @@ simplifyClause context clause = do
           pure $ Just clause { _matches = matches' }
 
         Just expandedMatches ->
-          simplifyClause context clause { _matches = expandedMatches }
+          simplifyClause context coveredConstructors clause { _matches = expandedMatches }
 
 simplifyMatch
   :: Context v
+  -> CoveredConstructors
   -> Match
   -> MaybeT M [Match]
-simplifyMatch context (Match value plicity pat@(Presyntax.Pattern span unspannedPattern) type_) = do
+simplifyMatch context coveredConstructors (Match value plicity pat@(Presyntax.Pattern span unspannedPattern) type_) = do
   value' <- lift $ Context.forceHead context value
   let
     match' =
@@ -272,6 +284,29 @@ simplifyMatch context (Match value plicity pat@(Presyntax.Pattern span unspanned
 
         _ ->
           pure [match']
+
+    (Domain.Neutral (Domain.Var var) Tsil.Empty, Presyntax.ConOrVar name _)
+      | Just coveredConstrs <- IntMap.lookup var coveredConstructors -> do
+        maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
+        case maybeScopeEntry of
+          Just (Scope.Constructors entryConstrs) -> do
+            let
+              expectedTypeName =
+                Elaboration.getExpectedTypeName context type_
+            maybeConstr <- lift $ Elaboration.resolveConstructor context name entryConstrs expectedTypeName
+            case maybeConstr of
+              Nothing ->
+                pure [match']
+
+              Just constr
+                | HashSet.member constr coveredConstrs ->
+                  fail "Constructor already covered"
+
+                | otherwise ->
+                  pure [match']
+
+          _ ->
+            pure [match']
 
     _ ->
       pure [match']
@@ -479,6 +514,38 @@ findConstructorMatch context matches =
       _:matches' ->
         findConstructorMatch context matches'
 
+findVarConstructorMatches
+  :: Context v
+  -> Var
+  -> [Match]
+  -> M [Name.QualifiedConstructor]
+findVarConstructorMatches context var matches =
+    case matches of
+      [] ->
+        pure []
+
+      Match (Domain.Neutral (Domain.Var x) Tsil.Empty) _ (Presyntax.Pattern _ (Presyntax.ConOrVar name _)) type_:matches' 
+        | var == x -> do
+          maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
+          case maybeScopeEntry of
+            Just (Scope.Constructors constrs) -> do
+              let
+                expectedTypeName =
+                  Elaboration.getExpectedTypeName context type_
+              maybeConstr <- Elaboration.resolveConstructor context name constrs expectedTypeName
+              case maybeConstr of
+                Nothing ->
+                  findVarConstructorMatches context var matches'
+
+                Just constr ->
+                  (constr :) <$> findVarConstructorMatches context var matches'
+
+            _ ->
+              findVarConstructorMatches context var matches'
+
+      _:matches' ->
+        findVarConstructorMatches context var matches'
+
 splitConstructor
   :: Context v
   -> Config
@@ -498,15 +565,39 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
     goParams context params conArgs dataTele =
       case (params, dataTele) of
         ([], Domain.Telescope.Empty constructors) -> do
-          branches <- forM constructors $ \(constr, constrType) -> do
+          matchedConstructorsSet <-
+            HashSet.fromList . concat . takeWhile (not . null) <$>
+              mapM
+                (findVarConstructorMatches context scrutinee . _matches)
+                (_clauses config)
+
+          let
+            matchedConstructors =
+              toList matchedConstructorsSet
+
+          branches <- forM matchedConstructors $ \qualifiedConstr@(Name.QualifiedConstructor _ constr) -> do
             let
-              qualifiedConstr =
-                Name.QualifiedConstructor typeName constr
+              constrType =
+                fromMaybe (panic "Matching constrType") $
+                  List.lookup constr constructors
+
             branchTele <- goConstrFields context qualifiedConstr conArgs constrType
             pure $ Syntax.Branch qualifiedConstr branchTele
 
+          defaultBranch <-
+            if HashSet.size matchedConstructorsSet == length constructors then
+              pure Nothing
+
+            else
+              Just <$> elaborate context config
+                { _coveredConstructors =
+                  IntMap.insertWith (<>) scrutinee matchedConstructorsSet $
+                  _coveredConstructors config
+                }
+
           scrutinee' <- Elaboration.readback context (Domain.var scrutinee)
-          pure $ Syntax.Case scrutinee' branches
+
+          pure $ Syntax.Case scrutinee' branches defaultBranch
 
         ((plicity1, param):params', Domain.Telescope.Extend _ _ plicity2 domainClosure)
           | plicity1 == plicity2 -> do
@@ -626,27 +717,32 @@ splitEquality context config var type_ value1 value2 = do
 
 -------------------------------------------------------------------------------
 
-uninhabitedScrutinee :: Context v -> Domain.Value -> M Bool
-uninhabitedScrutinee context value = do
+uninhabitedScrutinee :: Context v -> CoveredConstructors -> Domain.Value -> M Bool
+uninhabitedScrutinee context coveredConstructors value = do
   value' <- Context.forceHead context value
   case value' of
     Domain.Neutral (Domain.Var var) spine -> do
       varType <- force $ Context.lookupVarType var context
       type_ <- Context.instantiateType context varType $ toList spine
-      uninhabitedType context 1 type_
+      uninhabitedType context 1 (IntMap.lookupDefault mempty var coveredConstructors) type_
 
     Domain.Neutral (Domain.Con constr) spine -> do
       constrType <- fetch $ Query.ConstructorType constr
       let
         args = snd <$> drop (Telescope.length constrType) (toList spine)
       args' <- mapM force args
-      anyM (uninhabitedScrutinee context) args'
+      anyM (uninhabitedScrutinee context coveredConstructors) args'
 
     _ ->
       pure False
 
-uninhabitedType :: Context v -> Int -> Domain.Type -> M Bool
-uninhabitedType context fuel type_ = do
+uninhabitedType
+  :: Context v
+  -> Int
+  -> HashSet Name.QualifiedConstructor
+  -> Domain.Type
+  -> M Bool
+uninhabitedType context fuel coveredConstructors type_ = do
   type' <- Context.forceHead context type_
   case type' of
     Builtin.Equals _ value1 value2 -> do
@@ -670,8 +766,15 @@ uninhabitedType context fuel type_ = do
           tele' <- Evaluation.evaluateConstructorDefinitions (Domain.empty $ Context.scopeKey context) tele
           tele'' <- Domain.Telescope.apply tele' $ toList spine
           case tele'' of
-            Domain.Telescope.Empty constructors ->
-              allM (uninhabitedConstrType context fuel . snd) constructors
+            Domain.Telescope.Empty constructors -> do
+              let
+                uncoveredConstructorTypes =
+                  [ constrType
+                  | (constr, constrType) <- constructors
+                  , not $ HashSet.member (Name.QualifiedConstructor global constr) coveredConstructors
+                  ]
+
+              allM (uninhabitedConstrType context fuel) uncoveredConstructorTypes
 
             _ ->
               pure False
@@ -693,7 +796,7 @@ uninhabitedConstrType context fuel type_ =
       case type' of
         Domain.Pi name source _ domainClosure -> do
           source' <- force source
-          uninhabited <- uninhabitedType context (fuel - 1) source'
+          uninhabited <- uninhabitedType context (fuel - 1) mempty source'
           if uninhabited then
             pure True
 
@@ -704,7 +807,7 @@ uninhabitedConstrType context fuel type_ =
 
         Domain.Fun source domain -> do
           source' <- force source
-          uninhabited <- uninhabitedType context (fuel - 1) source'
+          uninhabited <- uninhabitedType context (fuel - 1) mempty source'
           if uninhabited then
             pure True
 

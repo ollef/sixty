@@ -26,7 +26,7 @@ data Term v
   | Fun !(Type v) !(Type v)
   | Lam !Name !(Type v) !Plicity !(Scope Term v)
   | App !(Term v) !Plicity !(Term v)
-  | Case !(Term v) [Branch v]
+  | Case !(Term v) [Branch v] !(Maybe (Term v))
   deriving (Show, Generic, Hashable)
 
 type Type = Term

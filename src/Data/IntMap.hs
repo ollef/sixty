@@ -36,6 +36,10 @@ insert :: Coercible key Containers.Key => key -> value -> IntMap key value -> In
 insert key value =
   coerce $ Containers.insert (coerce key) value
 
+insertWith :: Coercible key Containers.Key => (value -> value -> value) -> key -> value -> IntMap key value -> IntMap key value
+insertWith f key value =
+  coerce $ Containers.insertWith f (coerce key) value
+
 adjust :: Coercible key Containers.Key => (value -> value) -> key -> IntMap key value -> IntMap key value
 adjust f key =
   coerce $ Containers.adjust f (coerce key)

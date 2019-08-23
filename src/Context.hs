@@ -388,11 +388,11 @@ forceHead context value =
       value'' <- force value'
       forceHead context value''
 
-    Domain.Case scrutinee branches@(Domain.Branches branchEnv brs)  -> do
+    Domain.Case scrutinee branches@(Domain.Branches branchEnv brs defaultBranch) -> do
       scrutinee' <- forceHead context scrutinee
       case scrutinee' of
         Domain.Neutral (Domain.Con constr) spine -> do
-          value' <- Evaluation.chooseBranch branchEnv constr (toList spine) brs
+          value' <- Evaluation.chooseBranch branchEnv constr (toList spine) brs defaultBranch
           forceHead context value'
 
         _ ->
@@ -431,11 +431,11 @@ forceHeadGlue context value =
         Meta.Unsolved {} ->
           pure value
 
-    Domain.Case scrutinee branches@(Domain.Branches branchEnv brs)  -> do
+    Domain.Case scrutinee branches@(Domain.Branches branchEnv brs defaultBranch) -> do
       scrutinee' <- forceHead context scrutinee
       case scrutinee' of
         Domain.Neutral (Domain.Con constr) spine -> do
-          value' <- Evaluation.chooseBranch branchEnv constr (toList spine) brs
+          value' <- Evaluation.chooseBranch branchEnv constr (toList spine) brs defaultBranch
           forceHeadGlue context value'
 
         _ ->

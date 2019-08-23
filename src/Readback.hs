@@ -102,11 +102,14 @@ readback env value =
       domain' <- force domain
       Syntax.Fun <$> readback env source' <*> readback env domain'
 
-    Domain.Case scrutinee (Domain.Branches env' branches) -> do
+    Domain.Case scrutinee (Domain.Branches env' branches defaultBranch) -> do
       scrutinee' <- readback env scrutinee
       branches' <- forM branches $ \(Syntax.Branch constr tele) ->
         Syntax.Branch constr <$> readbackBranch env env' tele
-      pure $ Syntax.Case scrutinee' branches'
+      defaultBranch' <- forM defaultBranch $ \branch -> do
+        branch' <- Evaluation.evaluate env' branch
+        readback env branch'
+      pure $ Syntax.Case scrutinee' branches' defaultBranch'
   where
     readbackSpine =
       foldM $ \fun (plicity, lazyArg) -> do

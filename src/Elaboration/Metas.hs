@@ -140,7 +140,7 @@ data InnerValue
   | Fun !Type !Type
   | Lam !Name !Var !Type !Plicity !Value
   | App !Value !Plicity !Value
-  | Case !Value [Branch]
+  | Case !Value [Branch] !(Maybe Value)
   deriving Show
 
 data Branch = Branch !Name.QualifiedConstructor [(Name, Var, Type, Plicity)] !Value
@@ -239,15 +239,16 @@ makeApp fun plicity arg =
     occurrences fun <>
     occurrences arg
 
-makeCase :: Value -> [Branch] -> Value
-makeCase scrutinee branches =
-  Value (Case scrutinee branches) $
+makeCase :: Value -> [Branch] -> Maybe Value -> Value
+makeCase scrutinee branches defaultBranch =
+  Value (Case scrutinee branches defaultBranch) $
     occurrences scrutinee <>
     mconcat
       [ foldMap (\(_, _, type_, _) -> occurrences type_) bindings <>
         occurrences body
       | Branch _ bindings body <- branches
-      ]
+      ] <>
+    foldMap occurrences defaultBranch
 
 evaluate :: Readback.Environment v -> Syntax.Term v -> M Value
 evaluate env term =
@@ -296,10 +297,11 @@ evaluate env term =
         pure plicity <*>
         evaluate env argument
 
-    Syntax.Case scrutinee branches ->
+    Syntax.Case scrutinee branches defaultBranch ->
       makeCase <$>
         evaluate env scrutinee <*>
-        mapM (evaluateBranch env) branches
+        mapM (evaluateBranch env) branches <*>
+        mapM (evaluate env) defaultBranch
 
 evaluateBranch :: Readback.Environment v -> Syntax.Branch v -> M Branch
 evaluateBranch outerEnv (Syntax.Branch constr outerTele) =
@@ -376,10 +378,11 @@ readback env metas (Value value _) =
     App function plicity argument ->
       Syntax.App (readback env metas function) plicity (readback env metas argument)
 
-    Case scrutinee branches ->
+    Case scrutinee branches defaultBranch ->
       Syntax.Case
         (readback env metas scrutinee)
         (map (readbackBranch env metas) branches)
+        (readback env metas <$> defaultBranch)
 
 readbackBranch
   :: Readback.Environment v
@@ -486,7 +489,7 @@ substitute subst
         App function plicity argument ->
           makeApp (go function) plicity (go argument)
 
-        Case scrutinee branches ->
+        Case scrutinee branches defaultBranch ->
           makeCase
             (go scrutinee)
             [ Branch
@@ -497,6 +500,7 @@ substitute subst
               (go body)
             | Branch constr bindings body <- branches
             ]
+            (go <$> defaultBranch)
 
 data Shared a = Shared !Bool a
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
@@ -599,7 +603,7 @@ inlineIndex index targetScope solution@ ~(solutionVar, varArgs, solutionValue, s
         argument' <- recurse argument
         pure $ makeApp function' plicity argument'
 
-      Case scrutinee branches -> do
+      Case scrutinee branches defaultBranch -> do
         scrutinee' <- recurse scrutinee
         branches' <- forM branches $ \(Branch constr bindings body) -> do
           let
@@ -616,5 +620,5 @@ inlineIndex index targetScope solution@ ~(solutionVar, varArgs, solutionValue, s
 
           (bindings', body') <- go targetScope bindings
           pure $ Branch constr bindings' body'
-
-        pure $ makeCase scrutinee' branches'
+        defaultBranch' <- forM defaultBranch recurse
+        pure $ makeCase scrutinee' branches' defaultBranch'

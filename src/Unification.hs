@@ -188,7 +188,7 @@ unify context flexibility value1 value2 = do
       | Flexibility.Rigid <- flexibility -> do
         matches <- potentiallyMatchingBranches context value2' branches
         case matches of
-          [constr] -> do
+          [Just constr] -> do
             metaType <- instantiatedMetaType context meta spine
             appliedConstr <- fullyApplyToMetas context constr metaType
             unify context flexibility scrutinee appliedConstr
@@ -201,7 +201,7 @@ unify context flexibility value1 value2 = do
       | Flexibility.Rigid <- flexibility -> do
         matches <- potentiallyMatchingBranches context value1' branches
         case matches of
-          [constr] -> do
+          [Just constr] -> do
             metaType <- instantiatedMetaType context meta spine
             appliedConstr <- fullyApplyToMetas context constr metaType
             unify context flexibility scrutinee appliedConstr
@@ -264,16 +264,28 @@ unifyBranches
 unifyBranches
   outerContext
   flexibility
-  (Domain.Branches outerEnv1 branches1)
-  (Domain.Branches outerEnv2 branches2) =
+  (Domain.Branches outerEnv1 branches1 defaultBranch1)
+  (Domain.Branches outerEnv2 branches2 defaultBranch2) = do
+    unless (length branches1 == length branches2) can'tUnify
     zipWithM_ unifyBranch branches1 branches2
+    case (defaultBranch1, defaultBranch2) of
+      (Just branch1, Just branch2) -> do
+        branch1' <- Evaluation.evaluate outerEnv1 branch1
+        branch2' <- Evaluation.evaluate outerEnv2 branch2
+        unify outerContext flexibility branch1' branch2'
+
+      (Nothing, Nothing) ->
+        pure ()
+
+      _ ->
+        can'tUnify
   where
     unifyBranch (Syntax.Branch constr1 tele1) (Syntax.Branch constr2 tele2)
       | constr1 == constr2 =
         unifyTele outerContext outerEnv1 outerEnv2 tele1 tele2
 
       | otherwise =
-        panic "unifyBranch"
+        can'tUnify
 
     unifyTele
       :: Context v
@@ -305,6 +317,9 @@ unifyBranches
         _ ->
           panic "unifyTele"
 
+    can'tUnify =
+      throwError Error.TypeMismatch
+
 -------------------------------------------------------------------------------
 -- Case expression inversion
 
@@ -324,17 +339,27 @@ potentiallyMatchingBranches
   :: Context v
   -> Domain.Value
   -> Domain.Branches
-  -> M [Name.QualifiedConstructor]
-potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv branches) =
-  fmap catMaybes $ forM branches $ \(Syntax.Branch constr tele) -> do
-    isMatch <- branchMatches outerContext outerEnv tele
+  -> M [Maybe Name.QualifiedConstructor]
+potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv branches defaultBranch) = do
+  defaultBranch' <- fmap (catMaybes . toList) $ forM defaultBranch $ \branch -> do
+    isMatch <- branchMatches outerContext outerEnv $ Telescope.Empty branch
     pure $
       if isMatch then
-        Just constr
+        Just Nothing
 
       else
         Nothing
 
+  branches' <- fmap catMaybes $ forM branches $ \(Syntax.Branch constr tele) -> do
+    isMatch <- branchMatches outerContext outerEnv tele
+    pure $
+      if isMatch then
+        Just $ Just constr
+
+      else
+        Nothing
+
+  pure $ defaultBranch' <> branches'
   where
     branchMatches
       :: Context v
@@ -572,11 +597,14 @@ checkInnerSolution outerContext occurs env flexibility value = do
         <$> checkInnerSolution outerContext occurs env flexibility source'
         <*> checkInnerSolution outerContext occurs env flexibility domain'
 
-    Domain.Case scrutinee (Domain.Branches env' branches) -> do
+    Domain.Case scrutinee (Domain.Branches env' branches defaultBranch) -> do
       scrutinee' <- checkInnerSolution outerContext occurs env flexibility scrutinee
       branches' <- forM branches $ \(Syntax.Branch constr tele) ->
         Syntax.Branch constr <$> checkInnerBranch outerContext occurs env env' flexibility tele
-      pure $ Syntax.Case scrutinee' branches'
+      defaultBranch' <- forM defaultBranch $ \branch -> do
+        branch' <- Evaluation.evaluate env' branch
+        checkInnerSolution outerContext occurs env flexibility branch'
+      pure $ Syntax.Case scrutinee' branches' defaultBranch'
 
 checkInnerBranch
   :: Context outer
