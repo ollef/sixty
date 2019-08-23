@@ -21,7 +21,7 @@ moduleScopes
   :: Name.Module
   -> [(Name, Presyntax.Definition)]
   -> (((Scope, Scope.Visibility), Scope.Module), [Error])
-moduleScopes module_ definitions =
+moduleScopes module_@(Name.Module moduleText) definitions =
   let
     (finalScope, finalVisibility, scopes, errs) =
       foldl' go (mempty, mempty, mempty, mempty) definitions
@@ -37,13 +37,20 @@ moduleScopes module_ definitions =
         prename =
           Name.Pre nameText
 
+        qualifiedPreName =
+          Name.Pre $ moduleText <> "." <> nameText
+
         qualifiedName =
           Name.Qualified module_ name
+
+        scope' =
+          HashMap.insertWith (<>) qualifiedPreName (Scope.Name qualifiedName) $
+          HashMap.insertWith (<>) prename (Scope.Name qualifiedName) scope
 
         definitionCase =
           let
             ok =
-              ( HashMap.insertWith (<>) prename (Scope.Name qualifiedName) scope
+              ( scope'
               , HashMap.insertWith max qualifiedName Scope.Definition visibility
               , HashMap.insert (name, Scope.Definition) (scope, visibility) scopes
               , errs
@@ -74,7 +81,7 @@ moduleScopes module_ definitions =
               )
 
             Nothing ->
-              ( HashMap.insertWith (<>) prename (Scope.Name qualifiedName) scope
+              ( scope'
               , HashMap.insertWith max qualifiedName Scope.Type visibility
               , HashMap.insert (name, Scope.Type) (scope, visibility) scopes
               , errs
@@ -85,30 +92,37 @@ moduleScopes module_ definitions =
 
         Presyntax.DataDefinition _ constrDefs ->
           let
-            (scope', visibility', scopes', errs') =
+            (scope'', visibility', scopes', errs') =
               definitionCase
 
             constructors =
-              HashMap.fromListWith (<>)
-              [ ( Name.Pre text
-                , Scope.Constructors $
-                  HashSet.singleton $
-                  Name.QualifiedConstructor qualifiedName constr
-                )
-              | constrDef <- constrDefs
-              , let
-                  constrs =
-                    case constrDef of
-                      Presyntax.GADTConstructors cs _ ->
-                        cs
+              HashMap.fromListWith (<>) $
+              concat
+                [ [ ( Name.Pre text
+                    , Scope.Constructors $
+                      HashSet.singleton $
+                      Name.QualifiedConstructor qualifiedName constr
+                    )
+                  , ( Name.Pre $ moduleText <> "." <> text
+                    , Scope.Constructors $
+                      HashSet.singleton $
+                      Name.QualifiedConstructor qualifiedName constr
+                    )
+                  ]
+                | constrDef <- constrDefs
+                , let
+                    constrs =
+                      case constrDef of
+                        Presyntax.GADTConstructors cs _ ->
+                          cs
 
-                      Presyntax.ADTConstructor c _ ->
-                        [c]
-              , constr@(Name.Constructor text) <- constrs
-              ]
+                        Presyntax.ADTConstructor c _ ->
+                          [c]
+                , constr@(Name.Constructor text) <- constrs
+                ]
 
           in
-          (HashMap.unionWith (<>) constructors scope', visibility', scopes', errs')
+          (HashMap.unionWith (<>) constructors scope'', visibility', scopes', errs')
 
 -- TODO: Error for names that aren't exposed
 exposedNames :: Module.ExposedNames -> HashMap Name.Pre a -> HashMap Name.Pre a

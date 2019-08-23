@@ -1,0 +1,34 @@
+module Test exposing (..)
+
+def = Type
+
+useDefQualified = Test.def
+
+decl : Type
+
+useDeclQualified1 = Test.decl
+
+decl = Type
+
+useDeclQualified2 = Test.decl
+
+declDef : Type
+declDef = Type
+
+useDeclDefQualified = Test.declDef
+
+data Data = Constr
+
+useDataQualified = Test.Data
+
+useConstrQualified = Test.Constr
+
+DeclData : Type
+
+useDeclDataQualified1 = Test.DeclData
+
+data DeclData = DeclConstr
+
+useDeclDataQualified2 = Test.DeclData
+
+useDeclConstrQualified2 = Test.DeclConstr
