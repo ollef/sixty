@@ -4,7 +4,6 @@ module Builtin where
 
 import qualified Data.Tsil as Tsil
 import qualified Domain
-import Monad
 import qualified Name
 import Plicity
 
@@ -29,9 +28,9 @@ pattern EqualsName =
   "Sixten.Builtin.Equals"
 
 pattern Equals
-  :: Lazy Domain.Type
-  -> Lazy Domain.Value
-  -> Lazy Domain.Value
+  :: Domain.Type
+  -> Domain.Value
+  -> Domain.Value
   -> Domain.Value
 pattern Equals k a b =
   Domain.Neutral
@@ -43,9 +42,9 @@ pattern ReflName =
   Name.QualifiedConstructor EqualsName "Refl"
 
 pattern Refl
-  :: Lazy Domain.Type
-  -> Lazy Domain.Value
-  -> Lazy Domain.Value
+  :: Domain.Type
+  -> Domain.Value
+  -> Domain.Value
   -> Domain.Value
 pattern Refl k a b =
   Domain.Neutral

@@ -97,7 +97,7 @@ elaborateCase context scrutinee scrutineeType branches expectedType =
         }
 
     _ -> do
-      (context', var) <- Context.extendUnnamed context "scrutinee" $ eager scrutineeType
+      (context', var) <- Context.extendUnnamed context "scrutinee" scrutineeType
       let
         index =
           fromMaybe (panic "matching lookupVarIndex") $ Context.lookupVarIndex var context'
@@ -139,7 +139,9 @@ elaborateSingle context scrutinee pat@(Presyntax.Pattern patSpan _) rhs@(Presynt
     let
       scrutineeValue =
         Domain.var scrutinee
-    scrutineeType <- force $ Context.lookupVarType scrutinee context
+
+      scrutineeType =
+        Context.lookupVarType scrutinee context
 
     usedClauses <- liftIO $ newIORef mempty
 
@@ -314,8 +316,8 @@ simplifyMatch context coveredConstructors (Match value plicity pat@(Presyntax.Pa
 instantiateConstructorType
   :: Domain.Environment v
   -> Telescope Syntax.Type Syntax.Type v
-  -> [(Plicity, Lazy Domain.Value)]
-  -> M (Domain.Type, [(Plicity, Lazy Domain.Value)])
+  -> [(Plicity, Domain.Value)]
+  -> M (Domain.Type, [(Plicity, Domain.Value)])
 instantiateConstructorType env tele spine =
   case (tele, spine) of
     (Telescope.Empty constrType, _) -> do
@@ -332,7 +334,7 @@ instantiateConstructorType env tele spine =
 
 matchPrepatterns
   :: Context v
-  -> [(Plicity, Lazy Domain.Value)]
+  -> [(Plicity, Domain.Value)]
   -> [Presyntax.PlicitPattern]
   -> Domain.Type
   -> M ([Match], Domain.Type)
@@ -352,9 +354,8 @@ matchPrepatterns context values patterns type_ = do
     ( Presyntax.ExplicitPattern pat:patterns'
       , (Explicit, value):values'
       , Domain.Fun source domain
-      ) -> do
-        domain' <- force domain
-        explicitFunCase value values' pat patterns' source domain'
+      ) ->
+        explicitFunCase value values' pat patterns' source domain
 
     (Presyntax.ExplicitPattern _:_, (Explicit, _):_, _) ->
       panic "matchPrepatterns non-pi"
@@ -375,9 +376,7 @@ matchPrepatterns context values patterns type_ = do
             values'
             (Presyntax.ImplicitPattern patSpan (HashMap.delete name namedPats) : patterns')
             domain
-        value' <- force value
-        source' <- force source
-        pure (Match value' Implicit (namedPats HashMap.! name) source' : matches, type'')
+        pure (Match value Implicit (namedPats HashMap.! name) source : matches, type'')
 
     (_, (Implicit, value):values', Domain.Pi _ _ Implicit domainClosure) -> do
       domain <- Evaluation.evaluateClosure domainClosure value
@@ -394,12 +393,10 @@ matchPrepatterns context values patterns type_ = do
           values'
           patterns
           domain
-      value' <- force value
-      source' <- force source
       let
         pattern_ =
           Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern
-      pure (Match value' Constraint pattern_ source' : matches, type'')
+      pure (Match value Constraint pattern_ source : matches, type'')
 
     (_, (Constraint, _):_, _) ->
       panic "matchPrepatterns non-pi"
@@ -418,11 +415,9 @@ matchPrepatterns context values patterns type_ = do
   where
     explicitFunCase value values' pat patterns' source domain = do
       (matches, type'') <- matchPrepatterns context values' patterns' domain
-      value' <- force value
-      source' <- force source
-      pure (Match value' Explicit pat source' : matches, type'')
+      pure (Match value Explicit pat source : matches, type'')
 
-type PatternInstantiation = Tsil (Name, Lazy Domain.Value, Lazy Domain.Value)
+type PatternInstantiation = Tsil (Name, Domain.Value, Domain.Value)
 
 expandAnnotations
   :: Context v
@@ -470,7 +465,7 @@ matchInstantiation context match =
           fail "No match instantitation"
 
         _ ->
-          pure $ pure (Name name, eager term, eager type_)
+          pure $ pure (Name name, term, type_)
 
     (Match _ _ (Presyntax.Pattern _ (Presyntax.Forced _)) _) ->
       pure mempty
@@ -558,7 +553,7 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
   let
     goParams
       :: Context v
-      -> [(Plicity, Lazy Domain.Value)]
+      -> [(Plicity, Domain.Value)]
       -> Domain.Spine
       -> Domain.Telescope Domain.Type (HashMap Name.Constructor Domain.Type)
       -> M (Syntax.Type v)
@@ -613,12 +608,11 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
     goConstrFields context constr conArgs type_ =
       case type_ of
         Domain.Pi name source plicity domainClosure -> do
-          source' <- force source
-          source'' <- Elaboration.readback context source'
+          source'' <- Elaboration.readback context source
           (context' , fieldVar) <- Context.extendBefore context scrutinee name source
           let
             fieldValue =
-              eager $ Domain.var fieldVar
+              Domain.var fieldVar
 
             conArgs' =
               conArgs Tsil.:> (plicity, fieldValue)
@@ -628,24 +622,22 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
           pure $ Telescope.Extend name source'' plicity tele
 
         Domain.Fun source domain -> do
-          source' <- force source
-          source'' <- Elaboration.readback context source'
+          source'' <- Elaboration.readback context source
           (context' , fieldVar) <- Context.extendBefore context scrutinee "x" source
           let
             fieldValue =
-              eager $ Domain.var fieldVar
+              Domain.var fieldVar
 
             conArgs' =
               conArgs Tsil.:> (Explicit, fieldValue)
 
-          domain' <- force domain
-          tele <- goConstrFields context' constr conArgs' domain'
+          tele <- goConstrFields context' constr conArgs' domain
           pure $ Telescope.Extend "x" source'' Explicit tele
 
         _ -> do
           let
             context' =
-              Context.define context scrutinee $ eager $ Domain.Neutral (Domain.Con constr) conArgs
+              Context.define context scrutinee $ Domain.Neutral (Domain.Con constr) conArgs
           result <- elaborate context' config
           pure $ Telescope.Empty result
 
@@ -670,7 +662,7 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
 findEqualityMatch
   :: Context v
   -> [Match]
-  -> M (Maybe (Context v, Var, Lazy Domain.Type, Lazy Domain.Value, Lazy Domain.Value))
+  -> M (Maybe (Context v, Var, Domain.Type, Domain.Value, Domain.Value))
 findEqualityMatch context matches =
   case matches of
     [] ->
@@ -681,9 +673,7 @@ findEqualityMatch context matches =
       _
       (Presyntax.Pattern _ Presyntax.WildcardPattern)
       (Builtin.Equals type_ value1 value2):matches' -> do
-        value1' <- force value1
-        value2' <- force value2
-        result <- runExceptT $ Indices.unify context Flexibility.Rigid mempty value1' value2'
+        result <- runExceptT $ Indices.unify context Flexibility.Rigid mempty value1 value2
         case result of
           Left Indices.Nope ->
             pure Nothing
@@ -701,14 +691,14 @@ splitEquality
   :: Context v
   -> Config
   -> Var
-  -> Lazy Domain.Type
-  -> Lazy Domain.Value
-  -> Lazy Domain.Value
+  -> Domain.Type
+  -> Domain.Value
+  -> Domain.Value
   -> M (Syntax.Term v)
 splitEquality context config var type_ value1 value2 = do
   let
     context' =
-      Context.define context var $ eager $ Builtin.Refl type_ value1 value2
+      Context.define context var $ Builtin.Refl type_ value1 value2
 
   elaborate context' config
 
@@ -719,7 +709,9 @@ uninhabitedScrutinee context coveredConstructors value = do
   value' <- Context.forceHead context value
   case value' of
     Domain.Neutral (Domain.Var var) spine -> do
-      varType <- force $ Context.lookupVarType var context
+      let
+        varType =
+          Context.lookupVarType var context
       type_ <- Context.instantiateType context varType $ toList spine
       uninhabitedType context 1 (IntMap.lookupDefault mempty var coveredConstructors) type_
 
@@ -727,8 +719,7 @@ uninhabitedScrutinee context coveredConstructors value = do
       constrType <- fetch $ Query.ConstructorType constr
       let
         args = snd <$> drop (Telescope.length constrType) (toList spine)
-      args' <- mapM force args
-      anyM (uninhabitedScrutinee context coveredConstructors) args'
+      anyM (uninhabitedScrutinee context coveredConstructors) args
 
     _ ->
       pure False
@@ -743,9 +734,7 @@ uninhabitedType context fuel coveredConstructors type_ = do
   type' <- Context.forceHead context type_
   case type' of
     Builtin.Equals _ value1 value2 -> do
-      value1' <- force value1
-      value2' <- force value2
-      result <- runExceptT $ Indices.unify context Flexibility.Rigid mempty value1' value2'
+      result <- runExceptT $ Indices.unify context Flexibility.Rigid mempty value1 value2
       pure $ case result of
         Left Indices.Nope ->
           True
@@ -796,25 +785,22 @@ uninhabitedConstrType context fuel type_ =
       type' <- Context.forceHead context type_
       case type' of
         Domain.Pi name source _ domainClosure -> do
-          source' <- force source
-          uninhabited <- uninhabitedType context (fuel - 1) mempty source'
+          uninhabited <- uninhabitedType context (fuel - 1) mempty source
           if uninhabited then
             pure True
 
           else do
             (context', var) <- Context.extendUnnamed context name source
-            domain <- Evaluation.evaluateClosure domainClosure $ eager $ Domain.var var
+            domain <- Evaluation.evaluateClosure domainClosure $ Domain.var var
             uninhabitedConstrType context' fuel domain
 
         Domain.Fun source domain -> do
-          source' <- force source
-          uninhabited <- uninhabitedType context (fuel - 1) mempty source'
+          uninhabited <- uninhabitedType context (fuel - 1) mempty source
           if uninhabited then
             pure True
 
-          else do
-            domain' <- force domain
-            uninhabitedConstrType context fuel domain'
+          else
+            uninhabitedConstrType context fuel domain
 
         _ ->
           pure False

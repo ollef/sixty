@@ -156,13 +156,13 @@ inferDataDefinition context preParams constrs paramVars =
 
       thisType' <- evaluate context thisType
 
-      (context', var) <- Context.extend context thisName $ eager thisType'
+      (context', var) <- Context.extend context thisName thisType'
 
       lazyReturnType <-
         lazy $
           readback context' $
           Domain.Neutral (Domain.Global qualifiedThisName) $
-          second (eager . Domain.var) <$> paramVars
+          second Domain.var <$> paramVars
 
       constrs' <- forM constrs $ \case
         Presyntax.GADTConstructors cs type_ -> do
@@ -185,7 +185,7 @@ inferDataDefinition context preParams constrs paramVars =
 
     (name, type_, plicity):preParams' -> do
       type' <- check context type_ Builtin.type_
-      type'' <- lazy $ evaluate context type'
+      type'' <- evaluate context type'
       (context', paramVar) <- Context.extend context name type''
       let
         paramVars' =
@@ -211,7 +211,9 @@ varPis context env vars domain =
       let
         env' =
           Domain.extendVar env var
-      source <- force $ Context.lookupVarType var context
+
+        source =
+          Context.lookupVarType var context
       source' <- Readback.readback (Readback.fromEvaluationEnvironment env) source
       domain' <- varPis context env' vars' domain
       pure $ Syntax.Pi (Context.lookupVarName var context) source' plicity domain'
@@ -239,19 +241,16 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
       constrType' <- Context.forceHead context constrType
       case constrType' of
         Domain.Pi name source plicity domainClosure -> do
-          source' <- force source
-          source'' <- readback context' source'
+          source' <- readback context' source
           (context'', var) <- Context.extendUnnamed context' name source
-          domain <- Evaluation.evaluateClosure domainClosure $ eager $ Domain.var var
+          domain <- Evaluation.evaluateClosure domainClosure $ Domain.var var
           domain' <- go context'' domain
-          pure $ Syntax.Pi name source'' plicity domain'
+          pure $ Syntax.Pi name source' plicity domain'
 
         Domain.Fun source domain -> do
-          source' <- force source
-          source'' <- readback context' source'
-          domain' <- force domain
-          domain'' <- go context' domain'
-          pure $ Syntax.Fun source'' domain''
+          source' <- readback context' source
+          domain' <- go context' domain
+          pure $ Syntax.Fun source' domain'
 
         Domain.Neutral (Domain.Var headVar) indices
           | headVar == dataVar ->
@@ -264,21 +263,20 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
             constrType
             (Domain.Neutral
               (Domain.Var dataVar)
-              ((\(plicity, var) -> (plicity, eager $ Domain.var var)) <$> paramVars))
+              ((\(plicity, var) -> (plicity, Domain.var var)) <$> paramVars))
           readback context' constrType
 
     indexEqualities
       :: Context v
-      -> [(Plicity, Lazy Domain.Value)]
+      -> [(Plicity, Domain.Value)]
       -> [(Plicity, Var)]
       -> M (Syntax.Term v)
     indexEqualities context' indices paramVars' =
       case (indices, paramVars') of
         ((plicity1, index):indices', (plicity2, paramVar):paramVars'')
           | plicity1 == plicity2 -> do
-            index' <- force index
-            index'' <- Context.forceHead context' index'
-            case index'' of
+            index' <- Context.forceHead context' index
+            case index' of
               Domain.Neutral (Domain.Var indexVar) Tsil.Empty
                 | indexVar == paramVar ->
                   indexEqualities context' indices' paramVars''
@@ -289,11 +287,11 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
                     Builtin.Equals
                       (Context.lookupVarType paramVar context')
                       index
-                      (eager $ Domain.var paramVar)
+                      (Domain.var paramVar)
 
                 source' <- readback context' source
 
-                (context'', _) <- Context.extendUnnamed context' "eq" $ eager source
+                (context'', _) <- Context.extendUnnamed context' "eq" source
                 domain <- indexEqualities context'' indices' paramVars''
                 pure $ Syntax.Pi "eq" source' Constraint domain
 
@@ -303,7 +301,7 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
         ([], []) ->
           readback context' $
             Domain.Neutral (Domain.Var dataVar) $
-            second (eager . Domain.var) <$> paramVars
+            second Domain.var <$> paramVars
 
         _ ->
           panic "indexEqualities length mismatch"
@@ -374,12 +372,10 @@ checkUnspanned context term expectedType = do
       checkLambda context name source Explicit pat domainClosure body
 
     (Presyntax.Lam (Presyntax.ExplicitPattern pat) body, Domain.Fun source domain) -> do
-      source' <- force source
-      source'' <- readback context source'
+      source' <- readback context source
       (context', var) <- Context.extendUnnamed context "x" source
-      domain' <- force domain
-      body' <- Matching.elaborateSingle context' var pat body domain'
-      pure $ Syntax.Lam "x" source'' Explicit body'
+      body' <- Matching.elaborateSingle context' var pat body domain
+      pure $ Syntax.Lam "x" source' Explicit body'
 
     (Presyntax.Lam (Presyntax.ImplicitPattern _ namedPats) body, _)
       | HashMap.null namedPats ->
@@ -398,11 +394,10 @@ checkUnspanned context term expectedType = do
 
     (_, Domain.Pi name source Implicit domainClosure) -> do
       (context', v) <- Context.extendUnnamed context name source
-      domain <- Evaluation.evaluateClosure domainClosure (eager $ Domain.var v)
-      source' <- force source
-      source'' <- readback context source'
+      domain <- Evaluation.evaluateClosure domainClosure $ Domain.var v
+      source' <- readback context source
       term' <- checkUnspanned context' term domain
-      pure $ Syntax.Lam name source'' Implicit term'
+      pure $ Syntax.Lam name source' Implicit term'
 
     (Presyntax.App function argument, _) -> do
       let
@@ -419,10 +414,8 @@ checkUnspanned context term expectedType = do
           pure $ f $ Syntax.App function' Explicit argument'
 
         Domain.Fun source domain -> do
-          source' <- force source
-          domain' <- force domain
-          f <- subtype context domain' expectedType
-          argument' <- check context argument source'
+          f <- subtype context domain expectedType
+          argument' <- check context argument source
           pure $ f $ Syntax.App function' Explicit argument'
 
         _ -> do
@@ -430,7 +423,7 @@ checkUnspanned context term expectedType = do
           domain <- Context.newMetaType context
           let
             metaFunctionType =
-              Domain.Fun (eager source) (eager expectedType)
+              Domain.Fun source expectedType
           f <- Unification.tryUnify context functionType metaFunctionType
           g <- subtype context domain expectedType
           argument' <- check context argument source
@@ -473,7 +466,7 @@ inferUnspanned context term expectedTypeName =
 
     Presyntax.Pi name plicity source domain -> do
       source' <- check context source Builtin.type_
-      source'' <- lazy $ evaluate context source'
+      source'' <- evaluate context source'
 
       (context', _) <- Context.extend context name source''
 
@@ -520,12 +513,10 @@ inferUnspanned context term expectedTypeName =
             )
 
         Domain.Fun source domain -> do
-          source' <- force source
-          argument' <- check context argument source'
-          domain' <- force domain
+          argument' <- check context argument source
           pure
             ( Syntax.App function' Explicit argument'
-            , domain'
+            , domain
             )
 
         _ -> do
@@ -533,7 +524,7 @@ inferUnspanned context term expectedTypeName =
           domain <- Context.newMetaType context
           let
             metaFunctionType =
-              Domain.Fun (eager source) (eager domain)
+              Domain.Fun source domain
 
           f <- Unification.tryUnify context functionType metaFunctionType
           argument' <- check context argument source
@@ -562,9 +553,8 @@ inferUnspanned context term expectedTypeName =
             case functionType' of
               Domain.Pi name source Implicit domainClosure
                 | name `HashMap.member` arguments' -> do
-                  source' <- force source
-                  argument' <- check context (arguments' HashMap.! name) source'
-                  argument'' <- lazy $ evaluate context argument'
+                  argument' <- check context (arguments' HashMap.! name) source
+                  argument'' <- evaluate context argument'
                   domain <- Evaluation.evaluateClosure domainClosure argument''
                   go
                     (Syntax.App function'' Implicit argument')
@@ -574,11 +564,11 @@ inferUnspanned context term expectedTypeName =
                 | [(name, argument)] <- HashMap.toList arguments' -> do
                   source <- Context.newMetaType context
                   domain <- Context.newMetaType context
-                  (context', _) <- Context.extend context name $ eager source
+                  (context', _) <- Context.extend context name source
                   domain' <- readback context' domain
                   let
                     metaFunctionType =
-                      Domain.Pi name (eager source) Implicit $
+                      Domain.Pi name source Implicit $
                       Domain.Closure (Context.toEvaluationEnvironment context) domain'
                   f <- Unification.tryUnify context functionType' metaFunctionType
                   argument' <- check context argument source
@@ -614,7 +604,9 @@ inferName context name expectedTypeName =
   case Context.lookupNameVar name context of
     Just var -> do
       term <- readback context (Domain.var var)
-      type_ <- force $ Context.lookupVarType var context
+      let
+        type_ =
+          Context.lookupVarType var context
       pure
         ( term
         , type_
@@ -666,7 +658,7 @@ inferenceFailed context = do
 checkLambda
   :: Context v
   -> Name
-  -> Lazy Domain.Type
+  -> Domain.Type
   -> Plicity
   -> Presyntax.Pattern
   -> Domain.Closure
@@ -674,14 +666,13 @@ checkLambda
   -> M (Syntax.Term v)
 checkLambda context name source plicity pat domainClosure body = do
   (context', var) <- Context.extendUnnamed context name source
-  source' <- force source
-  source'' <- readback context source'
+  source' <- readback context source
   domain <-
     Evaluation.evaluateClosure
       domainClosure
-      (eager $ Domain.var var)
+      (Domain.var var)
   body' <- Matching.elaborateSingle context' var pat body domain
-  pure $ Syntax.Lam name source'' plicity body'
+  pure $ Syntax.Lam name source' plicity body'
 
 inferLambda
   :: Context v
@@ -693,27 +684,26 @@ inferLambda
 inferLambda context name plicity pat body = do
   source <- Context.newMetaType context
   source' <- readback context source
-  (context', var) <- Context.extendUnnamed context name $ eager source
+  (context', var) <- Context.extendUnnamed context name source
   domain <- Context.newMetaType context'
   body' <- Matching.elaborateSingle context' var pat body domain
   domain' <- readback context' domain
 
   pure
     ( Syntax.Lam name source' plicity body'
-    , Domain.Pi name (eager source) plicity
+    , Domain.Pi name source plicity
       $ Domain.Closure (Context.toEvaluationEnvironment context) domain'
     )
 
 checkApplication
   :: Context v
   -> Presyntax.Term
-  -> Lazy Domain.Type
+  -> Domain.Type
   -> Domain.Closure
   -> M (Syntax.Term v, Domain.Value)
 checkApplication context argument source domainClosure = do
-  source' <- force source
-  argument' <- check context argument source'
-  argument'' <- lazy $ evaluate context argument'
+  argument' <- check context argument source
+  argument'' <- evaluate context argument'
   domain <- Evaluation.evaluateClosure domainClosure argument''
   pure (argument', domain)
 
@@ -740,8 +730,8 @@ elaborateLet context name maybeType clauses = do
         boundTerm <- Clauses.check context clauses' typeValue
         pure (boundTerm, typeTerm, typeValue)
 
-  boundTerm' <- lazy $ evaluate context boundTerm
-  (context', _) <- Context.extendDef context name boundTerm' $ eager typeValue
+  boundTerm' <- evaluate context boundTerm
+  (context', _) <- Context.extendDef context name boundTerm' typeValue
   pure (context', boundTerm, typeTerm)
 
 resolveConstructor
@@ -795,12 +785,11 @@ getExpectedTypeName context type_ = do
 
     Domain.Pi name source _ domainClosure -> do
       (context', var) <- Context.extendUnnamed context name source
-      domain <- Evaluation.evaluateClosure domainClosure $ eager $ Domain.var var
+      domain <- Evaluation.evaluateClosure domainClosure $ Domain.var var
       getExpectedTypeName context' domain
 
-    Domain.Fun _ domain -> do
-      domain' <- force domain
-      getExpectedTypeName context domain'
+    Domain.Fun _ domain ->
+      getExpectedTypeName context domain
 
     Domain.Lam {} ->
       pure Nothing
@@ -850,10 +839,8 @@ insertMetas context until type_ = do
       instantiate source plicity domainClosure
 
     (UntilTheEnd, Domain.Fun source domain) -> do
-      source' <- force source
-      meta <- Context.newMeta source' context
-      domain' <- force domain
-      (args, res) <- insertMetas context until domain'
+      meta <- Context.newMeta source context
+      (args, res) <- insertMetas context until domain
       pure ((Explicit, meta) : args, res)
 
     (UntilExplicit, Domain.Pi _ source Implicit domainClosure) ->
@@ -864,17 +851,14 @@ insertMetas context until type_ = do
         instantiate source Implicit domainClosure
 
     (_, Domain.Pi _ source Constraint domainClosure) -> do
-      source' <- force source
-      source'' <- Context.forceHead context source'
-      case source'' of
+      source' <- Context.forceHead context source
+      case source' of
         Builtin.Equals kind term1 term2 -> do
-          term1' <- force term1
-          term2' <- force term2
-          f <- Unification.tryUnifyD context term1' term2'
+          f <- Unification.tryUnifyD context term1 term2
           let
             value =
               Builtin.Refl kind term1 term2
-          domain <- Evaluation.evaluateClosure domainClosure $ eager value
+          domain <- Evaluation.evaluateClosure domainClosure value
           (args, res) <- insertMetas context until domain
           pure ((Constraint, f value) : args, res)
 
@@ -885,9 +869,8 @@ insertMetas context until type_ = do
       pure ([], type_)
   where
     instantiate source plicity domainClosure = do
-      source' <- force source
-      meta <- Context.newMeta source' context
-      domain <- Evaluation.evaluateClosure domainClosure (eager meta)
+      meta <- Context.newMeta source context
+      domain <- Evaluation.evaluateClosure domainClosure meta
       (args, res) <- insertMetas context until domain
       pure ((plicity, meta) : args, res)
 

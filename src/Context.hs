@@ -45,8 +45,8 @@ data Context v = Context
   , indices :: Index.Map v Var
   , nameVars :: HashMap Name Var
   , varNames :: IntMap Var Name
-  , values :: IntMap Var (Lazy Domain.Value)
-  , types :: IntMap Var (Lazy Domain.Type)
+  , values :: IntMap Var Domain.Value
+  , types :: IntMap Var Domain.Type
   , boundVars :: IntSeq Var
   , metas :: !(IORef (Meta.Vars (Syntax.Term Void)))
   , errors :: !(IORef (Tsil Error))
@@ -130,7 +130,7 @@ emptyFrom context =
 extend
   :: Context v
   -> Name
-  -> Lazy Domain.Type
+  -> Domain.Type
   -> M (Context (Succ v), Var)
 extend context name type_ = do
   var <- freshVar
@@ -148,7 +148,7 @@ extend context name type_ = do
 extendUnnamed
   :: Context v
   -> Name
-  -> Lazy Domain.Type
+  -> Domain.Type
   -> M (Context (Succ v), Var)
 extendUnnamed context name type_ = do
   var <- freshVar
@@ -165,8 +165,8 @@ extendUnnamed context name type_ = do
 extendDef
   :: Context v
   -> Name
-  -> Lazy Domain.Value
-  -> Lazy Domain.Type
+  -> Domain.Value
+  -> Domain.Type
   -> M (Context (Succ v), Var)
 extendDef context name value type_ = do
   var <- freshVar
@@ -184,8 +184,8 @@ extendDef context name value type_ = do
 extendUnnamedDef
   :: Context v
   -> Name
-  -> Lazy Domain.Value
-  -> Lazy Domain.Type
+  -> Domain.Value
+  -> Domain.Type
   -> M (Context (Succ v), Var)
 extendUnnamedDef context name value type_ = do
   var <- freshVar
@@ -202,8 +202,8 @@ extendUnnamedDef context name value type_ = do
 extendUnindexedDef
   :: Context v
   -> Name
-  -> Lazy Domain.Value
-  -> Lazy Domain.Type
+  -> Domain.Value
+  -> Domain.Type
   -> M (Context v, Var)
 extendUnindexedDef context name value type_ = do
   var <- freshVar
@@ -219,7 +219,7 @@ extendUnindexedDef context name value type_ = do
 
 extendUnindexedDefs
   :: Context v
-  -> Tsil (Name, Lazy Domain.Value, Lazy Domain.Type)
+  -> Tsil (Name, Domain.Value, Domain.Type)
   -> M (Context v)
 extendUnindexedDefs context defs =
   case defs of
@@ -231,7 +231,7 @@ extendUnindexedDefs context defs =
       (context'', _) <- extendUnindexedDef context' name value type_
       pure context''
 
-extendBefore :: Context v -> Var -> Name -> Lazy Domain.Type -> M (Context (Succ v), Var)
+extendBefore :: Context v -> Var -> Name -> Domain.Type -> M (Context (Succ v), Var)
 extendBefore context beforeVar name type_ = do
   var <- freshVar
   pure
@@ -250,7 +250,7 @@ extendBefore context beforeVar name type_ = do
     , var
     )
 
-define :: Context v -> Var -> Lazy Domain.Value -> Context v
+define :: Context v -> Var -> Domain.Value -> Context v
 define context var value =
   context
     { values = IntMap.insert var value $ values context
@@ -275,17 +275,17 @@ lookupIndexVar :: Index v -> Context v -> Var
 lookupIndexVar index context =
   Index.Map.index (indices context) index
 
-lookupIndexType :: Index v -> Context v -> Lazy Domain.Type
+lookupIndexType :: Index v -> Context v -> Domain.Type
 lookupIndexType index context =
   lookupVarType (lookupIndexVar index context) context
 
-lookupVarType :: Var -> Context v -> Lazy Domain.Type
+lookupVarType :: Var -> Context v -> Domain.Type
 lookupVarType var context =
   fromMaybe (panic "Context.lookupVarType")
     $ IntMap.lookup var
     $ types context
 
-lookupVarValue :: Var -> Context v -> Maybe (Lazy Domain.Type)
+lookupVarValue :: Var -> Context v -> Maybe Domain.Type
 lookupVarValue var context =
   IntMap.lookup var (values context)
 
@@ -294,7 +294,7 @@ newMeta type_ context = do
   closedType <- piBoundVars context type_
   liftIO $ do
     i <- atomicModifyIORef (metas context) $ Meta.insert closedType (span context)
-    pure $ Domain.Neutral (Domain.Meta i) ((Explicit,) . eager . Domain.var <$> IntSeq.toTsil (boundVars context))
+    pure $ Domain.Neutral (Domain.Meta i) ((Explicit,) . Domain.var <$> IntSeq.toTsil (boundVars context))
 
 newMetaType :: Context v -> M Domain.Value
 newMetaType =
@@ -319,7 +319,9 @@ piBoundVars context type_ = do
           pure $ Syntax.coerce term
 
         vars' IntSeq.:> var -> do
-          varType <- force $ lookupVarType var context
+          let
+            varType =
+              lookupVarType var context
           varType' <-
             Readback.readback
               Readback.Environment
@@ -368,8 +370,7 @@ forceHead context value =
   case value of
     Domain.Neutral (Domain.Var var) spine
       | Just headValue <- Context.lookupVarValue var context -> do
-        headValue' <- force headValue
-        value' <- Evaluation.applySpine headValue' spine
+        value' <- Evaluation.applySpine headValue spine
         forceHead context value'
 
     Domain.Neutral (Domain.Meta metaIndex) spine -> do
@@ -412,8 +413,7 @@ forceHeadGlue context value =
     Domain.Neutral (Domain.Var var) spine
       | Just headValue <- Context.lookupVarValue var context -> do
         value' <- lazy $ do
-          headValue' <- force headValue
-          value' <- Evaluation.applySpine headValue' spine
+          value' <- Evaluation.applySpine headValue spine
           forceHeadGlue context value'
         pure $ Domain.Glued (Domain.Var var) spine value'
 
@@ -447,7 +447,7 @@ forceHeadGlue context value =
 instantiateType
   :: Context v
   -> Domain.Type
-  -> [(Plicity, Lazy Domain.Value)]
+  -> [(Plicity, Domain.Value)]
   -> M Domain.Type
 instantiateType context type_ spine = do
   type' <- Context.forceHead context type_
@@ -455,9 +455,8 @@ instantiateType context type_ spine = do
     (_, []) ->
       pure type'
 
-    (Domain.Fun _ domain, (Explicit, _):spine') -> do
-      domain' <- force domain
-      instantiateType context domain' spine'
+    (Domain.Fun _ domain, (Explicit, _):spine') ->
+      instantiateType context domain spine'
 
     (Domain.Pi _ _ plicity1 domainClosure, (plicity2, arg):spine')
       | plicity1 == plicity2 -> do

@@ -10,9 +10,9 @@ import Plicity
 
 data Telescope t k
   = Empty !k
-  | Extend !Name !t !Plicity (Lazy Domain.Value -> M (Telescope t k))
+  | Extend !Name !t !Plicity (Domain.Value -> M (Telescope t k))
 
-apply :: Telescope t k -> [(Plicity, Lazy Domain.Value)] -> M (Telescope t k)
+apply :: Telescope t k -> [(Plicity, Domain.Value)] -> M (Telescope t k)
 apply tele args =
   case (tele, args) of
     (_, []) ->

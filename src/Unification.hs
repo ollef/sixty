@@ -51,7 +51,7 @@ tryUnifyD context value1 value2 = do
   pure $ if success then
     identity
   else
-    const $ Domain.Neutral (Domain.Global Builtin.fail) $ pure (Explicit, eager value2)
+    const $ Domain.Neutral (Domain.Global Builtin.fail) $ pure (Explicit, value2)
 
 unify :: Context v -> Flexibility -> Domain.Value -> Domain.Value -> M ()
 unify context flexibility value1 value2 = do
@@ -61,8 +61,8 @@ unify context flexibility value1 value2 = do
     -- Both metas
     (Domain.Neutral (Domain.Meta metaIndex1) spine1, Domain.Neutral (Domain.Meta metaIndex2) spine2)
       | Flexibility.Rigid <- flexibility -> do
-        spine1' <- mapM ((force >=> Context.forceHead context) . snd) spine1
-        spine2' <- mapM ((force >=> Context.forceHead context) . snd) spine2
+        spine1' <- mapM (Context.forceHead context . snd) spine1
+        spine2' <- mapM (Context.forceHead context . snd) spine2
         if metaIndex1 == metaIndex2 then do
           -- If the same metavar is applied to two different lists of unknown
           -- variables its solution must not mention any variables at
@@ -111,56 +111,48 @@ unify context flexibility value1 value2 = do
       unifyAbstraction name1 source1 domainClosure1 source2 domainClosure2
 
     (Domain.Pi name1 source1 Explicit domainClosure1, Domain.Fun source2 domain2) -> do
-      unifyForce flexibility source2 source1
-
+      unify context flexibility source2 source1
       (context', var) <- Context.extendUnnamed context name1 source1
-      let
-        lazyVar = eager $ Domain.var var
-
-      domain1 <- Evaluation.evaluateClosure domainClosure1 lazyVar
-      domain2' <- force domain2
-      unify context' flexibility domain1 domain2'
+      domain1 <- Evaluation.evaluateClosure domainClosure1 $ Domain.var var
+      unify context' flexibility domain1 domain2
 
     (Domain.Fun source1 domain1, Domain.Pi name2 source2 Explicit domainClosure2) -> do
-      unifyForce flexibility source2 source1
-
+      unify context flexibility source2 source1
       (context', var) <- Context.extendUnnamed context name2 source2
-      let
-        lazyVar = eager $ Domain.var var
-
-      domain1' <- force domain1
-      domain2 <- Evaluation.evaluateClosure domainClosure2 lazyVar
-      unify context' flexibility domain1' domain2
+      domain2 <- Evaluation.evaluateClosure domainClosure2 $ Domain.var var
+      unify context' flexibility domain1 domain2
 
     (Domain.Fun source1 domain1, Domain.Fun source2 domain2) -> do
-      unifyForce flexibility source2 source1
-      unifyForce flexibility domain1 domain2
+      unify context flexibility source2 source1
+      unify context flexibility domain1 domain2
 
     -- Eta expand
     (Domain.Lam name1 type1 plicity1 closure1, v2) -> do
       (context', var) <- Context.extendUnnamed context name1 type1
       let
-        lazyVar = eager $ Domain.var var
+        varValue =
+          Domain.var var
 
-      body1 <- Evaluation.evaluateClosure closure1 lazyVar
-      body2 <- Evaluation.apply v2 plicity1 lazyVar
+      body1 <- Evaluation.evaluateClosure closure1 varValue
+      body2 <- Evaluation.apply v2 plicity1 varValue
 
       unify context' flexibility body1 body2
 
     (v1, Domain.Lam name2 type2 plicity2 closure2) -> do
       (context', var) <- Context.extendUnnamed context name2 type2
       let
-        lazyVar = eager $ Domain.var var
+        varValue =
+          Domain.var var
 
-      body1 <- Evaluation.apply v1 plicity2 lazyVar
-      body2 <- Evaluation.evaluateClosure closure2 lazyVar
+      body1 <- Evaluation.apply v1 plicity2 varValue
+      body2 <- Evaluation.evaluateClosure closure2 varValue
 
       unify context' flexibility body1 body2
 
     -- Metas
     (Domain.Neutral (Domain.Meta metaIndex1) spine1, v2)
       | Flexibility.Rigid <- flexibility -> do
-        spine1' <- mapM ((force >=> Context.forceHead context) . snd) spine1
+        spine1' <- mapM (Context.forceHead context . snd) spine1
         case traverse Domain.singleVarView spine1' of
           Just vars1
             | unique vars1 ->
@@ -171,7 +163,7 @@ unify context flexibility value1 value2 = do
 
     (v1, Domain.Neutral (Domain.Meta metaIndex2) spine2)
       | Flexibility.Rigid <- flexibility -> do
-        spine2' <- mapM ((force >=> Context.forceHead context) . snd) spine2
+        spine2' <- mapM (Context.forceHead context . snd) spine2
         case traverse Domain.singleVarView spine2' of
           Just vars2
             | unique vars2 ->
@@ -235,17 +227,18 @@ unify context flexibility value1 value2 = do
       unify context flexibility' v1 v2
 
     unifySpines flexibility' =
-      Tsil.zipWithM_ $ \(_, v1) (_, v2) -> unifyForce flexibility' v1 v2
+      Tsil.zipWithM_ $ \(_, v1) (_, v2) -> unify context flexibility' v1 v2
 
     unifyAbstraction name type1 closure1 type2 closure2 = do
-      unifyForce flexibility type1 type2
+      unify context flexibility type1 type2
 
       (context', var) <- Context.extendUnnamed context name type1
       let
-        lazyVar = eager $ Domain.var var
+        varValue =
+          Domain.var var
 
-      body1 <- Evaluation.evaluateClosure closure1 lazyVar
-      body2 <- Evaluation.evaluateClosure closure2 lazyVar
+      body1 <- Evaluation.evaluateClosure closure1 varValue
+      body2 <- Evaluation.evaluateClosure closure2 varValue
       unify context' flexibility body1 body2
 
     can'tUnify =
@@ -308,7 +301,7 @@ unifyBranches
             type1' <- Evaluation.evaluate env1 type1
             type2' <- Evaluation.evaluate env2 type2
             unify context flexibility type1' type2'
-            (context', var) <- Context.extendUnnamed context name1 $ eager type1'
+            (context', var) <- Context.extendUnnamed context name1 type1'
             unifyTele
               context'
               (Domain.extendVar env1 var)
@@ -409,7 +402,7 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
               pure False
 
         Telescope.Extend name type_ _ tele' -> do
-          type' <- lazy $ Evaluation.evaluate env type_
+          type' <- Evaluation.evaluate env type_
           (context', var) <- Context.extendUnnamed context name type'
           branchMatches context' (Domain.extendVar env var) tele'
 
@@ -448,7 +441,7 @@ fullyApplyToMetas context constr type_ = do
           (Syntax.fromVoid $ Telescope.fold Syntax.Pi constrType)
       instantiatedConstrType <- Context.instantiateType context constrType' $ toList typeArgs
       (metas, _) <- Elaboration.insertMetas context Elaboration.UntilTheEnd instantiatedConstrType
-      pure $ Domain.Neutral (Domain.Con constr) $ typeArgs <> Tsil.fromList (second eager <$> metas)
+      pure $ Domain.Neutral (Domain.Con constr) $ typeArgs <> Tsil.fromList metas
 
     _ ->
       panic "fullyApplyToMetas"
@@ -532,8 +525,7 @@ addAndCheckLambdas outerContext meta vars term =
         type_ =
           Context.lookupVarType var outerContext
 
-      type' <- force type_
-      type'' <-
+      type' <-
         checkInnerSolution
           outerContext
           meta
@@ -542,9 +534,9 @@ addAndCheckLambdas outerContext meta vars term =
             , values = Context.values outerContext
             }
           Flexibility.Rigid
-          type'
+          type_
       let
-        term' = Syntax.Lam name type'' Explicit (Syntax.succ term)
+        term' = Syntax.Lam name type' Explicit (Syntax.succ term)
       addAndCheckLambdas outerContext meta vars' term'
 
 checkInnerSolution
@@ -559,7 +551,7 @@ checkInnerSolution outerContext occurs env flexibility value = do
   case value' of
     Domain.Neutral hd@(Domain.Meta i) spine
       | Flexibility.Rigid <- flexibility -> do
-        spine' <- mapM ((force >=> Context.forceHead outerContext) . snd) spine
+        spine' <- mapM (Context.forceHead outerContext . snd) spine
         case traverse Domain.singleVarView spine' of
           Just vars
             | allowedVars <- map (\v -> isJust (Readback.lookupVarIndex v env)) vars
@@ -583,26 +575,22 @@ checkInnerSolution outerContext occurs env flexibility value = do
       value''' <- force value''
       checkInnerSolution outerContext occurs env flexibility value'''
 
-    Domain.Lam name type_ plicity closure -> do
-      type' <- force type_
+    Domain.Lam name type_ plicity closure ->
       Syntax.Lam name
-        <$> checkInnerSolution outerContext occurs env flexibility type'
+        <$> checkInnerSolution outerContext occurs env flexibility type_
         <*> pure plicity
         <*> checkInnerClosure outerContext occurs env flexibility closure
 
-    Domain.Pi name type_ plicity closure -> do
-      type' <- force type_
+    Domain.Pi name type_ plicity closure ->
       Syntax.Pi name
-        <$> checkInnerSolution outerContext occurs env flexibility type'
+        <$> checkInnerSolution outerContext occurs env flexibility type_
         <*> pure plicity
         <*> checkInnerClosure outerContext occurs env flexibility closure
 
-    Domain.Fun source domain -> do
-      source' <- force source
-      domain' <- force domain
+    Domain.Fun source domain ->
       Syntax.Fun
-        <$> checkInnerSolution outerContext occurs env flexibility source'
-        <*> checkInnerSolution outerContext occurs env flexibility domain'
+        <$> checkInnerSolution outerContext occurs env flexibility source
+        <*> checkInnerSolution outerContext occurs env flexibility domain
 
     Domain.Case scrutinee (Domain.Branches env' branches defaultBranch) -> do
       scrutinee' <- checkInnerSolution outerContext occurs env flexibility scrutinee
@@ -647,7 +635,7 @@ checkInnerClosure
   -> M (Scope Syntax.Term v')
 checkInnerClosure outerContext occurs env flexibility closure = do
   (env', v) <- Readback.extend env
-  closure' <- Evaluation.evaluateClosure closure $ eager $ Domain.var v
+  closure' <- Evaluation.evaluateClosure closure $ Domain.var v
   checkInnerSolution outerContext occurs env' flexibility closure'
 
 checkInnerNeutral
@@ -664,11 +652,10 @@ checkInnerNeutral outerContext occurs env flexibility hd spine =
       checkInnerHead occurs env hd
 
     spine' Tsil.:> (plicity, arg) -> do
-      arg' <- force arg
       Syntax.App
         <$> checkInnerNeutral outerContext occurs env flexibility hd spine'
         <*> pure plicity
-        <*> checkInnerSolution outerContext occurs env flexibility arg'
+        <*> checkInnerSolution outerContext occurs env flexibility arg
 
 checkInnerHead
   :: Meta.Index
@@ -735,43 +722,42 @@ pruneMeta context meta allowedArgs = do
         allowed:alloweds' ->
           case type_ of
             Domain.Fun source domain -> do
-              source' <- force source
-              source'' <-
+              source' <-
                 Readback.readback
                   (Context.toReadbackEnvironment context')
-                  source'
+                  source
               (context'', _) <-
                 if allowed then
                   Context.extendUnnamed context' "x" source
-                else
+                else do
+                  fakeVar <- freshVar
                   Context.extendUnnamedDef
                     context'
                     "x"
-                    (Lazy $ throwError Error.TypeMismatch)
+                    (Domain.Glued (Domain.Var fakeVar) mempty $ Lazy $ throwError Error.TypeMismatch)
                     source
-              domain' <- force domain
-              body <- go alloweds' context'' domain'
-              pure $ Syntax.Lam "x" source'' Explicit body
+              body <- go alloweds' context'' domain
+              pure $ Syntax.Lam "x" source' Explicit body
 
             Domain.Pi name source plicity domainClosure -> do
               (context'', v) <-
                 if allowed then
                   Context.extend context' name source
-                else
+                else do
+                  fakeVar <- freshVar
                   Context.extendUnnamedDef
                     context'
                     name
-                    (Lazy $ throwError Error.TypeMismatch)
+                    (Domain.Glued (Domain.Var fakeVar) mempty $ Lazy $ throwError Error.TypeMismatch)
                     source
               domain <-
                 Evaluation.evaluateClosure
                   domainClosure
-                  (eager $ Domain.var v)
-              source' <- force source
+                  (Domain.var v)
               source'' <-
                 Readback.readback
                   (Context.toReadbackEnvironment context')
-                  source'
+                  source
               body <- go alloweds' context'' domain
               pure $ Syntax.Lam name source'' plicity body
 

@@ -77,41 +77,32 @@ unify context flexibility untouchables value1 value2 = do
       unifyAbstraction name1 source1 domainClosure1 source2 domainClosure2
 
     (Domain.Pi name1 source1 Explicit domainClosure1, Domain.Fun source2 domain2) -> do
-      context1 <- unifyForce context flexibility source2 source1
-
+      context1 <- unify context flexibility untouchables source2 source1
       (context2, var) <- lift $ Context.extendUnnamed context1 name1 source1
-      let
-        lazyVar = eager $ Domain.var var
-
-      domain1 <- lift $ Evaluation.evaluateClosure domainClosure1 lazyVar
-      domain2' <- lift $ force domain2
-      context3 <- unify context2 flexibility (IntSet.insert var untouchables) domain1 domain2'
+      domain1 <- lift $ Evaluation.evaluateClosure domainClosure1 $ Domain.var var
+      context3 <- unify context2 flexibility (IntSet.insert var untouchables) domain1 domain2
       pure $ unextend context3
 
     (Domain.Fun source1 domain1, Domain.Pi name2 source2 Explicit domainClosure2) -> do
-      context1 <- unifyForce context flexibility source2 source1
-
+      context1 <- unify context flexibility untouchables source2 source1
       (context2, var) <- lift $ Context.extendUnnamed context1 name2 source2
-      let
-        lazyVar = eager $ Domain.var var
-
-      domain1' <- lift $ force domain1
-      domain2 <- lift $ Evaluation.evaluateClosure domainClosure2 lazyVar
-      context3 <- unify context2 flexibility (IntSet.insert var untouchables) domain1' domain2
+      domain2 <- lift $ Evaluation.evaluateClosure domainClosure2 $ Domain.var var
+      context3 <- unify context2 flexibility (IntSet.insert var untouchables) domain1 domain2
       pure $ unextend context3
 
     (Domain.Fun source1 domain1, Domain.Fun source2 domain2) -> do
-      context1 <- unifyForce context flexibility source2 source1
-      unifyForce context1 flexibility domain1 domain2
+      context1 <- unify context flexibility untouchables source2 source1
+      unify context1 flexibility untouchables domain1 domain2
 
     -- Eta expand
     (Domain.Lam name1 type1 plicity1 closure1, v2) -> do
       (context1, var) <- lift $ Context.extendUnnamed context name1 type1
       let
-        lazyVar = eager $ Domain.var var
+        varValue =
+          Domain.var var
 
-      body1 <- lift $ Evaluation.evaluateClosure closure1 lazyVar
-      body2 <- lift $ Evaluation.apply v2 plicity1 lazyVar
+      body1 <- lift $ Evaluation.evaluateClosure closure1 varValue
+      body2 <- lift $ Evaluation.apply v2 plicity1 varValue
 
       context2 <- unify context1 flexibility (IntSet.insert var untouchables) body1 body2
       pure $ unextend context2
@@ -119,10 +110,11 @@ unify context flexibility untouchables value1 value2 = do
     (v1, Domain.Lam name2 type2 plicity2 closure2) -> do
       (context1, var) <- lift $ Context.extendUnnamed context name2 type2
       let
-        lazyVar = eager $ Domain.var var
+        varValue =
+          Domain.var var
 
-      body1 <- lift $ Evaluation.apply v1 plicity2 lazyVar
-      body2 <- lift $ Evaluation.evaluateClosure closure2 lazyVar
+      body1 <- lift $ Evaluation.apply v1 plicity2 varValue
+      body2 <- lift $ Evaluation.evaluateClosure closure2 varValue
 
       context2 <- unify context1 flexibility (IntSet.insert var untouchables) body1 body2
       pure $ unextend context2
@@ -152,19 +144,20 @@ unify context flexibility untouchables value1 value2 = do
 
     unifySpines flexibility' spine1 spine2 =
       foldM
-        (\context' -> uncurry (unifyForce context' flexibility' `on` snd))
+        (\context' -> uncurry (unify context' flexibility' untouchables `on` snd))
         context
         (Tsil.zip spine1 spine2)
 
     unifyAbstraction name type1 closure1 type2 closure2 = do
-      context1 <- unifyForce context flexibility type1 type2
+      context1 <- unify context flexibility untouchables type1 type2
 
       (context2, var) <- lift $ Context.extendUnnamed context1 name type1
       let
-        lazyVar = eager $ Domain.var var
+        varValue =
+          Domain.var var
 
-      body1 <- lift $ Evaluation.evaluateClosure closure1 lazyVar
-      body2 <- lift $ Evaluation.evaluateClosure closure2 lazyVar
+      body1 <- lift $ Evaluation.evaluateClosure closure1 varValue
+      body2 <- lift $ Evaluation.evaluateClosure closure2 varValue
       context3 <- unify context2 flexibility (IntSet.insert var untouchables) body1 body2
       pure $ unextend context3
 
@@ -174,7 +167,7 @@ unify context flexibility untouchables value1 value2 = do
 
       | otherwise = do
         occurs context (IntSet.insert var untouchables) value
-        pure $ Context.define context var $ eager value
+        pure $ Context.define context var value
 
 unifyBranches
   :: Context v
@@ -231,7 +224,7 @@ unifyBranches
             type1' <- lift $ Evaluation.evaluate env1 type1
             type2' <- lift $ Evaluation.evaluate env2 type2
             context' <- unify context flexibility untouchables type1' type2'
-            (context'', var) <- lift $ Context.extendUnnamed context' name1 $ eager type1'
+            (context'', var) <- lift $ Context.extendUnnamed context' name1 type1'
             context''' <-
               unifyTele
                 context''
@@ -275,7 +268,7 @@ occurs context untouchables value = do
         occursForce value''
 
     Domain.Neutral _ spine ->
-      mapM_ (occursForce . snd) spine
+      mapM_ (occurs context untouchables . snd) spine
 
     Domain.Lam name type_ _ closure ->
       occursAbstraction name type_ closure
@@ -284,8 +277,8 @@ occurs context untouchables value = do
       occursAbstraction name source domainClosure
 
     Domain.Fun source domain -> do
-      occursForce source
-      occursForce domain
+      occurs context untouchables source
+      occurs context untouchables domain
 
     Domain.Case scrutinee branches -> do
       occurs context untouchables scrutinee
@@ -297,12 +290,13 @@ occurs context untouchables value = do
       occurs context untouchables value'
 
     occursAbstraction name type_ closure = do
-      occursForce type_
+      occurs context untouchables type_
       (context', var) <- lift $ Context.extendUnnamed context name type_
       let
-        lazyVar = eager $ Domain.var var
+        varValue =
+          Domain.var var
 
-      body <- lift $ Evaluation.evaluateClosure closure lazyVar
+      body <- lift $ Evaluation.evaluateClosure closure varValue
       occurs context' untouchables body
 
 occursBranches :: Context v -> IntSet Var -> Domain.Branches -> E M ()
@@ -321,7 +315,7 @@ occursBranches outerContext outerUntouchables (Domain.Branches outerEnv branches
     occursTele context untouchables env tele =
       case tele of
         Telescope.Extend name type_ _plicity tele' -> do
-          type' <- lazy $ Evaluation.evaluate env type_
+          type' <- lift $ Evaluation.evaluate env type_
           (context'', var) <- lift $ Context.extendUnnamed context name type'
           occursTele
             context''

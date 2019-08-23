@@ -51,24 +51,22 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
           domain <-
             Evaluation.evaluateClosure
               domainClosure
-              (eager $ Domain.var var)
+              (Domain.var var)
           explicitFunCase context' name var source domain
 
       Domain.Fun source domain
         | HashMap.null implicits -> do
           (context', var) <- Context.extendUnnamed context "x" source
-          domain' <- force domain
-          explicitFunCase context' "x" var source domain'
+          explicitFunCase context' "x" var source domain
 
       Domain.Pi name source Implicit domainClosure -> do
         (context', var) <- Context.extendUnnamed context name source
         let
           value =
             Domain.var var
-        domain <- Evaluation.evaluateClosure domainClosure $ eager value
-        source' <- force source
-        source'' <- Elaboration.readback context source'
-        body <- check context' (shiftImplicit name value source' <$> clauses) domain
+        domain <- Evaluation.evaluateClosure domainClosure value
+        source'' <- Elaboration.readback context source
+        body <- check context' (shiftImplicit name value source <$> clauses) domain
         pure $ Syntax.Lam name source'' Implicit body
 
       _ -> do
@@ -80,12 +78,8 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
       foldMap clauseImplicits clauses
 
     explicitFunCase context' name var source domain = do
-      let
-        value =
-          Domain.var var
-      source' <- force source
-      source'' <- Elaboration.readback context source'
-      clauses' <- mapM (shiftExplicit context value source') clauses
+      source'' <- Elaboration.readback context source
+      clauses' <- mapM (shiftExplicit context (Domain.var var) source) clauses
       body <- check context' clauses' domain
       pure $ Syntax.Lam name source'' Explicit body
 
@@ -113,24 +107,21 @@ infer context (fmap removeEmptyImplicits -> clauses)
       [] -> do
         source <- Context.newMetaType context
         source' <- Elaboration.readback context source
-        (context', var) <- Context.extendUnnamed context "x" $ eager source
-        let
-          value =
-            Domain.var var
-        clauses' <- mapM (shiftExplicit context value source) clauses
+        (context', var) <- Context.extendUnnamed context "x" source
+        clauses' <- mapM (shiftExplicit context (Domain.var var) source) clauses
         (body, domain) <- infer context' clauses'
         domain' <- Elaboration.readback context' domain
 
         pure
           ( Syntax.Lam "x" source' Explicit body
-          , Domain.Pi "x" (eager source) Explicit
+          , Domain.Pi "x" source Explicit
             $ Domain.Closure (Context.toEvaluationEnvironment context) domain'
           )
 
       [(name, _)] -> do
         source <- Context.newMetaType context
         source' <- Elaboration.readback context source
-        (context', var) <- Context.extendUnnamed context name $ eager source
+        (context', var) <- Context.extendUnnamed context name source
         let
           value =
             Domain.var var
@@ -139,7 +130,7 @@ infer context (fmap removeEmptyImplicits -> clauses)
 
         pure
           ( Syntax.Lam name source' Implicit body
-          , Domain.Pi name (eager source) Implicit
+          , Domain.Pi name source Implicit
             $ Domain.Closure (Context.toEvaluationEnvironment context) domain'
           )
 

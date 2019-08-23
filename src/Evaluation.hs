@@ -43,7 +43,7 @@ evaluate env term =
         var =
           Domain.lookupVar index env
 
-      pure $ Domain.Glued (Domain.Var var) mempty $ Domain.lookupValue var env
+      pure $ Domain.Glued (Domain.Var var) mempty $ eager $ Domain.lookupValue var env
 
     Syntax.Global name -> do
       definitionVisible <- fetch $ Query.IsDefinitionVisible (Domain.scopeKey env) name
@@ -68,26 +68,26 @@ evaluate env term =
       pure $ Domain.meta i
 
     Syntax.Let _ t _ s -> do
-      t' <- lazy $ evaluate env t
+      t' <- evaluate env t
       env' <- Domain.extendValue env t'
       evaluate env' s
 
     Syntax.Pi n t p s -> do
-      t' <- lazy $ evaluate env t
+      t' <- evaluate env t
       pure $ Domain.Pi n t' p (Domain.Closure env s)
 
     Syntax.Fun t1 t2 -> do
-      t1' <- lazy $ evaluate env t1
-      t2' <- lazy $ evaluate env t2
+      t1' <- evaluate env t1
+      t2' <- evaluate env t2
       pure $ Domain.Fun t1' t2'
 
     Syntax.Lam n t p s -> do
-      t' <- lazy $ evaluate env t
+      t' <- evaluate env t
       pure $ Domain.Lam n t' p (Domain.Closure env s)
 
     Syntax.App t1 p t2 -> do
       t1' <- evaluate env t1
-      t2' <- lazy $ evaluate env t2
+      t2' <- evaluate env t2
       apply t1' p t2'
 
     Syntax.Case scrutinee branches defaultBranch -> do
@@ -105,7 +105,7 @@ evaluate env term =
 chooseBranch
   :: Domain.Environment v
   -> Name.QualifiedConstructor
-  -> [(Plicity, Lazy Domain.Value)]
+  -> [(Plicity, Domain.Value)]
   -> Syntax.Branches v
   -> Maybe (Syntax.Term v)
   -> M Domain.Value
@@ -122,7 +122,7 @@ chooseBranch outerEnv constr outerArgs branches defaultBranch =
   where
     go
       :: Domain.Environment v
-      -> [(Plicity, Lazy Domain.Value)]
+      -> [(Plicity, Domain.Value)]
       -> Telescope Syntax.Type Syntax.Term v
       -> M Domain.Value
     go env args tele =
@@ -138,7 +138,7 @@ chooseBranch outerEnv constr outerArgs branches defaultBranch =
         _ ->
           panic "chooseBranch mismatch"
 
-apply :: Domain.Value -> Plicity -> Lazy Domain.Value -> M Domain.Value
+apply :: Domain.Value -> Plicity -> Domain.Value -> M Domain.Value
 apply fun plicity arg =
   case fun of
     Domain.Lam _ _  plicity' closure
@@ -160,7 +160,7 @@ apply fun plicity arg =
 applySpine :: Domain.Value -> Domain.Spine -> M Domain.Value
 applySpine = foldM (\val (plicity, arg) -> apply val plicity arg)
 
-evaluateClosure :: Domain.Closure -> Lazy Domain.Value -> M Domain.Value
+evaluateClosure :: Domain.Closure -> Domain.Value -> M Domain.Value
 evaluateClosure (Domain.Closure env body) argument = do
   env' <- Domain.extendValue env argument
   evaluate env' body

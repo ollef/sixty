@@ -27,9 +27,9 @@ import qualified Var
 data Value
   = Neutral !Head Spine
   | Glued !Head Spine !(Lazy Value)
-  | Lam !Name !(Lazy Type) !Plicity !Closure
-  | Pi !Name !(Lazy Type) !Plicity !Closure
-  | Fun !(Lazy Type) !(Lazy Type)
+  | Lam !Name !Type !Plicity !Closure
+  | Pi !Name !Type !Plicity !Closure
+  | Fun !Type !Type
   | Case !Value !Branches
 
 type Type = Value
@@ -41,7 +41,7 @@ data Head
   | Meta !Meta.Index
   deriving (Eq, Show)
 
-type Spine = Tsil (Plicity, Lazy Value)
+type Spine = Tsil (Plicity, Value)
 
 data Closure where
   Closure :: Environment v -> Scope Syntax.Term v -> Closure
@@ -85,7 +85,7 @@ headFlexibility = \case
 data Environment v = Environment
   { scopeKey :: !Scope.KeyedName
   , indices :: Index.Map v Var
-  , values :: IntMap Var (Lazy Domain.Value)
+  , values :: IntMap Var Domain.Value
   }
 
 empty :: Scope.KeyedName -> Environment Void
@@ -113,7 +113,7 @@ extendVar env v =
 
 extendValue
   :: Environment v
-  -> Lazy Domain.Value
+  -> Domain.Value
   -> M (Environment (Succ v))
 extendValue env value = do
   v <- freshVar
@@ -126,8 +126,8 @@ lookupVar :: Index v -> Environment v -> Var
 lookupVar index env =
   Index.Map.index (indices env) index
 
-lookupValue :: Var -> Environment v -> Lazy Domain.Value
+lookupValue :: Var -> Environment v -> Domain.Value
 lookupValue v env =
   fromMaybe
-    (eager $ var v)
+    (var v)
     (IntMap.lookup v $ values env)

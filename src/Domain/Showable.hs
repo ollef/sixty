@@ -44,19 +44,19 @@ to :: Domain.Value -> M Value
 to value =
   case value of
     Domain.Neutral hd spine ->
-      Neutral hd <$> mapM (mapM lazyTo) spine
+      Neutral hd <$> mapM (mapM to) spine
 
     Domain.Glued hd spine value' ->
-      Glued hd <$> mapM (mapM lazyTo) spine <*> lazyTo value'
+      Glued hd <$> mapM (mapM to) spine <*> lazyTo value'
 
     Domain.Lam name type_ plicity closure ->
-      Lam name <$> lazyTo type_ <*> pure plicity <*> closureTo closure
+      Lam name <$> to type_ <*> pure plicity <*> closureTo closure
 
     Domain.Pi name type_ plicity closure ->
-      Pi name <$> lazyTo type_ <*> pure plicity <*> closureTo closure
+      Pi name <$> to type_ <*> pure plicity <*> closureTo closure
 
     Domain.Fun source domain ->
-      Fun <$> lazyTo source <*> lazyTo domain
+      Fun <$> to source <*> to domain
 
     Domain.Case scrutinee branches ->
       Case <$> to scrutinee <*> branchesTo branches
@@ -76,7 +76,7 @@ branchesTo (Domain.Branches env branches defaultBranch) = do
 
 environmentTo :: Domain.Environment v -> M (Environment v)
 environmentTo env = do
-  values' <- mapM lazyTo $ Domain.values env
+  values' <- mapM to $ Domain.values env
   pure $ Environment
     { scopeKey = Domain.scopeKey env
     , indices = Domain.indices env

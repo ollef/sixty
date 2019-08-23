@@ -22,7 +22,7 @@ import Var
 
 data Environment v = Environment
   { indices :: Index.Map v Var
-  , values :: IntMap Var (Lazy Domain.Value)
+  , values :: IntMap Var Domain.Value
   }
 
 empty :: Environment Void
@@ -58,7 +58,7 @@ lookupIndexVar :: Index v -> Environment v -> Var
 lookupIndexVar index context =
   Index.Map.index (indices context) index
 
-lookupVarValue :: Var -> Environment v -> Maybe (Lazy Domain.Type)
+lookupVarValue :: Var -> Environment v -> Maybe Domain.Type
 lookupVarValue var context =
   IntMap.lookup var (values context)
 
@@ -89,18 +89,14 @@ readback env value =
         Just hd' ->
           readbackSpine hd' spine
 
-    Domain.Lam name type_ plicity closure -> do
-      type' <- force type_
-      Syntax.Lam name <$> readback env type' <*> pure plicity <*> readbackClosure env closure
+    Domain.Lam name type_ plicity closure ->
+      Syntax.Lam name <$> readback env type_ <*> pure plicity <*> readbackClosure env closure
 
-    Domain.Pi name type_ plicity closure -> do
-      type' <- force type_
-      Syntax.Pi name <$> readback env type' <*> pure plicity <*> readbackClosure env closure
+    Domain.Pi name type_ plicity closure ->
+      Syntax.Pi name <$> readback env type_ <*> pure plicity <*> readbackClosure env closure
 
-    Domain.Fun source domain -> do
-      source' <- force source
-      domain' <- force domain
-      Syntax.Fun <$> readback env source' <*> readback env domain'
+    Domain.Fun source domain ->
+      Syntax.Fun <$> readback env source <*> readback env domain
 
     Domain.Case scrutinee (Domain.Branches env' branches defaultBranch) -> do
       scrutinee' <- readback env scrutinee
@@ -111,16 +107,14 @@ readback env value =
       pure $ Syntax.Case scrutinee' branches' defaultBranch'
   where
     readbackSpine =
-      foldM $ \fun (plicity, lazyArg) -> do
-        arg <- force lazyArg
+      foldM $ \fun (plicity, arg) -> do
         arg' <- readback env arg
         pure $ Syntax.App fun plicity arg'
 
 readbackClosure :: Environment v -> Domain.Closure -> M (Scope Syntax.Term v)
 readbackClosure env closure = do
   (env', v) <- extend env
-
-  closure' <- Evaluation.evaluateClosure closure $ eager $ Domain.var v
+  closure' <- Evaluation.evaluateClosure closure $ Domain.var v
   readback env' closure'
 
 readbackHead :: Environment v -> Domain.Head -> M (Syntax.Term v)
@@ -142,8 +136,7 @@ readbackMaybeHead env hd =
           pure $ Just $ Syntax.Var i
 
         (Nothing, Just value) -> do
-          value' <- force value
-          term <- readback env value'
+          term <- readback env value
           pure $ Just term
 
         (Nothing, Nothing) ->
