@@ -1,0 +1,27 @@
+data Nat = Z | S Nat
+
+add : Nat -> Nat -> Nat
+add Z n = n
+add (S m) n = S (add m n)
+
+mul : Nat -> Nat -> Nat
+mul Z n = Z
+mul (S m) n = add n (mul m n)
+
+data Equals forall T. (a b : T) where
+  Refl : Equals a a
+
+n10 = S (S (S (S (S (S (S (S (S (S Z)))))))))
+n100 = mul n10 n10
+n10k = mul n100 n100
+n100m = mul n10k n10k
+
+nfun : Nat -> Type
+nfun Z = Type
+nfun (S n) = Type -> nfun n
+
+test1 : nfun n100m -> nfun n100m
+test1 x = x
+
+test2 : Equals n100m n100m
+test2 = Refl
