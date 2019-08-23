@@ -43,9 +43,7 @@ inlineDataDefinition
 inlineDataDefinition env tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constrDefs) -> do
-      constrDefs' <- forM constrDefs $ \(constr, type_) -> do
-        type' <- inlineTerm env type_
-        pure (constr, type')
+      constrDefs' <- forM constrDefs $ inlineTerm env
       pure $ Telescope.Empty $ Syntax.ConstructorDefinitions constrDefs'
 
     Telescope.Extend name type_ plicity tele' -> do

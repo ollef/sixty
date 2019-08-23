@@ -8,7 +8,6 @@ module Rules where
 import Protolude hiding (force)
 
 import qualified Data.HashMap.Lazy as HashMap
-import qualified Data.List as List
 import Data.String
 import Data.Text.Unsafe as Text
 import Rock
@@ -227,8 +226,10 @@ rules files (Writer query) =
                 case tele' of
                   Telescope.Empty (Syntax.ConstructorDefinitions constrs) ->
                     Telescope.Empty $
-                      fromMaybe (panic "ConstructorType: no such constructor") $
-                        List.lookup constr constrs
+                      HashMap.lookupDefault
+                        (panic "ConstructorType: no such constructor")
+                        constr
+                        constrs
 
                   Telescope.Extend paramName paramType plicity tele'' ->
                     Telescope.Extend paramName paramType (implicitise plicity) $ go tele''

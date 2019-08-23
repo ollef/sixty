@@ -108,9 +108,7 @@ inlineSolutions solutions def type_ = do
     inlineTeleSolutions env tele =
       case tele of
         Telescope.Empty (Syntax.ConstructorDefinitions constrs) -> do
-          constrs' <- forM constrs $ \(constr, constrType) -> do
-            constrType' <- inlineTermSolutions env constrType
-            pure (constr, constrType')
+          constrs' <- forM constrs $ inlineTermSolutions env
           pure $ Telescope.Empty (Syntax.ConstructorDefinitions constrs')
 
         Telescope.Extend name paramType plicity tele' -> do

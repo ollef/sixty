@@ -179,7 +179,7 @@ inferDataDefinition context preParams constrs paramVars =
               Syntax.funs types' returnType
           pure [(constr, Syntax.Let thisName this thisType type_)]
       pure
-        ( Telescope.Empty (Syntax.ConstructorDefinitions $ concat constrs')
+        ( Telescope.Empty (Syntax.ConstructorDefinitions $ HashMap.fromList $ concat constrs')
         , Syntax.Global Builtin.typeName
         )
 

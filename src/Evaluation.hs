@@ -3,6 +3,7 @@ module Evaluation where
 
 import Protolude hiding (Seq, force, evaluate)
 
+import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Rock
 
@@ -21,13 +22,11 @@ import qualified Syntax.Telescope as Telescope
 evaluateConstructorDefinitions
   :: Domain.Environment v
   -> Telescope Syntax.Type Syntax.ConstructorDefinitions v
-  -> M (Domain.Telescope Domain.Type [(Name.Constructor, Domain.Type)])
+  -> M (Domain.Telescope Domain.Type (HashMap Name.Constructor Domain.Type))
 evaluateConstructorDefinitions env tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constrs) -> do
-      constrs' <- forM constrs $ \(constr, type_) -> do
-        type' <- evaluate env type_
-        pure (constr, type')
+      constrs' <- forM constrs $ evaluate env
       pure $ Domain.Telescope.Empty constrs'
 
     Telescope.Extend name source plicity domain -> do

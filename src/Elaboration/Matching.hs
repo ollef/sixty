@@ -7,11 +7,11 @@ import Protolude hiding (IntMap, force)
 
 import Control.Monad.Fail
 import Control.Monad.Trans.Maybe
+import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.HashSet (HashSet)
 import Data.IORef
-import qualified Data.List as List
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Rock
@@ -560,7 +560,7 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
       :: Context v
       -> [(Plicity, Lazy Domain.Value)]
       -> Domain.Spine
-      -> Domain.Telescope Domain.Type [(Name.Constructor, Domain.Type)]
+      -> Domain.Telescope Domain.Type (HashMap Name.Constructor Domain.Type)
       -> M (Syntax.Type v)
     goParams context params conArgs dataTele =
       case (params, dataTele) of
@@ -574,8 +574,10 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
           branches <- flip HashMap.traverseWithKey (HashSet.toMap matchedConstructors) $ \qualifiedConstr@(Name.QualifiedConstructor _ constr) () -> do
             let
               constrType =
-                fromMaybe (panic "Matching constrType") $
-                  List.lookup constr constructors
+                HashMap.lookupDefault
+                  (panic "Matching constrType")
+                  constr
+                  constructors
 
             goConstrFields context qualifiedConstr conArgs constrType
 
@@ -763,11 +765,15 @@ uninhabitedType context fuel coveredConstructors type_ = do
           case tele'' of
             Domain.Telescope.Empty constructors -> do
               let
+                qualifiedConstructors =
+                  HashMap.fromList
+                    [ (Name.QualifiedConstructor global constr, constrType)
+                    | (constr, constrType) <- HashMap.toList constructors
+                    ]
+
                 uncoveredConstructorTypes =
-                  [ constrType
-                  | (constr, constrType) <- constructors
-                  , not $ HashSet.member (Name.QualifiedConstructor global constr) coveredConstructors
-                  ]
+                  toList $
+                  HashMap.difference qualifiedConstructors (HashSet.toMap coveredConstructors)
 
               allM (uninhabitedConstrType context fuel) uncoveredConstructorTypes
 

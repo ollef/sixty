@@ -253,7 +253,7 @@ prettyConstructorDefinitions env tele =
       indent 2
         (vcat
           [ pretty constr <+> ":" <+> prettyTerm 0 env type_
-          | (constr, type_) <- constrs
+          | (constr, type_) <- HashMap.toList constrs
           ]
         )
 

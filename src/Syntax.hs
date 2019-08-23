@@ -70,5 +70,5 @@ data Definition
   deriving (Show, Generic, Hashable)
 
 newtype ConstructorDefinitions v =
-  ConstructorDefinitions [(Name.Constructor, Type v)]
+  ConstructorDefinitions (HashMap Name.Constructor (Type v))
   deriving (Show, Generic, Hashable)
