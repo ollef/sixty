@@ -651,7 +651,7 @@ checkInnerNeutral outerContext occurs env flexibility hd spine =
     Tsil.Empty ->
       checkInnerHead occurs env hd
 
-    spine' Tsil.:> (plicity, arg) -> do
+    spine' Tsil.:> (plicity, arg) ->
       Syntax.App
         <$> checkInnerNeutral outerContext occurs env flexibility hd spine'
         <*> pure plicity
