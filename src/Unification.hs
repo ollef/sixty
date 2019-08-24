@@ -180,28 +180,12 @@ unify context flexibility value1 value2 = do
     (Domain.Case scrutinee@(Domain.Neutral (Domain.Meta meta) spine) branches, _)
       | Flexibility.Rigid <- flexibility -> do
         matches <- potentiallyMatchingBranches context value2' branches
-        case matches of
-          [Just constr] -> do
-            metaType <- instantiatedMetaType context meta spine
-            appliedConstr <- fullyApplyToMetas context constr metaType
-            unify context flexibility scrutinee appliedConstr
-            unify context flexibility value1' value2'
-
-          _ ->
-            can'tUnify
+        invertCase scrutinee meta spine matches
 
     (_, Domain.Case scrutinee@(Domain.Neutral (Domain.Meta meta) spine) branches)
       | Flexibility.Rigid <- flexibility -> do
         matches <- potentiallyMatchingBranches context value1' branches
-        case matches of
-          [Just constr] -> do
-            metaType <- instantiatedMetaType context meta spine
-            appliedConstr <- fullyApplyToMetas context constr metaType
-            unify context flexibility scrutinee appliedConstr
-            unify context flexibility value1' value2'
-
-          _ ->
-            can'tUnify
+        invertCase scrutinee meta spine matches
 
     -- Glued values
     (Domain.Glued head1 spine1 value1'', Domain.Glued head2 spine2 value2'')
@@ -240,6 +224,17 @@ unify context flexibility value1 value2 = do
       body1 <- Evaluation.evaluateClosure closure1 varValue
       body2 <- Evaluation.evaluateClosure closure2 varValue
       unify context' flexibility body1 body2
+
+    invertCase scrutinee meta spine matches =
+      case matches of
+        [Just constr] -> do
+          metaType <- instantiatedMetaType context meta spine
+          appliedConstr <- fullyApplyToMetas context constr metaType
+          unify context flexibility scrutinee appliedConstr
+          unify context flexibility value1 value2
+
+        _ ->
+          can'tUnify
 
     can'tUnify =
       -- pvalue1 <- Elaboration.prettyValue context value1
