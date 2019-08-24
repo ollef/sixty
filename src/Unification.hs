@@ -269,7 +269,7 @@ unifyBranches
 
       missing2 =
         HashMap.difference branches2 branches
-    unless (HashMap.null missing1 && HashMap.null missing2) $
+    unless (HashMap.null missing1 && HashMap.null missing2)
       can'tUnify
 
     forM_ branches $
