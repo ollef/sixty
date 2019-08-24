@@ -11,7 +11,7 @@ data Tsil a
 
 instance Semigroup (Tsil a) where
   xs <> Empty = xs
-  xs <> ys :> y = (xs <> ys) :> y
+  xs <> (ys :> y) = (xs <> ys) :> y
 
 instance Monoid (Tsil a) where
   mempty = Empty
