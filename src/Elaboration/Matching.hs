@@ -338,7 +338,7 @@ matchPrepatterns
   -> [Presyntax.PlicitPattern]
   -> Domain.Type
   -> M ([Match], Domain.Type)
-matchPrepatterns context values patterns type_ = do
+matchPrepatterns context values patterns type_ =
   case (patterns, values) of
     ([], []) ->
       pure ([], type_)
