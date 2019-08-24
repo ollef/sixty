@@ -339,79 +339,89 @@ matchPrepatterns
   -> Domain.Type
   -> M ([Match], Domain.Type)
 matchPrepatterns context values patterns type_ = do
-  type' <- Context.forceHead context type_
-  case (patterns, values, type') of
-    ([], [], _) ->
+  case (patterns, values) of
+    ([], []) ->
       pure ([], type_)
 
-    ( Presyntax.ExplicitPattern pat:patterns'
-      , (Explicit, value):values'
-      , Domain.Pi _ source Explicit domainClosure
-      ) -> do
-        domain <- Evaluation.evaluateClosure domainClosure value
-        explicitFunCase value values' pat patterns' source domain
+    (Presyntax.ExplicitPattern pat:patterns', (Explicit, value):values') -> do
+      type' <- Context.forceHead context type_
+      case type' of
+        Domain.Pi _ source Explicit domainClosure -> do
+          domain <- Evaluation.evaluateClosure domainClosure value
+          explicitFunCase value values' pat patterns' source domain
 
-    ( Presyntax.ExplicitPattern pat:patterns'
-      , (Explicit, value):values'
-      , Domain.Fun source domain
-      ) ->
-        explicitFunCase value values' pat patterns' source domain
+        Domain.Fun source domain ->
+          explicitFunCase value values' pat patterns' source domain
 
-    (Presyntax.ExplicitPattern _:_, (Explicit, _):_, _) ->
-      panic "matchPrepatterns non-pi"
+        _ ->
+          panic "matchPrepatterns explicit non-pi"
 
-    (Presyntax.ImplicitPattern _ namedPats:patterns', _, _)
+    (Presyntax.ImplicitPattern _ namedPats:patterns', _)
       | HashMap.null namedPats ->
         matchPrepatterns context values patterns' type_
 
-    ( Presyntax.ImplicitPattern patSpan namedPats:patterns'
-      , (Implicit, value):values'
-      , Domain.Pi name source Implicit domainClosure
-      )
-      | HashMap.member name namedPats -> do
-        domain <- Evaluation.evaluateClosure domainClosure value
-        (matches, type'') <-
-          matchPrepatterns
-            context
-            values'
-            (Presyntax.ImplicitPattern patSpan (HashMap.delete name namedPats) : patterns')
-            domain
-        pure (Match value Implicit (namedPats HashMap.! name) source : matches, type'')
+    (Presyntax.ImplicitPattern patSpan namedPats:patterns', (Implicit, value):values') -> do
+      type' <- Context.forceHead context type_
+      case type' of
+        Domain.Pi name source Implicit domainClosure
+          | HashMap.member name namedPats -> do
+            domain <- Evaluation.evaluateClosure domainClosure value
+            (matches, type'') <-
+              matchPrepatterns
+                context
+                values'
+                (Presyntax.ImplicitPattern patSpan (HashMap.delete name namedPats) : patterns')
+                domain
+            pure (Match value Implicit (namedPats HashMap.! name) source : matches, type'')
 
-    (_, (Implicit, value):values', Domain.Pi _ _ Implicit domainClosure) -> do
-      domain <- Evaluation.evaluateClosure domainClosure value
-      matchPrepatterns context values' patterns domain
+          | otherwise -> do
+            domain <- Evaluation.evaluateClosure domainClosure value
+            matchPrepatterns context values' patterns domain
 
-    (_, (Implicit, _):_, _) ->
-      panic "matchPrepatterns non-pi"
+        _ ->
+          panic "matchPrepatterns implicit non-pi"
 
-    (_, (Constraint, value):values', Domain.Pi _ source Constraint domainClosure) -> do
-      domain <- Evaluation.evaluateClosure domainClosure value
-      (matches, type'') <-
-        matchPrepatterns
-          context
-          values'
-          patterns
-          domain
-      let
-        pattern_ =
-          Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern
-      pure (Match value Constraint pattern_ source : matches, type'')
+    (_, (Implicit, value):values') -> do
+      type' <- Context.forceHead context type_
+      case type' of
+        Domain.Pi _ _ Implicit domainClosure -> do
+          domain <- Evaluation.evaluateClosure domainClosure value
+          matchPrepatterns context values' patterns domain
 
-    (_, (Constraint, _):_, _) ->
-      panic "matchPrepatterns non-pi"
+        _ ->
+          panic "matchPrepatterns implicit non-pi 2"
 
-    (pat:_, [], _) -> do
+    (_, (Constraint, value):values') -> do
+      type' <- Context.forceHead context type_
+      case type' of
+        Domain.Pi _ source Constraint domainClosure -> do
+          domain <- Evaluation.evaluateClosure domainClosure value
+          (matches, type'') <-
+            matchPrepatterns
+              context
+              values'
+              patterns
+              domain
+          let
+            pattern_ =
+              Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern
+          pure (Match value Constraint pattern_ source : matches, type'')
+
+        _ ->
+          panic "matchPrepatterns constraint non-pi"
+
+    (pat:_, []) -> do
       Context.report (Context.spanned (Presyntax.plicitPatternSpan pat) context) $ Error.PlicityMismatch Error.Extra
       pure ([], type_)
 
-    ([], (Explicit, _):_, _) -> do
+    ([], (Explicit, _):_) -> do
       Context.report context $ Error.PlicityMismatch $ Error.Missing Explicit
       matchPrepatterns context values [Presyntax.ExplicitPattern $ Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern] type_
 
-    (Presyntax.ImplicitPattern patSpan _:patterns', (Explicit, _):_, _) -> do
+    (Presyntax.ImplicitPattern patSpan _:patterns', (Explicit, _):_) -> do
       Context.report (Context.spanned patSpan context) $ Error.PlicityMismatch (Error.Mismatch Explicit Implicit)
       matchPrepatterns context values patterns' type_
+
   where
     explicitFunCase value values' pat patterns' source domain = do
       (matches, type'') <- matchPrepatterns context values' patterns' domain
