@@ -59,6 +59,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [ ] Literals
   - [ ] Numbers
   - [ ] Strings
+- [ ] Records
 - [ ] Command-line parser
 - [ ] Language server
 - [ ] REPL
