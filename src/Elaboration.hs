@@ -1,8 +1,6 @@
-{-# language DuplicateRecordFields #-}
 {-# language LambdaCase #-}
 {-# language OverloadedStrings #-}
 {-# language PackageImports #-}
-{-# language ScopedTypeVariables #-}
 module Elaboration where
 
 import Protolude hiding (Seq, force, check, evaluate, until)
