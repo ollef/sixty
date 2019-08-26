@@ -60,6 +60,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [ ] Numbers
   - [ ] Strings
 - [ ] Records
+- [ ] Binary/mixfix operators
 - [ ] Command-line parser
 - [ ] Language server
 - [ ] REPL
