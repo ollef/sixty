@@ -8,14 +8,16 @@ module Elaboration.Metas where
 import Prelude (Show (showsPrec))
 import Protolude hiding (Type, IntMap, IntSet, evaluate)
 
-import Data.HashMap.Lazy (HashMap)
 import Data.Graph
+import Data.HashMap.Lazy (HashMap)
 
 import "this" Data.IntMap (IntMap)
 import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
+import qualified Domain
+import qualified Environment
 import Extra
 import qualified Meta
 import Monad
@@ -23,7 +25,7 @@ import Name (Name)
 import qualified Name
 import Plicity
 import qualified "this" Data.IntMap as IntMap
-import qualified Readback
+import qualified Scope
 import qualified Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
@@ -31,14 +33,15 @@ import Var (Var)
 import qualified Var
 
 inlineSolutions
-  :: Syntax.MetaSolutions
+  :: Scope.KeyedName
+  -> Syntax.MetaSolutions
   -> Syntax.Definition
   -> Syntax.Type Void
   -> M (Syntax.Definition, Syntax.Type Void)
-inlineSolutions solutions def type_ = do
+inlineSolutions scopeKey solutions def type_ = do
   solutionValues <- forM solutions $ \(metaTerm, metaType) -> do
-    metaValue <- evaluate Readback.empty metaTerm
-    metaType' <- evaluate Readback.empty metaType
+    metaValue <- evaluate (Environment.empty scopeKey) metaTerm
+    metaType' <- evaluate (Environment.empty scopeKey) metaType
     pure (metaValue, metaType')
 
   let
@@ -55,7 +58,7 @@ inlineSolutions solutions def type_ = do
         index
         metas
 
-    inlineTermSolutions :: Readback.Environment v -> Syntax.Term v -> M (Syntax.Term v)
+    inlineTermSolutions :: Domain.Environment v -> Syntax.Term v -> M (Syntax.Term v)
     inlineTermSolutions env term = do
       let
         go :: (Meta.Index, (Value, Type)) -> (Value, IntMap Meta.Index (Var, [Maybe Var])) -> M (Value, IntMap Meta.Index (Var, [Maybe Var]))
@@ -86,7 +89,7 @@ inlineSolutions solutions def type_ = do
       pure $
         readback env (lookupMetaIndex metaVars) inlinedValue
 
-    inlineDefSolutions :: Readback.Environment Void -> Syntax.Definition -> M Syntax.Definition
+    inlineDefSolutions :: Domain.Environment Void -> Syntax.Definition -> M Syntax.Definition
     inlineDefSolutions env def' =
       case def' of
         Syntax.TypeDeclaration declaredType -> do
@@ -102,7 +105,7 @@ inlineSolutions solutions def type_ = do
           pure $ Syntax.DataDefinition tele'
 
     inlineTeleSolutions
-      :: Readback.Environment v
+      :: Domain.Environment v
       -> Telescope Syntax.Type Syntax.ConstructorDefinitions v
       -> M (Telescope Syntax.Type Syntax.ConstructorDefinitions v)
     inlineTeleSolutions env tele =
@@ -113,12 +116,12 @@ inlineSolutions solutions def type_ = do
 
         Telescope.Extend name paramType plicity tele' -> do
           paramType' <- inlineTermSolutions env paramType
-          (env', _) <- Readback.extend env
+          (env', _) <- Environment.extend env
           tele'' <- inlineTeleSolutions env' tele'
           pure $ Telescope.Extend name paramType' plicity tele''
 
-  inlinedType <- inlineTermSolutions Readback.empty type_
-  inlinedDef <- inlineDefSolutions Readback.empty def
+  inlinedType <- inlineTermSolutions (Environment.empty scopeKey) type_
+  inlinedDef <- inlineDefSolutions (Environment.empty scopeKey) def
 
   pure
     ( inlinedDef
@@ -249,11 +252,11 @@ makeCase scrutinee branches defaultBranch =
       branches <>
     foldMap occurrences defaultBranch
 
-evaluate :: Readback.Environment v -> Syntax.Term v -> M Value
+evaluate :: Domain.Environment v -> Syntax.Term v -> M Value
 evaluate env term =
   case term of
     Syntax.Var index ->
-      pure $ makeVar $ Readback.lookupIndexVar index env
+      pure $ makeVar $ Environment.lookupIndexVar index env
 
     Syntax.Global global ->
       pure $ makeGlobal global
@@ -265,14 +268,14 @@ evaluate env term =
       pure $ makeMeta index mempty
 
     Syntax.Let name value type_ body -> do
-      (env', var) <- Readback.extend env
+      (env', var) <- Environment.extend env
       makeLet name var <$>
         evaluate env value <*>
         evaluate env type_ <*>
         evaluate env' body
 
     Syntax.Pi name source plicity domain -> do
-      (env', var) <- Readback.extend env
+      (env', var) <- Environment.extend env
       makePi name var <$>
         evaluate env source <*>
         pure plicity <*>
@@ -284,7 +287,7 @@ evaluate env term =
         evaluate env domain
 
     Syntax.Lam name type_ plicity body -> do
-      (env', var) <- Readback.extend env
+      (env', var) <- Environment.extend env
       makeLam name var <$>
         evaluate env type_ <*>
         pure plicity <*>
@@ -303,7 +306,7 @@ evaluate env term =
         mapM (evaluate env) defaultBranch
 
 evaluateBranch
-  :: Readback.Environment v
+  :: Domain.Environment v
   -> Telescope Syntax.Type Syntax.Term v
   -> M ([(Name, Var, Type, Plicity)], Value)
 evaluateBranch env tele =
@@ -314,17 +317,17 @@ evaluateBranch env tele =
 
     Telescope.Extend name type_ plicity tele' -> do
       type' <- evaluate env type_
-      (env', var) <- Readback.extend env
+      (env', var) <- Environment.extend env
       (bindings, body) <- evaluateBranch env' tele'
       pure ((name, var, type', plicity):bindings, body)
 
-readback :: Readback.Environment v -> (Meta.Index -> (Var, [Maybe var])) -> Value -> Syntax.Term v
+readback :: Domain.Environment v -> (Meta.Index -> (Var, [Maybe var])) -> Value -> Syntax.Term v
 readback env metas (Value value _) =
   case value of
     Var var ->
       Syntax.Var $
         fromMaybe (panic "Elaboration.Metas.readback Var") $
-          Readback.lookupVarIndex var env
+          Environment.lookupVarIndex var env
 
     Global global ->
       Syntax.Global global
@@ -343,7 +346,7 @@ readback env metas (Value value _) =
       Syntax.apps
         (Syntax.Var $
           fromMaybe (panic $ "Elaboration.Metas.readback Meta " <> show index) $
-          Readback.lookupVarIndex var env)
+          Environment.lookupVarIndex var env)
         ((,) Explicit . readback env metas <$> arguments')
 
     Let name var value' type_ body ->
@@ -351,14 +354,14 @@ readback env metas (Value value _) =
         name
         (readback env metas value')
         (readback env metas type_)
-        (readback (Readback.extendVar env var) metas body)
+        (readback (Environment.extendVar env var) metas body)
 
     Pi name var source plicity domain ->
       Syntax.Pi
         name
         (readback env metas source)
         plicity
-        (readback (Readback.extendVar env var) metas domain)
+        (readback (Environment.extendVar env var) metas domain)
 
     Fun source domain ->
       Syntax.Fun (readback env metas source) (readback env metas domain)
@@ -368,7 +371,7 @@ readback env metas (Value value _) =
         name
         (readback env metas type_)
         plicity
-        (readback (Readback.extendVar env var) metas body)
+        (readback (Environment.extendVar env var) metas body)
 
     App function plicity argument ->
       Syntax.App (readback env metas function) plicity (readback env metas argument)
@@ -380,7 +383,7 @@ readback env metas (Value value _) =
         (readback env metas <$> defaultBranch)
 
 readbackBranch
-  :: Readback.Environment v
+  :: Domain.Environment v
   -> (Meta.Index -> (Var, [Maybe var]))
   -> [(Name, Var, Type, Plicity)]
   -> Value
@@ -393,7 +396,7 @@ readbackBranch env metas bindings body =
     (name, var, type_, plicity):bindings' -> do
       let
         env' =
-          Readback.extendVar env var
+          Environment.extendVar env var
       Telescope.Extend name (readback env metas type_) plicity (readbackBranch env' metas bindings' body)
 
 inlineArguments

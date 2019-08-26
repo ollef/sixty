@@ -1,21 +1,19 @@
+{-# language DuplicateRecordFields #-}
 {-# language GADTs #-}
-{-# language StandaloneDeriving #-}
 {-# language PackageImports #-}
+{-# language StandaloneDeriving #-}
 module Domain.Showable where
 
 import Protolude hiding (Type, IntMap, force, to)
 
-import "this" Data.IntMap (IntMap)
 import Data.Tsil (Tsil)
 import qualified Domain
+import qualified Environment
 import Index
-import qualified Index.Map as Index
 import Monad
 import Name (Name)
 import Plicity
-import qualified Scope
 import qualified Syntax
-import Var
 
 data Value
   = Neutral !Domain.Head Spine
@@ -29,6 +27,8 @@ data Value
 type Type = Value
 
 type Spine = Tsil (Plicity, Value)
+
+type Environment = Environment.Environment Value
 
 data Closure where
   Closure :: Environment v -> Scope Syntax.Term v -> Closure
@@ -76,15 +76,9 @@ branchesTo (Domain.Branches env branches defaultBranch) = do
 
 environmentTo :: Domain.Environment v -> M (Environment v)
 environmentTo env = do
-  values' <- mapM to $ Domain.values env
-  pure $ Environment
-    { scopeKey = Domain.scopeKey env
-    , indices = Domain.indices env
+  values' <- mapM to $ Environment.values env
+  pure Environment.Environment
+    { scopeKey = Environment.scopeKey env
+    , indices = Environment.indices env
     , values = values'
     }
-
-data Environment v = Environment
-  { scopeKey :: !Scope.KeyedName
-  , indices :: Index.Map v Var
-  , values :: IntMap Var Value
-  } deriving Show

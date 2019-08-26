@@ -1,28 +1,22 @@
 {-# language GADTs #-}
 {-# language LambdaCase #-}
-{-# language PackageImports #-}
 module Domain where
 
 import Protolude hiding (Type, Seq, IntMap)
 
-import "this" Data.IntMap (IntMap)
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
+import qualified Environment
 import Flexibility (Flexibility)
 import qualified Flexibility
 import Index
-import qualified Index.Map
-import qualified Index.Map as Index
 import qualified Meta
 import Monad
 import Name (Name)
 import qualified Name
 import Plicity
-import qualified "this" Data.IntMap as IntMap
-import qualified Scope
 import qualified Syntax
 import Var (Var)
-import qualified Var
 
 data Value
   = Neutral !Head Spine
@@ -42,6 +36,8 @@ data Head
   deriving (Eq, Show)
 
 type Spine = Tsil (Plicity, Value)
+
+type Environment = Environment.Environment Value
 
 data Closure where
   Closure :: Environment v -> Scope Syntax.Term v -> Closure
@@ -78,56 +74,3 @@ headFlexibility = \case
 
   Meta _ ->
     Flexibility.Flexible
-
--------------------------------------------------------------------------------
--- Evaluation environments
-
-data Environment v = Environment
-  { scopeKey :: !Scope.KeyedName
-  , indices :: Index.Map v Var
-  , values :: IntMap Var Domain.Value
-  }
-
-empty :: Scope.KeyedName -> Environment Void
-empty key =
-  Environment
-    { scopeKey = key
-    , indices = Index.Map.Empty
-    , values = mempty
-    }
-
-extend
-  :: Environment v
-  -> M (Environment (Succ v))
-extend env =
-  extendVar env <$> freshVar
-
-extendVar
-  :: Environment v
-  -> Var
-  -> Environment (Succ v)
-extendVar env v =
-  env
-    { indices = indices env Index.Map.:> v
-    }
-
-extendValue
-  :: Environment v
-  -> Domain.Value
-  -> M (Environment (Succ v))
-extendValue env value = do
-  v <- freshVar
-  pure env
-    { indices = indices env Index.Map.:> v
-    , values = IntMap.insert v value (values env)
-    }
-
-lookupVar :: Index v -> Environment v -> Var
-lookupVar index env =
-  Index.Map.index (indices env) index
-
-lookupValue :: Var -> Environment v -> Domain.Value
-lookupValue v env =
-  fromMaybe
-    (var v)
-    (IntMap.lookup v $ values env)

@@ -19,6 +19,8 @@ import qualified Data.IntSequence as IntSeq
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Domain
+import Environment (Environment(Environment))
+import qualified Environment
 import Error (Error)
 import qualified Error
 import qualified Evaluation
@@ -52,22 +54,13 @@ data Context v = Context
   , errors :: !(IORef (Tsil Error))
   }
 
-toEvaluationEnvironment
+toEnvironment
   :: Context v
   -> Domain.Environment v
-toEvaluationEnvironment context =
-  Domain.Environment
+toEnvironment context =
+  Environment
     { scopeKey = scopeKey context
     , indices = indices context
-    , values = values context
-    }
-
-toReadbackEnvironment
-  :: Context v
-  -> Readback.Environment v
-toReadbackEnvironment context =
-  Readback.Environment
-    { indices = indices context
     , values = values context
     }
 
@@ -303,8 +296,9 @@ piBoundVars :: Context v -> Domain.Type -> M (Syntax.Type Void)
 piBoundVars context type_ = do
   type' <-
     Readback.readback
-      Readback.Environment
-        { indices = Index.Map $ boundVars context
+      Environment
+        { scopeKey = scopeKey context
+        , indices = Index.Map $ boundVars context
         , values = values context
         }
       type_
@@ -323,8 +317,9 @@ piBoundVars context type_ = do
               lookupVarType var context
           varType' <-
             Readback.readback
-              Readback.Environment
-                { indices = Index.Map vars'
+              Environment
+                { scopeKey = scopeKey context
+                , indices = Index.Map vars'
                 , values = values context
                 }
               varType
@@ -377,7 +372,7 @@ forceHead context value =
 
       case meta of
         Meta.Solved headValue _ -> do
-          headValue' <- Evaluation.evaluate (Domain.empty $ scopeKey context) headValue
+          headValue' <- Evaluation.evaluate (Environment.empty $ scopeKey context) headValue
           value' <- Evaluation.applySpine headValue' spine
           forceHead context value'
 
@@ -422,7 +417,7 @@ forceHeadGlue context value =
       case meta of
         Meta.Solved headValue _ -> do
           value' <- lazy $ do
-            headValue' <- Evaluation.evaluate (Domain.empty $ scopeKey context) headValue
+            headValue' <- Evaluation.evaluate (Environment.empty $ scopeKey context) headValue
             value' <- Evaluation.applySpine headValue' spine
             forceHeadGlue context value'
           pure $ Domain.Glued (Domain.Meta metaIndex) spine value'

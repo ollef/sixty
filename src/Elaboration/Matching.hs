@@ -17,6 +17,7 @@ import qualified Data.Set as Set
 import Rock
 
 import {-# source #-} qualified Elaboration
+import "this" Data.IntMap (IntMap)
 import qualified Builtin
 import Context (Context)
 import qualified Context
@@ -25,6 +26,7 @@ import qualified Data.Tsil as Tsil
 import qualified Domain
 import qualified Domain.Telescope as Domain (Telescope)
 import qualified Domain.Telescope
+import qualified Environment
 import qualified Error
 import qualified Evaluation
 import qualified Flexibility
@@ -33,7 +35,6 @@ import Name (Name(Name))
 import qualified Name
 import Plicity
 import qualified Presyntax
-import "this" Data.IntMap (IntMap)
 import qualified "this" Data.IntMap as IntMap
 import qualified Query
 import qualified Readback
@@ -102,7 +103,7 @@ elaborateCase context scrutinee scrutineeType branches expectedType =
         index =
           fromMaybe (panic "matching lookupVarIndex") $ Context.lookupVarIndex var context'
       term <- elaborateCase context' (Syntax.Var index) scrutineeType branches expectedType
-      scrutineeType' <- Readback.readback (Context.toReadbackEnvironment context) scrutineeType
+      scrutineeType' <- Readback.readback (Context.toEnvironment context) scrutineeType
       pure $ Syntax.Let "scrutinee" scrutinee scrutineeType' term
 
 elaborateClauses
@@ -270,7 +271,7 @@ simplifyMatch context coveredConstructors (Match value plicity pat@(Presyntax.Pa
               constrType <- fetch $ Query.ConstructorType constr
               (patsType, patSpine) <-
                 instantiateConstructorType
-                  (Context.toEvaluationEnvironment context)
+                  (Context.toEnvironment context)
                   (Telescope.fromVoid constrType)
                   (toList spine)
 
@@ -326,7 +327,7 @@ instantiateConstructorType env tele spine =
 
     (Telescope.Extend _ _ plicity1 tele', (plicity2, arg):spine')
       | plicity1 == plicity2 -> do
-        env' <- Domain.extendValue env arg
+        env' <- Environment.extendValue env arg
         instantiateConstructorType env' tele' spine'
 
     _ ->
@@ -654,7 +655,7 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
   maybeDefinition <- fetch $ Query.ElaboratedDefinition typeName
   case maybeDefinition of
     Just (Syntax.DataDefinition tele, _) -> do
-      tele' <- Evaluation.evaluateConstructorDefinitions (Domain.empty $ Context.scopeKey outerContext) tele
+      tele' <- Evaluation.evaluateConstructorDefinitions (Environment.empty $ Context.scopeKey outerContext) tele
       outerType' <- Context.forceHead outerContext outerType
       case outerType' of
         Domain.Neutral (Domain.Global typeName') spine
@@ -759,7 +760,7 @@ uninhabitedType context fuel coveredConstructors type_ = do
       maybeDefinitions <- fetch $ Query.ElaboratedDefinition global
       case maybeDefinitions of
         Just (Syntax.DataDefinition tele, _) -> do
-          tele' <- Evaluation.evaluateConstructorDefinitions (Domain.empty $ Context.scopeKey context) tele
+          tele' <- Evaluation.evaluateConstructorDefinitions (Environment.empty $ Context.scopeKey context) tele
           tele'' <- Domain.Telescope.apply tele' $ toList spine
           case tele'' of
             Domain.Telescope.Empty constructors -> do

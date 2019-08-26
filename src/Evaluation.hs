@@ -11,6 +11,7 @@ import qualified Data.Tsil as Tsil
 import qualified Domain
 import qualified Domain.Telescope as Domain (Telescope)
 import qualified Domain.Telescope
+import qualified Environment
 import Monad
 import qualified Name
 import Plicity
@@ -32,7 +33,7 @@ evaluateConstructorDefinitions env tele =
     Telescope.Extend name source plicity domain -> do
       source' <- evaluate env source
       pure $ Domain.Telescope.Extend name source' plicity $ \param -> do
-        env' <- Domain.extendValue env param
+        env' <- Environment.extendValue env param
         evaluateConstructorDefinitions env' domain
 
 evaluate :: Domain.Environment v -> Syntax.Term v -> M Domain.Value
@@ -41,17 +42,19 @@ evaluate env term =
     Syntax.Var index -> do
       let
         var =
-          Domain.lookupVar index env
+          Environment.lookupIndexVar index env
 
-      pure $ Domain.Glued (Domain.Var var) mempty $ eager $ Domain.lookupValue var env
+      pure $
+        Domain.Glued (Domain.Var var) mempty $
+        eager $ fromMaybe (Domain.var var) $ Environment.lookupVarValue var env
 
     Syntax.Global name -> do
-      definitionVisible <- fetch $ Query.IsDefinitionVisible (Domain.scopeKey env) name
+      definitionVisible <- fetch $ Query.IsDefinitionVisible (Environment.scopeKey env) name
       if definitionVisible then do
         maybeDefinition <- fetch $ Query.ElaboratedDefinition name
         case maybeDefinition of
           Just (Syntax.ConstantDefinition term', _) -> do
-            value <- lazy $ evaluate (Domain.empty $ Domain.scopeKey env) term'
+            value <- lazy $ evaluate (Environment.empty $ Environment.scopeKey env) term'
             pure $ Domain.Glued (Domain.Global name) mempty value
 
           _ ->
@@ -59,7 +62,6 @@ evaluate env term =
 
       else
         pure $ Domain.global name
-
 
     Syntax.Con c ->
       pure $ Domain.con c
@@ -69,7 +71,7 @@ evaluate env term =
 
     Syntax.Let _ t _ s -> do
       t' <- evaluate env t
-      env' <- Domain.extendValue env t'
+      env' <- Environment.extendValue env t'
       evaluate env' s
 
     Syntax.Pi n t p s -> do
@@ -132,7 +134,7 @@ chooseBranch outerEnv constr outerArgs branches defaultBranch =
 
         ((plicity1, arg):args', Telescope.Extend _ _ plicity2 domain)
           | plicity1 == plicity2 -> do
-            env' <- Domain.extendValue env arg
+            env' <- Environment.extendValue env arg
             go env' args' domain
 
         _ ->
@@ -162,5 +164,5 @@ applySpine = foldM (\val (plicity, arg) -> apply val plicity arg)
 
 evaluateClosure :: Domain.Closure -> Domain.Value -> M Domain.Value
 evaluateClosure (Domain.Closure env body) argument = do
-  env' <- Domain.extendValue env argument
+  env' <- Environment.extendValue env argument
   evaluate env' body

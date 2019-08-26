@@ -115,7 +115,7 @@ infer context (fmap removeEmptyImplicits -> clauses)
         pure
           ( Syntax.Lam "x" source' Explicit body
           , Domain.Pi "x" source Explicit
-            $ Domain.Closure (Context.toEvaluationEnvironment context) domain'
+            $ Domain.Closure (Context.toEnvironment context) domain'
           )
 
       [(name, _)] -> do
@@ -131,7 +131,7 @@ infer context (fmap removeEmptyImplicits -> clauses)
         pure
           ( Syntax.Lam name source' Implicit body
           , Domain.Pi name source Implicit
-            $ Domain.Closure (Context.toEvaluationEnvironment context) domain'
+            $ Domain.Closure (Context.toEnvironment context) domain'
           )
 
       _ -> do

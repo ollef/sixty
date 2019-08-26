@@ -1,40 +1,37 @@
 {-# language DuplicateRecordFields #-}
 {-# language OverloadedStrings #-}
-{-# language PackageImports #-}
 module Inlining where
 
 import Protolude hiding (Type, IntMap, evaluate, empty)
 
 import Data.HashMap.Lazy (HashMap)
 
-import "this" Data.IntMap (IntMap)
-import Index
-import qualified Index.Map
-import qualified Index.Map as Index
+import qualified Environment
 import qualified Meta
 import Monad
 import Name (Name)
 import qualified Name
 import Plicity
-import qualified "this" Data.IntMap as IntMap
-import qualified Readback
+import qualified Scope
 import qualified Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
 import Var (Var)
-import qualified Var
 
-inlineDefinition :: Syntax.Definition -> M Syntax.Definition
-inlineDefinition def =
+inlineDefinition :: Scope.KeyedName -> Syntax.Definition -> M Syntax.Definition
+inlineDefinition scopeKey def = do
+  let
+    env =
+      Environment.empty scopeKey
   case def of
     Syntax.TypeDeclaration type_ ->
-      Syntax.TypeDeclaration <$> inlineTerm empty type_
+      Syntax.TypeDeclaration <$> inlineTerm env type_
 
     Syntax.ConstantDefinition term ->
-      Syntax.ConstantDefinition <$> inlineTerm empty term
+      Syntax.ConstantDefinition <$> inlineTerm env term
 
     Syntax.DataDefinition tele ->
-      Syntax.DataDefinition <$> inlineDataDefinition empty tele
+      Syntax.DataDefinition <$> inlineDataDefinition env tele
 
 inlineDataDefinition
   :: Environment v
@@ -48,14 +45,20 @@ inlineDataDefinition env tele =
 
     Telescope.Extend name type_ plicity tele' -> do
       type' <- inlineTerm env type_
-      (env', _) <- extend env
+      (env', _) <- Environment.extend env
       tele'' <- inlineDataDefinition env' tele'
       pure $ Telescope.Extend name type' plicity tele''
 
 inlineTerm :: Environment v -> Syntax.Term v -> M (Syntax.Term v)
 inlineTerm env term = do
   value <- evaluate env term
-  pure $ readback Readback.Environment { indices = indices env, values = mempty } value
+  pure $ readback
+    Environment.Environment
+      { scopeKey = Environment.scopeKey env
+      , indices = Environment.indices env
+      , values = mempty
+      }
+    value
 
 -------------------------------------------------------------------------------
 
@@ -72,38 +75,11 @@ data Value
   | Case !Value Branches !(Maybe Value)
   deriving Show
 
+type Environment = Environment.Environment Value
+
 type Branches = HashMap Name.QualifiedConstructor ([(Name, Var, Type, Plicity)], Value)
 
 type Type = Value
-
-data Environment v = Environment
-  { indices :: Index.Map v Var
-  , values :: IntMap Var Value
-  }
-
-empty :: Environment Void
-empty = Environment
-  { indices = Index.Map.Empty
-  , values = mempty
-  }
-
-extend :: Environment v -> M (Environment (Succ v), Var)
-extend env = do
-  var <- freshVar
-  let
-    env' =
-      env
-        { indices = indices env Index.Map.:> var
-        }
-  pure (env', var)
-
-extendValue :: Environment v -> Value -> M (Environment (Succ v))
-extendValue env value = do
-  (env', var) <- extend env
-  pure $
-    env'
-      { values = IntMap.insert var value $ values env'
-      }
 
 -------------------------------------------------------------------------------
 
@@ -113,8 +89,8 @@ evaluate env term =
     Syntax.Var index -> do
       let
         var =
-          Index.Map.index (indices env) index
-      case IntMap.lookup var (values env) of
+          Environment.lookupIndexVar index env
+      case Environment.lookupVarValue var env of
         Nothing ->
           pure $ Var var
 
@@ -133,18 +109,18 @@ evaluate env term =
     Syntax.Let name term' type_ body
       | duplicable term' -> do
         value <- evaluate env term'
-        env' <- extendValue env value
+        env' <- Environment.extendValue env value
         evaluate env' body
 
       | otherwise -> do
-        (env', var) <- extend env
+        (env', var) <- Environment.extend env
         Let name var <$>
           evaluate env term' <*>
           evaluate env type_ <*>
           evaluate env' body
 
     Syntax.Pi name source plicity domain -> do
-      (env', var) <- extend env
+      (env', var) <- Environment.extend env
       Pi name var <$>
         evaluate env source <*>
         pure plicity <*>
@@ -154,7 +130,7 @@ evaluate env term =
       Fun <$> evaluate env source <*> evaluate env domain
 
     Syntax.Lam name type_ plicity body -> do
-      (env', var) <- extend env
+      (env', var) <- Environment.extend env
       Lam name var <$>
         evaluate env type_ <*>
         pure plicity <*>
@@ -182,15 +158,15 @@ evaluateBranch env tele =
 
     Telescope.Extend name type_ plicity tele' -> do
       type' <- evaluate env type_
-      (env', var) <- extend env
+      (env', var) <- Environment.extend env
       (bindings, body) <- evaluateBranch env' tele'
       pure ((name, var, type', plicity):bindings, body)
 
-readback :: Readback.Environment v -> Value -> Syntax.Term v
+readback :: Environment v -> Value -> Syntax.Term v
 readback env value =
   case value of
     Var var ->
-      case Readback.lookupVarIndex var env of
+      case Environment.lookupVarIndex var env of
         Just i ->
           Syntax.Var i
 
@@ -209,13 +185,13 @@ readback env value =
     Let name var term type_ body -> do
       let
         env' =
-          Readback.extendVar env var
+          Environment.extendVar env var
       Syntax.Let name (readback env term) (readback env type_) (readback env' body)
 
     Pi name var source plicity domain -> do
       let
         env' =
-          Readback.extendVar env var
+          Environment.extendVar env var
       Syntax.Pi name (readback env source) plicity (readback env' domain)
 
     Fun source domain ->
@@ -224,7 +200,7 @@ readback env value =
     Lam name var type_ plicity body -> do
       let
         env' =
-          Readback.extendVar env var
+          Environment.extendVar env var
       Syntax.Lam name (readback env type_) plicity (readback env' body)
 
     App fun plicity arg ->
@@ -237,7 +213,7 @@ readback env value =
         (map (readback env) defaultBranch)
 
 readbackBranch
-  :: Readback.Environment v
+  :: Environment v
   -> [(Name, Var, Type, Plicity)]
   -> Value
   -> Telescope Syntax.Type Syntax.Term v
@@ -249,7 +225,7 @@ readbackBranch env bindings body =
     (name, var, type_, plicity):bindings' -> do
       let
         env' =
-          Readback.extendVar env var
+          Environment.extendVar env var
       Telescope.Extend name (readback env type_) plicity (readbackBranch env' bindings' body)
 
 duplicable :: Syntax.Term v -> Bool

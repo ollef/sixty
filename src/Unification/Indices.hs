@@ -12,6 +12,7 @@ import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
 import qualified Data.Tsil as Tsil
 import qualified Domain
+import qualified Environment
 import Evaluation
 import Flexibility (Flexibility)
 import qualified Flexibility
@@ -228,8 +229,8 @@ unifyBranches
             context''' <-
               unifyTele
                 context''
-                (Domain.extendVar env1 var)
-                (Domain.extendVar env2 var)
+                (Environment.extendVar env1 var)
+                (Environment.extendVar env2 var)
                 (IntSet.insert var untouchables)
                 tele1'
                 tele2'
@@ -320,7 +321,7 @@ occursBranches outerContext outerUntouchables (Domain.Branches outerEnv branches
           occursTele
             context''
             (IntSet.insert var untouchables)
-            (Domain.extendVar env var)
+            (Environment.extendVar env var)
             tele'
         Telescope.Empty body -> do
           body' <- lift $ Evaluation.evaluate env body

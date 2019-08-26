@@ -5,8 +5,8 @@ module Unification where
 
 import Protolude hiding (force, check, evaluate)
 
-import Rock
 import qualified Data.HashMap.Lazy as HashMap
+import Rock
 
 import {-# source #-} qualified Elaboration
 import qualified Builtin
@@ -17,6 +17,8 @@ import qualified Data.IntSequence as IntSeq
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Domain
+import Environment (Environment(Environment))
+import qualified Environment
 import qualified Error
 import qualified Evaluation
 import Extra
@@ -29,7 +31,6 @@ import Monad
 import qualified Name
 import Plicity
 import qualified Query
-import qualified Readback
 import Readback (readback)
 import qualified Syntax
 import Syntax.Telescope (Telescope)
@@ -42,7 +43,7 @@ tryUnify context value1 value2 = do
   if success then
     pure identity
   else do
-    type_ <- Readback.readback (Context.toReadbackEnvironment context) value2
+    type_ <- Readback.readback (Context.toEnvironment context) value2
     pure $ const $ Syntax.App (Syntax.Global Builtin.fail) Explicit type_
 
 tryUnifyD :: Context v -> Domain.Value -> Domain.Value -> M (Domain.Value -> Domain.Value)
@@ -299,8 +300,8 @@ unifyBranches
             (context', var) <- Context.extendUnnamed context name1 type1'
             unifyTele
               context'
-              (Domain.extendVar env1 var)
-              (Domain.extendVar env2 var)
+              (Environment.extendVar env1 var)
+              (Environment.extendVar env2 var)
               tele1'
               tele2'
 
@@ -399,7 +400,7 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
         Telescope.Extend name type_ _ tele' -> do
           type' <- Evaluation.evaluate env type_
           (context', var) <- Context.extendUnnamed context name type'
-          branchMatches context' (Domain.extendVar env var) tele'
+          branchMatches context' (Environment.extendVar env var) tele'
 
 instantiatedMetaType
   :: Context v
@@ -412,7 +413,7 @@ instantiatedMetaType context meta args = do
     Meta.Unsolved metaType _ -> do
       metaType' <-
         Evaluation.evaluate
-          (Domain.empty $ Context.scopeKey context)
+          (Environment.empty $ Context.scopeKey context)
           metaType
 
       Context.instantiateType context metaType' $ toList args
@@ -432,7 +433,7 @@ fullyApplyToMetas context constr type_ = do
       constrType <- fetch $ Query.ConstructorType constr
       constrType' <-
         Evaluation.evaluate
-          (Domain.empty $ Context.scopeKey context)
+          (Environment.empty $ Context.scopeKey context)
           (Syntax.fromVoid $ Telescope.fold Syntax.Pi constrType)
       instantiatedConstrType <- Context.instantiateType context constrType' $ toList typeArgs
       (metas, _) <- Elaboration.insertMetas context Elaboration.UntilTheEnd instantiatedConstrType
@@ -494,8 +495,9 @@ checkSolution outerContext meta vars value = do
     checkInnerSolution
       outerContext
       meta
-      Readback.Environment
-        { indices = Index.Map vars
+      Environment
+        { scopeKey = Context.scopeKey outerContext
+        , indices = Index.Map vars
         , values = Context.values outerContext
         }
       Flexibility.Rigid
@@ -524,8 +526,9 @@ addAndCheckLambdas outerContext meta vars term =
         checkInnerSolution
           outerContext
           meta
-          Readback.Environment
-            { indices = Index.Map vars'
+          Environment
+            { scopeKey = Context.scopeKey outerContext
+            , indices = Index.Map vars'
             , values = Context.values outerContext
             }
           Flexibility.Rigid
@@ -537,7 +540,7 @@ addAndCheckLambdas outerContext meta vars term =
 checkInnerSolution
   :: Context v
   -> Meta.Index
-  -> Readback.Environment v'
+  -> Domain.Environment v'
   -> Flexibility
   -> Domain.Value
   -> M (Syntax.Term v')
@@ -549,7 +552,7 @@ checkInnerSolution outerContext occurs env flexibility value = do
         spine' <- mapM (Context.forceHead outerContext . snd) spine
         case traverse Domain.singleVarView spine' of
           Just vars
-            | allowedVars <- map (\v -> isJust (Readback.lookupVarIndex v env)) vars
+            | allowedVars <- map (\v -> isJust (Environment.lookupVarIndex v env)) vars
             , any not allowedVars
             -> do
               pruneMeta outerContext i allowedVars
@@ -599,7 +602,7 @@ checkInnerSolution outerContext occurs env flexibility value = do
 checkInnerBranch
   :: Context outer
   -> Meta.Index
-  -> Readback.Environment v
+  -> Domain.Environment v
   -> Domain.Environment v'
   -> Flexibility
   -> Telescope Syntax.Type Syntax.Term v'
@@ -614,29 +617,29 @@ checkInnerBranch outerContext occurs outerEnv innerEnv flexibility tele =
     Telescope.Extend name source plicity tele' -> do
       source' <- Evaluation.evaluate innerEnv source
       source'' <- checkInnerSolution outerContext occurs outerEnv flexibility source'
-      (outerEnv', var) <- Readback.extend outerEnv
+      (outerEnv', var) <- Environment.extend outerEnv
       let
         innerEnv' =
-          Domain.extendVar innerEnv var
+          Environment.extendVar innerEnv var
       tele'' <- checkInnerBranch outerContext occurs outerEnv' innerEnv' flexibility tele'
       pure $ Telescope.Extend name source'' plicity tele''
 
 checkInnerClosure
   :: Context v
   -> Meta.Index
-  -> Readback.Environment v'
+  -> Domain.Environment v'
   -> Flexibility
   -> Domain.Closure
   -> M (Scope Syntax.Term v')
 checkInnerClosure outerContext occurs env flexibility closure = do
-  (env', v) <- Readback.extend env
+  (env', v) <- Environment.extend env
   closure' <- Evaluation.evaluateClosure closure $ Domain.var v
   checkInnerSolution outerContext occurs env' flexibility closure'
 
 checkInnerNeutral
   :: Context v
   -> Meta.Index
-  -> Readback.Environment v'
+  -> Domain.Environment v'
   -> Flexibility
   -> Domain.Head
   -> Domain.Spine
@@ -654,13 +657,13 @@ checkInnerNeutral outerContext occurs env flexibility hd spine =
 
 checkInnerHead
   :: Meta.Index
-  -> Readback.Environment v
+  -> Domain.Environment v
   -> Domain.Head
   -> M (Syntax.Term v)
 checkInnerHead occurs env hd =
   case hd of
     Domain.Var v ->
-      case Readback.lookupVarIndex v env of
+      case Environment.lookupVarIndex v env of
         Nothing ->
           throwError Error.TypeMismatch
 
@@ -694,7 +697,7 @@ pruneMeta context meta allowedArgs = do
       -- putText $ show metaType
       metaType' <-
         Evaluation.evaluate
-          (Domain.empty $ Context.scopeKey context)
+          (Environment.empty $ Context.scopeKey context)
           metaType
       solution' <-
         go
@@ -712,14 +715,14 @@ pruneMeta context meta allowedArgs = do
       case alloweds of
         [] -> do
           v <- Context.newMeta type_ context'
-          Readback.readback (Context.toReadbackEnvironment context') v
+          Readback.readback (Context.toEnvironment context') v
 
         allowed:alloweds' ->
           case type_ of
             Domain.Fun source domain -> do
               source' <-
                 Readback.readback
-                  (Context.toReadbackEnvironment context')
+                  (Context.toEnvironment context')
                   source
               (context'', _) <-
                 if allowed then
@@ -751,7 +754,7 @@ pruneMeta context meta allowedArgs = do
                   (Domain.var v)
               source'' <-
                 Readback.readback
-                  (Context.toReadbackEnvironment context')
+                  (Context.toEnvironment context')
                   source
               body <- go alloweds' context'' domain
               pure $ Syntax.Lam name source'' plicity body

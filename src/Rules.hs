@@ -13,8 +13,8 @@ import Data.Text.Unsafe as Text
 import Rock
 
 import qualified Builtin
-import qualified Domain
 import qualified Elaboration
+import qualified Environment
 import Error (Error)
 import qualified Error
 import qualified Evaluation
@@ -211,7 +211,7 @@ rules files (Writer query) =
             Just _ -> do
               type_ <- fetch $ ElaboratedType qualifiedName
               runElaborator defKey $ do
-                typeValue <- Evaluation.evaluate (Domain.empty defKey) type_
+                typeValue <- Evaluation.evaluate (Environment.empty defKey) type_
                 (def', errs) <- Elaboration.checkTopLevelDefinition defKey def typeValue
                 pure ((def', type_), errs)
 

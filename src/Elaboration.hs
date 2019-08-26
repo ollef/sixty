@@ -21,6 +21,7 @@ import qualified Domain
 import qualified Elaboration.Clauses as Clauses
 import qualified Elaboration.Matching as Matching
 import qualified Elaboration.Metas as Metas
+import qualified Environment
 import Error (Error)
 import qualified Error
 import qualified Evaluation
@@ -53,9 +54,9 @@ inferTopLevelDefinition key def = do
   (def', typeValue) <- inferDefinition context def
   type_ <- readback context typeValue
   metas <- checkMetaSolutions context
-  (def'', type') <- Metas.inlineSolutions metas def' type_
-  def''' <- Inlining.inlineDefinition def''
-  type'' <- Inlining.inlineTerm Inlining.empty type'
+  (def'', type') <- Metas.inlineSolutions key metas def' type_
+  def''' <- Inlining.inlineDefinition key def''
+  type'' <- Inlining.inlineTerm (Environment.empty key) type'
   errors <- liftIO $ readIORef (Context.errors context)
   pure ((def''', type''), toList errors)
 
@@ -68,8 +69,8 @@ checkTopLevelDefinition key def type_ = do
   context <- Context.empty key
   def' <- checkDefinition context def type_
   metas <- checkMetaSolutions context
-  (def'', _) <- Metas.inlineSolutions metas def' $ Syntax.Global Builtin.fail
-  def''' <- Inlining.inlineDefinition def''
+  (def'', _) <- Metas.inlineSolutions key metas def' $ Syntax.Global Builtin.fail
+  def''' <- Inlining.inlineDefinition key def''
   errors <- liftIO $ readIORef $ Context.errors context
   pure (def''', toList errors)
 
@@ -148,7 +149,7 @@ inferDataDefinition context preParams constrs paramVars =
         Syntax.fromVoid <$>
           varPis
             context
-            (Domain.empty $ Context.scopeKey context)
+            (Environment.empty $ Context.scopeKey context)
             (toList paramVars)
             Builtin.type_
 
@@ -203,16 +204,16 @@ varPis
 varPis context env vars domain =
   case vars of
     [] ->
-      Readback.readback (Readback.fromEvaluationEnvironment env) domain
+      Readback.readback env domain
 
     (plicity, var):vars'-> do
       let
         env' =
-          Domain.extendVar env var
+          Environment.extendVar env var
 
         source =
           Context.lookupVarType var context
-      source' <- Readback.readback (Readback.fromEvaluationEnvironment env) source
+      source' <- Readback.readback env source
       domain' <- varPis context env' vars' domain
       pure $ Syntax.Pi (Context.lookupVarName var context) source' plicity domain'
 
@@ -567,7 +568,7 @@ inferUnspanned context term expectedTypeName =
                   let
                     metaFunctionType =
                       Domain.Pi name source Implicit $
-                      Domain.Closure (Context.toEvaluationEnvironment context) domain'
+                      Domain.Closure (Context.toEnvironment context) domain'
                   f <- Unification.tryUnify context functionType' metaFunctionType
                   argument' <- check context argument source
                   pure (Syntax.App (f function'') Implicit argument', domain)
@@ -690,7 +691,7 @@ inferLambda context name plicity pat body = do
   pure
     ( Syntax.Lam name source' plicity body'
     , Domain.Pi name source plicity
-      $ Domain.Closure (Context.toEvaluationEnvironment context) domain'
+      $ Domain.Closure (Context.toEnvironment context) domain'
     )
 
 checkApplication
@@ -920,11 +921,11 @@ evaluate
   -> Syntax.Term v
   -> M Domain.Value
 evaluate context =
-  Evaluation.evaluate (Context.toEvaluationEnvironment context)
+  Evaluation.evaluate (Context.toEnvironment context)
 
 readback :: Context v -> Domain.Value -> M (Syntax.Term v)
 readback context =
-  Readback.readback (Context.toReadbackEnvironment context)
+  Readback.readback (Context.toEnvironment context)
 
 prettyTerm :: Context v -> Syntax.Term v -> M (Doc ann)
 prettyTerm context term = do
