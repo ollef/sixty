@@ -54,6 +54,12 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [x] Inductive families
 - [x] Glued evaluation
 - [x] Let definitions by clauses (non-recursive)
+- [x] Command-line parser
+- [x] Language server
+  - [x] Diagnostics
+  - [ ] Hover
+  - [ ] Jump to definition
+  - [ ] Multi file projects
 - [ ] Prevent CBV-incompatible circular values
 - [ ] Generalisation?
 - [ ] Literals
@@ -61,8 +67,6 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [ ] Strings
 - [ ] Records
 - [ ] Binary/mixfix operators
-- [ ] Command-line parser
-- [ ] Language server
 - [ ] REPL
 - [ ] File watcher
 - [ ] Integrate into Sixten

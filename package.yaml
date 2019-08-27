@@ -39,13 +39,18 @@ library:
   source-dirs: src
   dependencies:
     - containers
+    - data-default
     - dependent-map
     - dependent-sum
     - dependent-sum-template
     - fingertree
+    - haskell-lsp
+    - lens
     - mtl
     - parsers
     - parsix
+    - rope-utf16-splay
+    - stm
     - text
     - transformers
     - vector
@@ -55,6 +60,7 @@ executables:
     source-dirs: app
     main: Main.hs
     dependencies:
+      - optparse-applicative
       - sixty
 
 tests:

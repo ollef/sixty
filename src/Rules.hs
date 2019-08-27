@@ -36,16 +36,16 @@ import qualified Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
 
-rules :: [FilePath] -> GenRules (Writer [Error] Query) Query
-rules files (Writer query) =
+rules :: [FilePath] -> (FilePath -> IO Text) -> GenRules (Writer [Error] (Writer TaskKind Query)) Query
+rules files readFile_ (Writer (Writer query)) =
   case query of
     InputFiles ->
-      noError $ do
+      input $ do
         builtinFile <- liftIO $ Paths.getDataFileName "builtin/Builtin.vix"
         pure $ builtinFile : files
 
     FileText filePath ->
-      noError $ liftIO $ readFile filePath
+      input $ liftIO $ readFile_ filePath
 
     ModuleFile subQuery ->
       noError $ Mapped.rule ModuleFile subQuery $ do
@@ -56,28 +56,30 @@ rules files (Writer query) =
           pure (module_, filePath)
         pure $ HashMap.fromList moduleFiles
 
-    ParsedFile filePath -> do
-      text <- fetch $ FileText filePath
-      pure $
-        case Parser.parseText Parser.module_ text filePath of
-          Right ((module_, header), errorsAndDefinitions) -> do
-            let
-              (errors, definitions) =
-                partitionEithers errorsAndDefinitions
+    ParsedFile filePath ->
+      nonInput $ do
+        text <- fetch $ FileText filePath
+        pure $
+          case Parser.parseText Parser.module_ text filePath of
+            Right ((module_, header), errorsAndDefinitions) -> do
+              let
+                (errors, definitions) =
+                  partitionEithers errorsAndDefinitions
 
-              header'
-                | module_ == Builtin.module_ =
-                  header
-                | otherwise =
-                  header
-                    { Module._imports =
-                      Module.Import Builtin.module_ "Sixten.Builtin" Module.AllExposed
-                      : Module._imports header
-                    }
-            ((module_, header', definitions), map (Error.Parse filePath) errors)
+                header'
+                  | module_ == Builtin.module_ =
+                    header
+                  | otherwise =
+                    header
+                      { Module._imports =
+                        Module.Import Builtin.module_ "Sixten.Builtin" Module.AllExposed
+                        : Module._imports header
+                      }
+              ((module_, header', definitions), map (Error.Parse filePath) errors)
 
-          Left err ->
-            ((Name.Module $ fromString filePath, mempty, mempty), pure $ Error.Parse filePath err)
+            Left err ->
+              ((Name.Module $ fromString filePath, mempty, mempty), pure $ Error.Parse filePath err)
+
     ModuleHeader module_ ->
       noError $ do
         filePath <- fetchModuleFile module_
@@ -121,10 +123,11 @@ rules files (Writer query) =
             | (loc, (name, def)) <- defs
             ]
 
-    Scopes module_ -> do
-      filePath <- fetchModuleFile module_
-      (_, _, defs) <- fetch $ ParsedFile filePath
-      pure $ Resolution.moduleScopes module_ $ snd <$> defs
+    Scopes module_ ->
+      nonInput $ do
+        filePath <- fetchModuleFile module_
+        (_, _, defs) <- fetch $ ParsedFile filePath
+        pure $ Resolution.moduleScopes module_ $ snd <$> defs
 
     ResolvedName (Scope.KeyedName key (Name.Qualified module_ keyName)) prename ->
       noError $ do
@@ -157,63 +160,66 @@ rules files (Writer query) =
 
     ElaboratedType qualifiedName@(Name.Qualified module_ name)
       | qualifiedName == Builtin.typeName ->
-        pure (Syntax.Global Builtin.typeName, mempty)
+        nonInput $
+          pure (Syntax.Global Builtin.typeName, mempty)
 
-      | otherwise -> do
-        mtype <- fetch $ ParsedDefinition module_ $ Mapped.Query (Scope.Type, name)
-        let
-          key =
-            Scope.KeyedName Scope.Type qualifiedName
-        case mtype of
-          Nothing -> do
-            mdef <- fetch $ ElaboratedDefinition qualifiedName
-            case mdef of
-              Nothing ->
-                panic $ "ElaboratedType: No type or definition " <> show key
-
-              Just (_, type_) ->
-                pure (type_, mempty)
-
-          Just def -> do
-            (maybeResult, errs) <- runElaborator key $
-              Elaboration.checkTopLevelDefinition key def Builtin.type_
-            pure $
-              case maybeResult of
-                Nothing ->
-                  ( Syntax.App
-                    (Syntax.Global Builtin.fail)
-                    Explicit
-                    (Syntax.Global Builtin.typeName)
-                  , errs
-                  )
-
-                Just (Syntax.TypeDeclaration result) ->
-                  (result, errs)
-
-                Just _ ->
-                  panic "ElaboratedType: Not a type declaration"
-
-    ElaboratedDefinition qualifiedName@(Name.Qualified module_ name) -> do
-      mdef <- fetch $ ParsedDefinition module_ $ Mapped.Query (Scope.Definition, name)
-      case mdef of
-        Nothing ->
-          pure (Nothing, mempty)
-
-        Just def -> do
+      | otherwise ->
+        nonInput $ do
           mtype <- fetch $ ParsedDefinition module_ $ Mapped.Query (Scope.Type, name)
           let
-            defKey =
-              Scope.KeyedName Scope.Definition qualifiedName
+            key =
+              Scope.KeyedName Scope.Type qualifiedName
           case mtype of
-            Nothing ->
-              runElaborator defKey $ Elaboration.inferTopLevelDefinition defKey def
+            Nothing -> do
+              mdef <- fetch $ ElaboratedDefinition qualifiedName
+              case mdef of
+                Nothing ->
+                  panic $ "ElaboratedType: No type or definition " <> show key
 
-            Just _ -> do
-              type_ <- fetch $ ElaboratedType qualifiedName
-              runElaborator defKey $ do
-                typeValue <- Evaluation.evaluate (Environment.empty defKey) type_
-                (def', errs) <- Elaboration.checkTopLevelDefinition defKey def typeValue
-                pure ((def', type_), errs)
+                Just (_, type_) ->
+                  pure (type_, mempty)
+
+            Just def -> do
+              (maybeResult, errs) <- runElaborator key $
+                Elaboration.checkTopLevelDefinition key def Builtin.type_
+              pure $
+                case maybeResult of
+                  Nothing ->
+                    ( Syntax.App
+                      (Syntax.Global Builtin.fail)
+                      Explicit
+                      (Syntax.Global Builtin.typeName)
+                    , errs
+                    )
+
+                  Just (Syntax.TypeDeclaration result) ->
+                    (result, errs)
+
+                  Just _ ->
+                    panic "ElaboratedType: Not a type declaration"
+
+    ElaboratedDefinition qualifiedName@(Name.Qualified module_ name) ->
+      nonInput $ do
+        mdef <- fetch $ ParsedDefinition module_ $ Mapped.Query (Scope.Definition, name)
+        case mdef of
+          Nothing ->
+            pure (Nothing, mempty)
+
+          Just def -> do
+            mtype <- fetch $ ParsedDefinition module_ $ Mapped.Query (Scope.Type, name)
+            let
+              defKey =
+                Scope.KeyedName Scope.Definition qualifiedName
+            case mtype of
+              Nothing ->
+                runElaborator defKey $ Elaboration.inferTopLevelDefinition defKey def
+
+              Just _ -> do
+                type_ <- fetch $ ElaboratedType qualifiedName
+                runElaborator defKey $ do
+                  typeValue <- Evaluation.evaluate (Environment.empty defKey) type_
+                  (def', errs) <- Elaboration.checkTopLevelDefinition defKey def typeValue
+                  pure ((def', type_), errs)
 
     ConstructorType (Name.QualifiedConstructor dataTypeName constr) ->
       noError $ do
@@ -271,8 +277,14 @@ rules files (Writer query) =
                 (position + Position.Absolute (Text.lengthWord16 textName))
           )
   where
-    noError :: Functor m => m a -> m (a, [Error])
-    noError = fmap (, mempty)
+    input :: Functor m => m a -> m ((a, TaskKind), [Error])
+    input = fmap ((, mempty) . (, Input))
+
+    noError :: Functor m => m a -> m ((a, TaskKind), [Error])
+    noError = fmap ((, mempty) . (, NonInput))
+
+    nonInput :: Functor m => m (a, [Error]) -> m ((a, TaskKind), [Error])
+    nonInput = fmap (first (, NonInput))
 
     runElaborator
       :: Scope.KeyedName
