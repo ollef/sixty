@@ -12,7 +12,6 @@ import Options.Applicative
 import Rock
 
 import qualified Driver
-import qualified Error
 import qualified LanguageServer
 import qualified Name
 import qualified Pretty
