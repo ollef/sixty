@@ -10,6 +10,7 @@ import qualified Error
 import Query (Query)
 import qualified Query
 import qualified Span
+import qualified Position
 
 data Hydrated = Hydrated
   { _filePath :: FilePath
@@ -37,3 +38,10 @@ fromError err = do
     , _lineText = lineText
     , _error = err
     }
+
+lineNumber :: Hydrated -> Int
+lineNumber err =
+  l
+  where
+    Span.LineColumns (Position.LineColumn l _) _ =
+      _lineColumn err

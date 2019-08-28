@@ -21,10 +21,9 @@ import qualified Name
 import Query (Query)
 import qualified Query
 import qualified Rules
-import qualified Span
 import qualified Syntax
 
-runTask :: [FilePath] -> Task Query a -> IO (a, [(FilePath, Span.LineColumn, Text, Error)])
+runTask :: [FilePath] -> Task Query a -> IO (a, [Error.Hydrated])
 runTask files task = do
   startedVar <- newMVar mempty
   errorsVar <- newMVar (mempty :: DMap Query (Const [Error]))
@@ -53,16 +52,8 @@ runTask files task = do
       errors =
         flip foldMap (DMap.toList errorsMap) $ \(_ DMap.:=> Const errs) ->
           errs
-    spannedErrors <- forM errors $ \err -> do
-      (filePath, span) <- fetch $ Query.ErrorSpan err
-      text <- fetch $ Query.FileText filePath
-      let
-        trimmedSpan =
-          Span.trim text span
-        (lineColumn, lineText) =
-          Span.lineColumn trimmedSpan text
-      pure (filePath, lineColumn, lineText, err)
-    pure (result, spannedErrors)
+    hydratedErrors <- forM errors Error.Hydrated.fromError
+    pure (result, hydratedErrors)
 
 -------------------------------------------------------------------------------
 -- Incremental execution

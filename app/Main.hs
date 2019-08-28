@@ -77,5 +77,5 @@ check filePaths = do
           forM_ maybeDef $ \(def, _) ->
             putDoc $ Pretty.prettyDefinition emptyPrettyEnv name def <> line
           putDoc line
-  forM_ errs $ \(filePath, lineColumn, lineText, err) ->
-    liftIO $ putDoc $ Error.pretty filePath lineColumn lineText err <> line
+  forM_ errs $ \err ->
+    liftIO $ putDoc $ pretty err <> line

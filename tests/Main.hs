@@ -17,10 +17,9 @@ import qualified Test.Tasty.HUnit as Tasty
 import qualified Driver
 import Error (Error)
 import qualified Error
+import qualified Error.Hydrated as Error
 import qualified Name
-import qualified Position
 import qualified Query
-import qualified Span
 
 main :: IO ()
 main = do
@@ -70,16 +69,16 @@ checkFiles files = do
         expectedErrorsFromSource moduleSource
 
       moduleErrs =
-        filter (\(errFilePath, _, _, _) -> filePath == errFilePath) errs
+        filter ((filePath ==) . Error._filePath) errs
     verifyErrors filePath moduleErrs expectedErrors
 
-verifyErrors :: FilePath -> [(FilePath, Span.LineColumn, Text, Error)] -> HashMap Int ExpectedError -> IO ()
+verifyErrors :: FilePath -> [Error.Hydrated] -> HashMap Int ExpectedError -> IO ()
 verifyErrors filePath errs expectedErrors = do
   let
     errorsMap =
       HashMap.fromList
-        [ (lineNumber, errorToExpectedError err)
-        | (_, Span.LineColumns (Position.LineColumn lineNumber _) _, _, err) <- errs
+        [ (Error.lineNumber err, errorToExpectedError $ Error._error err)
+        | err <- errs
         ]
 
   forM_ (HashMap.toList expectedErrors) $ \(lineNumber, expectedError) ->
@@ -93,15 +92,15 @@ verifyErrors filePath errs expectedErrors = do
           toS filePath <> ":" <> show (lineNumber + 1) <> ": " <>
           "Expected " <> show expectedError <> " error"
 
-  forM_ errs $ \(errFilePath, lineColumn@(Span.LineColumns (Position.LineColumn lineNumber _) _), lineText, err) ->
+  forM_ errs $ \err ->
     let
       failure =
         Tasty.assertFailure $
-          "Unexpected error:\n" <> show (Error.pretty errFilePath lineColumn lineText err <> line)
+          "Unexpected error:\n" <> show (pretty err <> line)
     in
-    case HashMap.lookup lineNumber expectedErrors of
+    case HashMap.lookup (Error.lineNumber err) expectedErrors of
       Just expectedError
-        | expectedError == errorToExpectedError err ->
+        | expectedError == errorToExpectedError (Error._error err) ->
           pure ()
 
       _ ->
