@@ -9,6 +9,7 @@ module Meta where
 import Protolude hiding (IntMap)
 
 import "this" Data.IntMap (IntMap)
+import Data.Text.Prettyprint.Doc
 import qualified "this" Data.IntMap as IntMap
 import qualified Span
 
@@ -19,6 +20,10 @@ data Var term
 
 newtype Index = Index Int
   deriving (Eq, Ord, Show, Hashable)
+
+instance Pretty Index where
+  pretty (Index i) =
+    "?" <> pretty i
 
 data Vars term = Vars
   { vars :: !(IntMap Index (Var term))

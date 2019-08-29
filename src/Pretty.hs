@@ -15,7 +15,6 @@ import Data.Text.Prettyprint.Doc
 import Rock
 
 import Index
-import qualified Meta
 import Name (Name(Name))
 import qualified Name
 import qualified Plicity
@@ -89,9 +88,9 @@ prettyTerm prec env term =
     Syntax.Con constr ->
       prettyConstr env constr
 
-    Syntax.Meta (Meta.Index i) ->
+    Syntax.Meta index ->
       pretty
-        ("?" <> show i :: Text)
+        index
 
     Syntax.Let name term' typ body ->
       prettyParen (prec > letPrec) $
