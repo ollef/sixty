@@ -94,8 +94,8 @@ headingAndBody error =
         Error.NonExhaustivePatterns ->
           pure ("Non-exhaustive patterns", mempty)
 
-        Error.OverlappingPatterns ->
-          pure ("Overlapping patterns", mempty)
+        Error.RedundantMatch matchKind ->
+          pure ("Redundant" <+> Doc.pretty matchKind, "This" <+> Doc.pretty matchKind <+> "is unreachable")
 
         Error.PlicityMismatch fieldOrArg plicityMismatch ->
           pure $ case plicityMismatch of

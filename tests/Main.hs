@@ -121,7 +121,7 @@ data ExpectedError
   | OccursCheck
   | UnsolvedMetaVariable
   | NonExhaustivePatterns
-  | OverlappingPatterns
+  | RedundantMatch
   | PlicityMismatch
   | UnableToInferImplicitLambda
   | ImplicitApplicationMismatch
@@ -156,8 +156,8 @@ errorToExpectedError err =
         Error.NonExhaustivePatterns {} ->
           NonExhaustivePatterns
 
-        Error.OverlappingPatterns {} ->
-          OverlappingPatterns
+        Error.RedundantMatch {} ->
+          RedundantMatch
 
         Error.PlicityMismatch {} ->
           PlicityMismatch
@@ -202,8 +202,8 @@ expectedErrorsFromSource sourceText =
             "non-exhaustive patterns error expected" ->
               [(lineNumber, NonExhaustivePatterns)]
 
-            "overlapping patterns error expected" ->
-              [(lineNumber, OverlappingPatterns)]
+            "redundant match error expected" ->
+              [(lineNumber, RedundantMatch)]
 
             "plicity mismatch error expected" ->
               [(lineNumber, PlicityMismatch)]

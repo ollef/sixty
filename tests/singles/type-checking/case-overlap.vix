@@ -8,13 +8,13 @@ f = \as.
     Nil ->
       as
 
-    Nil -> -- overlapping patterns error expected
+    Nil -> -- redundant match error expected
       as
 
     Cons x xs ->
       as
 
-    Cons x xs -> -- overlapping patterns error expected
+    Cons x xs -> -- redundant match error expected
       as
 
 g : forall a. List a -> List a
@@ -26,7 +26,7 @@ g = \as.
     _ ->
       as
 
-    Cons x xs -> -- overlapping patterns error expected
+    Cons x xs -> -- redundant match error expected
       as
 
 h : forall a. List a -> List a
@@ -38,5 +38,5 @@ h = \as.
     Cons x xs ->
       as
 
-    _ -> -- overlapping patterns error expected
+    _ -> -- redundant match error expected
       as

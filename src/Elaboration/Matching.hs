@@ -82,7 +82,7 @@ elaborateCase context scrutinee scrutineeType branches expectedType =
           Domain.var $ Context.lookupIndexVar index context
       usedClauses <- liftIO $ newIORef mempty
 
-      elaborateWithCoverage context Config
+      elaborateWithCoverage context Error.Branch Config
         { _expectedType = expectedType
         , _scrutinees = pure scrutineeValue
         , _clauses =
@@ -114,7 +114,7 @@ elaborateClauses
 elaborateClauses context clauses expectedType = do
   usedClauses <- liftIO $ newIORef mempty
 
-  elaborateWithCoverage context Config
+  elaborateWithCoverage context Error.Clause Config
     { _expectedType = expectedType
     , _scrutinees =
       case clauses of
@@ -146,7 +146,7 @@ elaborateSingle context scrutinee pat@(Presyntax.Pattern patSpan _) rhs@(Presynt
 
     usedClauses <- liftIO $ newIORef mempty
 
-    elaborateWithCoverage context Config
+    elaborateWithCoverage context Error.Lambda Config
       { _expectedType = expectedType
       , _scrutinees = pure scrutineeValue
       , _clauses =
@@ -162,8 +162,8 @@ elaborateSingle context scrutinee pat@(Presyntax.Pattern patSpan _) rhs@(Presynt
 
 -------------------------------------------------------------------------------
 
-elaborateWithCoverage :: Context v -> Config -> M (Syntax.Term v)
-elaborateWithCoverage context config = do
+elaborateWithCoverage :: Context v -> Error.MatchKind -> Config -> M (Syntax.Term v)
+elaborateWithCoverage context matchKind config = do
   result <- elaborate context config
   let
     allClauseSpans =
@@ -173,7 +173,7 @@ elaborateWithCoverage context config = do
         ]
   usedClauseSpans <- liftIO $ readIORef (_usedClauses config)
   forM_ (Set.difference allClauseSpans usedClauseSpans) $ \span ->
-    Context.report (Context.spanned span context) Error.OverlappingPatterns
+    Context.report (Context.spanned span context) $ Error.RedundantMatch matchKind
   pure result
 
 elaborate :: Context v -> Config -> M (Syntax.Term v)

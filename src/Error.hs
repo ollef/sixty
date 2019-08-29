@@ -31,7 +31,7 @@ data Elaboration
   | OccursCheck
   | UnsolvedMetaVariable !Meta.Index
   | NonExhaustivePatterns
-  | OverlappingPatterns
+  | RedundantMatch !MatchKind
   | PlicityMismatch !FieldOrArgument !PlicityMismatch
   | UnableToInferImplicitLambda
   | ImplicitApplicationMismatch (HashSet Name) !PrettyableTerm !PrettyableTerm
@@ -56,6 +56,24 @@ instance Pretty FieldOrArgument where
 
       Argument ->
         "argument"
+
+data MatchKind
+  = Clause
+  | Branch
+  | Lambda
+  deriving (Eq, Show, Generic, Hashable)
+
+instance Pretty MatchKind where
+  pretty clauseOrPat =
+    case clauseOrPat of
+      Clause ->
+        "clause"
+
+      Branch ->
+        "branch"
+
+      Lambda ->
+        "lambda"
 
 data Spanned
   = Spanned !Span.Relative !Error.Elaboration
