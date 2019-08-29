@@ -39,7 +39,6 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
     - [x] Parsing
     - [x] Elaboration
     - [x] Unification
-  - [ ] Pretty pretty-printing
 - [x] Data
   - [x] Elaboration of data definitions
   - [x] Constructors
