@@ -119,8 +119,17 @@ headingAndBody error =
         Error.UnableToInferImplicitLambda ->
           pure ("Unable to infer implicit lambda", mempty)
 
-        Error.ImplicitApplicationMismatch _ ->
-          pure ("Unable to match implicit argument with type", mempty)
+        Error.ImplicitApplicationMismatch names term type_ -> do
+          term' <- prettyPrettyableTerm term
+          type' <- prettyPrettyableTerm type_
+          pure
+            ( "Plicity mismatch"
+            , "The term" <> line <> line <>
+              indent 4 term' <> line <> line <>
+              "doesn't accept implicit arguments named" <> line <> line <>
+              indent 4 (hcat $ punctuate comma $ Doc.pretty <$> toList names) <> line <> line <>
+              "Its type is:" <> line <> line <> type'
+            )
 
 pretty :: MonadFetch Query m => Hydrated -> m (Doc ann)
 pretty h = do

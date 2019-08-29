@@ -5,7 +5,6 @@ module Error where
 
 import Protolude
 
-import Data.HashMap.Lazy (HashMap)
 import Data.HashSet (HashSet)
 import Data.Text.Prettyprint.Doc
 
@@ -35,7 +34,7 @@ data Elaboration
   | OverlappingPatterns
   | PlicityMismatch !FieldOrArgument !PlicityMismatch
   | UnableToInferImplicitLambda
-  | ImplicitApplicationMismatch (HashMap Name ())
+  | ImplicitApplicationMismatch (HashSet Name) !PrettyableTerm !PrettyableTerm
   deriving (Eq, Show, Generic, Hashable)
 
 data PlicityMismatch

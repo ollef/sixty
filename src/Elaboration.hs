@@ -574,7 +574,12 @@ inferUnspanned context term expectedTypeName =
                   pure (Syntax.App (f function'') Implicit argument', domain)
 
               _ -> do
-                Context.report context $ Error.ImplicitApplicationMismatch $ void arguments'
+                functionType'' <- readback context functionType'
+                Context.report context $
+                  Error.ImplicitApplicationMismatch
+                    (HashSet.fromMap $ void arguments')
+                    (Context.toPrettyableTerm context function'')
+                    (Context.toPrettyableTerm context functionType'')
                 inferenceFailed context
 
     Presyntax.Case scrutinee branches -> do
