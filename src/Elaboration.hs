@@ -913,7 +913,7 @@ checkMetaSolutions context = do
     case var of
       Meta.Unsolved type_ span -> do
         Context.report (Context.spanned span context) $
-          Error.UnsolvedMetaVariable index
+          Error.UnsolvedMetaVariable index (Context.toPrettyableClosedTerm context type_)
         pure (Syntax.App (Syntax.Global Builtin.fail) Explicit type_, type_)
 
       Meta.Solved solution type_ ->

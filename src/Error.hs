@@ -29,7 +29,7 @@ data Elaboration
   | Ambiguous !Name.Pre (HashSet Name.QualifiedConstructor) (HashSet Name.Qualified)
   | TypeMismatch (Tsil (PrettyableTerm, PrettyableTerm))
   | OccursCheck
-  | UnsolvedMetaVariable !Meta.Index
+  | UnsolvedMetaVariable !Meta.Index !PrettyableTerm
   | NonExhaustivePatterns
   | RedundantMatch !MatchKind
   | PlicityMismatch !FieldOrArgument !PlicityMismatch

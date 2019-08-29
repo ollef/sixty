@@ -73,6 +73,13 @@ toPrettyableTerm context term = do
     (fmap (flip lookupVarName context) $ toList $ indices context)
     (Syntax.coerce term)
 
+toPrettyableClosedTerm :: Context v -> Syntax.Term Void -> Error.PrettyableTerm
+toPrettyableClosedTerm context term = do
+  let
+    Scope.KeyedName _ (Name.Qualified module_ _) =
+      Context.scopeKey context
+  Error.PrettyableTerm module_ mempty (Syntax.coerce term)
+
 empty :: Scope.KeyedName -> M (Context Void)
 empty key = do
   ms <- liftIO $ newIORef Meta.empty

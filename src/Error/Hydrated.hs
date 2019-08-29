@@ -88,8 +88,13 @@ headingAndBody error =
         Error.OccursCheck ->
           pure ("Failed occurs check", mempty)
 
-        Error.UnsolvedMetaVariable _ ->
-          pure ("Unsolved meta variable", mempty)
+        Error.UnsolvedMetaVariable index type_ -> do
+          type' <- prettyPrettyableTerm type_
+          pure
+            ( "Unsolved meta variable"
+            , "A meta variable was created here but was never solved:" <> line <> line <>
+              Doc.pretty index <+> ":" <+> type'
+            )
 
         Error.NonExhaustivePatterns ->
           pure ("Non-exhaustive patterns", mempty)
