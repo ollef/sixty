@@ -28,7 +28,7 @@ data Elaboration
   = NotInScope !Name.Pre
   | Ambiguous !Name.Pre (HashSet Name.QualifiedConstructor) (HashSet Name.Qualified)
   | TypeMismatch (Tsil (PrettyableTerm, PrettyableTerm))
-  | OccursCheck
+  | OccursCheck (Tsil (PrettyableTerm, PrettyableTerm))
   | UnsolvedMetaVariable !Meta.Index !PrettyableTerm
   | NonExhaustivePatterns
   | RedundantMatch !MatchKind

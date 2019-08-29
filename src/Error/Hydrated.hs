@@ -84,8 +84,24 @@ headingAndBody error =
                 )
             )
 
-        Error.OccursCheck ->
-          pure ("Failed occurs check", mempty)
+        Error.OccursCheck mismatches -> do
+          mismatches' <- forM mismatches $ \(inferred, expected) -> do
+            inferred' <- prettyPrettyableTerm inferred
+            expected' <- prettyPrettyableTerm expected
+            pure (inferred', expected')
+          pure
+            ( "Occurs check failed"
+            , vcat
+                (intercalate ["", "while trying to unify"]
+                  [ [ "Inferred:" <+> inferred
+                    , "Expected:" <+> expected
+                    ]
+                  | (inferred, expected) <- toList mismatches'
+                  ]
+                )
+              <> line <> line <>
+              "Unifying these values would produce a cyclic term."
+            )
 
         Error.UnsolvedMetaVariable index type_ -> do
           type' <- prettyPrettyableTerm type_

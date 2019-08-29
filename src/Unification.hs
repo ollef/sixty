@@ -252,6 +252,16 @@ unify context flexibility value1 value2 = do
                       , Context.toPrettyableTerm context term2
                       )
 
+              Error.OccursCheck stack -> do
+                term1 <- Elaboration.readback context value1
+                term2 <- Elaboration.readback context value2
+                throwError $
+                  Error.OccursCheck $
+                      stack Tsil.:>
+                      ( Context.toPrettyableTerm context term1
+                      , Context.toPrettyableTerm context term2
+                      )
+
               _ ->
                 throwError err
 
@@ -694,7 +704,7 @@ checkInnerHead occurs env hd =
 
     Domain.Meta m
       | m == occurs ->
-        throwError Error.OccursCheck
+        throwError $ Error.OccursCheck mempty
 
       | otherwise ->
         pure $ Syntax.Meta m
