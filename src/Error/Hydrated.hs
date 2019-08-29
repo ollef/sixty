@@ -59,9 +59,8 @@ headingAndBody error =
 
         Error.Ambiguous name constrCandidates nameCandidates ->
           pure
-            ("Ambiguous name"
-            , "Ambiguous name:" <+> Doc.pretty name <> line <>
-              "Candidates are:" <+>
+            ("Ambiguous name:" <+> Doc.pretty name
+            , "Candidates are:" <+>
               hcat
                 (punctuate comma $
                   Doc.pretty <$> toList constrCandidates <|> Doc.pretty <$> toList nameCandidates
