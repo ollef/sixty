@@ -6,7 +6,7 @@ import Protolude hiding (Type)
 
 import Data.HashMap.Lazy (HashMap)
 
-import qualified Error
+import qualified Error.Parsing as Error
 import Name (Name)
 import qualified Name
 import Plicity

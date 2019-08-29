@@ -24,6 +24,7 @@ import qualified Elaboration.Metas as Metas
 import qualified Environment
 import Error (Error)
 import qualified Error
+import qualified Error.Hydrated as Error
 import qualified Evaluation
 import qualified Flexibility
 import Index
@@ -34,7 +35,6 @@ import Name (Name)
 import qualified Name
 import Plicity
 import qualified Presyntax
-import qualified Pretty
 import qualified "this" Data.IntMap as IntMap
 import qualified Query
 import qualified Readback
@@ -928,9 +928,8 @@ readback context =
   Readback.readback (Context.toEnvironment context)
 
 prettyTerm :: Context v -> Syntax.Term v -> M (Doc ann)
-prettyTerm context term = do
-  env <- Context.toPrettyEnvironment context
-  pure $ Pretty.prettyTerm 0 env term
+prettyTerm context term =
+  Error.prettyPrettyableTerm $ Context.toPrettyableTerm context term
 
 prettyValue :: Context v -> Domain.Value -> M (Doc ann)
 prettyValue context value = do

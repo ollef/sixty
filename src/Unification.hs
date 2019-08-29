@@ -14,8 +14,8 @@ import Context (Context)
 import qualified Context
 import Data.IntSequence (IntSeq)
 import qualified Data.IntSequence as IntSeq
-import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
+import Data.Tsil (Tsil)
 import qualified Domain
 import Environment (Environment(Environment))
 import qualified Environment
@@ -58,7 +58,7 @@ unify :: Context v -> Flexibility -> Domain.Value -> Domain.Value -> M ()
 unify context flexibility value1 value2 = do
   value1' <- Context.forceHeadGlue context value1
   value2' <- Context.forceHeadGlue context value2
-  case (value1', value2') of
+  catchAndAdd $ case (value1', value2') of
     -- Both metas
     (Domain.Neutral (Domain.Meta metaIndex1) spine1, Domain.Neutral (Domain.Meta metaIndex2) spine2)
       | Flexibility.Rigid <- flexibility -> do
@@ -237,13 +237,29 @@ unify context flexibility value1 value2 = do
         _ ->
           can'tUnify
 
+    catchAndAdd m =
+      case flexibility of
+        Flexibility.Rigid ->
+          m `catchError` \err ->
+            case err of
+              Error.TypeMismatch stack -> do
+                term1 <- Elaboration.readback context value1
+                term2 <- Elaboration.readback context value2
+                throwError $
+                  Error.TypeMismatch $
+                      stack Tsil.:>
+                      ( Context.toPrettyableTerm context term1
+                      , Context.toPrettyableTerm context term2
+                      )
+
+              _ ->
+                throwError err
+
+        Flexibility.Flexible ->
+          m
+
     can'tUnify =
-      -- pvalue1 <- Elaboration.prettyValue context value1
-      -- pvalue2 <- Elaboration.prettyValue context value2
-      -- putText "Type mismatch: "
-      -- putText $ show pvalue1
-      -- putText $ show pvalue2
-      throwError Error.TypeMismatch
+      throwError $ Error.TypeMismatch mempty
 
 unifyBranches
   :: Context v
@@ -314,7 +330,7 @@ unifyBranches
           panic "unifyTele"
 
     can'tUnify =
-      throwError Error.TypeMismatch
+      throwError $ Error.TypeMismatch mempty
 
 -------------------------------------------------------------------------------
 -- Case expression inversion
@@ -665,7 +681,7 @@ checkInnerHead occurs env hd =
     Domain.Var v ->
       case Environment.lookupVarIndex v env of
         Nothing ->
-          throwError Error.TypeMismatch
+          throwError $ Error.TypeMismatch mempty
 
         Just i ->
           pure $ Syntax.Var i
@@ -732,7 +748,7 @@ pruneMeta context meta allowedArgs = do
                   Context.extendUnnamedDef
                     context'
                     "x"
-                    (Domain.Glued (Domain.Var fakeVar) mempty $ Lazy $ throwError Error.TypeMismatch)
+                    (Domain.Glued (Domain.Var fakeVar) mempty $ Lazy $ throwError $ Error.TypeMismatch mempty)
                     source
               body <- go alloweds' context'' domain
               pure $ Syntax.Lam "x" source' Explicit body
@@ -746,7 +762,7 @@ pruneMeta context meta allowedArgs = do
                   Context.extendUnnamedDef
                     context'
                     name
-                    (Domain.Glued (Domain.Var fakeVar) mempty $ Lazy $ throwError Error.TypeMismatch)
+                    (Domain.Glued (Domain.Var fakeVar) mempty $ Lazy $ throwError $ Error.TypeMismatch mempty)
                     source
               domain <-
                 Evaluation.evaluateClosure

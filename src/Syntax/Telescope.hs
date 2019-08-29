@@ -19,6 +19,10 @@ data Telescope t k v
   deriving (Generic)
 
 deriving instance
+  (forall v'. Eq (t v'), forall v'. Eq (k v'))
+    => Eq (Telescope t k v)
+
+deriving instance
   ((forall v'. Show (t v')), (forall v'. Show (k v')))
     => Show (Telescope t k v)
 

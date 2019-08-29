@@ -1,3 +1,4 @@
+{-# language FlexibleContexts #-}
 {-# language OverloadedStrings #-}
 module Main where
 
@@ -17,7 +18,8 @@ import qualified Test.Tasty.HUnit as Tasty
 import qualified Driver
 import Error (Error)
 import qualified Error
-import qualified Error.Hydrated as Error
+import qualified Error.Hydrated
+import qualified Error.Hydrated as Error (Hydrated)
 import qualified Name
 import qualified Query
 
@@ -49,7 +51,11 @@ main = do
 
 checkFiles :: [FilePath] -> IO ()
 checkFiles files = do
-  (moduleSources, errs) <- Driver.runTask files $
+  let
+    prettyError err = do
+      p <- Error.Hydrated.pretty err
+      pure (err, p)
+  (moduleSources, errs) <- Driver.runTask files prettyError $
     forM files $ \filePath -> do
       (module_, _, defs) <- fetch $ Query.ParsedFile filePath
       let
@@ -69,16 +75,16 @@ checkFiles files = do
         expectedErrorsFromSource moduleSource
 
       moduleErrs =
-        filter ((filePath ==) . Error._filePath) errs
+        filter ((filePath ==) . Error.Hydrated._filePath . fst) errs
     verifyErrors filePath moduleErrs expectedErrors
 
-verifyErrors :: FilePath -> [Error.Hydrated] -> HashMap Int ExpectedError -> IO ()
+verifyErrors :: FilePath -> [(Error.Hydrated, Doc ann)] -> HashMap Int ExpectedError -> IO ()
 verifyErrors filePath errs expectedErrors = do
   let
     errorsMap =
       HashMap.fromList
-        [ (Error.lineNumber err, errorToExpectedError $ Error._error err)
-        | err <- errs
+        [ (Error.Hydrated.lineNumber err, errorToExpectedError $ Error.Hydrated._error err)
+        | (err, _) <- errs
         ]
 
   forM_ (HashMap.toList expectedErrors) $ \(lineNumber, expectedError) ->
@@ -92,15 +98,15 @@ verifyErrors filePath errs expectedErrors = do
           toS filePath <> ":" <> show (lineNumber + 1) <> ": " <>
           "Expected " <> show expectedError <> " error"
 
-  forM_ errs $ \err ->
+  forM_ errs $ \(err, doc) ->
     let
       failure =
         Tasty.assertFailure $
-          "Unexpected error:\n" <> show (pretty err <> line)
+          "Unexpected error:\n" <> show (doc <> line)
     in
-    case HashMap.lookup (Error.lineNumber err) expectedErrors of
+    case HashMap.lookup (Error.Hydrated.lineNumber err) expectedErrors of
       Just expectedError
-        | expectedError == errorToExpectedError (Error._error err) ->
+        | expectedError == errorToExpectedError (Error.Hydrated._error err) ->
           pure ()
 
       _ ->

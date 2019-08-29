@@ -1,4 +1,6 @@
+{-# language DeriveAnyClass #-}
 {-# language DeriveFunctor #-}
+{-# language DeriveGeneric #-}
 {-# language DeriveTraversable #-}
 module Data.Tsil where
 
@@ -7,7 +9,7 @@ import Protolude
 data Tsil a
   = Empty
   | Tsil a :> a
-  deriving (Eq, Functor, Ord, Show, Traversable)
+  deriving (Eq, Functor, Ord, Show, Traversable, Generic, Hashable)
 
 instance Semigroup (Tsil a) where
   xs <> Empty = xs

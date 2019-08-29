@@ -12,7 +12,6 @@ import Data.HashMap.Lazy (HashMap)
 import Data.HashSet (HashSet)
 import Rock
 
-import Error (Error)
 import qualified Module
 import Name (Name)
 import qualified Name
@@ -41,7 +40,6 @@ data Query a where
   ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void)
   ElaboratedDefinition :: Name.Qualified -> Query (Maybe (Syntax.Definition, Syntax.Type Void))
   ConstructorType :: Name.QualifiedConstructor -> Query (Telescope Syntax.Type Syntax.Type Void)
-  ErrorSpan :: Error -> Query (FilePath, Span.Absolute)
   KeyedNameSpan :: Scope.KeyedName -> Query (FilePath, Span.Absolute)
 
 fetchModuleFile :: MonadFetch Query m => Name.Module -> m FilePath
@@ -84,5 +82,4 @@ instance HashTag Query where
       ElaboratedType {} -> hash
       ElaboratedDefinition {} -> hash
       ConstructorType {} -> hash
-      ErrorSpan {} -> hash
       KeyedNameSpan {} -> hash

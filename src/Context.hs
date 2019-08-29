@@ -7,7 +7,6 @@ module Context where
 
 import Protolude hiding (IntMap, force)
 
-import Data.Coerce
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef
@@ -23,6 +22,7 @@ import Environment (Environment(Environment))
 import qualified Environment
 import Error (Error)
 import qualified Error
+import qualified Error.Parsing as Error
 import qualified Evaluation
 import Index
 import qualified Index.Map
@@ -32,7 +32,6 @@ import Monad
 import Name (Name(Name))
 import qualified Name
 import Plicity
-import qualified Pretty
 import qualified "this" Data.IntMap as IntMap
 import qualified Query
 import qualified Readback
@@ -64,28 +63,15 @@ toEnvironment context =
     , values = values context
     }
 
-toPrettyEnvironment
-  :: Context v
-  -> M (Pretty.Environment v)
-toPrettyEnvironment context = do
+toPrettyableTerm :: Context v -> Syntax.Term v -> Error.PrettyableTerm
+toPrettyableTerm context term = do
   let
     Scope.KeyedName _ (Name.Qualified module_ _) =
       Context.scopeKey context
-  env <- Pretty.emptyM module_
-  pure $ go (indices context) env
-  where
-    go :: Index.Map v Var -> Pretty.Environment Void -> Pretty.Environment v
-    go (Index.Map.Map indices') env =
-      case indices' of
-        IntSeq.Empty ->
-          coerce env
-
-        indices'' IntSeq.:> var -> do
-          let
-            env' =
-              go (Index.Map.Map indices'') env
-
-          coerce $ fst $ Pretty.extend env' $ lookupVarName var context
+  Error.PrettyableTerm
+    module_
+    (fmap (flip lookupVarName context) $ toList $ indices context)
+    (Syntax.coerce term)
 
 empty :: Scope.KeyedName -> M (Context Void)
 empty key = do

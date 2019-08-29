@@ -11,7 +11,6 @@ import Data.Dependent.Map (DMap)
 import qualified Data.Dependent.Map as DMap
 import qualified Data.HashSet as HashSet
 import qualified Data.Text.IO as Text
-import Data.Text.Prettyprint.Doc as Doc
 import Rock
 
 import Error (Error)
@@ -23,8 +22,8 @@ import qualified Query
 import qualified Rules
 import qualified Syntax
 
-runTask :: [FilePath] -> Task Query a -> IO (a, [Error.Hydrated])
-runTask files task = do
+runTask :: [FilePath] -> (Error.Hydrated -> Task Query err) -> Task Query a -> IO (a, [err])
+runTask files prettyError task = do
   startedVar <- newMVar mempty
   errorsVar <- newMVar (mempty :: DMap Query (Const [Error]))
   let
@@ -52,17 +51,17 @@ runTask files task = do
       errors =
         flip foldMap (DMap.toList errorsMap) $ \(_ DMap.:=> Const errs) ->
           errs
-    hydratedErrors <- forM errors Error.Hydrated.fromError
-    pure (result, hydratedErrors)
+    prettyErrors <- forM errors (prettyError <=< Error.Hydrated.fromError)
+    pure (result, prettyErrors)
 
 -------------------------------------------------------------------------------
 -- Incremental execution
-data State = State
+data State err = State
   { _tracesVar :: !(MVar (Traces Query))
-  , _errorsVar :: !(MVar (DMap Query (Const [Error.Hydrated])))
+  , _errorsVar :: !(MVar (DMap Query (Const [err])))
   }
 
-initialState :: IO State
+initialState :: IO (State err)
 initialState = do
   tracesVar <- newMVar mempty
   errorsVar <- newMVar mempty
@@ -72,12 +71,13 @@ initialState = do
     }
 
 runIncrementalTask
-  :: State
+  :: State err
   -> FilePath
   -> Text
+  -> (Error.Hydrated -> Task Query err)
   -> Task Query a
-  -> IO (a, [Error.Hydrated])
-runIncrementalTask state file text task =
+  -> IO (a, [err])
+runIncrementalTask state file text prettyError task =
   handleEx $ do
     startedVar <- newMVar mempty
     -- printVar <- newMVar 0
@@ -98,12 +98,10 @@ runIncrementalTask state file text task =
         --     return $ n - 1)
       writeErrors :: Writer TaskKind Query a -> [Error] -> Task Query ()
       writeErrors (Writer key) errs = do
-        hydratedErrors <- mapM Error.Hydrated.fromError errs
-        liftIO $ do
-          unless (null hydratedErrors) $
-            Text.hPutStrLn stderr $ "writeErrors " <> show key <> " " <> show (pretty hydratedErrors)
+        errs' <- mapM (prettyError <=< Error.Hydrated.fromError) errs
+        liftIO $
           modifyMVar_ (_errorsVar state) $
-            pure . DMap.insert key (Const hydratedErrors)
+            pure . DMap.insert key (Const errs')
       tasks :: Rules Query
       tasks =
         memoise startedVar $

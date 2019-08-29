@@ -245,22 +245,6 @@ rules files readFile_ (Writer (Writer query)) =
           _ ->
             panic "ConstructorType: none-datatype"
 
-    ErrorSpan err ->
-      noError $
-        case err of
-          Error.Parse filePath parseError ->
-            pure
-              ( filePath
-              , Span.Absolute (Error.position parseError) (Error.position parseError)
-              )
-
-          Error.DuplicateName keyedName ->
-            fetch $ KeyedNameSpan keyedName
-
-          Error.Elaboration keyedName (Error.Spanned relativeSpan _) -> do
-            (file, Span.Absolute absolutePosition _) <- fetch $ KeyedNameSpan keyedName
-            pure (file, Span.absoluteFrom absolutePosition relativeSpan)
-
     KeyedNameSpan (Scope.KeyedName key (Name.Qualified module_ name@(Name textName))) ->
       noError $ do
         positions <- fetch $ ModulePositionMap module_

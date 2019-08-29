@@ -1,7 +1,9 @@
 {-# LANGUAGE DisambiguateRecordFields #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module LanguageServer where
 
 import Protolude hiding (state)
@@ -12,7 +14,8 @@ import Data.Default (def)
 import qualified Data.Rope.UTF16 as Rope
 import Data.Text (Text)
 import qualified Data.Text.IO as Text
-import Data.Text.Prettyprint.Doc (pretty)
+import Data.Text.Prettyprint.Doc (Doc)
+import qualified Data.Text.Prettyprint.Doc as Doc
 import qualified Language.Haskell.LSP.Control as LSP
 import qualified Language.Haskell.LSP.Core
 import qualified Language.Haskell.LSP.Core as LSP
@@ -21,10 +24,13 @@ import qualified Language.Haskell.LSP.Messages as LSP
 import qualified Language.Haskell.LSP.Types as LSP
 import qualified Language.Haskell.LSP.Types.Lens as LSP
 import qualified Language.Haskell.LSP.VFS as LSP
+import Rock
 
 import qualified Driver
-import qualified Error.Hydrated as Error
+import qualified Error.Hydrated as Error (Hydrated)
+import qualified Error.Hydrated
 import qualified Position
+import Query (Query)
 import qualified Span
 
 run :: IO ()
@@ -103,8 +109,9 @@ messagePump lf receiveMessage = do
 
 -------------------------------------------------------------------------------
 sendDiagnostics
-  :: LSP.LspFuncs ()
-  -> Driver.State
+  :: forall ann
+  . LSP.LspFuncs ()
+  -> Driver.State (Error.Hydrated, Doc ann)
   -> LSP.Uri
   -> LSP.TextDocumentVersion
   -> IO ()
@@ -125,7 +132,12 @@ sendDiagnostics lf state document version = do
         uriStr =
           toS uriText
 
-      (_, errors) <- Driver.runIncrementalTask state uriStr contents $ Driver.checkAll [uriStr]
+        prettyError :: Error.Hydrated -> Task Query (Error.Hydrated, Doc ann)
+        prettyError err = do
+          (heading, body) <- Error.Hydrated.headingAndBody $ Error.Hydrated._error err
+          pure (err, heading <> Doc.line <> body)
+
+      (_, errors) <- Driver.runIncrementalTask state uriStr contents prettyError $ Driver.checkAll [uriStr]
 
       LSP.publishDiagnosticsFunc lf (length errors) normalizedURI version
         $ LSP.partitionBySource $ errorToDiagnostic <$> errors
@@ -142,13 +154,13 @@ sendNotification lf s =
 diagnosticSource :: LSP.DiagnosticSource
 diagnosticSource = "sixten"
 
-errorToDiagnostic :: Error.Hydrated -> LSP.Diagnostic
-errorToDiagnostic err = LSP.Diagnostic
-  { _range = spanToRange $ Error._lineColumn err
+errorToDiagnostic :: (Error.Hydrated, Doc ann) -> LSP.Diagnostic
+errorToDiagnostic (err, doc) = LSP.Diagnostic
+  { _range = spanToRange $ Error.Hydrated._lineColumn err
   , _severity = Just LSP.DsError
   , _code = Nothing
   , _source = Just diagnosticSource
-  , _message = show $ pretty err
+  , _message = show doc
   , _relatedInformation = Nothing
   }
 

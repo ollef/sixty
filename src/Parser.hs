@@ -17,7 +17,7 @@ import qualified Text.Parser.Token.Highlight as Highlight
 import Text.Parsix ((<?>), try, sepBy, sepBy1)
 import qualified Text.Parsix as Parsix
 
-import qualified Error
+import qualified Error.Parsing as Error
 import qualified Module
 import Name (Name(Name))
 import qualified Name

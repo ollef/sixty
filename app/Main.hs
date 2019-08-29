@@ -12,6 +12,7 @@ import Options.Applicative
 import Rock
 
 import qualified Driver
+import qualified Error.Hydrated
 import qualified LanguageServer
 import qualified Name
 import qualified Pretty
@@ -59,7 +60,11 @@ checkCommand =
 
 check :: [FilePath] -> IO ()
 check filePaths = do
-  ((), errs) <- Driver.runTask filePaths $
+  let
+    prettyError err =
+      Error.Hydrated.pretty err
+
+  ((), errs) <- Driver.runTask filePaths prettyError $
     forM_ filePaths $ \filePath -> do
       (module_, _, defs) <- fetch $ Query.ParsedFile filePath
       let
@@ -77,4 +82,4 @@ check filePaths = do
             putDoc $ Pretty.prettyDefinition emptyPrettyEnv name def <> line
           putDoc line
   forM_ errs $ \err ->
-    liftIO $ putDoc $ pretty err <> line
+    liftIO $ putDoc $ err <> line
