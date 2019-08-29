@@ -412,15 +412,15 @@ matchPrepatterns context values patterns type_ =
           panic "matchPrepatterns constraint non-pi"
 
     (pat:_, []) -> do
-      Context.report (Context.spanned (Presyntax.plicitPatternSpan pat) context) $ Error.PlicityMismatch Error.Extra
+      Context.report (Context.spanned (Presyntax.plicitPatternSpan pat) context) $ Error.PlicityMismatch Error.Field Error.Extra
       pure ([], type_)
 
     ([], (Explicit, _):_) -> do
-      Context.report context $ Error.PlicityMismatch $ Error.Missing Explicit
+      Context.report context $ Error.PlicityMismatch Error.Field $ Error.Missing Explicit
       matchPrepatterns context values [Presyntax.ExplicitPattern $ Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern] type_
 
     (Presyntax.ImplicitPattern patSpan _:patterns', (Explicit, _):_) -> do
-      Context.report (Context.spanned patSpan context) $ Error.PlicityMismatch (Error.Mismatch Explicit Implicit)
+      Context.report (Context.spanned patSpan context) $ Error.PlicityMismatch Error.Field (Error.Mismatch Explicit Implicit)
       matchPrepatterns context values patterns' type_
 
   where

@@ -203,7 +203,7 @@ shiftExplicit context value type_ clause@(Clause (Presyntax.Clause span patterns
     Presyntax.ImplicitPattern patSpan _:patterns' -> do
       Context.report
         (Context.spanned patSpan context)
-        (Error.PlicityMismatch $ Error.Mismatch Explicit Implicit)
+        (Error.PlicityMismatch Error.Argument $ Error.Mismatch Explicit Implicit)
       shiftExplicit
         context
         value
@@ -216,5 +216,5 @@ shiftExplicit context value type_ clause@(Clause (Presyntax.Clause span patterns
     [] -> do
       Context.report
         (Context.spanned span context)
-        (Error.PlicityMismatch $ Error.Missing Explicit)
+        (Error.PlicityMismatch Error.Argument $ Error.Missing Explicit)
       pure clause

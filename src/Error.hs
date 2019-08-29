@@ -1,12 +1,13 @@
 {-# language DeriveAnyClass #-}
 {-# language DeriveGeneric #-}
-{-# language StandaloneDeriving #-}
+{-# language OverloadedStrings #-}
 module Error where
 
 import Protolude
 
 import Data.HashMap.Lazy (HashMap)
 import Data.HashSet (HashSet)
+import Data.Text.Prettyprint.Doc
 
 import qualified Error.Parsing as Error
 import qualified Meta
@@ -32,7 +33,7 @@ data Elaboration
   | UnsolvedMetaVariable !Meta.Index
   | NonExhaustivePatterns
   | OverlappingPatterns
-  | PlicityMismatch !PlicityMismatch -- TODO needs field/argument distinction for printing
+  | PlicityMismatch !FieldOrArgument !PlicityMismatch
   | UnableToInferImplicitLambda
   | ImplicitApplicationMismatch (HashMap Name ())
   deriving (Eq, Show, Generic, Hashable)
@@ -42,6 +43,20 @@ data PlicityMismatch
   | Missing !Plicity
   | Extra
   deriving (Eq, Show, Generic, Hashable)
+
+data FieldOrArgument
+  = Field
+  | Argument
+  deriving (Eq, Show, Generic, Hashable)
+
+instance Pretty FieldOrArgument where
+  pretty fieldOrArg =
+    case fieldOrArg of
+      Field ->
+        "field"
+
+      Argument ->
+        "argument"
 
 data Spanned
   = Spanned !Span.Relative !Error.Elaboration

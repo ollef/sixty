@@ -73,7 +73,7 @@ headingAndBody error =
             inferred' <- prettyPrettyableTerm inferred
             expected' <- prettyPrettyableTerm expected
             pure (inferred', expected')
-          pure $
+          pure
             ( "Type mismatch"
             , vcat
                 (intercalate ["", "while trying to unify"]
@@ -97,24 +97,23 @@ headingAndBody error =
         Error.OverlappingPatterns ->
           pure ("Overlapping patterns", mempty)
 
-        Error.PlicityMismatch plicityMismatch ->
+        Error.PlicityMismatch fieldOrArg plicityMismatch ->
           pure $ case plicityMismatch of
             Error.Mismatch expected_ actual ->
               ( "Plicity mismatch"
-              , "Expected an " <> Doc.pretty expected_ <>
-                " but got an " <> Doc.pretty actual <>
-                " field"
+              , "Expected an" <+> Doc.pretty expected_ <+> Doc.pretty fieldOrArg <+>
+                "but got an" <+> Doc.pretty actual <+> Doc.pretty fieldOrArg
               )
 
             Error.Missing expected_ ->
-              ( "Missing field"
-              , "Expected an " <> Doc.pretty expected_ <>
-                " field but didn't get any"
+              ( "Missing" <+> Doc.pretty fieldOrArg
+              , "Expected an" <+> Doc.pretty expected_ <+> Doc.pretty fieldOrArg <+>
+                "but didn't get any"
               )
 
             Error.Extra ->
-              ( "Unexpected field"
-              , "Didn't expect a field here"
+              ( "Unexpected" <+> Doc.pretty fieldOrArg
+              , "Didn't expect a" <+> Doc.pretty fieldOrArg <+> "here"
               )
 
         Error.UnableToInferImplicitLambda ->
