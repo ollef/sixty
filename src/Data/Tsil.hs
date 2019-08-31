@@ -4,12 +4,16 @@
 {-# language DeriveTraversable #-}
 module Data.Tsil where
 
+import qualified Prelude
 import Protolude
 
 data Tsil a
   = Empty
   | Tsil a :> a
-  deriving (Eq, Functor, Ord, Show, Traversable, Generic, Hashable)
+  deriving (Eq, Functor, Ord, Traversable, Generic, Hashable)
+
+instance Show a => Show (Tsil a) where
+  show = show . toList
 
 instance Semigroup (Tsil a) where
   xs <> Empty = xs
