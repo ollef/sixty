@@ -529,9 +529,14 @@ inlineIndex
   -> Value
   -> Shared Value
 inlineIndex index targetScope solution@ ~(solutionVar, varArgs, solutionValue, solutionType) value@(Value innerValue _)
-  | IntSet.null targetScope = do
-    modified
-    pure $ makeLet "meta" solutionVar solutionValue solutionType value
+  | IntSet.null targetScope =
+    if index `IntMap.member` occurrencesMap value then do
+      modified
+      pure $ makeLet "meta" solutionVar solutionValue solutionType value
+
+    else
+      pure value
+
   | otherwise = do
     let
       recurse value' =
