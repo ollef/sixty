@@ -64,7 +64,7 @@ readbackHead env hd = do
   maybeTerm <- readbackMaybeHead env hd
   case maybeTerm of
     Nothing ->
-      panic "readbackHead: Nothing"
+      panic $ "readbackHead: Nothing " <> show hd
 
     Just term ->
       pure term
