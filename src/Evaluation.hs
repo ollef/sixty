@@ -119,9 +119,26 @@ chooseBranch outerEnv constr outerArgs branches defaultBranch =
     (Nothing, Just branch) ->
       evaluate outerEnv branch
 
-    (Just tele, _) ->
-      go outerEnv outerArgs tele
+    (Just tele, _) -> do
+      constrTypeTele <- fetch $ Query.ConstructorType constr
+      go outerEnv (dropTypeArgs constrTypeTele outerArgs) tele
   where
+    dropTypeArgs
+      :: Telescope t t' v
+      -> [(Plicity, value)]
+      -> [(Plicity, value)]
+    dropTypeArgs tele args =
+      case (tele, args) of
+        (Telescope.Empty _, _) ->
+          args
+
+        (Telescope.Extend _ _ plicity1 tele', (plicity2, _):args')
+          | plicity1 == plicity2 ->
+            dropTypeArgs tele' args'
+
+        _ ->
+          panic "chooseBranch arg mismatch"
+
     go
       :: Domain.Environment v
       -> [(Plicity, Domain.Value)]
@@ -136,6 +153,9 @@ chooseBranch outerEnv constr outerArgs branches defaultBranch =
           | plicity1 == plicity2 -> do
             env' <- Environment.extendValue env arg
             go env' args' domain
+
+          | otherwise ->
+            panic $ "chooseBranch mismatch " <> show (plicity1, plicity2)
 
         _ ->
           panic "chooseBranch mismatch"
