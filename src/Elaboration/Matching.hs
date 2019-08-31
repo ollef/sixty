@@ -266,8 +266,8 @@ simplifyMatch context coveredConstructors (Match value plicity pat@(Presyntax.Pa
       maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
       case maybeScopeEntry of
         Just (Scope.Constructors constrs)
-          | constr `HashSet.member` constrs ->
-            lift $ do
+          | constr `HashSet.member` constrs -> do
+            matches' <- lift $ do
               constrType <- fetch $ Query.ConstructorType constr
               (patsType, patSpine) <-
                 instantiateConstructorType
@@ -281,6 +281,7 @@ simplifyMatch context coveredConstructors (Match value plicity pat@(Presyntax.Pa
                   Context.spanned span context
               _ <- Context.try_ context' $ Unification.unify context' Flexibility.Rigid type_ type'
               pure matches'
+            concat <$> mapM (simplifyMatch context coveredConstructors) matches'
 
           | otherwise ->
             fail "Constructor mismatch"
