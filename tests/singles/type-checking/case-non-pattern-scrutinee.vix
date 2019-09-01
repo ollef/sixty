@@ -1,0 +1,29 @@
+
+data Tuple a b where
+  MkTuple : a -> b -> Tuple a b
+
+data Nat where
+  Z : Nat
+  S : Nat -> Nat
+
+data Vector n a where
+  Nil : Vector Z a
+  Cons : forall m. a -> Vector m a -> Vector (S m) a
+
+data Bool = False | True
+
+zipWithCase : forall a b c n. (a -> b -> c) -> Vector n a -> Vector n b -> Vector n c
+
+nonPatternScrutinee : forall a b c n. (a -> b -> c) -> Vector n a -> Vector n b -> Bool
+nonPatternScrutinee f as bs =
+  case zipWithCase f as bs of
+    Nil -> True
+    Cons _ _ -> True
+
+data List a = Nil | Cons a (List a)
+
+localScrutinee : forall a. (a -> List Type) -> a -> List a
+localScrutinee f a =
+  case f a of
+    Nil -> Nil
+    Cons _ _ -> Cons a Nil
