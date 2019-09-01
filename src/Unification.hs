@@ -12,8 +12,8 @@ import {-# source #-} qualified Elaboration
 import qualified Builtin
 import Context (Context)
 import qualified Context
-import Data.IntSequence (IntSeq)
-import qualified Data.IntSequence as IntSeq
+import Data.IntSeq (IntSeq)
+import qualified Data.IntSeq as IntSeq
 import qualified Data.Tsil as Tsil
 import Data.Tsil (Tsil)
 import qualified Domain

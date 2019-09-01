@@ -13,8 +13,8 @@ import Data.IORef
 
 import "this" Data.IntMap (IntMap)
 import qualified Builtin
-import Data.IntSequence (IntSeq)
-import qualified Data.IntSequence as IntSeq
+import Data.IntSeq (IntSeq)
+import qualified Data.IntSeq as IntSeq
 import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
 import Data.Tsil (Tsil)

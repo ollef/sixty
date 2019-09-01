@@ -6,7 +6,7 @@
 {-# language PatternSynonyms #-}
 {-# language StandaloneDeriving #-}
 {-# language ViewPatterns #-}
-module Data.IntSequence where
+module Data.IntSeq where
 
 import Prelude (Show(showsPrec), showParen, showString, shows)
 import Protolude hiding (IntMap)
@@ -108,7 +108,7 @@ insertAt :: (Coercible a Data.IntMap.Key) => Int -> a -> IntSeq a -> IntSeq a
 insertAt i a as =
   let
     (l, r) =
-      Data.IntSequence.splitAt i as
+      Data.IntSeq.splitAt i as
 
   in
   l <> singleton a <> r

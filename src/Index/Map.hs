@@ -9,8 +9,8 @@ import Protolude hiding (Map)
 
 import qualified "containers" Data.IntMap
 
-import qualified Data.IntSequence as IntSeq
-import Data.IntSequence (IntSeq)
+import qualified Data.IntSeq as IntSeq
+import Data.IntSeq (IntSeq)
 import Index
 
 newtype Map v a = Map (IntSeq a)
