@@ -168,7 +168,7 @@ unify context flexibility untouchables value1 value2 = do
 
       | otherwise = do
         occurs context (IntSet.insert var untouchables) value
-        pure $ Context.define context var value
+        lift $ Context.define context var value
 
 unifyBranches
   :: Context v

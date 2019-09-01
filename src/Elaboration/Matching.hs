@@ -649,7 +649,7 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
         _ -> do
           let
             context' =
-              Context.define context scrutinee $ Domain.Neutral (Domain.Con constr) conArgs
+              Context.defineWellOrdered context scrutinee $ Domain.Neutral (Domain.Con constr) conArgs
           result <- elaborate context' config
           pure $ Telescope.Empty result
 
@@ -708,10 +708,7 @@ splitEquality
   -> Domain.Value
   -> M (Syntax.Term v)
 splitEquality context config var type_ value1 value2 = do
-  let
-    context' =
-      Context.define context var $ Builtin.Refl type_ value1 value2
-
+  context' <- Context.define context var $ Builtin.Refl type_ value1 value2
   elaborate context' config
 
 -------------------------------------------------------------------------------

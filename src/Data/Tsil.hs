@@ -60,6 +60,12 @@ filter f (xs :> x)
   | f x = Data.Tsil.filter f xs :> x
   | otherwise = Data.Tsil.filter f xs
 
+partition :: (a -> Bool) -> Tsil a -> (Tsil a, Tsil a)
+partition _ Empty = mempty
+partition p (xs :> x)
+  | p x = first (:> x) $ partition p xs
+  | otherwise = second (:> x) $ partition p xs
+
 span :: (a -> Bool) -> Tsil a -> (Tsil a, Tsil a)
 span _ Empty = (Empty, Empty)
 span p as@(as' :> a)

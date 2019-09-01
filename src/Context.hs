@@ -5,7 +5,7 @@
 {-# language TupleSections #-}
 module Context where
 
-import Protolude hiding (IntMap, force)
+import Protolude hiding (IntMap, IntSet, force)
 
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
@@ -15,6 +15,8 @@ import "this" Data.IntMap (IntMap)
 import qualified Builtin
 import Data.IntSequence (IntSeq)
 import qualified Data.IntSequence as IntSeq
+import Data.IntSet (IntSet)
+import qualified Data.IntSet as IntSet
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Domain
@@ -38,6 +40,8 @@ import qualified Readback
 import qualified Scope
 import qualified Span
 import qualified Syntax
+import Syntax.Telescope (Telescope)
+import qualified Syntax.Telescope as Telescope
 import Var
 
 data Context v = Context
@@ -235,12 +239,125 @@ extendBefore context beforeVar name type_ = do
     , var
     )
 
-define :: Context v -> Var -> Domain.Value -> Context v
-define context var value =
+defineWellOrdered :: Context v -> Var -> Domain.Value -> Context v
+defineWellOrdered context var value =
   context
     { values = IntMap.insert var value $ values context
     , boundVars = IntSeq.delete var $ boundVars context
     }
+
+define :: Context v -> Var -> Domain.Value -> M (Context v)
+define context var value = do
+  deps <- evalStateT (dependencies context value) mempty
+  let
+    context' =
+      defineWellOrdered context var value
+
+    (pre, post) =
+      Tsil.partition (`IntSet.member` deps) $
+      IntSeq.toTsil $
+      boundVars context'
+
+  pure context'
+    { boundVars =
+      IntSeq.fromTsil pre <> IntSeq.fromTsil post
+    }
+
+-- TODO: Move
+dependencies
+  :: Context v
+  -> Domain.Value
+  -> StateT (IntMap Var (IntSet Var)) M (IntSet Var)
+dependencies context value = do
+  value' <- lift $ Context.forceHeadGlue context value
+  case value' of
+    Domain.Neutral hd spine -> do
+      spineVars <- mapM (dependencies context . snd) spine
+      hdVars <- headVars hd
+      pure $ hdVars <> fold spineVars
+
+    Domain.Glued (Domain.Global _) spine _ -> do
+      spineVars <- mapM (dependencies context . snd) spine
+      pure $ fold spineVars
+
+    Domain.Glued _ _ value'' -> do
+      value''' <- lift $ force value''
+      dependencies context value'''
+
+    Domain.Lam name type' _ closure ->
+      abstractionDependencies name type' closure
+
+    Domain.Pi name type' _ closure ->
+      abstractionDependencies name type' closure
+
+    Domain.Fun source domain -> do
+      sourceVars <- dependencies context source
+      domainVars <- dependencies context domain
+      pure $ sourceVars <> domainVars
+
+    Domain.Case scrutinee (Domain.Branches env branches defaultBranch) -> do
+      scrutineeVars <- dependencies context scrutinee
+      defaultBranchVars <- mapM (dependencies context <=< lift . Evaluation.evaluate env) defaultBranch
+      brVars <- mapM (branchVars context env) (HashMap.elems branches)
+      pure $ scrutineeVars <> fold defaultBranchVars <> fold brVars
+
+  where
+    abstractionDependencies name type' closure = do
+      typeVars <- dependencies context type'
+      (context', var) <- lift $ Context.extendUnnamed context name type'
+      body <- lift $ Evaluation.evaluateClosure closure $ Domain.var var
+      bodyVars <- dependencies context' body
+      pure $ typeVars <> IntSet.delete var bodyVars
+
+    headVars hd =
+      case hd of
+        Domain.Var v
+          | v `IntSeq.member` boundVars context -> do
+            cache <- get
+            typeDeps <- case IntMap.lookup v cache of
+              Nothing -> do
+                typeDeps <- dependencies context $ lookupVarType v context
+                modify $ IntMap.insert v typeDeps
+                pure typeDeps
+
+              Just typeDeps ->
+                pure typeDeps
+
+            pure $ typeDeps <> IntSet.singleton v
+
+          | otherwise ->
+            pure $ IntSet.singleton v
+
+        Domain.Global _ ->
+          pure mempty
+
+        Domain.Con _ ->
+          pure mempty
+
+        Domain.Meta _ ->
+          pure mempty
+
+    branchVars
+      :: Context v
+      -> Domain.Environment v'
+      -> Telescope Syntax.Type Syntax.Term v'
+      -> StateT (IntMap Var (IntSet Var)) M (IntSet Var)
+    branchVars context' env tele =
+      case tele of
+        Telescope.Empty body -> do
+          body' <- lift $ Evaluation.evaluate env body
+          dependencies context' body'
+
+        Telescope.Extend name source _ tele' -> do
+          source' <- lift $ Evaluation.evaluate env source
+          sourceVars <- dependencies context' source'
+          (context'', var) <- lift $ Context.extendUnnamed context' name source'
+          let
+            env' =
+              Environment.extendVar env var
+
+          rest <- branchVars context'' env' tele'
+          pure $ sourceVars <> IntSet.delete var rest
 
 lookupNameVar :: Name.Pre -> Context v -> Maybe Var
 lookupNameVar (Name.Pre name) context =

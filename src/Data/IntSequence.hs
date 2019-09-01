@@ -74,6 +74,13 @@ length (IntSeq ft) =
   in
   len
 
+member :: (Coercible a Data.IntMap.Key) => a -> IntSeq a -> Bool
+member a (IntSeq ft) =
+  let
+    IndexMap _ m = FingerTree.measure ft
+  in
+  IntMap.member a m
+
 elemIndex :: (Coercible a Data.IntMap.Key) => a -> IntSeq a -> Maybe Int
 elemIndex a (IntSeq ft) =
   let
