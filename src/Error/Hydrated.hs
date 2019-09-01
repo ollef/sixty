@@ -54,7 +54,7 @@ headingAndBody error =
         Error.NotInScope name ->
           pure
             ( "Not in scope:" <+> Doc.pretty name
-            , Doc.pretty name <+> " is not defined here."
+            , Doc.pretty name <+> "is not defined here."
             )
 
         Error.Ambiguous name constrCandidates nameCandidates ->
