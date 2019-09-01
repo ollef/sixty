@@ -3,7 +3,7 @@
 {-# language RankNTypes #-}
 module Elaboration.Matching where
 
-import Protolude hiding (IntMap, force)
+import Protolude hiding (IntMap, IntSet, force)
 
 import Control.Monad.Fail
 import Control.Monad.Trans.Maybe
@@ -74,37 +74,104 @@ elaborateCase
   -> [(Presyntax.Pattern, Presyntax.Term)]
   -> Domain.Type
   -> M (Syntax.Term v)
-elaborateCase context scrutinee scrutineeType branches expectedType =
-  case scrutinee of
-    Syntax.Var index -> do
-      let
-        scrutineeValue =
-          Domain.var $ Context.lookupIndexVar index context
-      usedClauses <- liftIO $ newIORef mempty
+elaborateCase context scrutinee scrutineeType branches expectedType = do
+  usedClauses <- liftIO $ newIORef mempty
+  scrutineeValue <- Elaboration.evaluate context scrutinee
+  isPatternScrutinee <- isPatternValue context scrutineeValue
 
-      elaborateWithCoverage context Error.Branch Config
-        { _expectedType = expectedType
-        , _scrutinees = pure scrutineeValue
-        , _clauses =
-          [ Clause
-            { _span = Span.add patSpan rhsSpan
-            , _matches = [Match scrutineeValue Explicit pat scrutineeType]
-            , _rhs = rhs'
-            }
-          | (pat@(Presyntax.Pattern patSpan _), rhs'@(Presyntax.Term rhsSpan _)) <- branches
-          ]
-        , _usedClauses = usedClauses
-        , _coveredConstructors = mempty
-        }
+  if isPatternScrutinee then
+    elaborateWithCoverage context Error.Branch Config
+      { _expectedType = expectedType
+      , _scrutinees = pure scrutineeValue
+      , _clauses =
+        [ Clause
+          { _span = Span.add patSpan rhsSpan
+          , _matches = [Match scrutineeValue Explicit pat scrutineeType]
+          , _rhs = rhs'
+          }
+        | (pat@(Presyntax.Pattern patSpan _), rhs'@(Presyntax.Term rhsSpan _)) <- branches
+        ]
+      , _usedClauses = usedClauses
+      , _coveredConstructors = mempty
+      }
+  else do
+    (context', var) <- Context.extendUnnamed context "scrutinee" scrutineeType
 
-    _ -> do
-      (context', var) <- Context.extendUnnamed context "scrutinee" scrutineeType
+    let
+      scrutineeVarValue =
+        Domain.var var
+    term <- elaborateWithCoverage context' Error.Branch Config
+      { _expectedType = expectedType
+      , _scrutinees = pure scrutineeVarValue
+      , _clauses =
+        [ Clause
+          { _span = Span.add patSpan rhsSpan
+          , _matches = [Match scrutineeVarValue Explicit pat scrutineeType]
+          , _rhs = rhs'
+          }
+        | (pat@(Presyntax.Pattern patSpan _), rhs'@(Presyntax.Term rhsSpan _)) <- branches
+        ]
+      , _usedClauses = usedClauses
+      , _coveredConstructors = mempty
+      }
+    scrutineeType' <- Readback.readback (Context.toEnvironment context) scrutineeType
+    pure $ Syntax.Let "scrutinee" scrutinee scrutineeType' term
+
+isPatternValue :: Context v -> Domain.Value -> M Bool
+isPatternValue context value = do
+  value' <- Context.forceHead context value
+  case value' of
+    Domain.Neutral (Domain.Var _) Tsil.Empty ->
+      pure True
+
+    Domain.Neutral (Domain.Var _) (_ Tsil.:> _) ->
+      pure False
+
+    Domain.Neutral (Domain.Global _) _ ->
+      pure False
+
+    Domain.Neutral (Domain.Con constr) spine -> do
+      constrTypeTele <- fetch $ Query.ConstructorType constr
       let
-        index =
-          fromMaybe (panic "matching lookupVarIndex") $ Context.lookupVarIndex var context'
-      term <- elaborateCase context' (Syntax.Var index) scrutineeType branches expectedType
-      scrutineeType' <- Readback.readback (Context.toEnvironment context) scrutineeType
-      pure $ Syntax.Let "scrutinee" scrutinee scrutineeType' term
+        spine' =
+          dropTypeArgs constrTypeTele $ toList spine
+
+      and <$> mapM (isPatternValue context . snd) spine'
+    Domain.Neutral (Domain.Meta _) _ ->
+      pure False
+
+    Domain.Glued _ _ value'' -> do
+      value''' <- force value''
+      isPatternValue context value'''
+
+    Domain.Lam {} ->
+      pure False
+
+    Domain.Pi {} ->
+      pure False
+
+    Domain.Fun {} ->
+      pure False
+
+    Domain.Case {} ->
+      pure False
+
+  where
+    dropTypeArgs
+      :: Telescope t t' v
+      -> [(Plicity, value)]
+      -> [(Plicity, value)]
+    dropTypeArgs tele args =
+      case (tele, args) of
+        (Telescope.Empty _, _) ->
+          args
+
+        (Telescope.Extend _ _ plicity1 tele', (plicity2, _):args')
+          | plicity1 == plicity2 ->
+            dropTypeArgs tele' args'
+
+        _ ->
+          panic "chooseBranch arg mismatch"
 
 elaborateClauses
   :: Context v
