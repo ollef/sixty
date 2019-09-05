@@ -36,4 +36,4 @@ onlyZero (Succ f) = case f of
 
 typeIncorrect : Fin (Succ Zero) -> Unit
 typeIncorrect Zero = MkUnit
-typeIncorrect (Succ Zero) = MkUnit
+typeIncorrect (Succ z) = case z of

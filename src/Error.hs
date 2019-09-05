@@ -32,6 +32,7 @@ data Elaboration
   | UnsolvedMetaVariable !Meta.Index !PrettyableTerm
   | NonExhaustivePatterns
   | RedundantMatch !MatchKind
+  | IndeterminateIndexUnification !MatchKind
   | PlicityMismatch !FieldOrArgument !PlicityMismatch
   | UnableToInferImplicitLambda
   | ImplicitApplicationMismatch (HashSet Name) !PrettyableTerm !PrettyableTerm

@@ -122,6 +122,7 @@ data ExpectedError
   | UnsolvedMetaVariable
   | NonExhaustivePatterns
   | RedundantMatch
+  | IndeterminateIndexUnification
   | PlicityMismatch
   | UnableToInferImplicitLambda
   | ImplicitApplicationMismatch
@@ -158,6 +159,9 @@ errorToExpectedError err =
 
         Error.RedundantMatch {} ->
           RedundantMatch
+
+        Error.IndeterminateIndexUnification {} ->
+          IndeterminateIndexUnification
 
         Error.PlicityMismatch {} ->
           PlicityMismatch
@@ -204,6 +208,9 @@ expectedErrorsFromSource sourceText =
 
             "redundant match error expected" ->
               [(lineNumber, RedundantMatch)]
+
+            "indeterminate index unification error expected" ->
+              [(lineNumber, IndeterminateIndexUnification)]
 
             "plicity mismatch error expected" ->
               [(lineNumber, PlicityMismatch)]

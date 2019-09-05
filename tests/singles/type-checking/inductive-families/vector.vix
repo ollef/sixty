@@ -10,7 +10,6 @@ matchZero : Vector Z Nat -> Nat
 matchZero Nil = Z
 
 matchSucc : Vector (S Z) Nat -> Nat
-matchSucc Nil = Z
 matchSucc (Cons _ Nil) = S Z
 
 zipWith : forall a b c n. (a -> b -> c) -> Vector n a -> Vector n b -> Vector n c

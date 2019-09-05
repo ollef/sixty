@@ -117,6 +117,13 @@ headingAndBody error =
         Error.RedundantMatch matchKind ->
           pure ("Redundant" <+> Doc.pretty matchKind, "This" <+> Doc.pretty matchKind <+> "is unreachable")
 
+        Error.IndeterminateIndexUnification fieldOrArg ->
+          pure
+            ( "Indeterminate index unification"
+            , "I don't know whether this" <+> Doc.pretty fieldOrArg <+>
+              "applies or not, because the unification of a constructor type's indices failed to produce a definite result."
+            )
+
         Error.PlicityMismatch fieldOrArg plicityMismatch ->
           pure $ case plicityMismatch of
             Error.Mismatch expected_ actual ->

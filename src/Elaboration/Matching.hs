@@ -1,3 +1,4 @@
+{-# language LambdaCase #-}
 {-# language OverloadedStrings #-}
 {-# language PackageImports #-}
 {-# language RankNTypes #-}
@@ -53,6 +54,7 @@ data Config = Config
   , _clauses :: [Clause]
   , _usedClauses :: !(IORef (Set Span.Relative))
   , _coveredConstructors :: CoveredConstructors
+  , _matchKind :: !Error.MatchKind
   }
 
 type CoveredConstructors = IntMap Var (HashSet Name.QualifiedConstructor)
@@ -80,7 +82,7 @@ elaborateCase context scrutinee scrutineeType branches expectedType = do
   isPatternScrutinee <- isPatternValue context scrutineeValue
 
   if isPatternScrutinee then
-    elaborateWithCoverage context Error.Branch Config
+    elaborateWithCoverage context Config
       { _expectedType = expectedType
       , _scrutinees = pure scrutineeValue
       , _clauses =
@@ -93,6 +95,7 @@ elaborateCase context scrutinee scrutineeType branches expectedType = do
         ]
       , _usedClauses = usedClauses
       , _coveredConstructors = mempty
+      , _matchKind = Error.Branch
       }
   else do
     (context', var) <- Context.extendUnnamed context "scrutinee" scrutineeType
@@ -100,7 +103,7 @@ elaborateCase context scrutinee scrutineeType branches expectedType = do
     let
       scrutineeVarValue =
         Domain.var var
-    term <- elaborateWithCoverage context' Error.Branch Config
+    term <- elaborateWithCoverage context' Config
       { _expectedType = expectedType
       , _scrutinees = pure scrutineeVarValue
       , _clauses =
@@ -113,6 +116,7 @@ elaborateCase context scrutinee scrutineeType branches expectedType = do
         ]
       , _usedClauses = usedClauses
       , _coveredConstructors = mempty
+      , _matchKind = Error.Branch
       }
     scrutineeType' <- Readback.readback (Context.toEnvironment context) scrutineeType
     pure $ Syntax.Let "scrutinee" scrutinee scrutineeType' term
@@ -181,7 +185,7 @@ elaborateClauses
 elaborateClauses context clauses expectedType = do
   usedClauses <- liftIO $ newIORef mempty
 
-  elaborateWithCoverage context Error.Clause Config
+  elaborateWithCoverage context Config
     { _expectedType = expectedType
     , _scrutinees =
       case clauses of
@@ -194,6 +198,7 @@ elaborateClauses context clauses expectedType = do
     , _clauses = clauses
     , _usedClauses = usedClauses
     , _coveredConstructors = mempty
+    , _matchKind = Error.Clause
     }
 
 elaborateSingle
@@ -213,7 +218,7 @@ elaborateSingle context scrutinee pat@(Presyntax.Pattern patSpan _) rhs@(Presynt
 
     usedClauses <- liftIO $ newIORef mempty
 
-    elaborateWithCoverage context Error.Lambda Config
+    elaborateWithCoverage context Config
       { _expectedType = expectedType
       , _scrutinees = pure scrutineeValue
       , _clauses =
@@ -225,12 +230,13 @@ elaborateSingle context scrutinee pat@(Presyntax.Pattern patSpan _) rhs@(Presynt
         ]
       , _usedClauses = usedClauses
       , _coveredConstructors = mempty
+      , _matchKind = Error.Lambda
       }
 
 -------------------------------------------------------------------------------
 
-elaborateWithCoverage :: Context v -> Error.MatchKind -> Config -> M (Syntax.Term v)
-elaborateWithCoverage context matchKind config = do
+elaborateWithCoverage :: Context v -> Config -> M (Syntax.Term v)
+elaborateWithCoverage context config = do
   result <- elaborate context config
   let
     allClauseSpans =
@@ -240,7 +246,7 @@ elaborateWithCoverage context matchKind config = do
         ]
   usedClauseSpans <- liftIO $ readIORef (_usedClauses config)
   forM_ (Set.difference allClauseSpans usedClauseSpans) $ \span ->
-    Context.report (Context.spanned span context) $ Error.RedundantMatch matchKind
+    Context.report (Context.spanned span context) $ Error.RedundantMatch $ _matchKind config
   pure result
 
 elaborate :: Context v -> Config -> M (Syntax.Term v)
@@ -259,12 +265,11 @@ elaborate context config = do
       let
         matches = _matches firstClause
 
-      maybeEqMatch <- findEqualityMatch context matches
-      case maybeEqMatch of
-        Just (context', var, type_, value1, value2) ->
-          splitEquality context' config' var type_ value1 value2
+      case findEqualityMatches matches of
+        equalities@(_:_) ->
+          splitEquality context config' equalities
 
-        Nothing -> do
+        [] -> do
           maybeConMatch <- findConstructorMatch context matches
           case maybeConMatch of
             Just (var, span, constr, type_) ->
@@ -541,7 +546,7 @@ matchInstantiation context match =
       maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) prename
       case maybeScopeEntry of
         Just (Scope.Constructors _) ->
-          fail "No match instantitation"
+          fail "No match instantiation"
 
         _ ->
           pure $ pure (Name name, term, type_)
@@ -766,17 +771,50 @@ findEqualityMatch context matches =
     _:matches' ->
       findEqualityMatch context matches'
 
+findEqualityMatches :: [Match] -> [(Var, Domain.Type, Domain.Value, Domain.Value)]
+findEqualityMatches =
+  mapMaybe $ \case
+    Match
+      (Domain.Neutral (Domain.Var var) Tsil.Empty)
+      _
+      (Presyntax.Pattern _ Presyntax.WildcardPattern)
+      (Builtin.Equals type_ value1 value2) ->
+        Just (var, type_, value1, value2)
+
+    _ ->
+      Nothing
+
 splitEquality
   :: Context v
   -> Config
-  -> Var
-  -> Domain.Type
-  -> Domain.Value
-  -> Domain.Value
+  -> [(Var, Domain.Type, Domain.Value, Domain.Value)]
   -> M (Syntax.Term v)
-splitEquality context config var type_ value1 value2 = do
-  context' <- Context.define context var $ Builtin.Refl type_ value1 value2
-  elaborate context' config
+splitEquality context config equalities = do
+  case equalities of
+    [] ->
+      case _clauses config of
+        Clause span _ _ : _ -> do
+          Context.report (Context.spanned span context) $ Error.IndeterminateIndexUnification $ _matchKind config
+          targetType <- Elaboration.readback context $ _expectedType config
+          pure $ Syntax.App (Syntax.Global Builtin.fail) Explicit targetType
+
+        _ ->
+          panic "splitEquality: no clauses"
+
+    (var, type_, value1, value2):equalities' -> do
+      result <- runExceptT $ Indices.unify context Flexibility.Rigid mempty value1 value2
+      case result of
+        Left Indices.Nope ->
+          elaborate context config
+            { _clauses = drop 1 $ _clauses config
+            }
+
+        Left Indices.Dunno ->
+          splitEquality context config equalities'
+
+        Right context' -> do
+          context'' <- Context.define context' var $ Builtin.Refl type_ value1 value2
+          elaborate context'' config
 
 -------------------------------------------------------------------------------
 
