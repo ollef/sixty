@@ -265,28 +265,19 @@ elaborate context config = do
       let
         matches = _matches firstClause
 
-      case findEqualityMatches matches of
-        equalities@(_:_) ->
-          splitEquality context config' equalities
+      splitEqualityOr context config' matches $
+        splitConstructorOr context config' matches $ do
+          maybeInst <- solved context matches
+          case maybeInst of
+            Nothing ->
+              panic "matching: no solution"
 
-        [] -> do
-          maybeConMatch <- findConstructorMatch context matches
-          case maybeConMatch of
-            Just (var, span, constr, type_) ->
-              splitConstructor context config' var span constr type_
-
-            Nothing -> do
-              maybeInst <- solved context matches
-              case maybeInst of
-                Nothing ->
-                  panic "matching: no solution"
-
-                Just inst -> do
-                  context' <- Context.extendUnindexedDefs context inst
-                  mapM_ (checkForcedPattern context') matches
-                  result <- Elaboration.check context' (_rhs firstClause) (_expectedType config)
-                  liftIO $ modifyIORef (_usedClauses config) $ Set.insert $ _span firstClause
-                  pure result
+            Just inst -> do
+              context' <- Context.extendUnindexedDefs context inst
+              mapM_ (checkForcedPattern context') matches
+              result <- Elaboration.check context' (_rhs firstClause) (_expectedType config)
+              liftIO $ modifyIORef (_usedClauses config) $ Set.insert $ _span firstClause
+              pure result
 
 checkForcedPattern :: Context v -> Match -> M ()
 checkForcedPattern context match =
@@ -563,67 +554,43 @@ solved context =
 
 -------------------------------------------------------------------------------
 
-findConstructorMatch
+splitConstructorOr
   :: Context v
+  -> Config
   -> [Match]
-  -> M (Maybe (Var, Span.Relative, Name.QualifiedConstructor, Domain.Type))
-findConstructorMatch context matches =
-    case matches of
-      [] ->
-        pure Nothing
+  -> M (Syntax.Term v)
+  -> M (Syntax.Term v)
+splitConstructorOr context config matches k =
+  case matches of
+    [] ->
+      k
 
-      Match (Domain.Neutral (Domain.Var x) Tsil.Empty) _ (Presyntax.Pattern span (Presyntax.ConOrVar name _)) type_:matches' -> do
-        maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
-        case maybeScopeEntry of
-          Just (Scope.Constructors constrs) -> do
-            let
-              expectedTypeName =
-                Elaboration.getExpectedTypeName context type_
-            maybeConstr <- Elaboration.resolveConstructor context name constrs expectedTypeName
-            case maybeConstr of
-              Nothing ->
-                findConstructorMatch context matches'
+    match:matches' ->
+      case match of
+        Match
+          (Domain.Neutral (Domain.Var var) Tsil.Empty)
+          _
+          (Presyntax.Pattern span (Presyntax.ConOrVar name _))
+          type_ -> do
+            maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
+            case maybeScopeEntry of
+              Just (Scope.Constructors constrs) -> do
+                let
+                  expectedTypeName =
+                    Elaboration.getExpectedTypeName context type_
+                maybeConstr <- Elaboration.resolveConstructor context name constrs expectedTypeName
+                case maybeConstr of
+                  Nothing ->
+                    splitConstructorOr context config matches' k
 
-              Just constr ->
-                pure $ Just (x, span, constr, type_)
+                  Just constr ->
+                    splitConstructor context config var span constr type_
 
-          _ ->
-            findConstructorMatch context matches'
+              _ ->
+                splitConstructorOr context config matches' k
 
-      _:matches' ->
-        findConstructorMatch context matches'
-
-findVarConstructorMatches
-  :: Context v
-  -> Var
-  -> [Match]
-  -> M [Name.QualifiedConstructor]
-findVarConstructorMatches context var matches =
-    case matches of
-      [] ->
-        pure []
-
-      Match (Domain.Neutral (Domain.Var x) Tsil.Empty) _ (Presyntax.Pattern _ (Presyntax.ConOrVar name _)) type_:matches' 
-        | var == x -> do
-          maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
-          case maybeScopeEntry of
-            Just (Scope.Constructors constrs) -> do
-              let
-                expectedTypeName =
-                  Elaboration.getExpectedTypeName context type_
-              maybeConstr <- Elaboration.resolveConstructor context name constrs expectedTypeName
-              case maybeConstr of
-                Nothing ->
-                  findVarConstructorMatches context var matches'
-
-                Just constr ->
-                  (constr :) <$> findVarConstructorMatches context var matches'
-
-            _ ->
-              findVarConstructorMatches context var matches'
-
-      _:matches' ->
-        findVarConstructorMatches context var matches'
+        _ ->
+          splitConstructorOr context config matches' k
 
 splitConstructor
   :: Context v
@@ -741,80 +708,74 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
     _ ->
       panic "splitConstructor no data definition"
 
+findVarConstructorMatches
+  :: Context v
+  -> Var
+  -> [Match]
+  -> M [Name.QualifiedConstructor]
+findVarConstructorMatches context var matches =
+    case matches of
+      [] ->
+        pure []
+
+      Match (Domain.Neutral (Domain.Var var') Tsil.Empty) _ (Presyntax.Pattern _ (Presyntax.ConOrVar name _)) type_:matches' 
+        | var == var' -> do
+          maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
+          case maybeScopeEntry of
+            Just (Scope.Constructors constrs) -> do
+              let
+                expectedTypeName =
+                  Elaboration.getExpectedTypeName context type_
+              maybeConstr <- Elaboration.resolveConstructor context name constrs expectedTypeName
+              case maybeConstr of
+                Nothing ->
+                  findVarConstructorMatches context var matches'
+
+                Just constr ->
+                  (constr :) <$> findVarConstructorMatches context var matches'
+
+            _ ->
+              findVarConstructorMatches context var matches'
+
+      _:matches' ->
+        findVarConstructorMatches context var matches'
+
 -------------------------------------------------------------------------------
 
-findEqualityMatch
-  :: Context v
-  -> [Match]
-  -> M (Maybe (Context v, Var, Domain.Type, Domain.Value, Domain.Value))
-findEqualityMatch context matches =
-  case matches of
-    [] ->
-      pure Nothing
-
-    Match
-      (Domain.Neutral (Domain.Var x) Tsil.Empty)
-      _
-      (Presyntax.Pattern _ Presyntax.WildcardPattern)
-      (Builtin.Equals type_ value1 value2):matches' -> do
-        result <- runExceptT $ Indices.unify context Flexibility.Rigid mempty value1 value2
-        case result of
-          Left Indices.Nope ->
-            pure Nothing
-
-          Left Indices.Dunno ->
-            findEqualityMatch context matches'
-
-          Right context' ->
-            pure $ Just (context', x, type_, value1, value2)
-
-    _:matches' ->
-      findEqualityMatch context matches'
-
-findEqualityMatches :: [Match] -> [(Var, Domain.Type, Domain.Value, Domain.Value)]
-findEqualityMatches =
-  mapMaybe $ \case
-    Match
-      (Domain.Neutral (Domain.Var var) Tsil.Empty)
-      _
-      (Presyntax.Pattern _ Presyntax.WildcardPattern)
-      (Builtin.Equals type_ value1 value2) ->
-        Just (var, type_, value1, value2)
-
-    _ ->
-      Nothing
-
-splitEquality
+splitEqualityOr
   :: Context v
   -> Config
-  -> [(Var, Domain.Type, Domain.Value, Domain.Value)]
+  -> [Match]
   -> M (Syntax.Term v)
-splitEquality context config equalities = do
-  case equalities of
+  -> M (Syntax.Term v)
+splitEqualityOr context config matches k =
+  case matches of
     [] ->
-      case _clauses config of
-        Clause span _ _ : _ -> do
-          Context.report (Context.spanned span context) $ Error.IndeterminateIndexUnification $ _matchKind config
-          targetType <- Elaboration.readback context $ _expectedType config
-          pure $ Syntax.App (Syntax.Global Builtin.fail) Explicit targetType
+      k
+
+    match:matches' ->
+      case match of
+        Match
+          (Domain.Neutral (Domain.Var var) Tsil.Empty)
+          _
+          (Presyntax.Pattern _ Presyntax.WildcardPattern)
+          (Builtin.Equals type_ value1 value2) -> do
+            result <- runExceptT $ Indices.unify context Flexibility.Rigid mempty value1 value2
+            case result of
+              Left Indices.Nope ->
+                elaborate context config
+                  { _clauses = drop 1 $ _clauses config
+                  }
+
+              Left Indices.Dunno ->
+                splitEqualityOr context config matches' k
+
+              Right context' -> do
+                context'' <- Context.define context' var $ Builtin.Refl type_ value1 value2
+                elaborate context'' config
 
         _ ->
-          panic "splitEquality: no clauses"
-
-    (var, type_, value1, value2):equalities' -> do
-      result <- runExceptT $ Indices.unify context Flexibility.Rigid mempty value1 value2
-      case result of
-        Left Indices.Nope ->
-          elaborate context config
-            { _clauses = drop 1 $ _clauses config
-            }
-
-        Left Indices.Dunno ->
-          splitEquality context config equalities'
-
-        Right context' -> do
-          context'' <- Context.define context' var $ Builtin.Refl type_ value1 value2
-          elaborate context'' config
+          splitEqualityOr context config matches' k
 
 -------------------------------------------------------------------------------
 
