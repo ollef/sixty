@@ -603,7 +603,27 @@ splitConstructor
   -> Domain.Type
   -> M (Syntax.Term v)
 splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor typeName _) outerType = do
-  let
+  maybeDefinition <- fetch $ Query.ElaboratedDefinition typeName
+  case maybeDefinition of
+    Just (Syntax.DataDefinition tele, _) -> do
+      tele' <- Evaluation.evaluateConstructorDefinitions (Environment.empty $ Context.scopeKey outerContext) tele
+      outerType' <- Context.forceHead outerContext outerType
+      case outerType' of
+        Domain.Neutral (Domain.Global typeName') spine
+          | typeName == typeName' ->
+            goParams (Context.spanned span outerContext) (toList spine) mempty tele'
+
+        _ -> do
+          typeType <- fetch $ Query.ElaboratedType typeName
+          typeType' <- Evaluation.evaluate (Environment.empty $ Context.scopeKey outerContext) typeType
+          (metas, _) <- Elaboration.insertMetas outerContext Elaboration.UntilTheEnd typeType'
+          f <- Unification.tryUnify outerContext (Domain.Neutral (Domain.Global typeName) $ Tsil.fromList metas) outerType
+          result <- goParams (Context.spanned span outerContext) metas mempty tele'
+          pure $ f result
+
+    _ ->
+      panic "splitConstructor no data definition"
+  where
     goParams
       :: Context v
       -> [(Plicity, Domain.Value)]
@@ -693,22 +713,6 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
               Context.defineWellOrdered context scrutinee $ Domain.Neutral (Domain.Con constr) conArgs
           result <- elaborate context' config
           pure $ Telescope.Empty result
-
-  maybeDefinition <- fetch $ Query.ElaboratedDefinition typeName
-  case maybeDefinition of
-    Just (Syntax.DataDefinition tele, _) -> do
-      tele' <- Evaluation.evaluateConstructorDefinitions (Environment.empty $ Context.scopeKey outerContext) tele
-      outerType' <- Context.forceHead outerContext outerType
-      case outerType' of
-        Domain.Neutral (Domain.Global typeName') spine
-          | typeName == typeName' ->
-            goParams (Context.spanned span outerContext) (toList spine) mempty tele'
-
-        _ ->
-          panic "Matching outerType"
-
-    _ ->
-      panic "splitConstructor no data definition"
 
 findVarConstructorMatches
   :: Context v
