@@ -269,8 +269,10 @@ elaborate context config = do
         splitConstructorOr context config' matches $ do
           maybeInst <- solved context matches
           case maybeInst of
-            Nothing ->
-              panic "matching: no solution"
+            Nothing -> do
+             Context.report context $ Error.IndeterminateIndexUnification $ _matchKind config
+             targetType <- Elaboration.readback context $ _expectedType config
+             pure $ Syntax.App (Syntax.Global Builtin.fail) Explicit targetType
 
             Just inst -> do
               context' <- Context.extendUnindexedDefs context inst
