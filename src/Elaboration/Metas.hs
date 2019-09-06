@@ -144,7 +144,7 @@ data InnerValue
   | Lam !Name !Var !Type !Plicity !Value
   | App !Value !Plicity !Value
   | Case !Value Branches !(Maybe Value)
-  | Spanned !Span.Relative !Value
+  | Spanned !Span.Relative !InnerValue
   deriving Show
 
 type Branches = HashMap Name.QualifiedConstructor ([(Name, Var, Type, Plicity)], Value)
@@ -255,8 +255,8 @@ makeCase scrutinee branches defaultBranch =
     foldMap occurrences defaultBranch
 
 makeSpanned :: Span.Relative -> Value -> Value
-makeSpanned span value =
-  Value (Spanned span value) (occurrences value)
+makeSpanned span (Value innerValue occs) =
+  Value (Spanned span innerValue) occs
 
 evaluate :: Domain.Environment v -> Syntax.Term v -> M Value
 evaluate env term =
@@ -331,7 +331,7 @@ evaluateBranch env tele =
       pure ((name, var, type', plicity):bindings, body)
 
 readback :: Domain.Environment v -> (Meta.Index -> (Var, [Maybe var])) -> Value -> Syntax.Term v
-readback env metas (Value value _) =
+readback env metas (Value value occs) =
   case value of
     Var var ->
       Syntax.Var $
@@ -392,7 +392,7 @@ readback env metas (Value value _) =
         (readback env metas <$> defaultBranch)
 
     Spanned span value' ->
-      Syntax.Spanned span (readback env metas value')
+      Syntax.Spanned span (readback env metas (Value value' occs))
 
 readbackBranch
   :: Domain.Environment v
@@ -463,7 +463,7 @@ substitute subst
   | otherwise =
     go
   where
-    go value@(Value innerValue _) =
+    go value@(Value innerValue occs) =
       case innerValue of
         Var var ->
           IntMap.lookupDefault value var subst
@@ -505,7 +505,7 @@ substitute subst
             (go <$> defaultBranch)
 
         Spanned span value' ->
-          makeSpanned span $ go value'
+          makeSpanned span $ go (Value value' occs)
 
 data Shared a = Shared !Bool a
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
@@ -543,7 +543,7 @@ inlineIndex
   -> (Var, [Maybe Var], Value, Value)
   -> Value
   -> Shared Value
-inlineIndex index targetScope solution@ ~(solutionVar, varArgs, solutionValue, solutionType) value@(Value innerValue _)
+inlineIndex index targetScope solution@ ~(solutionVar, varArgs, solutionValue, solutionType) value@(Value innerValue occs)
   | IntSet.null targetScope =
     if index `IntMap.member` occurrencesMap value then do
       modified
@@ -634,4 +634,4 @@ inlineIndex index targetScope solution@ ~(solutionVar, varArgs, solutionValue, s
         pure $ makeCase scrutinee' branches' defaultBranch'
 
       Spanned span value' ->
-        makeSpanned span <$> recurse value'
+        makeSpanned span <$> recurse (Value value' occs)
