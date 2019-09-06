@@ -251,5 +251,23 @@ duplicable term =
     Syntax.Meta {} ->
       True
 
-    _ ->
+    Syntax.Let {} ->
       False
+
+    Syntax.Pi {} ->
+      False
+
+    Syntax.Fun {} ->
+      False
+
+    Syntax.Lam {} ->
+      False
+
+    Syntax.App {} ->
+      False
+
+    Syntax.Case {} ->
+      False
+
+    Syntax.Spanned _ term' ->
+      duplicable term'
