@@ -26,6 +26,7 @@ import qualified Name
 import Plicity
 import qualified "this" Data.IntMap as IntMap
 import qualified Scope
+import qualified Span
 import qualified Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
@@ -143,6 +144,7 @@ data InnerValue
   | Lam !Name !Var !Type !Plicity !Value
   | App !Value !Plicity !Value
   | Case !Value Branches !(Maybe Value)
+  | Spanned !Span.Relative !Value
   deriving Show
 
 type Branches = HashMap Name.QualifiedConstructor ([(Name, Var, Type, Plicity)], Value)
@@ -252,6 +254,10 @@ makeCase scrutinee branches defaultBranch =
       branches <>
     foldMap occurrences defaultBranch
 
+makeSpanned :: Span.Relative -> Value -> Value
+makeSpanned span value =
+  Value (Spanned span value) (occurrences value)
+
 evaluate :: Domain.Environment v -> Syntax.Term v -> M Value
 evaluate env term =
   case term of
@@ -304,6 +310,9 @@ evaluate env term =
         evaluate env scrutinee <*>
         mapM (evaluateBranch env) branches <*>
         mapM (evaluate env) defaultBranch
+
+    Syntax.Spanned span term' ->
+      makeSpanned span <$> evaluate env term'
 
 evaluateBranch
   :: Domain.Environment v
@@ -381,6 +390,9 @@ readback env metas (Value value _) =
         (readback env metas scrutinee)
         (map (uncurry $ readbackBranch env metas) branches)
         (readback env metas <$> defaultBranch)
+
+    Spanned span value' ->
+      Syntax.Spanned span (readback env metas value')
 
 readbackBranch
   :: Domain.Environment v
@@ -491,6 +503,9 @@ substitute subst
               )
             )
             (go <$> defaultBranch)
+
+        Spanned span value' ->
+          makeSpanned span $ go value'
 
 data Shared a = Shared !Bool a
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
@@ -617,3 +632,6 @@ inlineIndex index targetScope solution@ ~(solutionVar, varArgs, solutionValue, s
           pure (bindings', body')
         defaultBranch' <- forM defaultBranch recurse
         pure $ makeCase scrutinee' branches' defaultBranch'
+
+      Spanned span value' ->
+        makeSpanned span <$> recurse value'

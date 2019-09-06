@@ -15,6 +15,7 @@ import qualified Meta
 import Name (Name)
 import qualified Name
 import Plicity
+import qualified Span
 import Syntax.Telescope (Telescope)
 
 data Term v
@@ -28,6 +29,7 @@ data Term v
   | Lam !Name !(Type v) !Plicity !(Scope Term v)
   | App !(Term v) !Plicity !(Term v)
   | Case !(Term v) (Branches v) !(Maybe (Term v))
+  | Spanned !Span.Relative !(Term v)
   deriving (Eq, Show, Generic, Hashable)
 
 type Type = Term

@@ -13,6 +13,7 @@ import Name (Name)
 import qualified Name
 import Plicity
 import qualified Scope
+import qualified Span
 import qualified Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
@@ -73,6 +74,7 @@ data Value
   | Lam !Name !Var !Type !Plicity !Value
   | App !Value !Plicity !Value
   | Case !Value Branches !(Maybe Value)
+  | Spanned !Span.Relative !Value
   deriving Show
 
 type Environment = Environment.Environment Value
@@ -146,6 +148,9 @@ evaluate env term =
         mapM (evaluateBranch env) branches <*>
         mapM (evaluate env) defaultBranch
 
+    Syntax.Spanned span term' ->
+      Spanned span <$> evaluate env term'
+
 evaluateBranch
   :: Environment v
   -> Telescope Syntax.Type Syntax.Term v
@@ -211,6 +216,9 @@ readback env value =
         (readback env scrutinee)
         (map (uncurry $ readbackBranch env) branches)
         (map (readback env) defaultBranch)
+
+    Spanned span value' ->
+      Syntax.Spanned span (readback env value')
 
 readbackBranch
   :: Environment v

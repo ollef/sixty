@@ -104,6 +104,9 @@ evaluate env term =
               scrutineeValue
               (Domain.Branches env branches defaultBranch)
 
+    Syntax.Spanned _ term' ->
+      evaluate env term'
+
 chooseBranch
   :: Domain.Environment v
   -> Name.QualifiedConstructor

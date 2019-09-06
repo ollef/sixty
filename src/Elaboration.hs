@@ -312,9 +312,9 @@ check
   -> Presyntax.Term
   -> Domain.Type
   -> M (Syntax.Term v)
-check context (Presyntax.Term span term) =
+check context (Presyntax.Term span term) type_ =
   -- traceShow ("check", term) $
-  checkUnspanned (Context.spanned span context) term
+  Syntax.Spanned span <$> checkUnspanned (Context.spanned span context) term type_
 
 -- check context (Presyntax.Term span term) type_ = do
 --   putText $ "check "  <> show term
@@ -333,9 +333,9 @@ infer
   -> Presyntax.Term
   -> M (Maybe Name.Qualified)
   -> M (Syntax.Term v, Domain.Type)
-infer context (Presyntax.Term span term) =
+infer context (Presyntax.Term span term) expectedTypeName =
   -- traceShow ("infer", term) $
-  inferUnspanned (Context.spanned span context) term
+  first (Syntax.Spanned span) <$> inferUnspanned (Context.spanned span context) term expectedTypeName
 
 -- infer context (Presyntax.Term span term) expectedTypeName = do
 --   putText $ "infer "  <> show term

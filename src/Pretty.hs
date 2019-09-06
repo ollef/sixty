@@ -89,8 +89,7 @@ prettyTerm prec env term =
       prettyConstr env constr
 
     Syntax.Meta index ->
-      pretty
-        index
+      pretty index
 
     Syntax.Let name term' typ body ->
       prettyParen (prec > letPrec) $
@@ -135,6 +134,9 @@ prettyTerm prec env term =
               | Just branch <- [defaultBranch]
               ]
             )
+
+    Syntax.Spanned _ term' ->
+      prettyTerm prec env term'
 
 prettyGlobal :: Environment v -> Name.Qualified -> Doc ann
 prettyGlobal env global = do
