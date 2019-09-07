@@ -1,5 +1,6 @@
 {-# language DuplicateRecordFields #-}
 {-# language GADTs #-}
+{-# language LambdaCase #-}
 {-# language OverloadedStrings #-}
 {-# language RankNTypes #-}
 {-# language TupleSections #-}
@@ -115,13 +116,26 @@ rules files readFile_ (Writer (Writer query)) =
 
     ModulePositionMap module_ ->
       noError $ do
+        spans <- fetch $ ModuleSpanMap module_
+        pure $ (\(Span.Absolute start _) -> start) <$> spans
+
+    ModuleSpanMap module_ ->
+      noError $ do
         filePath <- fetchModuleFile module_
+        text <- fetch $ FileText filePath
         (_, _, defs) <- fetch $ ParsedFile filePath
-        pure $
-          HashMap.fromList
-            [ ((Presyntax.key def, name), loc)
-            | (loc, (name, def)) <- defs
-            ]
+        let
+          go = \case
+            [] ->
+              []
+
+            [(loc, (name, def))] ->
+              [((Presyntax.key def, name), Span.Absolute loc $ Position.Absolute $ Text.lengthWord16 text)]
+
+            (loc1, (name, def)):defs'@((loc2, _):_) ->
+              ((Presyntax.key def, name), Span.Absolute loc1 loc2) : go defs'
+
+        pure $ HashMap.fromList $ go defs
 
     Scopes module_ ->
       nonInput $ do

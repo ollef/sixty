@@ -70,14 +70,19 @@ initialState = do
     , _errorsVar = errorsVar
     }
 
+data Prune
+  = Don'tPrune
+  | Prune
+
 runIncrementalTask
   :: State err
   -> FilePath
   -> Text
   -> (Error.Hydrated -> Task Query err)
+  -> Prune
   -> Task Query a
   -> IO (a, [err])
-runIncrementalTask state file text prettyError task =
+runIncrementalTask state file text prettyError prune task =
   handleEx $ do
     startedVar <- newMVar mempty
     -- printVar <- newMVar 0
@@ -111,12 +116,17 @@ runIncrementalTask state file text prettyError task =
         Rules.rules (pure file) readSourceFile_
     result <- Rock.runTask sequentially tasks task
     started <- readMVar startedVar
-    modifyMVar_ (_tracesVar state) $
-      pure . DMap.intersectionWithKey (\_ _ t -> t) started
-    errorsMap <- modifyMVar (_errorsVar state) $ \errors -> do
-      let
-        errors' = DMap.intersectionWithKey (\_ _ e -> e) started errors
-      return (errors', errors')
+    errorsMap <- case prune of
+      Don'tPrune ->
+        readMVar $ _errorsVar state
+
+      Prune -> do
+        modifyMVar_ (_tracesVar state) $
+          pure . DMap.intersectionWithKey (\_ _ t -> t) started
+        modifyMVar (_errorsVar state) $ \errors -> do
+          let
+            errors' = DMap.intersectionWithKey (\_ _ e -> e) started errors
+          return (errors', errors')
     let
       errors = do
         (_ DMap.:=> Const errs) <- DMap.toList errorsMap
@@ -135,6 +145,7 @@ runIncrementalTask state file text prettyError task =
           return res
 
 -------------------------------------------------------------------------------
+
 checkAll :: [FilePath] -> Task Query [(FilePath, [(Name.Qualified, Maybe Syntax.Definition, Syntax.Type Void)])]
 checkAll filePaths = do
   forM filePaths $ \filePath -> (filePath, ) <$> do

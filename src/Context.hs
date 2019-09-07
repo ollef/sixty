@@ -84,7 +84,7 @@ toPrettyableClosedTerm context term = do
       Context.scopeKey context
   Error.PrettyableTerm module_ mempty (Syntax.coerce term)
 
-empty :: Scope.KeyedName -> M (Context Void)
+empty :: MonadIO m => Scope.KeyedName -> m (Context Void)
 empty key = do
   ms <- liftIO $ newIORef Meta.empty
   es <- liftIO $ newIORef mempty

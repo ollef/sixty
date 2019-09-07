@@ -56,7 +56,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [x] Command-line parser
 - [x] Language server
   - [x] Diagnostics
-  - [ ] Hover
+  - [x] Hover
   - [ ] Jump to definition
   - [ ] Multi file projects
 - [ ] Prevent CBV-incompatible circular values

@@ -31,6 +31,14 @@ add :: Relative -> Relative -> Relative
 add (Span.Relative start _) (Span.Relative _ end) =
   Span.Relative start end
 
+contains :: Absolute -> Position.Absolute -> Bool
+contains (Absolute start end) pos =
+  start <= pos && pos < end
+
+relativeContains :: Relative -> Position.Relative -> Bool
+relativeContains (Relative start end) pos =
+  start <= pos && pos < end
+
 data LineColumn = LineColumns !Position.LineColumn !Position.LineColumn
   deriving Show
 

@@ -24,12 +24,13 @@ import qualified Language.Haskell.LSP.Messages as LSP
 import qualified Language.Haskell.LSP.Types as LSP
 import qualified Language.Haskell.LSP.Types.Lens as LSP
 import qualified Language.Haskell.LSP.VFS as LSP
-import Rock
+import Rock (Task)
 
 import qualified Driver
 import qualified Error.Hydrated as Error (Hydrated)
 import qualified Error.Hydrated
 import qualified Position
+import qualified LanguageServer.Hover as Hover
 import Query (Query)
 import qualified Span
 
@@ -42,12 +43,12 @@ run = do
       , LSP.onConfigurationChange = \_ -> Right ()
       , LSP.onStartup = \lf -> do
         _ <- forkIO $ messagePump lf $ atomically $ readTQueue messageQueue
-        return Nothing
+        pure Nothing
       }
     (handlers $ atomically . writeTQueue messageQueue)
     options
     Nothing -- (Just "sixten-lsp.log")
-  return ()
+  pure ()
 
 handlers :: (LSP.FromClientMessage -> IO ()) -> LSP.Handlers
 handlers sendMessage =
@@ -57,6 +58,7 @@ handlers sendMessage =
     , LSP.didSaveTextDocumentNotificationHandler = Just $ sendMessage . LSP.NotDidSaveTextDocument
     , LSP.didChangeTextDocumentNotificationHandler = Just $ sendMessage . LSP.NotDidChangeTextDocument
     , LSP.didCloseTextDocumentNotificationHandler = Just $ sendMessage . LSP.NotDidCloseTextDocument
+    , LSP.hoverHandler = Just $ sendMessage . LSP.ReqHover
     }
 
 options :: LSP.Options
@@ -77,7 +79,7 @@ messagePump lf receiveMessage = do
     message <- receiveMessage
     case message of
       LSP.NotInitialized _ ->
-        return ()
+        pure ()
 
       LSP.NotDidOpenTextDocument notification -> do
         sendNotification lf "messagePump: processing NotDidOpenTextDocument"
@@ -86,7 +88,7 @@ messagePump lf receiveMessage = do
           version = notification ^. LSP.params . LSP.textDocument . LSP.version
           fileName = LSP.uriToFilePath document
         sendNotification lf $ "fileName = " <> show fileName
-        sendDiagnostics lf state document $ Just version
+        checkAllAndPublishDiagnostics lf state document (Just version)
 
       LSP.NotDidChangeTextDocument notification -> do
         let
@@ -94,7 +96,7 @@ messagePump lf receiveMessage = do
           version = notification ^. LSP.params . LSP.textDocument . LSP.version
 
         sendNotification lf $ "messagePump:processing NotDidChangeTextDocument: uri=" <> show document
-        sendDiagnostics lf state document version
+        checkAllAndPublishDiagnostics lf state document version
 
       LSP.NotDidSaveTextDocument notification -> do
         sendNotification lf "messagePump: processing NotDidSaveTextDocument"
@@ -102,45 +104,76 @@ messagePump lf receiveMessage = do
           document = notification ^. LSP.params . LSP.textDocument . LSP.uri
           fileName = LSP.uriToFilePath document
         sendNotification lf $ "fileName = " <> show fileName
-        sendDiagnostics lf state document Nothing
+        checkAllAndPublishDiagnostics lf state document Nothing
+
+      LSP.ReqHover req -> do
+        sendNotification lf $ "messagePump: HoverRequest: " <> show req
+        let
+          LSP.TextDocumentPositionParams (LSP.TextDocumentIdentifier document)
+            (LSP.Position line char)
+              = req ^. LSP.params
+
+        (_, contents) <- fileContents lf document
+        (maybeAnnotation, _) <- runTask state document contents Driver.Don'tPrune $
+          Hover.hover (toS $ LSP.getUri document) contents (Position.LineColumn line char)
+
+        let
+          response =
+            foreach maybeAnnotation $
+              \(Span.LineColumns (Position.LineColumn startLine startColumn) (Position.LineColumn endLine endColumn), doc) ->
+                LSP.Hover
+                  { _contents = LSP.HoverContents LSP.MarkupContent
+                    { _kind = LSP.MkPlainText
+                    , _value = show doc
+                    }
+                  , _range = Just LSP.Range
+                    { LSP._start = LSP.Position
+                      { _line = startLine
+                      , _character = startColumn
+                      }
+                    , LSP._end = LSP.Position
+                      { _line = endLine
+                      , _character = endColumn
+                      }
+                    }
+                  }
+
+        LSP.sendFunc lf $ LSP.RspHover $ LSP.makeResponseMessage req response
 
       _ ->
-        return ()
+        pure ()
 
 -------------------------------------------------------------------------------
-sendDiagnostics
+
+checkAllAndPublishDiagnostics
   :: forall ann
   . LSP.LspFuncs ()
   -> Driver.State (Error.Hydrated, Doc ann)
   -> LSP.Uri
   -> LSP.TextDocumentVersion
   -> IO ()
-sendDiagnostics lf state document version = do
+checkAllAndPublishDiagnostics lf state document version =
+  withContentsWhenUpToDate lf document version $ \contents -> do
+    (_, errors) <- runTask state document contents Driver.Prune $ Driver.checkAll [toS $ LSP.getUri document]
+    LSP.publishDiagnosticsFunc lf (length errors) (LSP.toNormalizedUri document) version
+      $ LSP.partitionBySource $ errorToDiagnostic <$> errors
+
+runTask
+  :: forall a ann
+  . Driver.State (Error.Hydrated, Doc ann)
+  -> LSP.Uri
+  -> Text
+  -> Driver.Prune
+  -> Task Query a
+  -> IO (a, [(Error.Hydrated, Doc ann)])
+runTask state document contents prune task = do
   let
-    normalizedURI =
-      LSP.toNormalizedUri document
-  (currentVersion, contents) <- fileContents lf normalizedURI
-  case (version, currentVersion) of
-    (Just v, Just cv)
-      | v < cv ->
-        return ()
-    _ -> do
-      let
-        LSP.Uri uriText =
-          document
+    prettyError :: Error.Hydrated -> Task Query (Error.Hydrated, Doc ann)
+    prettyError err = do
+      (heading, body) <- Error.Hydrated.headingAndBody $ Error.Hydrated._error err
+      pure (err, heading <> Doc.line <> body)
 
-        uriStr =
-          toS uriText
-
-        prettyError :: Error.Hydrated -> Task Query (Error.Hydrated, Doc ann)
-        prettyError err = do
-          (heading, body) <- Error.Hydrated.headingAndBody $ Error.Hydrated._error err
-          pure (err, heading <> Doc.line <> body)
-
-      (_, errors) <- Driver.runIncrementalTask state uriStr contents prettyError $ Driver.checkAll [uriStr]
-
-      LSP.publishDiagnosticsFunc lf (length errors) normalizedURI version
-        $ LSP.partitionBySource $ errorToDiagnostic <$> errors
+  Driver.runIncrementalTask state (toS $ LSP.getUri document) contents prettyError prune task
 
 -------------------------------------------------------------------------------
 
@@ -178,14 +211,26 @@ positionToPosition (Position.LineColumn line column) =
     , _character = column
     }
 
-fileContents :: LSP.LspFuncs () -> LSP.NormalizedUri -> IO (LSP.TextDocumentVersion, Text)
+fileContents :: LSP.LspFuncs () -> LSP.Uri -> IO (LSP.TextDocumentVersion, Text)
 fileContents lf uri = do
-  mvf <- LSP.getVirtualFileFunc lf uri
+  mvf <- LSP.getVirtualFileFunc lf $ LSP.toNormalizedUri uri
   case mvf of
-    Just (LSP.VirtualFile version rope _) -> return (Just version, Rope.toText rope)
+    Just (LSP.VirtualFile version rope _) -> pure (Just version, Rope.toText rope)
     Nothing ->
-      case LSP.uriToFilePath (LSP.fromNormalizedUri uri) of
+      case LSP.uriToFilePath uri of
         Just fp ->
           (,) Nothing <$> Text.readFile fp
+
         Nothing ->
-          return (Just 0, "")
+          pure (Just 0, "")
+
+withContentsWhenUpToDate :: LSP.LspFuncs () -> LSP.Uri -> LSP.TextDocumentVersion -> (Text -> IO ()) -> IO ()
+withContentsWhenUpToDate lf document version k = do
+  (currentVersion, contents) <- fileContents lf document
+  case (version, currentVersion) of
+    (Just v, Just cv)
+      | v < cv ->
+        pure ()
+
+    _ ->
+      k contents
