@@ -26,6 +26,18 @@ data Entry
   | Ambiguous (HashSet Name.QualifiedConstructor) (HashSet Name.Qualified)
   deriving (Show, Generic, Hashable)
 
+entryConstructors :: Entry -> HashSet Name.QualifiedConstructor
+entryConstructors entry =
+  case entry of
+    Name _ ->
+      mempty
+
+    Constructors cs ->
+      cs
+
+    Ambiguous cs _ ->
+      cs
+
 type Scope =
   HashMap Name.Pre Entry
 

@@ -633,12 +633,13 @@ inferName context name expectedTypeName =
             )
 
         Just (Scope.Constructors candidates) -> do
-          maybeConstr <- resolveConstructor context name candidates expectedTypeName
+          maybeConstr <- resolveConstructor candidates expectedTypeName
           case maybeConstr of
-            Nothing ->
+            Ambiguous candidates' -> do
+              Context.report context $ Error.Ambiguous name candidates' mempty
               inferenceFailed context
 
-            Just constr -> do
+            Resolved constr -> do
               type_ <- fetch $ Query.ConstructorType constr
               type' <- evaluate context $ Syntax.fromVoid $ Telescope.fold Syntax.implicitPi type_
               pure
@@ -738,23 +739,25 @@ elaborateLet context name maybeType clauses = do
   (context', _) <- Context.extendDef context name boundTerm' typeValue
   pure (context', boundTerm, typeTerm)
 
+data ResolvedConstructor
+  = Ambiguous (HashSet Name.QualifiedConstructor)
+  | Resolved !Name.QualifiedConstructor
+  deriving Show
+
 resolveConstructor
-  :: Context v
-  -> Name.Pre
-  -> HashSet Name.QualifiedConstructor
+  :: HashSet Name.QualifiedConstructor
   -> M (Maybe Name.Qualified)
-  -> M (Maybe Name.QualifiedConstructor)
-resolveConstructor context name candidates expectedTypeName =
+  -> M ResolvedConstructor
+resolveConstructor candidates expectedTypeName =
   case toList candidates of
     [constr] ->
-      pure $ Just constr
+      pure $ Resolved constr
 
     _ -> do
       maybeExpectedTypeName <- expectedTypeName
       case maybeExpectedTypeName of
-        Nothing -> do
-          Context.report context $ Error.Ambiguous name candidates mempty
-          pure Nothing
+        Nothing ->
+          pure $ Ambiguous candidates
 
         Just typeName -> do
           let
@@ -764,11 +767,10 @@ resolveConstructor context name candidates expectedTypeName =
                 candidates
           case toList constrs' of
             [constr] ->
-              pure $ Just constr
+              pure $ Resolved constr
 
-            _ -> do
-              Context.report context $ Error.Ambiguous name constrs' mempty
-              pure Nothing
+            _ ->
+              pure $ Ambiguous constrs'
 
 getExpectedTypeName
   :: Context v

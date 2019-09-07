@@ -330,8 +330,8 @@ simplifyMatch context coveredConstructors (Match value plicity pat@(Presyntax.Pa
     (Domain.Neutral (Domain.Con constr) spine, Presyntax.ConOrVar name pats) -> do
       maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
       case maybeScopeEntry of
-        Just (Scope.Constructors constrs)
-          | constr `HashSet.member` constrs -> do
+        Just scopeEntry
+          | constr `HashSet.member` Scope.entryConstructors scopeEntry -> do
             matches' <- lift $ do
               constrType <- fetch $ Query.ConstructorType constr
               (patsType, patSpine) <-
@@ -358,16 +358,19 @@ simplifyMatch context coveredConstructors (Match value plicity pat@(Presyntax.Pa
       | Just coveredConstrs <- IntMap.lookup var coveredConstructors -> do
         maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
         case maybeScopeEntry of
-          Just (Scope.Constructors entryConstrs) -> do
+          Just scopeEntry -> do
             let
               expectedTypeName =
                 Elaboration.getExpectedTypeName context type_
-            maybeConstr <- lift $ Elaboration.resolveConstructor context name entryConstrs expectedTypeName
-            case maybeConstr of
-              Nothing ->
+
+              entryConstrs =
+                Scope.entryConstructors scopeEntry
+            resolved <- lift $ Elaboration.resolveConstructor entryConstrs expectedTypeName
+            case resolved of
+              Elaboration.Ambiguous _ ->
                 pure [match']
 
-              Just constr
+              Elaboration.Resolved constr
                 | HashSet.member constr coveredConstrs ->
                   fail "Constructor already covered"
 
@@ -537,12 +540,11 @@ matchInstantiation context match =
 
     (Match term _ (Presyntax.Pattern _ (Presyntax.ConOrVar prename@(Name.Pre name) [])) type_) -> do
       maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) prename
-      case maybeScopeEntry of
-        Just (Scope.Constructors _) ->
-          fail "No match instantiation"
+      if HashSet.null $ foldMap Scope.entryConstructors maybeScopeEntry then
+        pure $ pure (Name name, term, type_)
 
-        _ ->
-          pure $ pure (Name name, term, type_)
+      else
+        fail "No match instantiation"
 
     (Match _ _ (Presyntax.Pattern _ (Presyntax.Forced _)) _) ->
       pure mempty
@@ -576,16 +578,20 @@ splitConstructorOr context config matches k =
           type_ -> do
             maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
             case maybeScopeEntry of
-              Just (Scope.Constructors constrs) -> do
+              Just scopeEntry -> do
                 let
                   expectedTypeName =
                     Elaboration.getExpectedTypeName context type_
-                maybeConstr <- Elaboration.resolveConstructor context name constrs expectedTypeName
-                case maybeConstr of
-                  Nothing ->
+
+                  entryConstrs =
+                    Scope.entryConstructors scopeEntry
+
+                resolved <- Elaboration.resolveConstructor entryConstrs expectedTypeName
+                case resolved of
+                  Elaboration.Ambiguous _ ->
                     splitConstructorOr context config matches' k
 
-                  Just constr ->
+                  Elaboration.Resolved constr ->
                     splitConstructor context config var span constr type_
 
               _ ->
@@ -728,16 +734,19 @@ findVarConstructorMatches context var matches =
         | var == var' -> do
           maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
           case maybeScopeEntry of
-            Just (Scope.Constructors constrs) -> do
+            Just scopeEntry -> do
               let
                 expectedTypeName =
                   Elaboration.getExpectedTypeName context type_
-              maybeConstr <- Elaboration.resolveConstructor context name constrs expectedTypeName
-              case maybeConstr of
-                Nothing ->
+
+                entryConstrs =
+                  Scope.entryConstructors scopeEntry
+              resolved <- Elaboration.resolveConstructor entryConstrs expectedTypeName
+              case resolved of
+                Elaboration.Ambiguous _ ->
                   findVarConstructorMatches context var matches'
 
-                Just constr ->
+                Elaboration.Resolved constr ->
                   (constr :) <$> findVarConstructorMatches context var matches'
 
             _ ->

@@ -35,12 +35,14 @@ getExpectedTypeName
   -> Domain.Type
   -> M (Maybe Name.Qualified)
 
+data ResolvedConstructor
+  = Ambiguous (HashSet Name.QualifiedConstructor)
+  | Resolved !Name.QualifiedConstructor
+
 resolveConstructor
-  :: Context v
-  -> Name.Pre
-  -> HashSet Name.QualifiedConstructor
+  :: HashSet Name.QualifiedConstructor
   -> M (Maybe Name.Qualified)
-  -> M (Maybe Name.QualifiedConstructor)
+  -> M ResolvedConstructor
 
 inferenceFailed
   :: Context v
