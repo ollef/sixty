@@ -91,14 +91,14 @@ prettyTerm prec env term =
     Syntax.Meta index ->
       pretty index
 
-    Syntax.Let name term' typ body ->
+    Syntax.Let name term' type_ body ->
       prettyParen (prec > letPrec) $
         let
           (env', name') = extend env name
         in
         "let"
         <> line <> indent 2
-          (pretty name' <+> ":" <+> prettyTerm 0 env typ
+          (pretty name' <+> ":" <+> prettyTerm 0 env type_
           <> line <> pretty name' <+> "=" <+> prettyTerm 0 env term'
           )
         <> line <> "in"
@@ -190,11 +190,11 @@ unambiguous env name =
 prettyLamTerm :: Environment v -> Syntax.Term v -> Doc ann
 prettyLamTerm env term =
   case term of
-    Syntax.Lam name typ plicity scope ->
+    Syntax.Lam name type_ plicity scope ->
       let
         (env', name') = extend env name
       in
-      Plicity.prettyAnnotation plicity <> lparen <> pretty name' <+> ":" <+> prettyTerm 0 env typ <> rparen
+      Plicity.prettyAnnotation plicity <> lparen <> pretty name' <+> ":" <+> prettyTerm 0 env type_ <> rparen
       <> prettyLamTerm env' scope
 
     t ->
@@ -203,11 +203,11 @@ prettyLamTerm env term =
 prettyPiTerm :: Environment v -> Syntax.Term v -> Doc ann
 prettyPiTerm env term =
   case term of
-    Syntax.Pi name typ plicity scope ->
+    Syntax.Pi name type_ plicity scope ->
       let
         (env', name') = extend env name
       in
-      Plicity.prettyAnnotation plicity <> lparen <> pretty name' <+> ":" <+> prettyTerm 0 env typ <> rparen
+      Plicity.prettyAnnotation plicity <> lparen <> pretty name' <+> ":" <+> prettyTerm 0 env type_ <> rparen
       <> prettyPiTerm env' scope
 
     t ->
