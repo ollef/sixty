@@ -364,7 +364,7 @@ checkUnspanned context term expectedType = do
 
     (Presyntax.Case scrutinee branches, _) -> do
       (scrutinee', scrutineeType) <-
-        insertMetasM context UntilExplicit $ infer context scrutinee $ pure Nothing
+        inferAndInsertMetas context UntilExplicit scrutinee $ pure Nothing
       Matching.elaborateCase context scrutinee' scrutineeType branches expectedType
 
     (Presyntax.Lam (Presyntax.ExplicitPattern pat) body, Domain.Pi name source Explicit domainClosure) ->
@@ -403,7 +403,7 @@ checkUnspanned context term expectedType = do
         expectedTypeName =
           getExpectedTypeName context expectedType'
       (function', functionType) <-
-        insertMetasM context UntilExplicit $ infer context function expectedTypeName
+        inferAndInsertMetas context UntilExplicit function expectedTypeName
       functionType' <- Context.forceHead context functionType
 
       case functionType' of
@@ -500,7 +500,7 @@ inferUnspanned context term expectedTypeName =
 
     Presyntax.App function argument -> do
       (function', functionType) <-
-        insertMetasM context UntilExplicit $ infer context function expectedTypeName
+        inferAndInsertMetas context UntilExplicit function expectedTypeName
       functionType' <- Context.forceHead context functionType
 
       case functionType' of
@@ -534,7 +534,7 @@ inferUnspanned context term expectedTypeName =
 
     Presyntax.ImplicitApps function arguments -> do
       (function', functionType) <-
-        insertMetasM context (UntilImplicit (`HashMap.member` arguments)) $ infer context function expectedTypeName
+        inferAndInsertMetas context (UntilImplicit (`HashMap.member` arguments)) function expectedTypeName
       go function' arguments functionType
 
       where
@@ -584,7 +584,7 @@ inferUnspanned context term expectedTypeName =
 
     Presyntax.Case scrutinee branches -> do
       (scrutinee', scrutineeType) <-
-        insertMetasM context UntilExplicit $ infer context scrutinee $ pure Nothing
+        inferAndInsertMetas context UntilExplicit scrutinee $ pure Nothing
       type_ <- Context.newMetaType context
       term' <- Matching.elaborateCase context scrutinee' scrutineeType branches type_
       pure (term', type_)
@@ -809,15 +809,16 @@ data InsertUntil
   | UntilExplicit
   | UntilImplicit (Name -> Bool)
 
-insertMetasM
+inferAndInsertMetas
   :: Context v
   -> InsertUntil
+  -> Presyntax.Term
+  -> M (Maybe Name.Qualified)
   -> M (Syntax.Term v, Domain.Type)
-  -> M (Syntax.Term v, Domain.Type)
-insertMetasM context until m = do
-  (term, type_) <- m
+inferAndInsertMetas context until (Presyntax.Term span term) expectedTypeName = do
+  (term', type_) <- inferUnspanned (Context.spanned span context) term expectedTypeName
   (args, type') <- insertMetasReturningSyntax context until type_
-  pure (Syntax.apps term args, type')
+  pure (Syntax.Spanned span $ Syntax.apps term' args, type')
 
 insertMetasReturningSyntax
   :: Context v
