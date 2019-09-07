@@ -49,7 +49,7 @@ data UnspannedPattern
   deriving (Show, Generic, Hashable)
 
 data PlicitPattern
-  = ExplicitPattern Pattern
+  = ExplicitPattern !Pattern
   | ImplicitPattern !Span.Relative (HashMap Name Pattern)
   deriving (Show, Generic, Hashable)
 
