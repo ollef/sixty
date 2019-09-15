@@ -27,6 +27,7 @@ import qualified Data.Tsil as Tsil
 import qualified Domain
 import qualified Domain.Telescope as Domain (Telescope)
 import qualified Domain.Telescope
+import qualified Elaboration.Matching.SuggestedName as SuggestedName
 import qualified Environment
 import qualified Error
 import qualified Evaluation
@@ -641,12 +642,12 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
       case (params, dataTele) of
         ([], Domain.Telescope.Empty constructors) -> do
           matchedConstructors <-
-            HashSet.fromList . concat . takeWhile (not . null) <$>
+            HashMap.fromListWith (<>) . concat . takeWhile (not . null) <$>
               mapM
                 (findVarConstructorMatches context scrutinee . _matches)
                 (_clauses config)
 
-          branches <- flip HashMap.traverseWithKey (HashSet.toMap matchedConstructors) $ \qualifiedConstr@(Name.QualifiedConstructor _ constr) () -> do
+          branches <- flip HashMap.traverseWithKey matchedConstructors $ \qualifiedConstr@(Name.QualifiedConstructor _ constr) patterns -> do
             let
               constrType =
                 HashMap.lookupDefault
@@ -654,16 +655,16 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
                   constr
                   constructors
 
-            goConstrFields context qualifiedConstr conArgs constrType
+            goConstrFields context qualifiedConstr conArgs constrType patterns
 
           defaultBranch <-
-            if HashSet.size matchedConstructors == length constructors then
+            if HashMap.size matchedConstructors == length constructors then
               pure Nothing
 
             else
               Just <$> elaborate context config
                 { _coveredConstructors =
-                  IntMap.insertWith (<>) scrutinee matchedConstructors $
+                  IntMap.insertWith (<>) scrutinee (HashSet.fromMap $ void matchedConstructors) $
                   _coveredConstructors config
                 }
 
@@ -684,11 +685,23 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
       -> Name.QualifiedConstructor
       -> Domain.Spine
       -> Domain.Type
+      -> [[Presyntax.PlicitPattern]]
       -> M (Telescope Syntax.Type Syntax.Term v)
-    goConstrFields context constr conArgs type_ =
+    goConstrFields context constr conArgs type_ patterns =
       case type_ of
-        Domain.Pi name source plicity domainClosure -> do
+        Domain.Pi piName source plicity domainClosure -> do
           source'' <- Elaboration.readback context source
+          (name, patterns') <-
+            case plicity of
+              Explicit ->
+                SuggestedName.nextExplicit context patterns
+
+              Implicit ->
+                SuggestedName.nextImplicit context piName patterns
+
+              Constraint ->
+                pure (piName, patterns)
+
           (context' , fieldVar) <- Context.extendBefore context scrutinee name source
           let
             fieldValue =
@@ -698,12 +711,13 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
               conArgs Tsil.:> (plicity, fieldValue)
 
           domain <- Evaluation.evaluateClosure domainClosure fieldValue
-          tele <- goConstrFields context' constr conArgs' domain
+          tele <- goConstrFields context' constr conArgs' domain patterns'
           pure $ Telescope.Extend name source'' plicity tele
 
         Domain.Fun source domain -> do
           source'' <- Elaboration.readback context source
-          (context' , fieldVar) <- Context.extendBefore context scrutinee "x" source
+          (name, patterns') <- SuggestedName.nextExplicit context patterns
+          (context' , fieldVar) <- Context.extendBefore context scrutinee name source
           let
             fieldValue =
               Domain.var fieldVar
@@ -711,8 +725,8 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
             conArgs' =
               conArgs Tsil.:> (Explicit, fieldValue)
 
-          tele <- goConstrFields context' constr conArgs' domain
-          pure $ Telescope.Extend "x" source'' Explicit tele
+          tele <- goConstrFields context' constr conArgs' domain patterns'
+          pure $ Telescope.Extend name source'' Explicit tele
 
         _ -> do
           let
@@ -725,13 +739,13 @@ findVarConstructorMatches
   :: Context v
   -> Var
   -> [Match]
-  -> M [Name.QualifiedConstructor]
+  -> M [(Name.QualifiedConstructor, [[Presyntax.PlicitPattern]])]
 findVarConstructorMatches context var matches =
     case matches of
       [] ->
         pure []
 
-      Match (Domain.Neutral (Domain.Var var') Tsil.Empty) _ (Presyntax.Pattern _ (Presyntax.ConOrVar name _)) type_:matches' 
+      Match (Domain.Neutral (Domain.Var var') Tsil.Empty) _ (Presyntax.Pattern _ (Presyntax.ConOrVar name patterns)) type_:matches' 
         | var == var' -> do
           maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
           case maybeScopeEntry of
@@ -748,7 +762,7 @@ findVarConstructorMatches context var matches =
                   findVarConstructorMatches context var matches'
 
                 Elaboration.Resolved constr ->
-                  (constr :) <$> findVarConstructorMatches context var matches'
+                  ((constr, [patterns]) :) <$> findVarConstructorMatches context var matches'
 
             _ ->
               findVarConstructorMatches context var matches'
