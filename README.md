@@ -39,6 +39,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
     - [x] Parsing
     - [x] Elaboration
     - [x] Unification
+  - [ ] Print the context and let-bound variables (including metas)
 - [x] Data
   - [x] Elaboration of data definitions
   - [x] Constructors
@@ -57,6 +58,8 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [x] Language server
   - [x] Diagnostics
   - [x] Hover
+    - [ ] Hovering on binders
+    - [ ] Print the context and let-bound variables (including metas)
   - [ ] Jump to definition
   - [ ] Multi file projects
 - [ ] Prevent CBV-incompatible circular values
