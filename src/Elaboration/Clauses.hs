@@ -5,11 +5,8 @@ module Elaboration.Clauses where
 
 import Protolude hiding (check, force)
 
-import Control.Monad.Trans.Maybe
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
-import qualified Data.HashSet as HashSet
-import Rock
 
 import {-# SOURCE #-} qualified Elaboration
 import Context (Context)
@@ -21,12 +18,10 @@ import qualified Elaboration.Matching as Matching
 import qualified Error
 import qualified Evaluation
 import Monad
-import Name (Name(Name))
-import qualified Name
+import Name (Name)
+import qualified Elaboration.Matching.SuggestedName as SuggestedName
 import Plicity
 import qualified Presyntax
-import qualified Query
-import qualified Scope
 import qualified Syntax
 import qualified Unification
 
@@ -155,9 +150,13 @@ infer context (fmap removeEmptyImplicits -> clauses)
 
 data Clause = Clause !Presyntax.Clause (Tsil Matching.Match)
 
+clausePatterns :: Clause -> [Presyntax.PlicitPattern]
+clausePatterns (Clause (Presyntax.Clause _ patterns _) _) =
+  patterns
+
 isEmpty :: Clause -> Bool
-isEmpty (Clause (Presyntax.Clause _ patterns _) _) =
-  case patterns of
+isEmpty clause =
+  case clausePatterns clause of
     [] ->
       True
 
@@ -175,8 +174,8 @@ removeEmptyImplicits clause@(Clause (Presyntax.Clause span patterns term) matche
       clause
 
 clauseImplicits :: Clause -> HashMap Name Presyntax.Pattern
-clauseImplicits (Clause (Presyntax.Clause _ patterns _) _) =
-  case patterns of
+clauseImplicits clause =
+  case clausePatterns clause of
     Presyntax.ImplicitPattern _ namedPats:_ ->
       namedPats
 
@@ -231,39 +230,10 @@ shiftExplicit context value type_ clause@(Clause (Presyntax.Clause span patterns
 
 nextExplicitName :: Context v -> [Clause] -> M Name
 nextExplicitName context clauses = do
-  maybeName <- runMaybeT $ asum $ explicitVarName context <$> clauses
-  pure $ fromMaybe "x" maybeName
-
-explicitVarName :: Context v -> Clause -> MaybeT M Name
-explicitVarName context (Clause (Presyntax.Clause _ patterns _) _) =
-  case patterns of
-    Presyntax.ExplicitPattern (Presyntax.Pattern _ (Presyntax.ConOrVar prename@(Name.Pre nameText) [])):_ -> do
-      maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) prename
-      if HashSet.null $ foldMap Scope.entryConstructors maybeScopeEntry then
-        pure $ Name nameText
-
-      else
-        empty
-
-    _ ->
-      empty
+  (name, _) <- SuggestedName.nextExplicit context $ clausePatterns <$> clauses
+  pure name
 
 nextImplicitName :: Context v -> Name -> [Clause] -> M Name
 nextImplicitName context piName clauses = do
-  maybeName <- runMaybeT $ asum $ implicitVarName context piName <$> clauses
-  pure $ fromMaybe piName maybeName
-
-implicitVarName :: Context v -> Name -> Clause -> MaybeT M Name
-implicitVarName context piName (Clause (Presyntax.Clause _ patterns _) _) =
-  case patterns of
-    Presyntax.ImplicitPattern _ namedPats:_
-      | Just (Presyntax.Pattern _ (Presyntax.ConOrVar prename@(Name.Pre nameText) [])) <- HashMap.lookup piName namedPats -> do
-        maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) prename
-        if HashSet.null $ foldMap Scope.entryConstructors maybeScopeEntry then
-          pure $ Name nameText
-
-        else
-          empty
-
-    _ ->
-      empty
+  (name, _) <- SuggestedName.nextImplicit context piName $ clausePatterns <$> clauses
+  pure name
