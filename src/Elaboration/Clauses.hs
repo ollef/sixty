@@ -5,8 +5,11 @@ module Elaboration.Clauses where
 
 import Protolude hiding (check, force)
 
+import Control.Monad.Trans.Maybe
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
+import qualified Data.HashSet as HashSet
+import Rock
 
 import {-# SOURCE #-} qualified Elaboration
 import Context (Context)
@@ -18,9 +21,12 @@ import qualified Elaboration.Matching as Matching
 import qualified Error
 import qualified Evaluation
 import Monad
-import Name (Name)
+import Name (Name(Name))
+import qualified Name
 import Plicity
 import qualified Presyntax
+import qualified Query
+import qualified Scope
 import qualified Syntax
 import qualified Unification
 
@@ -56,10 +62,12 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
 
       Domain.Fun source domain
         | HashMap.null implicits -> do
-          (context', var) <- Context.extendUnnamed context "x" source
-          explicitFunCase context' "x" var source domain
+          name <- nextExplicitName context clauses
+          (context', var) <- Context.extendUnnamed context name source
+          explicitFunCase context' name var source domain
 
-      Domain.Pi name source Implicit domainClosure -> do
+      Domain.Pi piName source Implicit domainClosure -> do
+        name <- nextImplicitName context piName clauses
         (context', var) <- Context.extendUnnamed context name source
         let
           value =
@@ -107,18 +115,20 @@ infer context (fmap removeEmptyImplicits -> clauses)
       [] -> do
         source <- Context.newMetaType context
         source' <- Elaboration.readback context source
-        (context', var) <- Context.extendUnnamed context "x" source
+        name <- nextExplicitName context clauses
+        (context', var) <- Context.extendUnnamed context name source
         clauses' <- mapM (shiftExplicit context (Domain.var var) source) clauses
         (body, domain) <- infer context' clauses'
         domain' <- Elaboration.readback context' domain
 
         pure
-          ( Syntax.Lam "x" source' Explicit body
-          , Domain.Pi "x" source Explicit
+          ( Syntax.Lam name source' Explicit body
+          , Domain.Pi name source Explicit
             $ Domain.Closure (Context.toEnvironment context) domain'
           )
 
-      [(name, _)] -> do
+      [(piName, _)] -> do
+        name <- nextImplicitName context piName clauses
         source <- Context.newMetaType context
         source' <- Elaboration.readback context source
         (context', var) <- Context.extendUnnamed context name source
@@ -218,3 +228,42 @@ shiftExplicit context value type_ clause@(Clause (Presyntax.Clause span patterns
         (Context.spanned span context)
         (Error.PlicityMismatch Error.Argument $ Error.Missing Explicit)
       pure clause
+
+nextExplicitName :: Context v -> [Clause] -> M Name
+nextExplicitName context clauses = do
+  maybeName <- runMaybeT $ asum $ explicitVarName context <$> clauses
+  pure $ fromMaybe "x" maybeName
+
+explicitVarName :: Context v -> Clause -> MaybeT M Name
+explicitVarName context (Clause (Presyntax.Clause _ patterns _) _) =
+  case patterns of
+    Presyntax.ExplicitPattern (Presyntax.Pattern _ (Presyntax.ConOrVar prename@(Name.Pre nameText) [])):_ -> do
+      maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) prename
+      if HashSet.null $ foldMap Scope.entryConstructors maybeScopeEntry then
+        pure $ Name nameText
+
+      else
+        empty
+
+    _ ->
+      empty
+
+nextImplicitName :: Context v -> Name -> [Clause] -> M Name
+nextImplicitName context piName clauses = do
+  maybeName <- runMaybeT $ asum $ implicitVarName context piName <$> clauses
+  pure $ fromMaybe piName maybeName
+
+implicitVarName :: Context v -> Name -> Clause -> MaybeT M Name
+implicitVarName context piName (Clause (Presyntax.Clause _ patterns _) _) =
+  case patterns of
+    Presyntax.ImplicitPattern _ namedPats:_
+      | Just (Presyntax.Pattern _ (Presyntax.ConOrVar prename@(Name.Pre nameText) [])) <- HashMap.lookup piName namedPats -> do
+        maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) prename
+        if HashSet.null $ foldMap Scope.entryConstructors maybeScopeEntry then
+          pure $ Name nameText
+
+        else
+          empty
+
+    _ ->
+      empty
