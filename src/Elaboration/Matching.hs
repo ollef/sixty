@@ -141,6 +141,7 @@ isPatternValue context value = do
           dropTypeArgs constrTypeTele $ toList spine
 
       and <$> mapM (isPatternValue context . snd) spine'
+
     Domain.Neutral (Domain.Meta _) _ ->
       pure False
 
