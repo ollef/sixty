@@ -11,14 +11,11 @@ import Rock
 
 import Context (Context)
 import qualified Context
-import qualified Domain
 import qualified Elaboration
-import Index
 import Monad
-import Name (Name)
+import qualified Error.Hydrated as Error
 import qualified Name
 import qualified Position
-import qualified Pretty
 import Query (Query)
 import qualified Query
 import qualified Scope
@@ -28,41 +25,17 @@ import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
 import qualified TypeOf
 
-data Environment v = Environment
-  { _prettyEnvironment :: Pretty.Environment v
-  , _context :: Context v
-  }
-
-extend :: Environment v -> Name -> Domain.Type -> M (Environment (Succ v))
-extend env name type_ = do
-  let
-    (prettyEnv, _) =
-      Pretty.extend (_prettyEnvironment env) name
-
-  (context, _) <- Context.extendUnnamed (_context env) name type_
-  pure Environment
-    { _prettyEnvironment = prettyEnv
-    , _context = context
-    }
-
 hover :: FilePath -> Text -> Position.LineColumn -> Task Query (Maybe (Span.LineColumn, Doc ann))
 hover filePath contents (Position.LineColumn line column) = do
   (moduleName, _, _) <- fetch $ Query.ParsedFile filePath
   spans <- fetch $ Query.ModuleSpanMap moduleName
-  prettyEnv <- Pretty.emptyM moduleName
   results <- forM (HashMap.toList spans) $ \((key, name), span@(Span.Absolute defPos _)) ->
     if span `Span.contains` pos then do
       let
         qualifiedName =
           Name.Qualified moduleName name
       context <- Context.empty $ Scope.KeyedName key qualifiedName
-      let
-        env =
-          Environment
-            { _prettyEnvironment = prettyEnv
-            , _context = context
-            }
-      maybeResult <- hoverDefinition (Position.relativeTo defPos pos) env key qualifiedName
+      maybeResult <- hoverDefinition (Position.relativeTo defPos pos) context key qualifiedName
       pure $ first (toLineColumns . Span.absoluteFrom defPos) <$> maybeResult
 
     else
@@ -89,18 +62,18 @@ hover filePath contents (Position.LineColumn line column) = do
 
 hoverDefinition
   :: Position.Relative
-  -> Environment Void
+  -> Context Void
   -> Scope.Key
   -> Name.Qualified
   -> Task Query (Maybe (Span.Relative, Doc ann))
-hoverDefinition pos env key name = do
+hoverDefinition pos context key name = do
   result <-
     runM $
     runMaybeT $
       case key of
         Scope.Type -> do
           type_ <- fetch $ Query.ElaboratedType name
-          hoverTerm pos env type_
+          hoverTerm pos context type_
 
         Scope.Definition -> do
           maybeDef <- fetch $ Query.ElaboratedDefinition name
@@ -111,13 +84,13 @@ hoverDefinition pos env key name = do
             Just (def, _) ->
               case def of
                 Syntax.TypeDeclaration type_ ->
-                  hoverTerm pos env type_
+                  hoverTerm pos context type_
 
                 Syntax.ConstantDefinition term ->
-                  hoverTerm pos env term
+                  hoverTerm pos context term
 
                 Syntax.DataDefinition tele ->
-                  hoverDataDefinition pos env tele
+                  hoverDataDefinition pos context tele
   case result of
     Left _ ->
       pure Nothing
@@ -127,10 +100,10 @@ hoverDefinition pos env key name = do
 
 hoverTerm
   :: Position.Relative
-  -> Environment v
+  -> Context v
   -> Syntax.Term v
   -> MaybeT M (Span.Relative, Doc ann)
-hoverTerm pos env term =
+hoverTerm pos context term =
   case term of
     Syntax.Var _ ->
       empty
@@ -145,47 +118,48 @@ hoverTerm pos env term =
       empty
 
     Syntax.Let name term' type_ body -> do
-      type' <- lift $ evaluate env type_
-      env' <- lift $ extend env name type'
-      hoverTerm pos env term' <|>
-        hoverTerm pos env type_ <|>
-        hoverTerm pos env' body
+      type' <- lift $ Elaboration.evaluate context type_
+      (context', _) <- lift $ Context.extendUnnamed context name type'
+      hoverTerm pos context term' <|>
+        hoverTerm pos context type_ <|>
+        hoverTerm pos context' body
 
     Syntax.Pi name source _ domain -> do
-      source' <- lift $ evaluate env source
-      env' <- lift $ extend env name source'
-      hoverTerm pos env source <|>
-        hoverTerm pos env' domain
+      source' <- lift $ Elaboration.evaluate context source
+      (context', _) <- lift $ Context.extendUnnamed context name source'
+      hoverTerm pos context source <|>
+        hoverTerm pos context' domain
 
     Syntax.Fun source domain ->
-      hoverTerm pos env source <|>
-      hoverTerm pos env domain
+      hoverTerm pos context source <|>
+      hoverTerm pos context domain
 
     Syntax.Lam name type_ _ body -> do
-      type' <- lift $ evaluate env type_
-      env' <- lift $ extend env name type'
-      hoverTerm pos env type_ <|>
-        hoverTerm pos env' body
+      type' <- lift $ Elaboration.evaluate context type_
+      (context', _) <- lift $ Context.extendUnnamed context name type'
+      hoverTerm pos context type_ <|>
+        hoverTerm pos context' body
 
     Syntax.App t1 _ t2 ->
-      hoverTerm pos env t1 <|>
-      hoverTerm pos env t2
+      hoverTerm pos context t1 <|>
+      hoverTerm pos context t2
 
     Syntax.Case scrutinee branches defaultBranch ->
-      hoverTerm pos env scrutinee <|>
-      asum (hoverBranch pos env <$> HashMap.elems branches) <|>
-      asum (hoverTerm pos env <$> defaultBranch)
+      hoverTerm pos context scrutinee <|>
+      asum (hoverBranch pos context <$> HashMap.elems branches) <|>
+      asum (hoverTerm pos context <$> defaultBranch)
 
     Syntax.Spanned span term' ->
-      hoverTerm pos env term' <|>
+      hoverTerm pos context term' <|>
       if span `Span.relativeContains` pos then do
-        term'' <- lift $ Elaboration.evaluate (_context env) term'
-        type_ <- lift $ TypeOf.typeOf (_context env) term''
-        type' <- lift $ Elaboration.readback (_context env) type_
+        term'' <- lift $ Elaboration.evaluate context term'
+        type_ <- lift $ TypeOf.typeOf context term''
+        type' <- lift $ Elaboration.readback context type_
+        prettyTerm <- Error.prettyPrettyableTerm $ Context.toPrettyableTerm context term'
+        prettyType <- Error.prettyPrettyableTerm $ Context.toPrettyableTerm context type'
         pure
           ( span
-          , Pretty.prettyTerm 0 (_prettyEnvironment env) term' <+> ":" <+>
-            Pretty.prettyTerm 0 (_prettyEnvironment env) type'
+          , prettyTerm <+> ":" <+> prettyType
           )
 
       else
@@ -193,36 +167,32 @@ hoverTerm pos env term =
 
 hoverDataDefinition
   :: Position.Relative
-  -> Environment v
+  -> Context v
   -> Telescope Syntax.Type Syntax.ConstructorDefinitions v
   -> MaybeT M (Span.Relative, Doc ann)
-hoverDataDefinition pos env tele =
+hoverDataDefinition pos context tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constrDefs) ->
-      asum $ hoverTerm pos env <$> HashMap.elems constrDefs
+      asum $ hoverTerm pos context <$> HashMap.elems constrDefs
 
     Telescope.Extend name type_ _ tele' -> do
-      type' <- lift $ evaluate env type_
-      env' <- lift $ extend env name type'
-      hoverTerm pos env type_ <|>
-        hoverDataDefinition pos env' tele'
+      type' <- lift $ Elaboration.evaluate context type_
+      (context', _) <- lift $ Context.extendUnnamed context name type'
+      hoverTerm pos context type_ <|>
+        hoverDataDefinition pos context' tele'
 
 hoverBranch
   :: Position.Relative
-  -> Environment v
+  -> Context v
   -> Telescope Syntax.Type Syntax.Term v
   -> MaybeT M (Span.Relative, Doc ann)
-hoverBranch pos env tele =
+hoverBranch pos context tele =
   case tele of
     Telescope.Empty branch ->
-      hoverTerm pos env branch
+      hoverTerm pos context branch
 
     Telescope.Extend name type_ _ tele' -> do
-      type' <- lift $ evaluate env type_
-      env' <- lift $ extend env name type'
-      hoverTerm pos env type_ <|>
-        hoverBranch pos env' tele'
-
-evaluate :: Environment v -> Syntax.Term v -> M Domain.Value
-evaluate env =
-  Elaboration.evaluate (_context env)
+      type' <- lift $ Elaboration.evaluate context type_
+      (context', _) <- lift $ Context.extendUnnamed context name type'
+      hoverTerm pos context type_ <|>
+        hoverBranch pos context' tele'
