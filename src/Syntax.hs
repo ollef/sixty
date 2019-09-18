@@ -43,12 +43,6 @@ implicitPi name type_ plicity =
 apps :: Foldable f => Term v -> f (Plicity, Term v) -> Term v
 apps = foldl (\fun (plicity, arg) -> App fun plicity arg)
 
-appsView :: Term v -> (Term v, [Term v])
-appsView = go []
-  where
-    go args (App t1 _ t2) = go (t2 : args) t1
-    go args t = (t, args)
-
 funs :: Foldable f => f (Term v) -> Term v -> Term v
 funs args res = foldr Fun res args
 
