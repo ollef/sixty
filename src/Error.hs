@@ -15,6 +15,7 @@ import Name (Name)
 import qualified Name
 import Plicity
 import qualified Scope
+import Domain.Pattern (Pattern)
 import qualified Span
 import qualified Syntax
 
@@ -30,7 +31,7 @@ data Elaboration
   | TypeMismatch (Tsil (PrettyableTerm, PrettyableTerm))
   | OccursCheck (Tsil (PrettyableTerm, PrettyableTerm))
   | UnsolvedMetaVariable !Meta.Index !PrettyableTerm
-  | NonExhaustivePatterns
+  | NonExhaustivePatterns ![[(Plicity, PrettyablePattern)]]
   | RedundantMatch !MatchKind
   | IndeterminateIndexUnification !MatchKind
   | PlicityMismatch !FieldOrArgument !PlicityMismatch
@@ -83,4 +84,7 @@ data Spanned
 data V
 
 data PrettyableTerm = PrettyableTerm Name.Module [Name] (Syntax.Term V)
+  deriving (Eq, Show, Generic, Hashable)
+
+data PrettyablePattern = PrettyablePattern Name.Module [Name] Pattern
   deriving (Eq, Show, Generic, Hashable)

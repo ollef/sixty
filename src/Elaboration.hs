@@ -373,7 +373,7 @@ checkUnspanned context term expectedType = do
     (Presyntax.Lam (Presyntax.ExplicitPattern pat) body, Domain.Fun source domain) -> do
       source' <- readback context source
       (context', var) <- Context.extendUnnamed context "x" source
-      body' <- Matching.elaborateSingle context' var pat body domain
+      body' <- Matching.elaborateSingle context' var Explicit pat body domain
       pure $ Syntax.Lam "x" source' Explicit body'
 
     (Presyntax.Lam (Presyntax.ImplicitPattern _ namedPats) body, _)
@@ -676,7 +676,7 @@ checkLambda context name source plicity pat domainClosure body = do
     Evaluation.evaluateClosure
       domainClosure
       (Domain.var var)
-  body' <- Matching.elaborateSingle context' var pat body domain
+  body' <- Matching.elaborateSingle context' var plicity pat body domain
   pure $ Syntax.Lam name source' plicity body'
 
 inferLambda
@@ -691,7 +691,7 @@ inferLambda context name plicity pat body = do
   source' <- readback context source
   (context', var) <- Context.extendUnnamed context name source
   domain <- Context.newMetaType context'
-  body' <- Matching.elaborateSingle context' var pat body domain
+  body' <- Matching.elaborateSingle context' var plicity pat body domain
   domain' <- readback context' domain
 
   pure
@@ -937,7 +937,7 @@ readback context =
 
 prettyTerm :: Context v -> Syntax.Term v -> M (Doc ann)
 prettyTerm context term =
-  Error.prettyPrettyableTerm $ Context.toPrettyableTerm context term
+  Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context term
 
 prettyValue :: Context v -> Domain.Value -> M (Doc ann)
 prettyValue context value = do

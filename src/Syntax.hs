@@ -68,3 +68,15 @@ data Definition
 newtype ConstructorDefinitions v =
   ConstructorDefinitions (HashMap Name.Constructor (Type v))
   deriving (Show, Generic, Hashable)
+
+constructorFieldPlicities :: Type v -> [Plicity]
+constructorFieldPlicities type_ =
+  case type_ of
+    Pi _ _ plicity type' ->
+      plicity : constructorFieldPlicities type'
+
+    Fun _ type' ->
+      Explicit : constructorFieldPlicities type'
+
+    _ ->
+      []

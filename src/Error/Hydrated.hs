@@ -14,6 +14,7 @@ import Error (Error)
 import qualified Error
 import qualified Error.Parsing
 import Name (Name)
+import Plicity
 import qualified Position
 import qualified Pretty
 import Query (Query)
@@ -69,8 +70,8 @@ headingAndBody error =
 
         Error.TypeMismatch mismatches -> do
           mismatches' <- forM mismatches $ \(inferred, expected) -> do
-            inferred' <- prettyPrettyableTerm inferred
-            expected' <- prettyPrettyableTerm expected
+            inferred' <- prettyPrettyableTerm 0 inferred
+            expected' <- prettyPrettyableTerm 0 expected
             pure (inferred', expected')
           pure
             ( "Type mismatch"
@@ -86,8 +87,8 @@ headingAndBody error =
 
         Error.OccursCheck mismatches -> do
           mismatches' <- forM mismatches $ \(inferred, expected) -> do
-            inferred' <- prettyPrettyableTerm inferred
-            expected' <- prettyPrettyableTerm expected
+            inferred' <- prettyPrettyableTerm 0 inferred
+            expected' <- prettyPrettyableTerm 0 expected
             pure (inferred', expected')
           pure
             ( "Occurs check failed"
@@ -104,15 +105,20 @@ headingAndBody error =
             )
 
         Error.UnsolvedMetaVariable index type_ -> do
-          type' <- prettyPrettyableTerm type_
+          type' <- prettyPrettyableTerm 0 type_
           pure
             ( "Unsolved meta variable"
             , "A meta variable was created here but was never solved:" <> line <> line <>
               Doc.pretty index <+> ":" <+> type'
             )
 
-        Error.NonExhaustivePatterns ->
-          pure ("Non-exhaustive patterns", mempty)
+        Error.NonExhaustivePatterns patterns -> do
+          prettyPatterns <- mapM (mapM $ prettyPrettyablePattern $ Pretty.appPrec + 1) patterns
+          pure
+            ( "Non-exhaustive patterns"
+            , "Patterns not matched:" <> line <> line <>
+              vcat (hsep <$> prettyPatterns)
+            )
 
         Error.RedundantMatch matchKind ->
           pure ("Redundant" <+> Doc.pretty matchKind, "This" <+> Doc.pretty matchKind <+> "is unreachable")
@@ -147,8 +153,8 @@ headingAndBody error =
           pure ("Unable to infer implicit lambda", mempty)
 
         Error.ImplicitApplicationMismatch names term type_ -> do
-          term' <- prettyPrettyableTerm term
-          type' <- prettyPrettyableTerm type_
+          term' <- prettyPrettyableTerm 0 term
+          type' <- prettyPrettyableTerm 0 type_
           pure
             ( "Plicity mismatch"
             , "The term" <> line <> line <>
@@ -228,8 +234,8 @@ lineNumber err =
     Span.LineColumns (Position.LineColumn l _) _ =
       _lineColumn err
 
-prettyPrettyableTerm :: MonadFetch Query m => Error.PrettyableTerm -> m (Doc ann)
-prettyPrettyableTerm (Error.PrettyableTerm moduleName_ names term) = do
+prettyPrettyableTerm :: MonadFetch Query m => Int -> Error.PrettyableTerm -> m (Doc ann)
+prettyPrettyableTerm prec (Error.PrettyableTerm moduleName_ names term) = do
   env <- Pretty.emptyM moduleName_
   pure $ go names env
   where
@@ -237,7 +243,25 @@ prettyPrettyableTerm (Error.PrettyableTerm moduleName_ names term) = do
     go names' env' =
       case names' of
         [] ->
-          Pretty.prettyTerm 0 (coerce env') term
+          Pretty.prettyTerm prec (coerce env') term
+
+        name:names'' ->
+          let
+            (env'', _) = Pretty.extend env' name
+
+          in
+          go names'' env''
+
+prettyPrettyablePattern :: MonadFetch Query m => Int -> (Plicity, Error.PrettyablePattern) -> m (Doc ann)
+prettyPrettyablePattern prec (plicity, Error.PrettyablePattern moduleName_ names pattern) = do
+  env <- Pretty.emptyM moduleName_
+  pure $ go names env
+  where
+    go :: [Name] -> Pretty.Environment v -> Doc ann
+    go names' env' =
+      case names' of
+        [] ->
+          Plicity.prettyAnnotation plicity <> Pretty.prettyPattern prec env' pattern
 
         name:names'' ->
           let

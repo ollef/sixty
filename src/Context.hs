@@ -20,6 +20,7 @@ import qualified Data.IntSet as IntSet
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Domain
+import Domain.Pattern (Pattern)
 import Environment (Environment(Environment))
 import qualified Environment
 import Error (Error)
@@ -83,6 +84,16 @@ toPrettyableClosedTerm context term = do
     Scope.KeyedName _ (Name.Qualified module_ _) =
       Context.scopeKey context
   Error.PrettyableTerm module_ mempty (Syntax.coerce term)
+
+toPrettyablePattern :: Context v -> Pattern -> Error.PrettyablePattern
+toPrettyablePattern context pattern = do
+  let
+    Scope.KeyedName _ (Name.Qualified module_ _) =
+      Context.scopeKey context
+  Error.PrettyablePattern
+    module_
+    (fmap (flip lookupVarName context) $ toList $ indices context)
+    pattern
 
 empty :: MonadIO m => Scope.KeyedName -> m (Context Void)
 empty key = do

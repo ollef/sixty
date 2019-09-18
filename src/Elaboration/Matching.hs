@@ -25,6 +25,8 @@ import qualified Context
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Domain
+import Domain.Pattern (Pattern)
+import qualified Domain.Pattern as Pattern
 import qualified Domain.Telescope as Domain (Telescope)
 import qualified Domain.Telescope
 import qualified Elaboration.Matching.SuggestedName as SuggestedName
@@ -51,7 +53,7 @@ import Var
 
 data Config = Config
   { _expectedType :: !Domain.Value
-  , _scrutinees :: ![Domain.Value]
+  , _scrutinees :: ![(Plicity, Domain.Value)]
   , _clauses :: [Clause]
   , _usedClauses :: !(IORef (Set Span.Relative))
   , _coveredConstructors :: CoveredConstructors
@@ -85,7 +87,7 @@ elaborateCase context scrutinee scrutineeType branches expectedType = do
   if isPatternScrutinee then
     elaborateWithCoverage context Config
       { _expectedType = expectedType
-      , _scrutinees = pure scrutineeValue
+      , _scrutinees = pure (Explicit, scrutineeValue)
       , _clauses =
         [ Clause
           { _span = Span.add patSpan rhsSpan
@@ -106,7 +108,7 @@ elaborateCase context scrutinee scrutineeType branches expectedType = do
         Domain.var var
     term <- elaborateWithCoverage context' Config
       { _expectedType = expectedType
-      , _scrutinees = pure scrutineeVarValue
+      , _scrutinees = pure (Explicit, scrutineeVarValue)
       , _clauses =
         [ Clause
           { _span = Span.add patSpan rhsSpan
@@ -192,7 +194,7 @@ elaborateClauses context clauses expectedType = do
     , _scrutinees =
       case clauses of
         firstClause:_ ->
-          [value | Match value _ _ _ <- _matches firstClause]
+          [(plicity, value) | Match value plicity _ _ <- _matches firstClause]
 
         _ ->
           mempty
@@ -206,11 +208,12 @@ elaborateClauses context clauses expectedType = do
 elaborateSingle
   :: Context v
   -> Var
+  -> Plicity
   -> Presyntax.Pattern
   -> Presyntax.Term
   -> Domain.Type
   -> M (Syntax.Term v)
-elaborateSingle context scrutinee pat@(Presyntax.Pattern patSpan _) rhs@(Presyntax.Term rhsSpan _) expectedType = do
+elaborateSingle context scrutinee plicity pat@(Presyntax.Pattern patSpan _) rhs@(Presyntax.Term rhsSpan _) expectedType = do
     let
       scrutineeValue =
         Domain.var scrutinee
@@ -222,11 +225,11 @@ elaborateSingle context scrutinee pat@(Presyntax.Pattern patSpan _) rhs@(Presynt
 
     elaborateWithCoverage context Config
       { _expectedType = expectedType
-      , _scrutinees = pure scrutineeValue
+      , _scrutinees = pure (plicity, scrutineeValue)
       , _clauses =
         [ Clause
           { _span = Span.add patSpan rhsSpan
-          , _matches = [Match scrutineeValue Explicit pat scrutineeType]
+          , _matches = [Match scrutineeValue plicity pat scrutineeType]
           , _rhs = rhs
           }
         ]
@@ -258,8 +261,12 @@ elaborate context config = do
     config' = config { _clauses = clauses }
   case clauses of
     [] -> do
-      exhaustive <- anyM (uninhabitedScrutinee context $ _coveredConstructors config) $ _scrutinees config
-      unless exhaustive $ Context.report context Error.NonExhaustivePatterns
+      exhaustive <- anyM (uninhabitedScrutinee context (_coveredConstructors config) . snd) $ _scrutinees config
+      unless exhaustive $ do
+        scrutinees <- forM (_scrutinees config) $ \(plicity, scrutinee) -> do
+          patterns <- uncoveredScrutineePatterns context (_coveredConstructors config) scrutinee
+          pure $ (,) plicity <$> (Context.toPrettyablePattern context <$> patterns)
+        Context.report context $ Error.NonExhaustivePatterns $ sequence scrutinees
       targetType <- Elaboration.readback context $ _expectedType config
       pure $ Syntax.App (Syntax.Global Builtin.fail) Explicit targetType
 
@@ -298,6 +305,106 @@ checkForcedPattern context match =
 
     _ ->
       pure ()
+
+uncoveredScrutineePatterns
+  :: Context v
+  -> CoveredConstructors
+  -> Domain.Value
+  -> M [Pattern]
+uncoveredScrutineePatterns context coveredConstructors value = do
+  value' <- Context.forceHead context value
+  case value' of
+    Domain.Neutral (Domain.Var v) Tsil.Empty -> do
+      let
+        covered =
+          IntMap.lookupDefault mempty v coveredConstructors
+
+        go :: Name.Qualified -> Telescope Syntax.Type Syntax.ConstructorDefinitions v -> [Pattern]
+        go typeName tele =
+          case tele of
+            Telescope.Empty (Syntax.ConstructorDefinitions constrDefs) -> do
+              let
+                uncoveredConstrDefs =
+                  HashMap.difference
+                    constrDefs
+                    (HashSet.toMap $
+                      HashSet.map (\(Name.QualifiedConstructor _ constr) -> constr) covered
+                    )
+
+              foreach (HashMap.toList uncoveredConstrDefs) $ \(constr, type_) ->
+                Pattern.Con
+                  (Name.QualifiedConstructor typeName constr)
+                  [ (plicity, Pattern.Wildcard)
+                  | plicity <- Syntax.constructorFieldPlicities type_
+                  ]
+
+            Telescope.Extend _ _ _ tele' ->
+              go typeName tele'
+
+      case HashSet.toList covered of
+        [] ->
+          pure [Pattern.Wildcard]
+
+        Name.QualifiedConstructor typeName _:_ -> do
+          maybeDefinition <- fetch $ Query.ElaboratedDefinition typeName
+          case maybeDefinition of
+            Just (Syntax.DataDefinition tele, _) ->
+              pure $ go typeName tele
+
+            _ ->
+              panic "uncoveredScrutineePatterns non-data"
+
+    Domain.Neutral (Domain.Var _) (_ Tsil.:> _) ->
+      pure []
+
+    Domain.Neutral (Domain.Global _) _ ->
+      pure []
+
+    Domain.Neutral (Domain.Con constr) spine -> do
+      constrTypeTele <- fetch $ Query.ConstructorType constr
+      let
+        spine' =
+          dropTypeArgs constrTypeTele $ toList spine
+
+      spine'' <- forM spine' $ \(plicity, arg) -> do
+        patterns <- uncoveredScrutineePatterns context coveredConstructors arg
+        pure $ (,) plicity <$> patterns
+      pure $ Pattern.Con constr <$> sequence spine''
+
+    Domain.Neutral (Domain.Meta _) _ ->
+      pure []
+
+    Domain.Glued _ _ value'' -> do
+      value''' <- force value''
+      uncoveredScrutineePatterns context coveredConstructors value'''
+
+    Domain.Lam {} ->
+      pure []
+
+    Domain.Pi {} ->
+      pure []
+
+    Domain.Fun {} ->
+      pure []
+
+    Domain.Case {} ->
+      pure []
+  where
+    dropTypeArgs
+      :: Telescope t t' v
+      -> [(Plicity, value)]
+      -> [(Plicity, value)]
+    dropTypeArgs tele args =
+      case (tele, args) of
+        (Telescope.Empty _, _) ->
+          args
+
+        (Telescope.Extend _ _ plicity1 tele', (plicity2, _):args')
+          | plicity1 == plicity2 ->
+            dropTypeArgs tele' args'
+
+        _ ->
+          panic "chooseBranch arg mismatch"
 
 -------------------------------------------------------------------------------
 

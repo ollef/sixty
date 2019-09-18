@@ -1,0 +1,35 @@
+data List a = Nil | Cons a (List a) | Lol
+
+clauses1 : forall a. List a -> List a
+clauses1 Nil = Nil -- non-exhaustive patterns error expected
+
+clauses2 : forall a. List a -> List a
+clauses2 Nil = Nil -- non-exhaustive patterns error expected
+clauses2 (Cons _ _) = Nil
+
+clauses3 : forall a. List a -> List a
+clauses3 Nil = Nil
+clauses3 (Cons _ _) = Nil
+clauses3 Lol = Nil
+
+cases1 : forall a. List a -> List a
+cases1 x = case x of
+  Nil -> Nil -- non-exhaustive patterns error expected
+
+cases2 : forall a. List a -> List a
+cases2 x = case x of
+  Nil -> Nil -- non-exhaustive patterns error expected
+  Cons _ _ -> Nil
+
+cases3 : forall a. List a -> List a
+cases3 x = case x of
+  Nil -> Nil
+  Cons _ _ -> Nil
+  Lol -> Nil
+
+multiClauses1 : forall a. List a -> List a -> List a
+multiClauses1 Nil Nil = Nil -- non-exhaustive patterns error expected
+
+multiClauses2 : forall a. List a -> List a -> List a
+multiClauses2 Nil Nil = Nil -- non-exhaustive patterns error expected
+multiClauses2 (Cons _ _) (Cons _ _) = Nil -- non-exhaustive patterns error expected

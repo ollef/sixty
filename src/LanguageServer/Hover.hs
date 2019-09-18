@@ -155,8 +155,8 @@ hoverTerm pos context term =
         term'' <- lift $ Elaboration.evaluate context term'
         type_ <- lift $ TypeOf.typeOf context term''
         type' <- lift $ Elaboration.readback context type_
-        prettyTerm <- Error.prettyPrettyableTerm $ Context.toPrettyableTerm context term'
-        prettyType <- Error.prettyPrettyableTerm $ Context.toPrettyableTerm context type'
+        prettyTerm <- Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context term'
+        prettyType <- Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context type'
         pure
           ( span
           , prettyTerm <+> ":" <+> prettyType

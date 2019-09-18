@@ -14,6 +14,8 @@ import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
 import Rock
 
+import Domain.Pattern (Pattern)
+import qualified Domain.Pattern as Pattern
 import Index
 import Name (Name(Name))
 import qualified Name
@@ -264,6 +266,24 @@ prettyConstructorDefinitions env tele =
       in
       Plicity.prettyAnnotation plicity <> "(" <> pretty name' <+> ":" <+> prettyTerm 0 env type_ <> ")" <+>
       prettyConstructorDefinitions env' tele'
+
+-------------------------------------------------------------------------------
+
+prettyPattern :: Int -> Environment v -> Pattern -> Doc ann
+prettyPattern prec env pattern =
+  case pattern of
+    Pattern.Wildcard ->
+      "_"
+
+    Pattern.Con constr [] ->
+      prettyConstr env constr
+
+    Pattern.Con constr patterns ->
+      prettyParen (prec > appPrec) $
+        hsep $ prettyConstr env constr :
+          [ Plicity.prettyAnnotation plicity <> prettyPattern (appPrec + 1) env pattern'
+          | (plicity, pattern') <- patterns
+          ]
 
 -------------------------------------------------------------------------------
 
