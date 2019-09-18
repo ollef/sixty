@@ -167,7 +167,7 @@ unify context flexibility untouchables value1 value2 = do
         throwError Dunno
 
       | otherwise = do
-        occurs context (IntSet.insert var untouchables) value
+        occurs context Flexibility.Rigid (IntSet.insert var untouchables) value
         lift $ Context.define context var value
 
 unifyBranches
@@ -253,23 +253,29 @@ unextend context' =
     _ ->
       panic "Unification.Indices.unextend"
 
-occurs :: Context v -> IntSet Var -> Domain.Value -> E M ()
-occurs context untouchables value = do
-  value' <- lift $ Context.forceHead context value
+occurs :: Context v -> Flexibility -> IntSet Var -> Domain.Value -> E M ()
+occurs context flexibility untouchables value = do
+  value' <- lift $ Context.forceHeadGlue context value
   case value' of
     Domain.Neutral (Domain.Var var) _
       | IntSet.member var untouchables ->
-        throwError Dunno
+        throwError $
+          case flexibility of
+            Flexibility.Rigid ->
+              Nope
+
+            Flexibility.Flexible ->
+              Dunno
 
     Domain.Glued (Domain.Var _) _ value'' ->
       occursForce value''
 
     Domain.Glued hd spine value'' ->
-      occurs context untouchables (Domain.Neutral hd spine) `catchError` \_ ->
+      occurs context Flexibility.Flexible untouchables (Domain.Neutral hd spine) `catchError` \_ ->
         occursForce value''
 
-    Domain.Neutral _ spine ->
-      mapM_ (occurs context untouchables . snd) spine
+    Domain.Neutral hd spine ->
+      mapM_ (occurs context (max (Domain.headFlexibility hd) flexibility) untouchables . snd) spine
 
     Domain.Lam name type_ _ closure ->
       occursAbstraction name type_ closure
@@ -278,30 +284,35 @@ occurs context untouchables value = do
       occursAbstraction name source domainClosure
 
     Domain.Fun source domain -> do
-      occurs context untouchables source
-      occurs context untouchables domain
+      occurs context flexibility untouchables source
+      occurs context flexibility untouchables domain
 
     Domain.Case scrutinee branches -> do
-      occurs context untouchables scrutinee
-      occursBranches context untouchables branches
+      occurs context flexibility untouchables scrutinee
+      occursBranches context flexibility untouchables branches
 
   where
     occursForce lazyValue = do
       value' <- lift $ force lazyValue
-      occurs context untouchables value'
+      occurs context flexibility untouchables value'
 
     occursAbstraction name type_ closure = do
-      occurs context untouchables type_
+      occurs context flexibility untouchables type_
       (context', var) <- lift $ Context.extendUnnamed context name type_
       let
         varValue =
           Domain.var var
 
       body <- lift $ Evaluation.evaluateClosure closure varValue
-      occurs context' untouchables body
+      occurs context' flexibility untouchables body
 
-occursBranches :: Context v -> IntSet Var -> Domain.Branches -> E M ()
-occursBranches outerContext outerUntouchables (Domain.Branches outerEnv branches defaultBranch) = do
+occursBranches
+  :: Context v
+  -> Flexibility
+  -> IntSet Var
+  -> Domain.Branches
+  -> E M ()
+occursBranches outerContext flexibility outerUntouchables (Domain.Branches outerEnv branches defaultBranch) = do
   forM_ branches $
     occursTele outerContext outerUntouchables outerEnv
   forM_ defaultBranch $ \branch ->
@@ -317,6 +328,7 @@ occursBranches outerContext outerUntouchables (Domain.Branches outerEnv branches
       case tele of
         Telescope.Extend name type_ _plicity tele' -> do
           type' <- lift $ Evaluation.evaluate env type_
+          occurs context flexibility untouchables type'
           (context'', var) <- lift $ Context.extendUnnamed context name type'
           occursTele
             context''
@@ -325,4 +337,4 @@ occursBranches outerContext outerUntouchables (Domain.Branches outerEnv branches
             tele'
         Telescope.Empty body -> do
           body' <- lift $ Evaluation.evaluate env body
-          occurs context untouchables body'
+          occurs context flexibility untouchables body'
