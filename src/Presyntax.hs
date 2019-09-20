@@ -90,9 +90,9 @@ anno pat@(Pattern span1 _) type_@(Term span2 _) =
   Pattern (Span.add span1 span2) (Anno pat type_)
 
 data Definition
-  = TypeDeclaration !Type
-  | ConstantDefinition [Clause]
-  | DataDefinition [(Binding, Type, Plicity)] [ConstructorDefinition]
+  = TypeDeclaration !Span.Relative !Type
+  | ConstantDefinition [(Span.Relative, Clause)]
+  | DataDefinition !Span.Relative [(Binding, Type, Plicity)] [ConstructorDefinition]
   deriving (Show, Generic, Hashable)
 
 data Clause = Clause
@@ -105,6 +105,18 @@ data ConstructorDefinition
   = GADTConstructors [Name.Constructor] Type
   | ADTConstructor Name.Constructor [Type]
   deriving (Show, Generic, Hashable)
+
+spans :: Definition -> [Span.Relative]
+spans def =
+  case def of
+    TypeDeclaration span _ ->
+      [span]
+
+    ConstantDefinition clauses ->
+      fst <$> clauses
+
+    DataDefinition span _ _ ->
+      [span]
 
 key :: Definition -> Scope.Key
 key def =

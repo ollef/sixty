@@ -328,10 +328,10 @@ atomicTerm =
       flip (foldr $ \(span, binding_) rhs -> Term span $ binding_ rhs) <$ reserved "let" <*> blockOfMany letBinding <* reserved "in" <*> term
 
     letBinding = spanned $ do
-      binding_@(Binding _ (Name nameText)) <- binding
+      binding_@(Binding span (Name nameText)) <- binding
       Let binding_ . Just <$ symbol ":" <*> recoveringIndentedTerm <*>
-        sameLevel (withIndentationBlock $ reserved nameText *> clauses nameText)
-        <|> Let binding_ Nothing <$> clauses nameText
+        sameLevel (withIndentationBlock $ fmap snd <$ reserved nameText <*> clauses span nameText)
+        <|> Let binding_ Nothing . fmap snd <$> clauses span nameText
       <?> "let binding"
 
 plicitAtomicTerm :: Parser (Either (HashMap Name Term) Term)
@@ -369,18 +369,18 @@ definition =
   relativeTo $
     dataDefinition
     <|> do
-      name_@(Name nameText) <- name
+      (span, name_@(Name nameText)) <- spanned name
       (,) name_ <$>
-        (TypeDeclaration <$ symbol ":" <*> recoveringIndentedTerm
-        <|> ConstantDefinition <$> clauses nameText
+        (TypeDeclaration span <$ symbol ":" <*> recoveringIndentedTerm
+        <|> ConstantDefinition <$> clauses span nameText
         )
     <?> "definition"
 
-clauses :: Text -> Parser [Clause]
-clauses nameText =
+clauses :: Span.Relative -> Text -> Parser [(Span.Relative, Clause)]
+clauses firstSpan nameText =
   (:) <$>
-    clause <*>
-    manySame (try (reserved nameText *> Parsix.notFollowedBy (symbol ":")) *> clause)
+    ((,) firstSpan <$> clause) <*>
+    manySame ((,) <$> try (fst <$> spanned (reserved nameText *> Parsix.notFollowedBy (symbol ":"))) <*> clause)
 
 clause :: Parser Clause
 clause =
@@ -389,13 +389,13 @@ clause =
 
 dataDefinition :: Parser (Name, Definition)
 dataDefinition =
-  (,) <$ reserved "data" <*> name <*>
-    (DataDefinition <$> parameters <*>
-      (reserved "where" *> blockOfMany gadtConstructors
-      <|> symbol "=" *> sepBy1 adtConstructor (symbol "|")
-      )
+  mkDataDefinition <$ reserved "data" <*> spanned name <*> parameters <*>
+    (reserved "where" *> blockOfMany gadtConstructors
+    <|> symbol "=" *> sepBy1 adtConstructor (symbol "|")
     )
   where
+    mkDataDefinition (span, name_) params constrs =
+      (name_, DataDefinition span params constrs)
     parameters =
       parameters1 <|> pure []
 

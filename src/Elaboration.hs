@@ -87,18 +87,18 @@ checkDefinition
   -> M Syntax.Definition
 checkDefinition context def expectedType =
   case def of
-    Presyntax.TypeDeclaration type_ -> do
+    Presyntax.TypeDeclaration _ type_ -> do
       type' <- check context type_ expectedType
       pure $ Syntax.TypeDeclaration type'
 
     Presyntax.ConstantDefinition clauses -> do
       let
         clauses' =
-          [ Clauses.Clause clause mempty | clause <- clauses]
+          [ Clauses.Clause clause mempty | (_, clause) <- clauses]
       term' <- Clauses.check context clauses' expectedType
       pure $ Syntax.ConstantDefinition term'
 
-    Presyntax.DataDefinition params constrs -> do
+    Presyntax.DataDefinition _ params constrs -> do
       (tele, type_) <- inferDataDefinition context params constrs mempty
       type' <- evaluate context type_
       success <- Context.try_ context $ Unification.unify context Flexibility.Rigid type' expectedType
@@ -117,18 +117,18 @@ inferDefinition
   -> M (Syntax.Definition, Domain.Type)
 inferDefinition context def =
   case def of
-    Presyntax.TypeDeclaration type_ -> do
+    Presyntax.TypeDeclaration _ type_ -> do
       type' <- check context type_ Builtin.type_
       pure (Syntax.TypeDeclaration type', Builtin.type_)
 
     Presyntax.ConstantDefinition clauses -> do
       let
         clauses' =
-          [ Clauses.Clause clause mempty | clause <- clauses]
+          [ Clauses.Clause clause mempty | (_, clause) <- clauses]
       (term', type_) <- Clauses.infer context clauses'
       pure (Syntax.ConstantDefinition term', type_)
 
-    Presyntax.DataDefinition params constrs -> do
+    Presyntax.DataDefinition _ params constrs -> do
       (tele, type_) <- inferDataDefinition context params constrs mempty
       type' <- evaluate context type_
       pure (Syntax.DataDefinition tele, type')

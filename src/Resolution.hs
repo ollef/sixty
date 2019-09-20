@@ -90,7 +90,7 @@ moduleScopes module_@(Name.Module moduleText) definitions =
         Presyntax.ConstantDefinition {} ->
           definitionCase
 
-        Presyntax.DataDefinition _ constrDefs ->
+        Presyntax.DataDefinition _ _ constrDefs ->
           let
             (scope'', visibility', scopes', errs') =
               definitionCase
