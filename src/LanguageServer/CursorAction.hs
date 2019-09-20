@@ -35,7 +35,7 @@ import qualified Var
 import Var (Var)
 
 type Callback a =
-  forall v. Context v -> IntMap Var Span.LineColumn -> Syntax.Term v -> Span.LineColumn -> MaybeT M a
+  forall v. Context v -> IntMap Var (Scope.KeyedName, Span.Relative) -> Syntax.Term v -> Span.LineColumn -> MaybeT M a
 
 cursorAction
   :: FilePath
@@ -57,7 +57,7 @@ cursorAction filePath contents (Position.LineColumn line column) k = do
         k' env term actionSpan =
           k
             (_context env)
-            (toLineColumns . Span.absoluteFrom defPos <$>_varSpans env)
+            ((,) (Scope.KeyedName key (Name.Qualified moduleName name)) <$>_varSpans env)
             term
             (toLineColumns $ Span.absoluteFrom defPos actionSpan)
       context <- Context.empty $ Scope.KeyedName key qualifiedName

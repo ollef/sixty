@@ -31,6 +31,7 @@ import qualified Error.Hydrated as Error (Hydrated)
 import qualified Error.Hydrated
 import qualified Position
 import qualified LanguageServer.Hover as Hover
+import qualified LanguageServer.GoToDefinition as GoToDefinition
 import Query (Query)
 import qualified Span
 
@@ -59,6 +60,7 @@ handlers sendMessage =
     , LSP.didChangeTextDocumentNotificationHandler = Just $ sendMessage . LSP.NotDidChangeTextDocument
     , LSP.didCloseTextDocumentNotificationHandler = Just $ sendMessage . LSP.NotDidCloseTextDocument
     , LSP.hoverHandler = Just $ sendMessage . LSP.ReqHover
+    , LSP.definitionHandler = Just $ sendMessage . LSP.ReqDefinition
     }
 
 options :: LSP.Options
@@ -84,61 +86,69 @@ messagePump lf receiveMessage = do
       LSP.NotDidOpenTextDocument notification -> do
         sendNotification lf "messagePump: processing NotDidOpenTextDocument"
         let
-          document = notification ^. LSP.params . LSP.textDocument . LSP.uri
+          uri = notification ^. LSP.params . LSP.textDocument . LSP.uri
           version = notification ^. LSP.params . LSP.textDocument . LSP.version
-          fileName = LSP.uriToFilePath document
-        sendNotification lf $ "fileName = " <> show fileName
-        checkAllAndPublishDiagnostics lf state document (Just version)
+          filePath = uriToFilePath uri
+        sendNotification lf $ "filePath = " <> show filePath
+        checkAllAndPublishDiagnostics lf state uri (Just version)
 
       LSP.NotDidChangeTextDocument notification -> do
         let
-          document = notification ^. LSP.params . LSP.textDocument . LSP.uri
+          uri = notification ^. LSP.params . LSP.textDocument . LSP.uri
           version = notification ^. LSP.params . LSP.textDocument . LSP.version
 
-        sendNotification lf $ "messagePump:processing NotDidChangeTextDocument: uri=" <> show document
-        checkAllAndPublishDiagnostics lf state document version
+        sendNotification lf $ "messagePump:processing NotDidChangeTextDocument: uri=" <> show uri
+        checkAllAndPublishDiagnostics lf state uri version
 
       LSP.NotDidSaveTextDocument notification -> do
         sendNotification lf "messagePump: processing NotDidSaveTextDocument"
         let
-          document = notification ^. LSP.params . LSP.textDocument . LSP.uri
-          fileName = LSP.uriToFilePath document
-        sendNotification lf $ "fileName = " <> show fileName
-        checkAllAndPublishDiagnostics lf state document Nothing
+          uri = notification ^. LSP.params . LSP.textDocument . LSP.uri
+          filePath = uriToFilePath uri
+        sendNotification lf $ "filePath = " <> show filePath
+        checkAllAndPublishDiagnostics lf state uri Nothing
 
       LSP.ReqHover req -> do
         sendNotification lf $ "messagePump: HoverRequest: " <> show req
         let
-          LSP.TextDocumentPositionParams (LSP.TextDocumentIdentifier document)
-            (LSP.Position line char)
-              = req ^. LSP.params
+          LSP.TextDocumentPositionParams (LSP.TextDocumentIdentifier uri) position =
+            req ^. LSP.params
 
-        (_, contents) <- fileContents lf document
-        (maybeAnnotation, _) <- runTask state document contents Driver.Don'tPrune $
-          Hover.hover (toS $ LSP.getUri document) contents (Position.LineColumn line char)
+        (_, contents) <- fileContents lf uri
+        (maybeAnnotation, _) <- runTask state uri contents Driver.Don'tPrune $
+          Hover.hover (uriToFilePath uri) contents (positionFromPosition position)
 
         let
           response =
             foreach maybeAnnotation $
-              \(Span.LineColumns (Position.LineColumn startLine startColumn) (Position.LineColumn endLine endColumn), doc) ->
+              \(span, doc) ->
                 LSP.Hover
                   { _contents = LSP.HoverContents LSP.MarkupContent
                     { _kind = LSP.MkPlainText
                     , _value = show doc
                     }
-                  , _range = Just LSP.Range
-                    { LSP._start = LSP.Position
-                      { _line = startLine
-                      , _character = startColumn
-                      }
-                    , LSP._end = LSP.Position
-                      { _line = endLine
-                      , _character = endColumn
-                      }
-                    }
+                  , _range = Just $ spanToRange span
                   }
 
         LSP.sendFunc lf $ LSP.RspHover $ LSP.makeResponseMessage req response
+
+      LSP.ReqDefinition req -> do
+        sendNotification lf $ "messagePump: DefinitionRequest: " <> show req
+        let
+          LSP.TextDocumentPositionParams (LSP.TextDocumentIdentifier uri) position =
+            req ^. LSP.params
+
+        (_, contents) <- fileContents lf uri
+
+        (maybeLocations, _) <- runTask state uri contents Driver.Don'tPrune $
+          GoToDefinition.goToDefinition (uriToFilePath uri) contents (positionFromPosition position)
+
+        let
+          maybeResponse =
+            foreach maybeLocations $ LSP.SingleLoc . uncurry spanToLocation
+
+        forM_ maybeResponse $ \response ->
+          LSP.sendFunc lf $ LSP.RspDefinition $ LSP.makeResponseMessage req response
 
       _ ->
         pure ()
@@ -152,10 +162,10 @@ checkAllAndPublishDiagnostics
   -> LSP.Uri
   -> LSP.TextDocumentVersion
   -> IO ()
-checkAllAndPublishDiagnostics lf state document version =
-  withContentsWhenUpToDate lf document version $ \contents -> do
-    (_, errors) <- runTask state document contents Driver.Prune $ Driver.checkAll [toS $ LSP.getUri document]
-    LSP.publishDiagnosticsFunc lf (length errors) (LSP.toNormalizedUri document) version
+checkAllAndPublishDiagnostics lf state uri version =
+  withContentsWhenUpToDate lf uri version $ \contents -> do
+    (_, errors) <- runTask state uri contents Driver.Prune $ Driver.checkAll [uriToFilePath uri]
+    LSP.publishDiagnosticsFunc lf (length errors) (LSP.toNormalizedUri uri) version
       $ LSP.partitionBySource $ errorToDiagnostic <$> errors
 
 runTask
@@ -166,14 +176,14 @@ runTask
   -> Driver.Prune
   -> Task Query a
   -> IO (a, [(Error.Hydrated, Doc ann)])
-runTask state document contents prune task = do
+runTask state uri contents prune task = do
   let
     prettyError :: Error.Hydrated -> Task Query (Error.Hydrated, Doc ann)
     prettyError err = do
       (heading, body) <- Error.Hydrated.headingAndBody $ Error.Hydrated._error err
       pure (err, heading <> Doc.line <> body)
 
-  Driver.runIncrementalTask state (toS $ LSP.getUri document) contents prettyError prune task
+  Driver.runIncrementalTask state (uriToFilePath uri) contents prettyError prune task
 
 -------------------------------------------------------------------------------
 
@@ -197,6 +207,13 @@ errorToDiagnostic (err, doc) = LSP.Diagnostic
   , _relatedInformation = Nothing
   }
 
+spanToLocation :: FilePath -> Span.LineColumn -> LSP.Location
+spanToLocation filePath span =
+  LSP.Location
+    { _uri = LSP.filePathToUri filePath
+    , _range = spanToRange span
+    }
+
 spanToRange :: Span.LineColumn -> LSP.Range
 spanToRange (Span.LineColumns start end) =
   LSP.Range
@@ -210,6 +227,14 @@ positionToPosition (Position.LineColumn line column) =
     { _line = line
     , _character = column
     }
+
+positionFromPosition :: LSP.Position -> Position.LineColumn
+positionFromPosition (LSP.Position line column) =
+  Position.LineColumn line column
+
+uriToFilePath :: LSP.Uri -> FilePath
+uriToFilePath =
+  fromMaybe "<TODO no filepath>" . LSP.uriToFilePath
 
 fileContents :: LSP.LspFuncs () -> LSP.Uri -> IO (LSP.TextDocumentVersion, Text)
 fileContents lf uri = do
@@ -225,8 +250,8 @@ fileContents lf uri = do
           pure (Just 0, "")
 
 withContentsWhenUpToDate :: LSP.LspFuncs () -> LSP.Uri -> LSP.TextDocumentVersion -> (Text -> IO ()) -> IO ()
-withContentsWhenUpToDate lf document version k = do
-  (currentVersion, contents) <- fileContents lf document
+withContentsWhenUpToDate lf uri version k = do
+  (currentVersion, contents) <- fileContents lf uri
   case (version, currentVersion) of
     (Just v, Just cv)
       | v < cv ->

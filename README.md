@@ -61,7 +61,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
     - [x] Hovering on binders
     - [x] Hovering on definitions
     - [ ] Print the context and let-bound variables (including metas)
-  - [ ] Jump to definition
+  - [x] Jump to definition
   - [ ] Multi file projects
   - [ ] Language server tests
 - [ ] Prevent CBV-incompatible circular values
