@@ -1,5 +1,6 @@
-{-# language DeriveGeneric #-}
 {-# language DeriveAnyClass #-}
+{-# language DeriveGeneric #-}
+{-# language LambdaCase #-}
 module Presyntax where
 
 import Protolude hiding (Type)
@@ -117,6 +118,23 @@ spans def =
 
     DataDefinition span _ _ ->
       [span]
+
+constructorSpans :: Definition -> [(Span.Relative, Name.Constructor)]
+constructorSpans def =
+  case def of
+    TypeDeclaration _ _ ->
+      []
+
+    ConstantDefinition _ ->
+      []
+
+    DataDefinition _ _ constrDefs ->
+      constrDefs >>= \case
+        GADTConstructors cs _ ->
+          cs
+
+        ADTConstructor span constr _ ->
+          [(span, constr)]
 
 key :: Definition -> Scope.Key
 key def =

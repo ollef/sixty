@@ -82,7 +82,7 @@ hoverDefinition pos context key qualifiedName@(Name.Qualified moduleName _) = do
         Scope.Type -> do
           type_ <- fetch $ Query.ElaboratedType qualifiedName
           hoverTerm pos context type_ <|>
-            hoverThisDefinition type_
+            hoverDefinitionNames type_
 
         Scope.Definition -> do
           maybeDef <- fetch $ Query.ElaboratedDefinition qualifiedName
@@ -93,16 +93,14 @@ hoverDefinition pos context key qualifiedName@(Name.Qualified moduleName _) = do
             Just (def, defType) ->
               case def of
                 Syntax.TypeDeclaration type_ ->
-                  hoverTerm pos context type_ <|>
-                  hoverThisDefinition defType
+                  hoverTerm pos context type_
 
                 Syntax.ConstantDefinition term ->
-                  hoverTerm pos context term <|>
-                  hoverThisDefinition defType
+                  hoverTerm pos context term
 
                 Syntax.DataDefinition tele ->
-                  hoverDataDefinition pos context tele <|>
-                  hoverThisDefinition defType
+                  hoverDataDefinition pos context tele
+              <|> hoverDefinitionNames defType
   case result of
     Left _ ->
       pure Nothing
@@ -111,19 +109,30 @@ hoverDefinition pos context key qualifiedName@(Name.Qualified moduleName _) = do
       pure res
 
   where
-    hoverThisDefinition :: Syntax.Type Void -> MaybeT M (Span.Relative, Doc ann)
-    hoverThisDefinition type_ = do
+    hoverDefinitionNames :: Syntax.Type Void -> MaybeT M (Span.Relative, Doc ann)
+    hoverDefinitionNames type_ = do
+      constructorSpans <- definitionConstructorSpans key qualifiedName
       spans <- definitionNameSpans key qualifiedName
-      asum $ foreach spans $ \span ->
-        if span `Span.relativeContains` pos then do
+      asum $
+        (foreach constructorSpans $ \(span, constr) -> do
+          guard $ span `Span.relativeContains` pos
+          constrType <- fetch $ Query.ConstructorType constr
+          prettyType <- Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm (Context.emptyFrom context) $ Telescope.fold Syntax.implicitPi constrType
+          env <- Pretty.emptyM moduleName
+          pure
+            ( span
+            , Pretty.prettyConstr env constr <+> ":" <+> prettyType
+            )
+        ) <>
+        (foreach spans $ \span -> do
+          guard $ span `Span.relativeContains` pos
           prettyType <- Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context type_
           env <- Pretty.emptyM moduleName
           pure
             ( span
             , Pretty.prettyGlobal env qualifiedName <+> ":" <+> prettyType
             )
-        else
-          empty
+        )
 
 definitionNameSpans :: MonadFetch Query m => Scope.Key -> Name.Qualified -> m [Span.Relative]
 definitionNameSpans key (Name.Qualified moduleName name) = do
@@ -135,6 +144,21 @@ definitionNameSpans key (Name.Qualified moduleName name) = do
 
       Just parsedDefinition ->
         Presyntax.spans parsedDefinition
+
+definitionConstructorSpans
+  :: MonadFetch Query m
+  => Scope.Key
+  -> Name.Qualified
+  -> m [(Span.Relative, Name.QualifiedConstructor)]
+definitionConstructorSpans key qualifiedName@(Name.Qualified moduleName name) = do
+  maybeParsedDefinition <- fetch $ Query.ParsedDefinition moduleName $ Mapped.Query (key, name)
+  pure $
+    case maybeParsedDefinition of
+      Nothing ->
+        []
+
+      Just parsedDefinition ->
+        second (Name.QualifiedConstructor qualifiedName) <$> Presyntax.constructorSpans parsedDefinition
 
 hoverTerm
   :: Position.Relative
@@ -191,8 +215,8 @@ hoverTerm pos context term =
       asum (hoverTerm pos context <$> defaultBranch)
 
     Syntax.Spanned span term' ->
-      hoverTerm pos context term' <|>
-      if span `Span.relativeContains` pos then do
+      hoverTerm pos context term' <|> do
+        guard $ span `Span.relativeContains` pos
         term'' <- lift $ Elaboration.evaluate context term'
         type_ <- lift $ TypeOf.typeOf context term''
         type' <- lift $ Elaboration.readback context type_
@@ -202,9 +226,6 @@ hoverTerm pos context term =
           ( span
           , prettyTerm <+> ":" <+> prettyType
           )
-
-      else
-        empty
 
 hoverDataDefinition
   :: Position.Relative
@@ -250,21 +271,18 @@ hoverBinding
   -> MaybeT M (Span.Relative, Doc ann)
 hoverBinding pos context context' binding var type_ =
   case binding of
-    Binding.Spanned span _ ->
-      if span `Span.relativeContains` pos then do
-        prettyTerm <-
-          Error.prettyPrettyableTerm 0 $
-            Context.toPrettyableTerm context' $
-            Syntax.Var $ fromMaybe (panic "hoverBinding") $
-            Context.lookupVarIndex var context'
-        prettyType <- Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context type_
-        pure
-          ( span
-          , prettyTerm <+> ":" <+> prettyType
-          )
-
-      else
-        empty
+    Binding.Spanned span _ -> do
+      guard $ span `Span.relativeContains` pos
+      prettyTerm <-
+        Error.prettyPrettyableTerm 0 $
+          Context.toPrettyableTerm context' $
+          Syntax.Var $ fromMaybe (panic "hoverBinding") $
+          Context.lookupVarIndex var context'
+      prettyType <- Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context type_
+      pure
+        ( span
+        , prettyTerm <+> ":" <+> prettyType
+        )
 
     Binding.Unspanned _ ->
       empty
