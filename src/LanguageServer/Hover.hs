@@ -7,6 +7,7 @@ import Control.Monad.Trans.Maybe
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.Rope.UTF16 as Rope
 import Data.Text.Prettyprint.Doc (Doc, (<+>))
+import qualified Data.Text.Unsafe as Text
 import Rock
 
 import qualified Binding
@@ -17,8 +18,10 @@ import qualified Elaboration
 import qualified Error.Hydrated as Error
 import qualified Index
 import Monad
+import Name (Name(Name))
 import qualified Name
 import qualified Position
+import qualified Pretty
 import Query (Query)
 import qualified Query
 import qualified Scope
@@ -70,37 +73,53 @@ hoverDefinition
   -> Scope.Key
   -> Name.Qualified
   -> Task Query (Maybe (Span.Relative, Doc ann))
-hoverDefinition pos context key name = do
+hoverDefinition pos context key qualifiedName@(Name.Qualified moduleName (Name nameText)) = do
   result <-
     runM $
     runMaybeT $
       case key of
         Scope.Type -> do
-          type_ <- fetch $ Query.ElaboratedType name
-          hoverTerm pos context type_
+          type_ <- fetch $ Query.ElaboratedType qualifiedName
+          hoverTerm pos context type_ <|>
+            hoverThisDefinition "" type_
 
         Scope.Definition -> do
-          maybeDef <- fetch $ Query.ElaboratedDefinition name
+          maybeDef <- fetch $ Query.ElaboratedDefinition qualifiedName
           case maybeDef of
             Nothing ->
               empty
 
-            Just (def, _) ->
+            Just (def, defType) ->
               case def of
                 Syntax.TypeDeclaration type_ ->
-                  hoverTerm pos context type_
+                  hoverTerm pos context type_ <|>
+                  hoverThisDefinition "" defType
 
                 Syntax.ConstantDefinition term ->
-                  hoverTerm pos context term
+                  hoverTerm pos context term <|>
+                  hoverThisDefinition "" defType
 
                 Syntax.DataDefinition tele ->
-                  hoverDataDefinition pos context tele
+                  hoverDataDefinition pos context tele <|>
+                  hoverThisDefinition "data " defType
   case result of
     Left _ ->
       pure Nothing
 
     Right res ->
       pure res
+
+  where
+    hoverThisDefinition :: Text -> Syntax.Type Void -> MaybeT M (Span.Relative, Doc ann)
+    hoverThisDefinition prefix type_ = do
+      prettyType <- Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context type_
+      env <- Pretty.emptyM moduleName
+      pure
+        -- TODO Fix this span hack!
+        ( Span.Relative 0 $ Position.Relative $ Text.lengthWord16 $ prefix <> nameText
+        , Pretty.prettyGlobal env qualifiedName <+> ":" <+> prettyType
+        )
+
 
 hoverTerm
   :: Position.Relative
