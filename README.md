@@ -63,6 +63,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
     - [ ] Print the context and let-bound variables (including metas)
   - [ ] Jump to definition
   - [ ] Multi file projects
+  - [ ] Language server tests
 - [ ] Prevent CBV-incompatible circular values
 - [ ] Generalisation?
 - [ ] Literals
