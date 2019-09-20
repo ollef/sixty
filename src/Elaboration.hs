@@ -183,9 +183,9 @@ inferDataDefinition context preParams constrs paramVars =
       constrs' <- forM constrs $ \case
         Presyntax.GADTConstructors cs type_ -> do
           type' <- checkConstructorType context' type_ var paramVars
-          pure [(constr, Syntax.Let thisBinding this thisType type') | constr <- cs]
+          pure [(constr, Syntax.Let thisBinding this thisType type') | (_, constr) <- cs]
 
-        Presyntax.ADTConstructor constr types -> do
+        Presyntax.ADTConstructor _ constr types -> do
           types' <- forM types $ \type_ ->
             check context' type_ Builtin.type_
 

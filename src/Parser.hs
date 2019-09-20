@@ -416,10 +416,10 @@ dataDefinition =
 
     gadtConstructors =
       withIndentationBlock $
-        GADTConstructors <$> some constructor <* symbol ":" <*> recoveringIndentedTerm
+        GADTConstructors <$> some (spanned constructor) <* symbol ":" <*> recoveringIndentedTerm
 
     adtConstructor =
-      ADTConstructor <$> constructor <*> many atomicTerm
+      uncurry ADTConstructor <$> spanned constructor <*> many atomicTerm
 
 -------------------------------------------------------------------------------
 -- Module

@@ -102,8 +102,8 @@ data Clause = Clause
   } deriving (Show, Generic, Hashable)
 
 data ConstructorDefinition
-  = GADTConstructors [Name.Constructor] Type
-  | ADTConstructor Name.Constructor [Type]
+  = GADTConstructors [(Span.Relative, Name.Constructor)] Type
+  | ADTConstructor !Span.Relative Name.Constructor [Type]
   deriving (Show, Generic, Hashable)
 
 spans :: Definition -> [Span.Relative]

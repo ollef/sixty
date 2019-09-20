@@ -114,9 +114,9 @@ moduleScopes module_@(Name.Module moduleText) definitions =
                     constrs =
                       case constrDef of
                         Presyntax.GADTConstructors cs _ ->
-                          cs
+                          snd <$> cs
 
-                        Presyntax.ADTConstructor c _ ->
+                        Presyntax.ADTConstructor _ c _ ->
                           [c]
                 , constr@(Name.Constructor text) <- constrs
                 ]
