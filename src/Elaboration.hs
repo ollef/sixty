@@ -252,28 +252,47 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
     context' =
       Context.spanned span context
   constrType <- check context' term Builtin.type_
-  constrType' <- evaluate context' constrType
-  maybeConstrType'' <- Context.try context' $ go context' constrType'
+  maybeConstrType'' <- Context.try context' $ goTerm context' constrType
   pure $
     fromMaybe
       (Syntax.App (Syntax.Global Builtin.fail) Explicit $ Syntax.Global Builtin.typeName)
       maybeConstrType''
   where
-    go :: Context v -> Domain.Value -> M (Syntax.Term v)
-    go context' constrType = do
+    goTerm :: Context v -> Syntax.Term v -> M (Syntax.Term v)
+    goTerm context' constrType = do
+      case constrType of
+        Syntax.Spanned span' constrType' -> do
+          constrType'' <- goTerm (Context.spanned span' context') constrType'
+          pure $ Syntax.Spanned span' constrType''
+
+        Syntax.Pi binding source plicity domain -> do
+          source' <- evaluate context' source
+          (context'', _) <- Context.extendUnnamed context' (Binding.toName binding) source'
+          domain' <- goTerm context'' domain
+          pure $ Syntax.Pi binding source plicity domain'
+
+        Syntax.Fun source domain -> do
+          domain' <- goTerm context' domain
+          pure $ Syntax.Fun source domain'
+
+        _ -> do
+          constrType' <- evaluate context' constrType
+          goValue context' constrType'
+
+    goValue :: Context v -> Domain.Value -> M (Syntax.Term v)
+    goValue context' constrType = do
       constrType' <- Context.forceHead context constrType
       case constrType' of
         Domain.Pi name source plicity domainClosure -> do
           source' <- readback context' source
           (context'', var) <- Context.extendUnnamed context' name source
           domain <- Evaluation.evaluateClosure domainClosure $ Domain.var var
-          domain' <- go context'' domain
-          -- TODO spans
+          domain' <- goValue context'' domain
           pure $ Syntax.Pi (Binding.Unspanned name) source' plicity domain'
 
         Domain.Fun source domain -> do
           source' <- readback context' source
-          domain' <- go context' domain
+          domain' <- goValue context' domain
           pure $ Syntax.Fun source' domain'
 
         Domain.Neutral (Domain.Var headVar) indices
