@@ -4,7 +4,7 @@
 {-# language ScopedTypeVariables #-}
 module LanguageServer.CursorAction where
 
-import Protolude hiding (evaluate, moduleName)
+import Protolude hiding (IntMap, evaluate, moduleName)
 
 import Control.Monad.Trans.Maybe
 import qualified Data.HashMap.Lazy as HashMap
@@ -15,6 +15,8 @@ import qualified Binding
 import Binding (Binding)
 import Context (Context)
 import qualified Context
+import Data.IntMap (IntMap)
+import qualified Data.IntMap as IntMap
 import qualified Elaboration
 import qualified Index
 import Monad
@@ -29,10 +31,11 @@ import qualified Span
 import qualified Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
+import qualified Var
 import Var (Var)
 
 type Callback a =
-  forall v. Context v -> Syntax.Term v -> Span.LineColumn -> MaybeT M a
+  forall v. Context v -> IntMap Var Span.LineColumn -> Syntax.Term v -> Span.LineColumn -> MaybeT M a
 
 cursorAction
   :: FilePath
@@ -51,10 +54,22 @@ cursorAction filePath contents (Position.LineColumn line column) k = do
         qualifiedName =
           Name.Qualified moduleName name
 
-        k' context term actionSpan =
-          k context term (toLineColumns $ Span.absoluteFrom defPos actionSpan)
+        k' env term actionSpan =
+          k
+            (_context env)
+            (toLineColumns . Span.absoluteFrom defPos <$>_varSpans env)
+            term
+            (toLineColumns $ Span.absoluteFrom defPos actionSpan)
       context <- Context.empty $ Scope.KeyedName key qualifiedName
-      definitionAction k' (Position.relativeTo defPos pos) context key qualifiedName
+      definitionAction
+        k'
+        Environment
+          { _actionPosition = Position.relativeTo defPos pos
+          , _context = context
+          , _varSpans = mempty
+          }
+        key
+        qualifiedName
   pure $ case result of
     Left _ ->
       Nothing
@@ -79,23 +94,40 @@ cursorAction filePath contents (Position.LineColumn line column) k = do
     pos =
       Position.Absolute $ Rope.rowColumnCodeUnits (Rope.RowColumn line column) rope
 
+data Environment v = Environment
+  { _actionPosition :: !Position.Relative
+  , _context :: Context v
+  , _varSpans :: IntMap Var Span.Relative
+  }
+
+extend :: Environment v -> Binding -> Syntax.Type v -> MaybeT M (Environment (Index.Succ v), Var)
+extend env binding type_ = do
+  type' <- lift $ Elaboration.evaluate (_context env) type_
+  (context', var) <- lift $ Context.extendUnnamed (_context env) (Binding.toName binding) type'
+  pure
+    ( env
+      { _context = context'
+      , _varSpans = maybe identity (IntMap.insert var) (Binding.span binding) (_varSpans env)
+      }
+    , var
+    )
+
 type RelativeCallback a =
-  forall v. Context v -> Syntax.Term v -> Span.Relative -> MaybeT M a
+  forall v. Environment v -> Syntax.Term v -> Span.Relative -> MaybeT M a
 
 definitionAction
   :: forall a
   . RelativeCallback a
-  -> Position.Relative
-  -> Context Void
+  -> Environment Void
   -> Scope.Key
   -> Name.Qualified
   -> MaybeT M a
-definitionAction k pos context key qualifiedName =
+definitionAction k env key qualifiedName =
   definitionNameActions <|>
   case key of
     Scope.Type -> do
       type_ <- fetch $ Query.ElaboratedType qualifiedName
-      termAction k pos context type_
+      termAction k env type_
 
     Scope.Definition -> do
       maybeDef <- fetch $ Query.ElaboratedDefinition qualifiedName
@@ -106,13 +138,13 @@ definitionAction k pos context key qualifiedName =
         Just (def, _) ->
           case def of
             Syntax.TypeDeclaration type_ ->
-              termAction k pos context type_
+              termAction k env type_
 
             Syntax.ConstantDefinition term ->
-              termAction k pos context term
+              termAction k env term
 
             Syntax.DataDefinition tele ->
-              dataDefinitionAction k pos context tele
+              dataDefinitionAction k env tele
   where
     definitionNameActions :: MaybeT M a
     definitionNameActions = do
@@ -120,12 +152,12 @@ definitionAction k pos context key qualifiedName =
       spans <- definitionNameSpans key qualifiedName
       asum $
         (foreach constructorSpans $ \(span, constr) -> do
-          guard $ span `Span.relativeContains` pos
-          k context (Syntax.Con constr) span
+          guard $ span `Span.relativeContains` _actionPosition env
+          k env (Syntax.Con constr) span
         ) <>
         (foreach spans $ \span -> do
-          guard $ span `Span.relativeContains` pos
-          k context (Syntax.Global qualifiedName) span
+          guard $ span `Span.relativeContains` _actionPosition env
+          k env (Syntax.Global qualifiedName) span
         )
 
 definitionNameSpans :: MonadFetch Query m => Scope.Key -> Name.Qualified -> m [Span.Relative]
@@ -156,11 +188,10 @@ definitionConstructorSpans key qualifiedName@(Name.Qualified moduleName name) = 
 
 termAction
   :: RelativeCallback a
-  -> Position.Relative
-  -> Context v
+  -> Environment v
   -> Syntax.Term v
   -> MaybeT M a
-termAction k pos context term =
+termAction k env term =
   case term of
     Syntax.Var _ ->
       empty
@@ -175,98 +206,90 @@ termAction k pos context term =
       empty
 
     Syntax.Let binding term' type_ body -> do
-      type' <- lift $ Elaboration.evaluate context type_
-      (context', var) <- lift $ Context.extendUnnamed context (Binding.toName binding) type'
-      bindingAction k pos context' binding var <|>
-        termAction k pos context term' <|>
-        termAction k pos context type_ <|>
-        termAction k pos context' body
+      (env', var) <- extend env binding type_
+      bindingAction k env' binding var <|>
+        termAction k env term' <|>
+        termAction k env type_ <|>
+        termAction k env' body
 
     Syntax.Pi binding source _ domain -> do
-      source' <- lift $ Elaboration.evaluate context source
-      (context', var) <- lift $ Context.extendUnnamed context (Binding.toName binding) source'
-      bindingAction k pos context' binding var <|>
-        termAction k pos context source <|>
-        termAction k pos context' domain
+      (env', var) <- extend env binding source
+      bindingAction k env' binding var <|>
+        termAction k env source <|>
+        termAction k env' domain
 
     Syntax.Fun source domain ->
-      termAction k pos context source <|>
-      termAction k pos context domain
+      termAction k env source <|>
+      termAction k env domain
 
     Syntax.Lam binding type_ _ body -> do
-      type' <- lift $ Elaboration.evaluate context type_
-      (context', var) <- lift $ Context.extendUnnamed context (Binding.toName binding) type'
-      bindingAction k pos context' binding var <|>
-        termAction k pos context type_ <|>
-        termAction k pos context' body
+      (env', var) <- extend env binding type_
+      bindingAction k env' binding var <|>
+        termAction k env type_ <|>
+        termAction k env' body
 
     Syntax.App t1 _ t2 ->
-      termAction k pos context t1 <|>
-      termAction k pos context t2
+      termAction k env t1 <|>
+      termAction k env t2
 
     Syntax.Case scrutinee branches defaultBranch ->
-      termAction k pos context scrutinee <|>
-      asum (branchAction k pos context <$> HashMap.elems branches) <|>
-      asum (termAction k pos context <$> defaultBranch)
+      termAction k env scrutinee <|>
+      asum (branchAction k env <$> HashMap.elems branches) <|>
+      asum (termAction k env <$> defaultBranch)
 
     Syntax.Spanned span term' ->
-      termAction k pos context term' <|> do
-        guard $ span `Span.relativeContains` pos
-        k context term' span
+      termAction k env term' <|> do
+        guard $ span `Span.relativeContains` _actionPosition env
+        k env term' span
 
 dataDefinitionAction
   :: RelativeCallback a
-  -> Position.Relative
-  -> Context v
+  -> Environment v
   -> Telescope Syntax.Type Syntax.ConstructorDefinitions v
   -> MaybeT M a
-dataDefinitionAction k pos context tele =
+dataDefinitionAction k env tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constrDefs) ->
-      asum $ termAction k pos context <$> HashMap.elems constrDefs
+      asum $ termAction k env <$> HashMap.elems constrDefs
 
     Telescope.Extend binding type_ _ tele' -> do
-      type' <- lift $ Elaboration.evaluate context type_
-      (context', var) <- lift $ Context.extendUnnamed context (Binding.toName binding) type'
-      bindingAction k pos context' binding var <|>
-        termAction k pos context type_ <|>
-        dataDefinitionAction k pos context' tele'
+      (env', var) <- extend env binding type_
+      bindingAction k env' binding var <|>
+        termAction k env type_ <|>
+        dataDefinitionAction k env' tele'
 
 branchAction
   :: RelativeCallback a
-  -> Position.Relative
-  -> Context v
+  -> Environment v
   -> Telescope Syntax.Type Syntax.Term v
   -> MaybeT M a
-branchAction k pos context tele =
+branchAction k env tele =
   case tele of
     Telescope.Empty branch ->
-      termAction k pos context branch
+      termAction k env branch
 
     Telescope.Extend binding type_ _ tele' -> do
-      type' <- lift $ Elaboration.evaluate context type_
-      (context', var) <- lift $ Context.extendUnnamed context (Binding.toName binding) type'
-      bindingAction k pos context' binding var <|>
-        termAction k pos context type_ <|>
-        branchAction k pos context' tele'
+      (env', var) <- extend env binding type_
+      bindingAction k env' binding var <|>
+        termAction k env type_ <|>
+        branchAction k env' tele'
 
 bindingAction
   :: RelativeCallback a
-  -> Position.Relative
-  -> Context (Index.Succ v)
+  -> Environment (Index.Succ v)
   -> Binding
   -> Var
   -> MaybeT M a
-bindingAction k pos context binding var =
+bindingAction k env binding var =
   case binding of
     Binding.Spanned span _ -> do
-      guard $ span `Span.relativeContains` pos
-      case Context.lookupVarIndex var context of
+      guard $ span `Span.relativeContains` _actionPosition env
+      case Context.lookupVarIndex var $ _context env of
         Nothing ->
           empty
 
         Just index ->
-          k context (Syntax.Var index) span
+          k env (Syntax.Var index) span
 
     Binding.Unspanned _ ->
       empty
