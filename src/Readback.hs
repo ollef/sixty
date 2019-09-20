@@ -8,6 +8,7 @@ import qualified Environment
 import qualified Evaluation
 import Index
 import Monad
+import qualified Binding
 import qualified Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
@@ -32,10 +33,10 @@ readback env value =
           readbackSpine hd' spine
 
     Domain.Lam name type_ plicity closure ->
-      Syntax.Lam name <$> readback env type_ <*> pure plicity <*> readbackClosure env closure
+      Syntax.Lam (Binding.Unspanned name) <$> readback env type_ <*> pure plicity <*> readbackClosure env closure
 
     Domain.Pi name type_ plicity closure ->
-      Syntax.Pi name <$> readback env type_ <*> pure plicity <*> readbackClosure env closure
+      Syntax.Pi (Binding.Unspanned name) <$> readback env type_ <*> pure plicity <*> readbackClosure env closure
 
     Domain.Fun source domain ->
       Syntax.Fun <$> readback env source <*> readback env domain

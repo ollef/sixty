@@ -11,6 +11,7 @@ import Context (Context)
 import qualified Context
 import qualified Data.Tsil as Tsil
 import qualified Domain
+import qualified Binding
 import qualified Elaboration
 import qualified Environment
 import qualified Evaluation
@@ -123,7 +124,7 @@ typeOfBranch context env tele =
       branch' <- Evaluation.evaluate env branch
       typeOf context branch'
 
-    Telescope.Extend name type_ _ tele' -> do
+    Telescope.Extend binding type_ _ tele' -> do
       type' <- Evaluation.evaluate env type_
-      (context', var) <- Context.extendUnnamed context name type'
+      (context', var) <- Context.extendUnnamed context (Binding.toName binding) type'
       typeOfBranch context' (Environment.extendVar env var) tele'

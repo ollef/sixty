@@ -19,6 +19,8 @@ import Rock
 
 import {-# source #-} qualified Elaboration
 import "this" Data.IntMap (IntMap)
+import Binding (Binding)
+import qualified Binding
 import qualified Builtin
 import Context (Context)
 import qualified Context
@@ -606,7 +608,7 @@ matchPrepatterns context values patterns type_ =
       (matches, type'') <- matchPrepatterns context values' patterns' domain
       pure (Match value Explicit pat source : matches, type'')
 
-type PatternInstantiation = Tsil (Name, Domain.Value, Domain.Value)
+type PatternInstantiation = Tsil (Binding, Domain.Value, Domain.Value)
 
 expandAnnotations
   :: Context v
@@ -647,10 +649,10 @@ matchInstantiation context match =
     (Match _ _ (Presyntax.Pattern _ Presyntax.WildcardPattern) _) ->
       pure mempty
 
-    (Match term _ (Presyntax.Pattern _ (Presyntax.ConOrVar prename@(Name.Pre name) [])) type_) -> do
+    (Match term _ (Presyntax.Pattern span (Presyntax.ConOrVar prename@(Name.Pre name) [])) type_) -> do
       maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) prename
       if HashSet.null $ foldMap Scope.entryConstructors maybeScopeEntry then
-        pure $ pure (Name name, term, type_)
+        pure $ pure (Binding.Spanned span $ Name name, term, type_)
 
       else
         fail "No match instantiation"
@@ -807,7 +809,7 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
                 SuggestedName.nextImplicit context piName patterns
 
               Constraint ->
-                pure (piName, patterns)
+                pure (Binding.Unspanned piName, patterns)
 
           (context' , fieldVar) <- Context.extendBefore context scrutinee name source
           let

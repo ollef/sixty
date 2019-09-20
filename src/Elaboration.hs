@@ -5,13 +5,16 @@ module Elaboration where
 
 import Protolude hiding (Seq, force, check, evaluate, until)
 
+import Control.Monad.Trans.Maybe
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import Data.IORef
 import Data.Text.Prettyprint.Doc (Doc)
+import qualified Data.Text.Unsafe as Text
 import Rock
 
+import qualified Binding
 import qualified Builtin
 import Context (Context)
 import qualified Context
@@ -20,6 +23,7 @@ import qualified Data.Tsil as Tsil
 import qualified Domain
 import qualified Elaboration.Clauses as Clauses
 import qualified Elaboration.Matching as Matching
+import Elaboration.Matching.SuggestedName as SuggestedName
 import qualified Elaboration.Metas as Metas
 import qualified Environment
 import Error (Error)
@@ -31,14 +35,16 @@ import Index
 import qualified Inlining
 import qualified Meta
 import Monad
-import Name (Name)
+import Name (Name(Name))
 import qualified Name
 import Plicity
+import qualified Position
 import qualified Presyntax
 import qualified "this" Data.IntMap as IntMap
 import qualified Query
 import qualified Readback
 import qualified Scope
+import qualified Span
 import qualified Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
@@ -131,7 +137,7 @@ inferDefinition context def =
 
 inferDataDefinition
   :: Context v
-  -> [(Name, Presyntax.Type, Plicity)]
+  -> [(Presyntax.Binding, Presyntax.Type, Plicity)]
   -> [Presyntax.ConstructorDefinition]
   -> Tsil (Plicity, Var)
   -> M (Telescope Syntax.Type Syntax.ConstructorDefinitions v, Syntax.Type v)
@@ -155,7 +161,18 @@ inferDataDefinition context preParams constrs paramVars =
 
       thisType' <- evaluate context thisType
 
-      (context', var) <- Context.extend context thisName thisType'
+      let
+        Name thisNameText =
+          thisName
+
+        thisSpan =
+          Span.Relative 0 $ Position.Relative $ Text.lengthWord16 thisNameText
+
+        thisBinding =
+          Binding.Spanned thisSpan thisName
+
+      (context', var) <-
+        Context.extend context (Binding.Spanned thisSpan thisName) thisType'
 
       lazyReturnType <-
         lazy $
@@ -166,7 +183,7 @@ inferDataDefinition context preParams constrs paramVars =
       constrs' <- forM constrs $ \case
         Presyntax.GADTConstructors cs type_ -> do
           type' <- checkConstructorType context' type_ var paramVars
-          pure [(constr, Syntax.Let thisName this thisType type') | constr <- cs]
+          pure [(constr, Syntax.Let thisBinding this thisType type') | constr <- cs]
 
         Presyntax.ADTConstructor constr types -> do
           types' <- forM types $ \type_ ->
@@ -176,23 +193,26 @@ inferDataDefinition context preParams constrs paramVars =
           let
             type_ =
               Syntax.funs types' returnType
-          pure [(constr, Syntax.Let thisName this thisType type_)]
+          pure [(constr, Syntax.Let thisBinding this thisType type_)]
       pure
         ( Telescope.Empty (Syntax.ConstructorDefinitions $ HashMap.fromList $ concat constrs')
         , Syntax.Global Builtin.typeName
         )
 
-    (name, type_, plicity):preParams' -> do
+    (binding, type_, plicity):preParams' -> do
       type' <- check context type_ Builtin.type_
       type'' <- evaluate context type'
-      (context', paramVar) <- Context.extend context name type''
+      (context', paramVar) <- Context.extend context (Binding.fromPresyntax binding) type''
       let
         paramVars' =
           paramVars Tsil.:> (plicity, paramVar)
+
+        binding' =
+          Binding.fromPresyntax binding
       (tele, dataType) <- inferDataDefinition context' preParams' constrs paramVars'
       pure
-        ( Telescope.Extend name type' plicity tele
-        , Syntax.Pi name type' plicity dataType
+        ( Telescope.Extend binding' type' plicity tele
+        , Syntax.Pi binding' type' plicity dataType
         )
 
 varPis
@@ -215,7 +235,11 @@ varPis context env vars domain =
           Context.lookupVarType var context
       source' <- Readback.readback env source
       domain' <- varPis context env' vars' domain
-      pure $ Syntax.Pi (Context.lookupVarName var context) source' plicity domain'
+      let
+        binding =
+          Binding.Unspanned $ Context.lookupVarName var context
+
+      pure $ Syntax.Pi binding source' plicity domain'
 
 checkConstructorType
   :: Context v
@@ -244,7 +268,8 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
           (context'', var) <- Context.extendUnnamed context' name source
           domain <- Evaluation.evaluateClosure domainClosure $ Domain.var var
           domain' <- go context'' domain
-          pure $ Syntax.Pi name source' plicity domain'
+          -- TODO spans
+          pure $ Syntax.Pi (Binding.Unspanned name) source' plicity domain'
 
         Domain.Fun source domain -> do
           source' <- readback context' source
@@ -357,10 +382,10 @@ checkUnspanned
 checkUnspanned context term expectedType = do
   expectedType' <- Context.forceHead context expectedType
   case (term, expectedType') of
-    (Presyntax.Let name maybeType clauses body, _) -> do
-      (context', boundTerm, typeTerm) <- elaborateLet context name maybeType clauses
+    (Presyntax.Let binding maybeType clauses body, _) -> do
+      (context', boundTerm, typeTerm) <- elaborateLet context binding maybeType clauses
       body' <- check context' body expectedType
-      pure $ Syntax.Let name boundTerm typeTerm body'
+      pure $ Syntax.Let (Binding.fromPresyntax binding) boundTerm typeTerm body'
 
     (Presyntax.Case scrutinee branches, _) -> do
       (scrutinee', scrutineeType) <-
@@ -396,7 +421,7 @@ checkUnspanned context term expectedType = do
       domain <- Evaluation.evaluateClosure domainClosure $ Domain.var v
       source' <- readback context source
       term' <- checkUnspanned context' term domain
-      pure $ Syntax.Lam name source' Implicit term'
+      pure $ Syntax.Lam (Binding.Unspanned name) source' Implicit term'
 
     (Presyntax.App function argument, _) -> do
       let
@@ -458,20 +483,20 @@ inferUnspanned context term expectedTypeName =
     Presyntax.Var name ->
       inferName context name expectedTypeName
 
-    Presyntax.Let name maybeType clauses body -> do
-      (context', boundTerm, typeTerm) <- elaborateLet context name maybeType clauses
+    Presyntax.Let binding maybeType clauses body -> do
+      (context', boundTerm, typeTerm) <- elaborateLet context binding maybeType clauses
       (body', type_) <- infer context' body expectedTypeName
-      pure (Syntax.Let name boundTerm typeTerm body', type_)
+      pure (Syntax.Let (Binding.fromPresyntax binding) boundTerm typeTerm body', type_)
 
-    Presyntax.Pi name plicity source domain -> do
+    Presyntax.Pi binding plicity source domain -> do
       source' <- check context source Builtin.type_
       source'' <- evaluate context source'
 
-      (context', _) <- Context.extend context name source''
+      (context', _) <- Context.extend context (Binding.fromPresyntax binding) source''
 
       domain' <- check context' domain Builtin.type_
       pure
-        ( Syntax.Pi name source' plicity domain'
+        ( Syntax.Pi (Binding.fromPresyntax binding) source' plicity domain'
         , Builtin.type_
         )
 
@@ -563,7 +588,7 @@ inferUnspanned context term expectedTypeName =
                 | [(name, argument)] <- HashMap.toList arguments' -> do
                   source <- Context.newMetaType context
                   domain <- Context.newMetaType context
-                  (context', _) <- Context.extend context name source
+                  (context', _) <- Context.extendUnnamed context name source
                   domain' <- readback context' domain
                   let
                     metaFunctionType =
@@ -677,7 +702,11 @@ checkLambda context name source plicity pat domainClosure body = do
       domainClosure
       (Domain.var var)
   body' <- Matching.elaborateSingle context' var plicity pat body domain
-  pure $ Syntax.Lam name source' plicity body'
+  maybeBinding <- runMaybeT $ SuggestedName.patternBinding context pat
+  let
+    binding =
+      fromMaybe (Binding.Unspanned name) maybeBinding
+  pure $ Syntax.Lam binding source' plicity body'
 
 inferLambda
   :: Context v
@@ -693,9 +722,12 @@ inferLambda context name plicity pat body = do
   domain <- Context.newMetaType context'
   body' <- Matching.elaborateSingle context' var plicity pat body domain
   domain' <- readback context' domain
-
+  maybeBinding <- runMaybeT $ SuggestedName.patternBinding context pat
+  let
+    binding =
+      fromMaybe (Binding.Unspanned name) maybeBinding
   pure
-    ( Syntax.Lam name source' plicity body'
+    ( Syntax.Lam binding source' plicity body'
     , Domain.Pi name source plicity
       $ Domain.Closure (Context.toEnvironment context) domain'
     )
@@ -714,11 +746,11 @@ checkApplication context argument source domainClosure = do
 
 elaborateLet
   :: Context v
-  -> Name
+  -> Presyntax.Binding
   -> Maybe Presyntax.Type
   -> [Presyntax.Clause]
   -> M (Context (Succ v), Syntax.Term v, Syntax.Type v)
-elaborateLet context name maybeType clauses = do
+elaborateLet context binding maybeType clauses = do
   let
     clauses' =
       [ Clauses.Clause clause mempty | clause <- clauses]
@@ -736,7 +768,7 @@ elaborateLet context name maybeType clauses = do
         pure (boundTerm, typeTerm, typeValue)
 
   boundTerm' <- evaluate context boundTerm
-  (context', _) <- Context.extendDef context name boundTerm' typeValue
+  (context', _) <- Context.extendDef context (Binding.fromPresyntax binding) boundTerm' typeValue
   pure (context', boundTerm, typeTerm)
 
 data ResolvedConstructor

@@ -10,12 +10,12 @@ import Protolude
 import Unsafe.Coerce
 
 import Index
-import Name (Name)
+import Binding (Binding)
 import Plicity
 
 data Telescope t k v
   = Empty !(k v)
-  | Extend !Name !(t v) !Plicity !(Scope (Telescope t k) v)
+  | Extend !Binding !(t v) !Plicity !(Scope (Telescope t k) v)
   deriving (Generic)
 
 deriving instance
@@ -40,7 +40,7 @@ hoist f tele =
       Extend name t plicity $ hoist f scope
 
 fold
-  :: (forall v'. Name -> t v' -> Plicity -> Scope k v' -> k v')
+  :: (forall v'. Binding -> t v' -> Plicity -> Scope k v' -> k v')
   -> Telescope t k v
   -> k v
 fold f tele =

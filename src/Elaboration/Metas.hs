@@ -21,8 +21,8 @@ import qualified Environment
 import Extra
 import qualified Meta
 import Monad
-import Name (Name)
 import qualified Name
+import Binding (Binding)
 import Plicity
 import qualified "this" Data.IntMap as IntMap
 import qualified Scope
@@ -138,16 +138,16 @@ data InnerValue
   | Global !Name.Qualified
   | Con !Name.QualifiedConstructor
   | Meta !Meta.Index (Tsil Value)
-  | Let !Name !Var !Value !Type !Value
-  | Pi !Name !Var !Type !Plicity !Type
+  | Let !Binding !Var !Value !Type !Value
+  | Pi !Binding !Var !Type !Plicity !Type
   | Fun !Type !Type
-  | Lam !Name !Var !Type !Plicity !Value
+  | Lam !Binding !Var !Type !Plicity !Value
   | App !Value !Plicity !Value
   | Case !Value Branches !(Maybe Value)
   | Spanned !Span.Relative !InnerValue
   deriving Show
 
-type Branches = HashMap Name.QualifiedConstructor ([(Name, Var, Type, Plicity)], Value)
+type Branches = HashMap Name.QualifiedConstructor ([(Binding, Var, Type, Plicity)], Value)
 
 newtype Occurrences = Occurrences { unoccurrences :: IntMap Meta.Index (Tsil (Maybe Var)) }
 
@@ -202,14 +202,14 @@ makeMeta index arguments =
     Occurrences (IntMap.singleton index (varView <$> arguments)) <>
     foldMap occurrences arguments
 
-makeLet :: Name -> Var -> Value -> Type -> Value -> Value
+makeLet :: Binding -> Var -> Value -> Type -> Value -> Value
 makeLet name var value type_ body =
   Value (Let name var value type_ body) $
     occurrences value <>
     occurrences type_ <>
     occurrences body
 
-makePi :: Name -> Var -> Type -> Plicity -> Value -> Value
+makePi :: Binding -> Var -> Type -> Plicity -> Value -> Value
 makePi name var source plicity domain =
   Value (Pi name var source plicity domain) $
     occurrences source <>
@@ -221,7 +221,7 @@ makeFun source domain =
     occurrences source <>
     occurrences domain
 
-makeLam :: Name -> Var -> Type -> Plicity -> Value -> Value
+makeLam :: Binding -> Var -> Type -> Plicity -> Value -> Value
 makeLam name var type_ plicity body =
   Value (Lam name var type_ plicity body) $
     occurrences type_ <>
@@ -317,7 +317,7 @@ evaluate env term =
 evaluateBranch
   :: Domain.Environment v
   -> Telescope Syntax.Type Syntax.Term v
-  -> M ([(Name, Var, Type, Plicity)], Value)
+  -> M ([(Binding, Var, Type, Plicity)], Value)
 evaluateBranch env tele =
   case tele of
     Telescope.Empty body -> do
@@ -397,7 +397,7 @@ readback env metas (Value value occs) =
 readbackBranch
   :: Domain.Environment v
   -> (Meta.Index -> (Var, [Maybe var]))
-  -> [(Name, Var, Type, Plicity)]
+  -> [(Binding, Var, Type, Plicity)]
   -> Value
   -> Telescope Syntax.Type Syntax.Term v
 readbackBranch env metas bindings body =

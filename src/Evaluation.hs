@@ -14,6 +14,7 @@ import qualified Domain.Telescope
 import qualified Environment
 import Monad
 import qualified Name
+import qualified Binding
 import Plicity
 import qualified Query
 import qualified Syntax
@@ -32,7 +33,7 @@ evaluateConstructorDefinitions env tele =
 
     Telescope.Extend name source plicity domain -> do
       source' <- evaluate env source
-      pure $ Domain.Telescope.Extend name source' plicity $ \param -> do
+      pure $ Domain.Telescope.Extend (Binding.toName name) source' plicity $ \param -> do
         env' <- Environment.extendValue env param
         evaluateConstructorDefinitions env' domain
 
@@ -74,18 +75,18 @@ evaluate env term =
       env' <- Environment.extendValue env t'
       evaluate env' s
 
-    Syntax.Pi n t p s -> do
+    Syntax.Pi b t p s -> do
       t' <- evaluate env t
-      pure $ Domain.Pi n t' p (Domain.Closure env s)
+      pure $ Domain.Pi (Binding.toName b) t' p (Domain.Closure env s)
 
     Syntax.Fun t1 t2 -> do
       t1' <- evaluate env t1
       t2' <- evaluate env t2
       pure $ Domain.Fun t1' t2'
 
-    Syntax.Lam n t p s -> do
+    Syntax.Lam b t p s -> do
       t' <- evaluate env t
-      pure $ Domain.Lam n t' p (Domain.Closure env s)
+      pure $ Domain.Lam (Binding.toName b) t' p (Domain.Closure env s)
 
     Syntax.App t1 p t2 -> do
       t1' <- evaluate env t1

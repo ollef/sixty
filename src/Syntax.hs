@@ -12,21 +12,21 @@ import Unsafe.Coerce
 import "this" Data.IntMap (IntMap)
 import Index
 import qualified Meta
-import Name (Name)
 import qualified Name
 import Plicity
 import qualified Span
 import Syntax.Telescope (Telescope)
+import Binding (Binding)
 
 data Term v
   = Var !(Index v)
   | Global !Name.Qualified
   | Con !Name.QualifiedConstructor
   | Meta !Meta.Index
-  | Let !Name !(Term v) !(Type v) !(Scope Term v)
-  | Pi !Name !(Type v) !Plicity !(Scope Type v)
+  | Let !Binding !(Term v) !(Type v) !(Scope Term v)
+  | Pi !Binding !(Type v) !Plicity !(Scope Type v)
   | Fun !(Type v) !(Type v)
-  | Lam !Name !(Type v) !Plicity !(Scope Term v)
+  | Lam !Binding !(Type v) !Plicity !(Scope Term v)
   | App !(Term v) !Plicity !(Term v)
   | Case !(Term v) (Branches v) !(Maybe (Term v))
   | Spanned !Span.Relative !(Term v)
@@ -36,7 +36,7 @@ type Type = Term
 
 type Branches v = HashMap Name.QualifiedConstructor (Telescope Type Term v)
 
-implicitPi :: Name -> Type v -> Plicity -> Scope Type v -> Type v
+implicitPi :: Binding -> Type v -> Plicity -> Scope Type v -> Type v
 implicitPi name type_ plicity =
   Pi name type_ (implicitise plicity)
 

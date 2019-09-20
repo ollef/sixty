@@ -12,6 +12,8 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef
 
 import "this" Data.IntMap (IntMap)
+import qualified Binding
+import Binding (Binding)
 import qualified Builtin
 import Data.IntSeq (IntSeq)
 import qualified Data.IntSeq as IntSeq
@@ -129,11 +131,14 @@ emptyFrom context =
 
 extend
   :: Context v
-  -> Name
+  -> Binding
   -> Domain.Type
   -> M (Context (Succ v), Var)
-extend context name type_ = do
+extend context binding type_ = do
   var <- freshVar
+  let
+    name =
+      Binding.toName binding
   pure
     ( context
       { nameVars = HashMap.insert name var $ nameVars context
@@ -164,12 +169,15 @@ extendUnnamed context name type_ = do
 
 extendDef
   :: Context v
-  -> Name
+  -> Binding
   -> Domain.Value
   -> Domain.Type
   -> M (Context (Succ v), Var)
-extendDef context name value type_ = do
+extendDef context binding value type_ = do
   var <- freshVar
+  let
+    name =
+      Binding.toName binding
   pure
     ( context
       { nameVars = HashMap.insert name var $ nameVars context
@@ -201,12 +209,15 @@ extendUnnamedDef context name value type_ = do
 
 extendUnindexedDef
   :: Context v
-  -> Name
+  -> Binding
   -> Domain.Value
   -> Domain.Type
   -> M (Context v, Var)
-extendUnindexedDef context name value type_ = do
+extendUnindexedDef context binding value type_ = do
   var <- freshVar
+  let
+    name =
+      Binding.toName binding
   pure
     ( context
       { nameVars = HashMap.insert name var $ nameVars context
@@ -219,24 +230,29 @@ extendUnindexedDef context name value type_ = do
 
 extendUnindexedDefs
   :: Context v
-  -> Tsil (Name, Domain.Value, Domain.Type)
+  -> Tsil (Binding, Domain.Value, Domain.Type)
   -> M (Context v)
 extendUnindexedDefs context defs =
   case defs of
     Tsil.Empty ->
       pure context
 
-    defs' Tsil.:> (name, value, type_) -> do
+    defs' Tsil.:> (binding, value, type_) -> do
       context' <- extendUnindexedDefs context defs'
-      (context'', _) <- extendUnindexedDef context' name value type_
+      (context'', _) <- extendUnindexedDef context' binding value type_
       pure context''
 
-extendBefore :: Context v -> Var -> Name -> Domain.Type -> M (Context (Succ v), Var)
-extendBefore context beforeVar name type_ = do
+extendBefore
+  :: Context v
+  -> Var
+  -> Binding
+  -> Domain.Type
+  -> M (Context (Succ v), Var)
+extendBefore context beforeVar binding type_ = do
   var <- freshVar
   pure
     ( context
-      { varNames = IntMap.insert var name $ varNames context
+      { varNames = IntMap.insert var (Binding.toName binding) $ varNames context
       , indices = indices context Index.Map.:> var
       , types = IntMap.insert var type_ (types context)
       , boundVars =
@@ -313,9 +329,9 @@ dependencies context value = do
       pure $ scrutineeVars <> fold defaultBranchVars <> fold brVars
 
   where
-    abstractionDependencies name type' closure = do
+    abstractionDependencies binding type' closure = do
       typeVars <- dependencies context type'
-      (context', var) <- lift $ Context.extendUnnamed context name type'
+      (context', var) <- lift $ Context.extendUnnamed context binding type'
       body <- lift $ Evaluation.evaluateClosure closure $ Domain.var var
       bodyVars <- dependencies context' body
       pure $ typeVars <> IntSet.delete var bodyVars
@@ -359,10 +375,10 @@ dependencies context value = do
           body' <- lift $ Evaluation.evaluate env body
           dependencies context' body'
 
-        Telescope.Extend name source _ tele' -> do
+        Telescope.Extend binding source _ tele' -> do
           source' <- lift $ Evaluation.evaluate env source
           sourceVars <- dependencies context' source'
-          (context'', var) <- lift $ Context.extendUnnamed context' name source'
+          (context'', var) <- lift $ Context.extendUnnamed context' (Binding.toName binding) source'
           let
             env' =
               Environment.extendVar env var
@@ -445,7 +461,7 @@ piBoundVars context type_ = do
                 }
               varType
           let
-            term' = Syntax.Pi (lookupVarName var context) varType' Explicit $ Syntax.succ term
+            term' = Syntax.Pi (Binding.Unspanned $ lookupVarName var context) varType' Explicit $ Syntax.succ term
           pis vars' term'
 
 lookupMeta

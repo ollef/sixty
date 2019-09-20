@@ -9,11 +9,14 @@ import qualified Data.Rope.UTF16 as Rope
 import Data.Text.Prettyprint.Doc (Doc, (<+>))
 import Rock
 
+import qualified Binding
+import Binding (Binding)
 import Context (Context)
 import qualified Context
 import qualified Elaboration
-import Monad
 import qualified Error.Hydrated as Error
+import qualified Index
+import Monad
 import qualified Name
 import qualified Position
 import Query (Query)
@@ -24,6 +27,7 @@ import qualified Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
 import qualified TypeOf
+import Var (Var)
 
 hover :: FilePath -> Text -> Position.LineColumn -> Task Query (Maybe (Span.LineColumn, Doc ann))
 hover filePath contents (Position.LineColumn line column) = do
@@ -117,27 +121,30 @@ hoverTerm pos context term =
     Syntax.Meta _ ->
       empty
 
-    Syntax.Let name term' type_ body -> do
+    Syntax.Let binding term' type_ body -> do
       type' <- lift $ Elaboration.evaluate context type_
-      (context', _) <- lift $ Context.extendUnnamed context name type'
-      hoverTerm pos context term' <|>
+      (context', var) <- lift $ Context.extendUnnamed context (Binding.toName binding) type'
+      hoverBinding pos context context' binding var type_ <|>
+        hoverTerm pos context term' <|>
         hoverTerm pos context type_ <|>
         hoverTerm pos context' body
 
-    Syntax.Pi name source _ domain -> do
+    Syntax.Pi binding source _ domain -> do
       source' <- lift $ Elaboration.evaluate context source
-      (context', _) <- lift $ Context.extendUnnamed context name source'
-      hoverTerm pos context source <|>
+      (context', var) <- lift $ Context.extendUnnamed context (Binding.toName binding) source'
+      hoverBinding pos context context' binding var source <|>
+        hoverTerm pos context source <|>
         hoverTerm pos context' domain
 
     Syntax.Fun source domain ->
       hoverTerm pos context source <|>
       hoverTerm pos context domain
 
-    Syntax.Lam name type_ _ body -> do
+    Syntax.Lam binding type_ _ body -> do
       type' <- lift $ Elaboration.evaluate context type_
-      (context', _) <- lift $ Context.extendUnnamed context name type'
-      hoverTerm pos context type_ <|>
+      (context', var) <- lift $ Context.extendUnnamed context (Binding.toName binding) type'
+      hoverBinding pos context context' binding var type_ <|>
+        hoverTerm pos context type_ <|>
         hoverTerm pos context' body
 
     Syntax.App t1 _ t2 ->
@@ -175,10 +182,11 @@ hoverDataDefinition pos context tele =
     Telescope.Empty (Syntax.ConstructorDefinitions constrDefs) ->
       asum $ hoverTerm pos context <$> HashMap.elems constrDefs
 
-    Telescope.Extend name type_ _ tele' -> do
+    Telescope.Extend binding type_ _ tele' -> do
       type' <- lift $ Elaboration.evaluate context type_
-      (context', _) <- lift $ Context.extendUnnamed context name type'
-      hoverTerm pos context type_ <|>
+      (context', var) <- lift $ Context.extendUnnamed context (Binding.toName binding) type'
+      hoverBinding pos context context' binding var type_ <|>
+        hoverTerm pos context type_ <|>
         hoverDataDefinition pos context' tele'
 
 hoverBranch
@@ -191,8 +199,38 @@ hoverBranch pos context tele =
     Telescope.Empty branch ->
       hoverTerm pos context branch
 
-    Telescope.Extend name type_ _ tele' -> do
+    Telescope.Extend binding type_ _ tele' -> do
       type' <- lift $ Elaboration.evaluate context type_
-      (context', _) <- lift $ Context.extendUnnamed context name type'
-      hoverTerm pos context type_ <|>
+      (context', var) <- lift $ Context.extendUnnamed context (Binding.toName binding) type'
+      hoverBinding pos context context' binding var type_ <|>
+        hoverTerm pos context type_ <|>
         hoverBranch pos context' tele'
+
+hoverBinding
+  :: Position.Relative
+  -> Context v
+  -> Context (Index.Succ v)
+  -> Binding
+  -> Var
+  -> Syntax.Type v
+  -> MaybeT M (Span.Relative, Doc ann)
+hoverBinding pos context context' binding var type_ =
+  case binding of
+    Binding.Spanned span _ ->
+      if span `Span.relativeContains` pos then do
+        prettyTerm <-
+          Error.prettyPrettyableTerm 0 $
+            Context.toPrettyableTerm context' $
+            Syntax.Var $ fromMaybe (panic "hoverBinding") $
+            Context.lookupVarIndex var context'
+        prettyType <- Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context type_
+        pure
+          ( span
+          , prettyTerm <+> ":" <+> prettyType
+          )
+
+      else
+        empty
+
+    Binding.Unspanned _ ->
+      empty

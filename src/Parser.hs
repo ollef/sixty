@@ -242,6 +242,10 @@ moduleName :: Parser Name.Module
 moduleName =
   indented $ Parsix.ident qidStyle
 
+binding :: Parser Binding
+binding =
+  uncurry Binding <$> spanned name
+
 -------------------------------------------------------------------------------
 -- Patterns
 
@@ -306,8 +310,8 @@ atomicTerm =
         ( lams <$ symbol "\\" <*> some (positioned plicitPattern) <* symbol "." <*> term
         <|> implicitPis <$ reserved "forall" <*>
           some
-            ( (,) <$ symbol "(" <*> some (positioned name) <* symbol ":" <*> term <* symbol ")"
-            <|> (\(span@(Span.Relative pos _), name_) -> ([(pos, name_)], Term span Wildcard)) <$> spanned name
+            ( (,) <$ symbol "(" <*> some binding <* symbol ":" <*> term <* symbol ")"
+            <|> (\binding_@(Binding span _) -> ([binding_], Term span Wildcard)) <$> binding
             ) <* symbol "." <*> term
         )
     )
@@ -321,13 +325,13 @@ atomicTerm =
       (,) <$> pattern_ <* symbol "->" <*> term
 
     lets =
-      flip (foldr $ \(span, binding) rhs -> Term span $ binding rhs) <$ reserved "let" <*> blockOfMany letBinding <* reserved "in" <*> term
+      flip (foldr $ \(span, binding_) rhs -> Term span $ binding_ rhs) <$ reserved "let" <*> blockOfMany letBinding <* reserved "in" <*> term
 
     letBinding = spanned $ do
-      name_@(Name nameText) <- name
-      Let name_ . Just <$ symbol ":" <*> recoveringIndentedTerm <*>
+      binding_@(Binding _ (Name nameText)) <- binding
+      Let binding_ . Just <$ symbol ":" <*> recoveringIndentedTerm <*>
         sameLevel (withIndentationBlock $ reserved nameText *> clauses nameText)
-        <|> Let name_ Nothing <$> clauses nameText
+        <|> Let binding_ Nothing <$> clauses nameText
       <?> "let binding"
 
 plicitAtomicTerm :: Parser (Either (HashMap Name Term) Term)
@@ -345,7 +349,7 @@ plicitAtomicTerm =
 
 term :: Parser Term
 term =
-  spannedTerm (unspanned <$> (pis Explicit <$> try (symbol "(" *> some (positioned name) <* symbol ":") <*> term <* symbol ")" <* symbol "->" <*> term))
+  spannedTerm (unspanned <$> (pis Explicit <$> try (symbol "(" *> some binding <* symbol ":") <*> term <* symbol ")" <* symbol "->" <*> term))
   <|> apps <$> atomicTerm <*> many (spanned plicitAtomicTerm) <**> fun
   <?> "term"
   where
@@ -400,14 +404,14 @@ dataDefinition =
       <|> (<>) <$> explicitParameter <*> parameters
 
     explicitParameter =
-      (\names type_ -> [(name_, type_, Explicit) | name_ <- names]) <$ symbol "(" <*> some name <* symbol ":" <*> recoveringIndentedTerm <* symbol ")"
-      <|> (\(span, name_) -> pure (name_, Term span Presyntax.Wildcard, Explicit)) <$> spanned name
+      (\bindings type_ -> [(binding_, type_, Explicit) | binding_ <- bindings]) <$ symbol "(" <*> some binding <* symbol ":" <*> recoveringIndentedTerm <* symbol ")"
+      <|> (\binding_@(Binding span _) -> pure (binding_, Term span Presyntax.Wildcard, Explicit)) <$> binding
 
     implicitParameters =
       (<>) . concat <$ reserved "forall" <*>
         some
-          ((\names type_ -> [(name_, type_, Implicit) | name_ <- names]) <$ symbol "(" <*> some name <* symbol ":" <*> term <* symbol ")"
-          <|> (\(span, name_) -> [(name_, Term span Wildcard, Implicit)]) <$> spanned name
+          ((\bindings type_ -> [(binding_, type_, Implicit) | binding_ <- bindings]) <$ symbol "(" <*> some binding <* symbol ":" <*> term <* symbol ")"
+          <|> (\binding_@(Binding span _) -> [(binding_, Term span Wildcard, Implicit)]) <$> binding
           ) <* symbol "." <*> parameters1
 
     gadtConstructors =

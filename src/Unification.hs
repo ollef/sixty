@@ -29,6 +29,7 @@ import qualified Index.Map as Index
 import qualified Meta
 import Monad
 import qualified Name
+import qualified Binding
 import Plicity
 import qualified Query
 import Readback (readback)
@@ -318,12 +319,12 @@ unifyBranches
       -> M ()
     unifyTele context env1 env2 tele1 tele2 =
       case (tele1, tele2) of
-        (Telescope.Extend name1 type1 plicity1 tele1', Telescope.Extend _name2 type2 plicity2 tele2')
+        (Telescope.Extend binding1 type1 plicity1 tele1', Telescope.Extend _binding2 type2 plicity2 tele2')
           | plicity1 == plicity2 -> do
             type1' <- Evaluation.evaluate env1 type1
             type2' <- Evaluation.evaluate env2 type2
             unify context flexibility type1' type2'
-            (context', var) <- Context.extendUnnamed context name1 type1'
+            (context', var) <- Context.extendUnnamed context (Binding.toName binding1) type1'
             unifyTele
               context'
               (Environment.extendVar env1 var)
@@ -423,9 +424,9 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
             _ ->
               pure False
 
-        Telescope.Extend name type_ _ tele' -> do
+        Telescope.Extend binding type_ _ tele' -> do
           type' <- Evaluation.evaluate env type_
-          (context', var) <- Context.extendUnnamed context name type'
+          (context', var) <- Context.extendUnnamed context (Binding.toName binding) type'
           branchMatches context' (Environment.extendVar env var) tele'
 
 instantiatedMetaType
@@ -560,7 +561,7 @@ addAndCheckLambdas outerContext meta vars term =
           Flexibility.Rigid
           type_
       let
-        term' = Syntax.Lam name type' Explicit (Syntax.succ term)
+        term' = Syntax.Lam (Binding.Unspanned name) type' Explicit (Syntax.succ term)
       addAndCheckLambdas outerContext meta vars' term'
 
 checkInnerSolution
@@ -600,13 +601,13 @@ checkInnerSolution outerContext occurs env flexibility value = do
       checkInnerSolution outerContext occurs env flexibility value'''
 
     Domain.Lam name type_ plicity closure ->
-      Syntax.Lam name
+      Syntax.Lam (Binding.Unspanned name)
         <$> checkInnerSolution outerContext occurs env flexibility type_
         <*> pure plicity
         <*> checkInnerClosure outerContext occurs env flexibility closure
 
     Domain.Pi name type_ plicity closure ->
-      Syntax.Pi name
+      Syntax.Pi (Binding.Unspanned name)
         <$> checkInnerSolution outerContext occurs env flexibility type_
         <*> pure plicity
         <*> checkInnerClosure outerContext occurs env flexibility closure
@@ -766,7 +767,7 @@ pruneMeta context meta allowedArgs = do
             Domain.Pi name source plicity domainClosure -> do
               (context'', v) <-
                 if allowed then
-                  Context.extend context' name source
+                  Context.extendUnnamed context' name source
                 else do
                   fakeVar <- freshVar
                   Context.extendUnnamedDef
@@ -783,6 +784,6 @@ pruneMeta context meta allowedArgs = do
                   (Context.toEnvironment context')
                   source
               body <- go alloweds' context'' domain
-              pure $ Syntax.Lam name source'' plicity body
+              pure $ Syntax.Lam (Binding.Unspanned name) source'' plicity body
 
             _ -> panic "pruneMeta wrong type"

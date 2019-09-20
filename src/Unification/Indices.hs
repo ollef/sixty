@@ -19,6 +19,7 @@ import qualified Flexibility
 import Index
 import qualified Index.Map
 import Monad
+import qualified Binding
 import Plicity
 import qualified Syntax
 import Syntax.Telescope (Telescope)
@@ -220,12 +221,12 @@ unifyBranches
       -> E M (Context v)
     unifyTele context env1 env2 untouchables tele1 tele2 =
       case (tele1, tele2) of
-        (Telescope.Extend name1 type1 plicity1 tele1', Telescope.Extend _name2 type2 plicity2 tele2')
+        (Telescope.Extend binding1 type1 plicity1 tele1', Telescope.Extend _binding2 type2 plicity2 tele2')
           | plicity1 == plicity2 -> do
             type1' <- lift $ Evaluation.evaluate env1 type1
             type2' <- lift $ Evaluation.evaluate env2 type2
             context' <- unify context flexibility untouchables type1' type2'
-            (context'', var) <- lift $ Context.extendUnnamed context' name1 type1'
+            (context'', var) <- lift $ Context.extendUnnamed context' (Binding.toName binding1) type1'
             context''' <-
               unifyTele
                 context''
@@ -326,10 +327,10 @@ occursBranches outerContext flexibility outerUntouchables (Domain.Branches outer
       -> E M ()
     occursTele context untouchables env tele =
       case tele of
-        Telescope.Extend name type_ _plicity tele' -> do
+        Telescope.Extend binding type_ _plicity tele' -> do
           type' <- lift $ Evaluation.evaluate env type_
           occurs context flexibility untouchables type'
-          (context'', var) <- lift $ Context.extendUnnamed context name type'
+          (context'', var) <- lift $ Context.extendUnnamed context (Binding.toName binding) type'
           occursTele
             context''
             (IntSet.insert var untouchables)

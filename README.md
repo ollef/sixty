@@ -58,7 +58,8 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [x] Language server
   - [x] Diagnostics
   - [x] Hover
-    - [ ] Hovering on binders
+    - [x] Hovering on binders
+    - [ ] Hovering on definitions
     - [ ] Print the context and let-bound variables (including metas)
   - [ ] Jump to definition
   - [ ] Multi file projects

@@ -19,6 +19,8 @@ import qualified Domain.Pattern as Pattern
 import Index
 import Name (Name(Name))
 import qualified Name
+import Binding (Binding)
+import qualified Binding
 import qualified Plicity
 import Query (Query)
 import qualified Query
@@ -38,10 +40,13 @@ data Environment v = Environment
   , importedAliases :: HashMap Name.Qualified (HashSet Name.Pre)
   }
 
-extend :: Environment v -> Name -> (Environment (Succ v), Name.Pre)
-extend env (Name name) =
+extend :: Environment v -> Binding -> (Environment (Succ v), Name.Pre)
+extend env binding =
   go (Name.Pre name : [Name.Pre $ name <> show (i :: Int) | i <- [0..]])
   where
+    Name name =
+      Binding.toName binding
+
     go (name':names)
       | name' `HashMap.member` usedNames env =
         go names
@@ -93,15 +98,15 @@ prettyTerm prec env term =
     Syntax.Meta index ->
       pretty index
 
-    Syntax.Let name term' type_ body ->
+    Syntax.Let binding term' type_ body ->
       prettyParen (prec > letPrec) $
         let
-          (env', name') = extend env name
+          (env', name) = extend env binding
         in
         "let"
         <> line <> indent 2
-          (pretty name' <+> ":" <+> prettyTerm 0 env type_
-          <> line <> pretty name' <+> "=" <+> prettyTerm 0 env term'
+          (pretty name <+> ":" <+> prettyTerm 0 env type_
+          <> line <> pretty name <+> "=" <+> prettyTerm 0 env term'
           )
         <> line <> "in"
         <> line <> prettyTerm letPrec env' body
@@ -192,11 +197,11 @@ unambiguous env name =
 prettyLamTerm :: Environment v -> Syntax.Term v -> Doc ann
 prettyLamTerm env term =
   case term of
-    Syntax.Lam name type_ plicity scope ->
+    Syntax.Lam binding type_ plicity scope ->
       let
-        (env', name') = extend env name
+        (env', name) = extend env binding
       in
-      Plicity.prettyAnnotation plicity <> lparen <> pretty name' <+> ":" <+> prettyTerm 0 env type_ <> rparen
+      Plicity.prettyAnnotation plicity <> lparen <> pretty name <+> ":" <+> prettyTerm 0 env type_ <> rparen
       <> prettyLamTerm env' scope
 
     t ->
@@ -205,11 +210,11 @@ prettyLamTerm env term =
 prettyPiTerm :: Environment v -> Syntax.Term v -> Doc ann
 prettyPiTerm env term =
   case term of
-    Syntax.Pi name type_ plicity scope ->
+    Syntax.Pi binding type_ plicity scope ->
       let
-        (env', name') = extend env name
+        (env', name) = extend env binding
       in
-      Plicity.prettyAnnotation plicity <> lparen <> pretty name' <+> ":" <+> prettyTerm 0 env type_ <> rparen
+      Plicity.prettyAnnotation plicity <> lparen <> pretty name <+> ":" <+> prettyTerm 0 env type_ <> rparen
       <> prettyPiTerm env' scope
 
     t ->
@@ -224,11 +229,11 @@ prettyBranch env tele =
     Telescope.Empty body ->
       "->" <> line <> indent 2 (prettyTerm casePrec env body)
 
-    Telescope.Extend name type_ plicity tele' ->
+    Telescope.Extend binding type_ plicity tele' ->
       let
-        (env', name') = extend env name
+        (env', name) = extend env binding
       in
-      Plicity.prettyAnnotation plicity <> "(" <> pretty name' <+> ":" <+> prettyTerm 0 env type_ <> ")" <+>
+      Plicity.prettyAnnotation plicity <> "(" <> pretty name <+> ":" <+> prettyTerm 0 env type_ <> ")" <+>
       prettyBranch env' tele'
 
 -------------------------------------------------------------------------------
@@ -260,11 +265,11 @@ prettyConstructorDefinitions env tele =
           ]
         )
 
-    Telescope.Extend name type_ plicity tele' ->
+    Telescope.Extend binding type_ plicity tele' ->
       let
-        (env', name') = extend env name
+        (env', name) = extend env binding
       in
-      Plicity.prettyAnnotation plicity <> "(" <> pretty name' <+> ":" <+> prettyTerm 0 env type_ <> ")" <+>
+      Plicity.prettyAnnotation plicity <> "(" <> pretty name <+> ":" <+> prettyTerm 0 env type_ <> ")" <+>
       prettyConstructorDefinitions env' tele'
 
 -------------------------------------------------------------------------------

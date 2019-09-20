@@ -24,8 +24,8 @@ unspanned (Term _ term) =
 
 data UnspannedTerm
   = Var !Name.Pre
-  | Let !Name !(Maybe Type) [Clause] !Term
-  | Pi !Name !Plicity !Type !Type
+  | Let !Binding !(Maybe Type) [Clause] !Term
+  | Pi !Binding !Plicity !Type !Type
   | Fun !Type !Type
   | Lam !PlicitPattern !Term
   | App !Term !Term
@@ -36,6 +36,9 @@ data UnspannedTerm
   deriving (Show, Generic, Hashable)
 
 type Type = Term
+
+data Binding = Binding !Span.Relative !Name
+  deriving (Show, Generic, Hashable)
 
 data Pattern
   = Pattern !Span.Relative !UnspannedPattern
@@ -74,9 +77,9 @@ lams :: Foldable f => f (Position.Relative, PlicitPattern) -> Term -> Term
 lams vs body@(Term (Span.Relative _ end) _) =
   foldr (\(start, pat) -> Term (Span.Relative start end) . Lam pat) body vs
 
-pis :: Foldable f => Plicity -> f (Position.Relative, Name) -> Type -> Type -> Type
+pis :: Foldable f => Plicity -> f Binding -> Type -> Type -> Type
 pis plicity vs source domain@(Term (Span.Relative _ end) _) =
-  foldr (\(start, v) -> Term (Span.Relative start end) . Pi v plicity source) domain vs
+  foldr (\binding@(Binding (Span.Relative start _) _) -> Term (Span.Relative start end) . Pi binding plicity source) domain vs
 
 function :: Term -> Term -> Term
 function source@(Term span1 _) domain@(Term span2 _) =
@@ -89,7 +92,7 @@ anno pat@(Pattern span1 _) type_@(Term span2 _) =
 data Definition
   = TypeDeclaration !Type
   | ConstantDefinition [Clause]
-  | DataDefinition [(Name, Type, Plicity)] [ConstructorDefinition]
+  | DataDefinition [(Binding, Type, Plicity)] [ConstructorDefinition]
   deriving (Show, Generic, Hashable)
 
 data Clause = Clause

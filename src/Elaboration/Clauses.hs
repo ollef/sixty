@@ -9,17 +9,19 @@ import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 
 import {-# SOURCE #-} qualified Elaboration
+import Binding (Binding)
+import qualified Binding
 import Context (Context)
 import qualified Context
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Domain
 import qualified Elaboration.Matching as Matching
+import qualified Elaboration.Matching.SuggestedName as SuggestedName
 import qualified Error
 import qualified Evaluation
 import Monad
 import Name (Name)
-import qualified Elaboration.Matching.SuggestedName as SuggestedName
 import Plicity
 import qualified Presyntax
 import qualified Syntax
@@ -53,24 +55,24 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
             Evaluation.evaluateClosure
               domainClosure
               (Domain.var var)
-          explicitFunCase context' name var source domain
+          explicitFunCase context' (Binding.Unspanned name) var source domain
 
       Domain.Fun source domain
         | HashMap.null implicits -> do
-          name <- nextExplicitName context clauses
-          (context', var) <- Context.extendUnnamed context name source
-          explicitFunCase context' name var source domain
+          binding <- nextExplicitBinding context clauses
+          (context', var) <- Context.extendUnnamed context (Binding.toName binding) source
+          explicitFunCase context' binding var source domain
 
       Domain.Pi piName source Implicit domainClosure -> do
-        name <- nextImplicitName context piName clauses
-        (context', var) <- Context.extendUnnamed context name source
+        binding <- nextImplicitBinding context piName clauses
+        (context', var) <- Context.extendUnnamed context (Binding.toName binding) source
         let
           value =
             Domain.var var
         domain <- Evaluation.evaluateClosure domainClosure value
         source'' <- Elaboration.readback context source
-        body <- check context' (shiftImplicit name value source <$> clauses) domain
-        pure $ Syntax.Lam name source'' Implicit body
+        body <- check context' (shiftImplicit (Binding.toName binding) value source <$> clauses) domain
+        pure $ Syntax.Lam binding source'' Implicit body
 
       _ -> do
         (term', type_) <- infer context clauses
@@ -80,11 +82,11 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
     implicits =
       foldMap clauseImplicits clauses
 
-    explicitFunCase context' name var source domain = do
+    explicitFunCase context' binding var source domain = do
       source'' <- Elaboration.readback context source
       clauses' <- mapM (shiftExplicit context (Domain.var var) source) clauses
       body <- check context' clauses' domain
-      pure $ Syntax.Lam name source'' Explicit body
+      pure $ Syntax.Lam binding source'' Explicit body
 
 infer
   :: Context v
@@ -110,20 +112,26 @@ infer context (fmap removeEmptyImplicits -> clauses)
       [] -> do
         source <- Context.newMetaType context
         source' <- Elaboration.readback context source
-        name <- nextExplicitName context clauses
+        binding <- nextExplicitBinding context clauses
+        let
+          name =
+            Binding.toName binding
         (context', var) <- Context.extendUnnamed context name source
         clauses' <- mapM (shiftExplicit context (Domain.var var) source) clauses
         (body, domain) <- infer context' clauses'
         domain' <- Elaboration.readback context' domain
 
         pure
-          ( Syntax.Lam name source' Explicit body
+          ( Syntax.Lam binding source' Explicit body
           , Domain.Pi name source Explicit
             $ Domain.Closure (Context.toEnvironment context) domain'
           )
 
       [(piName, _)] -> do
-        name <- nextImplicitName context piName clauses
+        binding <- nextImplicitBinding context piName clauses
+        let
+          name =
+            Binding.toName binding
         source <- Context.newMetaType context
         source' <- Elaboration.readback context source
         (context', var) <- Context.extendUnnamed context name source
@@ -134,7 +142,7 @@ infer context (fmap removeEmptyImplicits -> clauses)
         domain' <- Elaboration.readback context' domain
 
         pure
-          ( Syntax.Lam name source' Implicit body
+          ( Syntax.Lam binding source' Implicit body
           , Domain.Pi name source Implicit
             $ Domain.Closure (Context.toEnvironment context) domain'
           )
@@ -228,12 +236,12 @@ shiftExplicit context value type_ clause@(Clause (Presyntax.Clause span patterns
         (Error.PlicityMismatch Error.Argument $ Error.Missing Explicit)
       pure clause
 
-nextExplicitName :: Context v -> [Clause] -> M Name
-nextExplicitName context clauses = do
-  (name, _) <- SuggestedName.nextExplicit context $ clausePatterns <$> clauses
-  pure name
+nextExplicitBinding :: Context v -> [Clause] -> M Binding
+nextExplicitBinding context clauses = do
+  (binding, _) <- SuggestedName.nextExplicit context $ clausePatterns <$> clauses
+  pure binding
 
-nextImplicitName :: Context v -> Name -> [Clause] -> M Name
-nextImplicitName context piName clauses = do
-  (name, _) <- SuggestedName.nextImplicit context piName $ clausePatterns <$> clauses
-  pure name
+nextImplicitBinding :: Context v -> Name -> [Clause] -> M Binding
+nextImplicitBinding context piName clauses = do
+  (binding, _) <- SuggestedName.nextImplicit context piName $ clausePatterns <$> clauses
+  pure binding

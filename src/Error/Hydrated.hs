@@ -14,6 +14,7 @@ import Error (Error)
 import qualified Error
 import qualified Error.Parsing
 import Name (Name)
+import qualified Binding
 import Plicity
 import qualified Position
 import qualified Pretty
@@ -247,7 +248,7 @@ prettyPrettyableTerm prec (Error.PrettyableTerm moduleName_ names term) = do
 
         name:names'' ->
           let
-            (env'', _) = Pretty.extend env' name
+            (env'', _) = Pretty.extend env' $ Binding.Unspanned name
 
           in
           go names'' env''
@@ -265,7 +266,7 @@ prettyPrettyablePattern prec (plicity, Error.PrettyablePattern moduleName_ names
 
         name:names'' ->
           let
-            (env'', _) = Pretty.extend env' name
+            (env'', _) = Pretty.extend env' $ Binding.Unspanned name
 
           in
           go names'' env''

@@ -9,8 +9,8 @@ import Data.HashMap.Lazy (HashMap)
 import qualified Environment
 import qualified Meta
 import Monad
-import Name (Name)
 import qualified Name
+import Binding (Binding)
 import Plicity
 import qualified Scope
 import qualified Span
@@ -68,10 +68,10 @@ data Value
   | Global !Name.Qualified
   | Con !Name.QualifiedConstructor
   | Meta !Meta.Index
-  | Let !Name !Var !Value !Type !Value
-  | Pi !Name !Var !Type !Plicity !Type
+  | Let !Binding !Var !Value !Type !Value
+  | Pi !Binding !Var !Type !Plicity !Type
   | Fun !Type !Type
-  | Lam !Name !Var !Type !Plicity !Value
+  | Lam !Binding !Var !Type !Plicity !Value
   | App !Value !Plicity !Value
   | Case !Value Branches !(Maybe Value)
   | Spanned !Span.Relative !Value
@@ -79,7 +79,7 @@ data Value
 
 type Environment = Environment.Environment Value
 
-type Branches = HashMap Name.QualifiedConstructor ([(Name, Var, Type, Plicity)], Value)
+type Branches = HashMap Name.QualifiedConstructor ([(Binding, Var, Type, Plicity)], Value)
 
 type Type = Value
 
@@ -154,7 +154,7 @@ evaluate env term =
 evaluateBranch
   :: Environment v
   -> Telescope Syntax.Type Syntax.Term v
-  -> M ([(Name, Var, Type, Plicity)], Value)
+  -> M ([(Binding, Var, Type, Plicity)], Value)
 evaluateBranch env tele =
   case tele of
     Telescope.Empty body -> do
@@ -222,7 +222,7 @@ readback env value =
 
 readbackBranch
   :: Environment v
-  -> [(Name, Var, Type, Plicity)]
+  -> [(Binding, Var, Type, Plicity)]
   -> Value
   -> Telescope Syntax.Type Syntax.Term v
 readbackBranch env bindings body =
