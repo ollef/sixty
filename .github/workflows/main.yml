@@ -1,0 +1,21 @@
+name: CI
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Install Stack
+      run: sudo apt-get install haskell-stack
+    - name: Add ~/.local/bin to PATH
+      run: echo ::add-path::$HOME/.local/bin
+    - name: Upgrade Stack
+      run: stack upgrade
+    - name: Build dependencies
+      run: stack build --dependencies-only
+    - name: Run tests
+      run: stack test
