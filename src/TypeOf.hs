@@ -56,7 +56,7 @@ typeOf context value =
 
         Nothing ->
           case HashMap.toList branches of
-            (_, branchTele):_ ->
+            (_, (_, branchTele)):_ ->
               typeOfBranch context env branchTele
 
             [] ->

@@ -43,7 +43,7 @@ readback env value =
 
     Domain.Case scrutinee (Domain.Branches env' branches defaultBranch) -> do
       scrutinee' <- readback env scrutinee
-      branches' <- forM branches $ readbackBranch env env'
+      branches' <- forM branches $ mapM $ readbackBranch env env'
       defaultBranch' <- forM defaultBranch $ \branch -> do
         branch' <- Evaluation.evaluate env' branch
         readback env branch'

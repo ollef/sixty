@@ -438,7 +438,7 @@ simplifyMatch context coveredConstructors (Match value plicity pat@(Presyntax.Pa
     match' =
       Match value' plicity pat type_
   case (value', unspannedPattern) of
-    (Domain.Neutral (Domain.Con constr) spine, Presyntax.ConOrVar name pats) -> do
+    (Domain.Neutral (Domain.Con constr) spine, Presyntax.ConOrVar _ name pats) -> do
       maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
       case maybeScopeEntry of
         Just scopeEntry
@@ -465,7 +465,7 @@ simplifyMatch context coveredConstructors (Match value plicity pat@(Presyntax.Pa
         _ ->
           pure [match']
 
-    (Domain.Neutral (Domain.Var var) Tsil.Empty, Presyntax.ConOrVar name _)
+    (Domain.Neutral (Domain.Var var) Tsil.Empty, Presyntax.ConOrVar _ name _)
       | Just coveredConstrs <- IntMap.lookup var coveredConstructors -> do
         maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
         case maybeScopeEntry of
@@ -649,7 +649,7 @@ matchInstantiation context match =
     (Match _ _ (Presyntax.Pattern _ Presyntax.WildcardPattern) _) ->
       pure mempty
 
-    (Match term _ (Presyntax.Pattern span (Presyntax.ConOrVar prename@(Name.Pre name) [])) type_) -> do
+    (Match term _ (Presyntax.Pattern span (Presyntax.ConOrVar _ prename@(Name.Pre name) [])) type_) -> do
       maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) prename
       if HashSet.null $ foldMap Scope.entryConstructors maybeScopeEntry then
         pure $ pure (Binding.Spanned span $ Name name, term, type_)
@@ -685,7 +685,7 @@ splitConstructorOr context config matches k =
         Match
           (Domain.Neutral (Domain.Var var) Tsil.Empty)
           _
-          (Presyntax.Pattern span (Presyntax.ConOrVar name _))
+          (Presyntax.Pattern span (Presyntax.ConOrVar _ name _))
           type_ -> do
             maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
             case maybeScopeEntry of
@@ -764,7 +764,17 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
                   constr
                   constructors
 
-            goConstrFields context qualifiedConstr conArgs constrType patterns
+              conSpan =
+                case patterns of
+                  (s, _):_ ->
+                    s
+
+                  _ ->
+                    Span.Relative 0 0
+
+            tele <- goConstrFields context qualifiedConstr conArgs constrType $ snd <$> patterns
+            pure (conSpan, tele)
+
 
           defaultBranch <-
             if HashMap.size matchedConstructors == length constructors then
@@ -848,13 +858,13 @@ findVarConstructorMatches
   :: Context v
   -> Var
   -> [Match]
-  -> M [(Name.QualifiedConstructor, [[Presyntax.PlicitPattern]])]
+  -> M [(Name.QualifiedConstructor, [(Span.Relative, [Presyntax.PlicitPattern])])]
 findVarConstructorMatches context var matches =
     case matches of
       [] ->
         pure []
 
-      Match (Domain.Neutral (Domain.Var var') Tsil.Empty) _ (Presyntax.Pattern _ (Presyntax.ConOrVar name patterns)) type_:matches' 
+      Match (Domain.Neutral (Domain.Var var') Tsil.Empty) _ (Presyntax.Pattern _ (Presyntax.ConOrVar span name patterns)) type_:matches' 
         | var == var' -> do
           maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
           case maybeScopeEntry of
@@ -871,7 +881,7 @@ findVarConstructorMatches context var matches =
                   findVarConstructorMatches context var matches'
 
                 Elaboration.Resolved constr ->
-                  ((constr, [patterns]) :) <$> findVarConstructorMatches context var matches'
+                  ((constr, [(span, patterns)]) :) <$> findVarConstructorMatches context var matches'
 
             _ ->
               findVarConstructorMatches context var matches'

@@ -79,7 +79,7 @@ data Value
 
 type Environment = Environment.Environment Value
 
-type Branches = HashMap Name.QualifiedConstructor ([(Binding, Var, Type, Plicity)], Value)
+type Branches = HashMap Name.QualifiedConstructor (Span.Relative, ([(Binding, Var, Type, Plicity)], Value))
 
 type Type = Value
 
@@ -145,7 +145,7 @@ evaluate env term =
       scrutinee' <- evaluate env scrutinee
       -- TODO choose branch if variable is inlined to constructor
       Case scrutinee' <$>
-        mapM (evaluateBranch env) branches <*>
+        mapM (mapM $ evaluateBranch env) branches <*>
         mapM (evaluate env) defaultBranch
 
     Syntax.Spanned span term' ->
@@ -214,7 +214,7 @@ readback env value =
     Case scrutinee branches defaultBranch ->
       Syntax.Case
         (readback env scrutinee)
-        (map (uncurry $ readbackBranch env) branches)
+        (map (map $ uncurry $ readbackBranch env) branches)
         (map (readback env) defaultBranch)
 
     Spanned span value' ->

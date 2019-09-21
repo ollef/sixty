@@ -295,8 +295,8 @@ unifyBranches
     unless (HashMap.null missing1 && HashMap.null missing2)
       can'tUnify
 
-    forM_ branches $
-      uncurry $ unifyTele outerContext outerEnv1 outerEnv2
+    forM_ branches $ \((_, tele1), (_, tele2)) ->
+      unifyTele outerContext outerEnv1 outerEnv2 tele1 tele2
 
     case (defaultBranch1, defaultBranch2) of
       (Just branch1, Just branch2) -> do
@@ -373,7 +373,7 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
       else
         Nothing
 
-  branches' <- fmap catMaybes $ forM (HashMap.toList branches) $ \(constr, tele) -> do
+  branches' <- fmap catMaybes $ forM (HashMap.toList branches) $ \(constr, (_, tele)) -> do
     isMatch <- branchMatches outerContext outerEnv tele
     pure $
       if isMatch then
@@ -619,7 +619,7 @@ checkInnerSolution outerContext occurs env flexibility value = do
 
     Domain.Case scrutinee (Domain.Branches env' branches defaultBranch) -> do
       scrutinee' <- checkInnerSolution outerContext occurs env flexibility scrutinee
-      branches' <- forM branches $
+      branches' <- forM branches $ mapM $
         checkInnerBranch outerContext occurs env env' flexibility
       defaultBranch' <- forM defaultBranch $ \branch -> do
         branch' <- Evaluation.evaluate env' branch

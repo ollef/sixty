@@ -46,7 +46,7 @@ data Pattern
   deriving (Show, Generic, Hashable)
 
 data UnspannedPattern
-  = ConOrVar !Name.Pre [PlicitPattern]
+  = ConOrVar !Span.Relative !Name.Pre [PlicitPattern]
   | WildcardPattern
   | Anno !Pattern !Type
   | Forced !Term

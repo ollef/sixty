@@ -325,7 +325,7 @@ dependencies context value = do
     Domain.Case scrutinee (Domain.Branches env branches defaultBranch) -> do
       scrutineeVars <- dependencies context scrutinee
       defaultBranchVars <- mapM (dependencies context <=< lift . Evaluation.evaluate env) defaultBranch
-      brVars <- mapM (branchVars context env) (HashMap.elems branches)
+      brVars <- mapM (branchVars context env . snd) (HashMap.elems branches)
       pure $ scrutineeVars <> fold defaultBranchVars <> fold brVars
 
   where

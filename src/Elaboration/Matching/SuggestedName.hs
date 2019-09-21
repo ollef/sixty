@@ -90,7 +90,7 @@ shiftImplicit name patterns =
 patternBinding :: Context v -> Presyntax.Pattern -> MaybeT M Binding
 patternBinding context pattern =
   case pattern of
-    Presyntax.Pattern span (Presyntax.ConOrVar prename@(Name.Pre nameText) []) -> do
+    Presyntax.Pattern span (Presyntax.ConOrVar _ prename@(Name.Pre nameText) []) -> do
       maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) prename
       if HashSet.null $ foldMap Scope.entryConstructors maybeScopeEntry then
         pure $ Binding.Spanned span $ Name nameText

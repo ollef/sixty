@@ -17,10 +17,12 @@ import Context (Context)
 import qualified Context
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
+import qualified Domain
 import qualified Elaboration
 import qualified Index
 import Monad
 import qualified Name
+import Plicity
 import qualified Position
 import qualified Presyntax
 import Query (Query)
@@ -31,6 +33,7 @@ import qualified Span
 import qualified Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
+import qualified TypeOf
 import qualified Var
 import Var (Var)
 
@@ -234,7 +237,7 @@ termAction k env term =
 
     Syntax.Case scrutinee branches defaultBranch ->
       termAction k env scrutinee <|>
-      asum (branchAction k env <$> HashMap.elems branches) <|>
+      asum (branchAction k env scrutinee <$> HashMap.toList branches) <|>
       asum (termAction k env <$> defaultBranch)
 
     Syntax.Spanned span term' ->
@@ -261,9 +264,32 @@ dataDefinitionAction k env tele =
 branchAction
   :: RelativeCallback a
   -> Environment v
+  -> Syntax.Term v
+  -> (Name.QualifiedConstructor, (Span.Relative, Telescope Syntax.Type Syntax.Term v))
+  -> MaybeT M a
+branchAction k env scrutinee (constr@(Name.QualifiedConstructor typeName _), (span, tele)) =
+  (do
+    guard $ span `Span.relativeContains` _actionPosition env
+    scrutinee' <- lift $ Elaboration.evaluate (_context env) scrutinee
+    scrutineeType <- lift $ TypeOf.typeOf (_context env) scrutinee'
+    scrutineeType' <- lift $ Context.forceHead (_context env) scrutineeType
+    case scrutineeType' of
+      Domain.Neutral (Domain.Global headName) spine
+        | headName == typeName -> do
+          spine' <- lift $ mapM (mapM $ Elaboration.readback $ _context env) spine
+          k env (Syntax.Con constr `Syntax.apps` fmap (first implicitise) spine') span
+
+      _ ->
+        k env (Syntax.Con constr) span
+  ) <|>
+  teleAction k env tele
+
+teleAction
+  :: RelativeCallback a
+  -> Environment v
   -> Telescope Syntax.Type Syntax.Term v
   -> MaybeT M a
-branchAction k env tele =
+teleAction k env tele =
   case tele of
     Telescope.Empty branch ->
       termAction k env branch
@@ -272,7 +298,7 @@ branchAction k env tele =
       (env', var) <- extend env binding type_
       bindingAction k env' binding var <|>
         termAction k env type_ <|>
-        branchAction k env' tele'
+        teleAction k env' tele'
 
 bindingAction
   :: RelativeCallback a

@@ -123,7 +123,7 @@ chooseBranch outerEnv constr outerArgs branches defaultBranch =
     (Nothing, Just branch) ->
       evaluate outerEnv branch
 
-    (Just tele, _) -> do
+    (Just (_, tele), _) -> do
       constrTypeTele <- fetch $ Query.ConstructorType constr
       go outerEnv (dropTypeArgs constrTypeTele outerArgs) tele
   where

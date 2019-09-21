@@ -196,7 +196,7 @@ unifyBranches
     unless (HashMap.null missing1 && HashMap.null missing2) $
       throwError Dunno
     outerContext' <- foldM
-      (\context -> uncurry $ unifyTele context outerEnv1 outerEnv2 outerUntouchables)
+      (\context ((_, tele1), (_, tele2)) -> unifyTele context outerEnv1 outerEnv2 outerUntouchables tele1 tele2)
       outerContext
       branches
     case (defaultBranch1, defaultBranch2) of
@@ -314,8 +314,7 @@ occursBranches
   -> Domain.Branches
   -> E M ()
 occursBranches outerContext flexibility outerUntouchables (Domain.Branches outerEnv branches defaultBranch) = do
-  forM_ branches $
-    occursTele outerContext outerUntouchables outerEnv
+  forM_ branches $ mapM_ $ occursTele outerContext outerUntouchables outerEnv
   forM_ defaultBranch $ \branch ->
     occursTele outerContext outerUntouchables outerEnv $ Telescope.Empty branch
   where

@@ -257,7 +257,7 @@ atomicPattern :: Parser Pattern
 atomicPattern =
   symbol "(" *> pattern_ <* symbol ")"
   <|> spannedPattern
-    ((`ConOrVar` mempty) <$> prename
+    ((\(span, name_) -> ConOrVar span name_ mempty) <$> spanned prename
     <|> WildcardPattern <$ reserved "_"
     <|> Forced <$ symbol "~" <*> atomicTerm
     )
@@ -265,7 +265,7 @@ atomicPattern =
 
 pattern_ :: Parser Pattern
 pattern_ =
-  ( spannedPattern (ConOrVar <$> prename <*> many plicitPattern)
+  ( spannedPattern (uncurry ConOrVar <$> spanned prename <*> many plicitPattern)
     <|> atomicPattern
   )
   <**>
@@ -282,7 +282,7 @@ plicitPattern =
     patName =
       spanned name <**>
         ((\pat (_, name_) -> (name_, pat)) <$ symbol "=" <*> pattern_
-        <|> pure (\(span, name_@(Name n)) -> (name_, Pattern span $ ConOrVar (Name.Pre n) mempty))
+        <|> pure (\(span, name_@(Name n)) -> (name_, Pattern span $ ConOrVar span (Name.Pre n) mempty))
         )
 
 -------------------------------------------------------------------------------

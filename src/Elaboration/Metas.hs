@@ -147,7 +147,7 @@ data InnerValue
   | Spanned !Span.Relative !InnerValue
   deriving Show
 
-type Branches = HashMap Name.QualifiedConstructor ([(Binding, Var, Type, Plicity)], Value)
+type Branches = HashMap Name.QualifiedConstructor (Span.Relative, ([(Binding, Var, Type, Plicity)], Value))
 
 newtype Occurrences = Occurrences { unoccurrences :: IntMap Meta.Index (Tsil (Maybe Var)) }
 
@@ -247,7 +247,7 @@ makeCase scrutinee branches defaultBranch =
   Value (Case scrutinee branches defaultBranch) $
     occurrences scrutinee <>
     foldMap
-      (\(bindings, body) ->
+      (\(_, (bindings, body)) ->
         foldMap (\(_, _, type_, _) -> occurrences type_) bindings <>
           occurrences body
       )
@@ -308,7 +308,7 @@ evaluate env term =
     Syntax.Case scrutinee branches defaultBranch ->
       makeCase <$>
         evaluate env scrutinee <*>
-        mapM (evaluateBranch env) branches <*>
+        mapM (mapM $ evaluateBranch env) branches <*>
         mapM (evaluate env) defaultBranch
 
     Syntax.Spanned span term' ->
@@ -388,7 +388,7 @@ readback env metas (Value value occs) =
     Case scrutinee branches defaultBranch ->
       Syntax.Case
         (readback env metas scrutinee)
-        (map (uncurry $ readbackBranch env metas) branches)
+        (map (map $ uncurry $ readbackBranch env metas) branches)
         (readback env metas <$> defaultBranch)
 
     Spanned span value' ->
@@ -495,11 +495,13 @@ substitute subst
         Case scrutinee branches defaultBranch ->
           makeCase
             (go scrutinee)
-            (foreach branches $ \(bindings, body) ->
-              ( [ (name, var, go type_, plicity)
-                | (name, var, type_, plicity) <- bindings
-                ]
-              , go body
+            (foreach branches $ \(span, (bindings, body)) ->
+              ( span
+              , ( [ (name, var, go type_, plicity)
+                  | (name, var, type_, plicity) <- bindings
+                  ]
+                , go body
+                )
               )
             )
             (go <$> defaultBranch)
@@ -615,7 +617,7 @@ inlineIndex index targetScope solution@ ~(solutionVar, varArgs, solutionValue, s
 
       Case scrutinee branches defaultBranch -> do
         scrutinee' <- recurse scrutinee
-        branches' <- forM branches $ \(bindings, body) -> do
+        branches' <- forM branches $ \(span, (bindings, body)) -> do
           let
             go targetScope' bindings' =
               case bindings' of
@@ -629,7 +631,7 @@ inlineIndex index targetScope solution@ ~(solutionVar, varArgs, solutionValue, s
                   pure ((name, var, type', plicity):bindings''', body')
 
           (bindings', body') <- go targetScope bindings
-          pure (bindings', body')
+          pure (span, (bindings', body'))
         defaultBranch' <- forM defaultBranch recurse
         pure $ makeCase scrutinee' branches' defaultBranch'
 
