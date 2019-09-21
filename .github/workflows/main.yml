@@ -16,6 +16,8 @@ jobs:
     - name: Setup Stack
       run: stack setup
     - name: Build dependencies
-      run: stack build --dependencies-only
+      run: stack test --dependencies-only
+    - name: Build
+      run: stack test --no-run-tests
     - name: Run tests
       run: stack test
