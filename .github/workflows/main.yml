@@ -1,0 +1,23 @@
+name: Tests
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Install Stack
+      run: curl -sSL https://get.haskellstack.org/ | sh
+    - name: Add ~/.local/bin to PATH
+      run: echo ::add-path::$HOME/.local/bin
+    - name: Setup Stack
+      run: stack setup
+    - name: Build dependencies
+      run: stack test --dependencies-only
+    - name: Build
+      run: stack test --no-run-tests
+    - name: Run tests
+      run: stack test
