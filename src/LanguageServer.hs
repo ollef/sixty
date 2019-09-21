@@ -140,15 +140,23 @@ messagePump lf receiveMessage = do
 
         (_, contents) <- fileContents lf uri
 
-        (maybeLocations, _) <- runTask state uri contents Driver.Don'tPrune $
+        (maybeLocation, _) <- runTask state uri contents Driver.Don'tPrune $
           GoToDefinition.goToDefinition (uriToFilePath uri) contents (positionFromPosition position)
 
-        let
-          maybeResponse =
-            foreach maybeLocations $ LSP.SingleLoc . uncurry spanToLocation
+        case maybeLocation of
+          Nothing ->
+            LSP.sendErrorResponseS
+              (LSP.sendFunc lf)
+              (LSP.responseId $ req ^. LSP.id)
+              LSP.UnknownErrorCode
+              "Couldn't find a definition to jump to under the cursor"
 
-        forM_ maybeResponse $ \response ->
-          LSP.sendFunc lf $ LSP.RspDefinition $ LSP.makeResponseMessage req response
+          Just (file, span) ->
+            LSP.sendFunc lf $
+              LSP.RspDefinition $
+              LSP.makeResponseMessage req $
+              LSP.SingleLoc $
+              spanToLocation file span
 
       _ ->
         pure ()
