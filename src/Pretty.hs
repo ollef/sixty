@@ -204,6 +204,9 @@ prettyLamTerm env term =
       Plicity.prettyAnnotation plicity <> lparen <> pretty name <+> ":" <+> prettyTerm 0 env type_ <> rparen
       <> prettyLamTerm env' scope
 
+    Syntax.Spanned _ term' ->
+      prettyLamTerm env term'
+
     t ->
       "." <+> prettyTerm lamPrec env t
 
@@ -216,6 +219,9 @@ prettyPiTerm env term =
       in
       Plicity.prettyAnnotation plicity <> lparen <> pretty name <+> ":" <+> prettyTerm 0 env type_ <> rparen
       <> prettyPiTerm env' scope
+
+    Syntax.Spanned _ term' ->
+      prettyPiTerm env term'
 
     t ->
       " ->" <+> prettyTerm funPrec env t
