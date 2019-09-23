@@ -86,45 +86,32 @@ elaborateCase context scrutinee scrutineeType branches expectedType = do
   scrutineeValue <- Elaboration.evaluate context scrutinee
   isPatternScrutinee <- isPatternValue context scrutineeValue
 
-  if isPatternScrutinee then
-    elaborateWithCoverage context Config
-      { _expectedType = expectedType
-      , _scrutinees = pure (Explicit, scrutineeValue)
-      , _clauses =
-        [ Clause
-          { _span = Span.add patSpan rhsSpan
-          , _matches = [Match scrutineeValue scrutineeValue Explicit pat scrutineeType]
-          , _rhs = rhs'
-          }
-        | (pat@(Presyntax.Pattern patSpan _), rhs'@(Presyntax.Term rhsSpan _)) <- branches
-        ]
-      , _usedClauses = usedClauses
-      , _coveredConstructors = mempty
-      , _matchKind = Error.Branch
-      }
-  else do
-    (context', var) <- Context.extendUnnamed context "scrutinee" scrutineeType
+  (context', var) <-
+    if isPatternScrutinee then
+      Context.extendUnnamedDef context "scrutinee" scrutineeValue scrutineeType
+    else
+      Context.extendUnnamed context "scrutinee" scrutineeType
 
-    let
-      scrutineeVarValue =
-        Domain.var var
-    term <- elaborateWithCoverage context' Config
-      { _expectedType = expectedType
-      , _scrutinees = pure (Explicit, scrutineeVarValue)
-      , _clauses =
-        [ Clause
-          { _span = Span.add patSpan rhsSpan
-          , _matches = [Match scrutineeVarValue scrutineeVarValue Explicit pat scrutineeType]
-          , _rhs = rhs'
-          }
-        | (pat@(Presyntax.Pattern patSpan _), rhs'@(Presyntax.Term rhsSpan _)) <- branches
-        ]
-      , _usedClauses = usedClauses
-      , _coveredConstructors = mempty
-      , _matchKind = Error.Branch
-      }
-    scrutineeType' <- Readback.readback (Context.toEnvironment context) scrutineeType
-    pure $ Syntax.Let "scrutinee" scrutinee scrutineeType' term
+  let
+    scrutineeVarValue =
+      Domain.var var
+  term <- elaborateWithCoverage context' Config
+    { _expectedType = expectedType
+    , _scrutinees = pure (Explicit, scrutineeVarValue)
+    , _clauses =
+      [ Clause
+        { _span = Span.add patSpan rhsSpan
+        , _matches = [Match scrutineeVarValue scrutineeVarValue Explicit pat scrutineeType]
+        , _rhs = rhs'
+        }
+      | (pat@(Presyntax.Pattern patSpan _), rhs'@(Presyntax.Term rhsSpan _)) <- branches
+      ]
+    , _usedClauses = usedClauses
+    , _coveredConstructors = mempty
+    , _matchKind = Error.Branch
+    }
+  scrutineeType' <- Readback.readback (Context.toEnvironment context) scrutineeType
+  pure $ Syntax.Let "scrutinee" scrutinee scrutineeType' term
 
 isPatternValue :: Context v -> Domain.Value -> M Bool
 isPatternValue context value = do
