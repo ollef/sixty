@@ -416,9 +416,13 @@ checkUnspanned context term expectedType = do
 
     (Presyntax.Lam (Presyntax.ExplicitPattern pat) body, Domain.Fun source domain) -> do
       source' <- readback context source
-      (context', var) <- Context.extendUnnamed context "x" source
+      maybeBinding <- runMaybeT $ SuggestedName.patternBinding context pat
+      let
+        binding =
+          fromMaybe (Binding.Unspanned "x") maybeBinding
+      (context', var) <- Context.extendUnnamed context (Binding.toName binding) source
       body' <- Matching.elaborateSingle context' var Explicit pat body domain
-      pure $ Syntax.Lam "x" source' Explicit body'
+      pure $ Syntax.Lam binding source' Explicit body'
 
     (Presyntax.Lam (Presyntax.ImplicitPattern _ namedPats) body, _)
       | HashMap.null namedPats ->
