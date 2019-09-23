@@ -62,7 +62,7 @@ cursorAction filePath contents (Position.LineColumn line column) k = do
             (_context env)
             ((,) (Scope.KeyedName key (Name.Qualified moduleName name)) <$>_varSpans env)
             term
-            (toLineColumns $ Span.absoluteFrom defPos actionSpan)
+            (toLineColumns $ Span.trim contents $ Span.absoluteFrom defPos actionSpan)
       context <- Context.empty $ Scope.KeyedName key qualifiedName
       definitionAction
         k'
