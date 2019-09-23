@@ -201,12 +201,12 @@ shiftImplicit name value type_ (Clause (Presyntax.Clause span patterns term) mat
             (Presyntax.ImplicitPattern patSpan (HashMap.delete name namedPats):patterns')
             term
           )
-          (matches Tsil.:> Matching.Match value Implicit (namedPats HashMap.! name) type_)
+          (matches Tsil.:> Matching.Match value value Implicit (namedPats HashMap.! name) type_)
 
     _ ->
       Clause
         (Presyntax.Clause span patterns term)
-        (matches Tsil.:> Matching.Match value Implicit (Presyntax.Pattern span Presyntax.WildcardPattern) type_)
+        (matches Tsil.:> Matching.Match value value Implicit (Presyntax.Pattern span Presyntax.WildcardPattern) type_)
 
 shiftExplicit :: Context v -> Domain.Value -> Domain.Type -> Clause -> M Clause
 shiftExplicit context value type_ clause@(Clause (Presyntax.Clause span patterns term) matches) =
@@ -215,7 +215,7 @@ shiftExplicit context value type_ clause@(Clause (Presyntax.Clause span patterns
       pure $
         Clause
           (Presyntax.Clause span patterns' term)
-          (matches Tsil.:> Matching.Match value Explicit pat type_)
+          (matches Tsil.:> Matching.Match value value Explicit pat type_)
 
     Presyntax.ImplicitPattern patSpan _:patterns' -> do
       Context.report

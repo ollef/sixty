@@ -70,7 +70,7 @@ data Clause = Clause
   , _rhs :: !Presyntax.Term
   }
 
-data Match = Match !Domain.Value !Plicity !Presyntax.Pattern !Domain.Type
+data Match = Match !Domain.Value !Domain.Value !Plicity !Presyntax.Pattern !Domain.Type
 
 -------------------------------------------------------------------------------
 
@@ -93,7 +93,7 @@ elaborateCase context scrutinee scrutineeType branches expectedType = do
       , _clauses =
         [ Clause
           { _span = Span.add patSpan rhsSpan
-          , _matches = [Match scrutineeValue Explicit pat scrutineeType]
+          , _matches = [Match scrutineeValue scrutineeValue Explicit pat scrutineeType]
           , _rhs = rhs'
           }
         | (pat@(Presyntax.Pattern patSpan _), rhs'@(Presyntax.Term rhsSpan _)) <- branches
@@ -114,7 +114,7 @@ elaborateCase context scrutinee scrutineeType branches expectedType = do
       , _clauses =
         [ Clause
           { _span = Span.add patSpan rhsSpan
-          , _matches = [Match scrutineeVarValue Explicit pat scrutineeType]
+          , _matches = [Match scrutineeVarValue scrutineeVarValue Explicit pat scrutineeType]
           , _rhs = rhs'
           }
         | (pat@(Presyntax.Pattern patSpan _), rhs'@(Presyntax.Term rhsSpan _)) <- branches
@@ -196,7 +196,7 @@ elaborateClauses context clauses expectedType = do
     , _scrutinees =
       case clauses of
         firstClause:_ ->
-          [(plicity, value) | Match value plicity _ _ <- _matches firstClause]
+          [(plicity, value) | Match value _ plicity _ _ <- _matches firstClause]
 
         _ ->
           mempty
@@ -231,7 +231,7 @@ elaborateSingle context scrutinee plicity pat@(Presyntax.Pattern patSpan _) rhs@
       , _clauses =
         [ Clause
           { _span = Span.add patSpan rhsSpan
-          , _matches = [Match scrutineeValue plicity pat scrutineeType]
+          , _matches = [Match scrutineeValue scrutineeValue plicity pat scrutineeType]
           , _rhs = rhs
           }
         ]
@@ -295,7 +295,7 @@ elaborate context config = do
 checkForcedPattern :: Context v -> Match -> M ()
 checkForcedPattern context match =
   case match of
-    Match value1 _ (Presyntax.Pattern span (Presyntax.Forced term)) type_ -> do
+    Match value1 _ _ (Presyntax.Pattern span (Presyntax.Forced term)) type_ -> do
       let
         context' =
           Context.spanned span context
@@ -432,12 +432,12 @@ simplifyMatch
   -> CoveredConstructors
   -> Match
   -> MaybeT M [Match]
-simplifyMatch context coveredConstructors (Match value plicity pat@(Presyntax.Pattern span unspannedPattern) type_) = do
-  value' <- lift $ Context.forceHead context value
+simplifyMatch context coveredConstructors (Match value forcedValue plicity pat@(Presyntax.Pattern span unspannedPattern) type_) = do
+  forcedValue' <- lift $ Context.forceHead context forcedValue
   let
     match' =
-      Match value' plicity pat type_
-  case (value', unspannedPattern) of
+      Match value forcedValue' plicity pat type_
+  case (forcedValue', unspannedPattern) of
     (Domain.Neutral (Domain.Con constr) spine, Presyntax.ConOrVar _ name pats) -> do
       maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
       case maybeScopeEntry of
@@ -553,7 +553,7 @@ matchPrepatterns context values patterns type_ =
                 values'
                 (Presyntax.ImplicitPattern patSpan (HashMap.delete name namedPats) : patterns')
                 domain
-            pure (Match value Implicit (namedPats HashMap.! name) source : matches, type'')
+            pure (Match value value Implicit (namedPats HashMap.! name) source : matches, type'')
 
           | otherwise -> do
             domain <- Evaluation.evaluateClosure domainClosure value
@@ -586,7 +586,7 @@ matchPrepatterns context values patterns type_ =
           let
             pattern_ =
               Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern
-          pure (Match value Constraint pattern_ source : matches, type'')
+          pure (Match value value Constraint pattern_ source : matches, type'')
 
         _ ->
           panic "matchPrepatterns constraint non-pi"
@@ -606,7 +606,7 @@ matchPrepatterns context values patterns type_ =
   where
     explicitFunCase value values' pat patterns' source domain = do
       (matches, type'') <- matchPrepatterns context values' patterns' domain
-      pure (Match value Explicit pat source : matches, type'')
+      pure (Match value value Explicit pat source : matches, type'')
 
 type PatternInstantiation = Tsil (Binding, Domain.Value, Domain.Value)
 
@@ -629,7 +629,7 @@ expandAnnotations context matches =
 
         Nothing ->
           case match of
-            Match term plicity (Presyntax.Pattern span (Presyntax.Anno pat annoType)) type_ -> do
+            Match value forcedValue plicity (Presyntax.Pattern span (Presyntax.Anno pat annoType)) type_ -> do
               lift $ do
                 annoType' <- Elaboration.check context annoType Builtin.type_
                 annoType'' <- Elaboration.evaluate context annoType'
@@ -638,7 +638,7 @@ expandAnnotations context matches =
                     Context.spanned span context
                 _ <- Context.try_ context' $ Unification.unify context' Flexibility.Rigid annoType'' type_
                 pure ()
-              pure $ Match term plicity pat type_ : matches'
+              pure $ Match value forcedValue plicity pat type_ : matches'
 
             _ ->
               fail "couldn't create instantitation for prefix"
@@ -646,18 +646,18 @@ expandAnnotations context matches =
 matchInstantiation :: Context v -> Match -> MaybeT M PatternInstantiation
 matchInstantiation context match =
   case match of
-    (Match _ _ (Presyntax.Pattern _ Presyntax.WildcardPattern) _) ->
+    (Match _ _ _ (Presyntax.Pattern _ Presyntax.WildcardPattern) _) ->
       pure mempty
 
-    (Match term _ (Presyntax.Pattern span (Presyntax.ConOrVar _ prename@(Name.Pre name) [])) type_) -> do
+    (Match value _ _ (Presyntax.Pattern span (Presyntax.ConOrVar _ prename@(Name.Pre name) [])) type_) -> do
       maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) prename
       if HashSet.null $ foldMap Scope.entryConstructors maybeScopeEntry then
-        pure $ pure (Binding.Spanned span $ Name name, term, type_)
+        pure $ pure (Binding.Spanned span $ Name name, value, type_)
 
       else
         fail "No match instantiation"
 
-    (Match _ _ (Presyntax.Pattern _ (Presyntax.Forced _)) _) ->
+    (Match _ _ _ (Presyntax.Pattern _ (Presyntax.Forced _)) _) ->
       pure mempty
 
     _ ->
@@ -683,6 +683,7 @@ splitConstructorOr context config matches k =
     match:matches' ->
       case match of
         Match
+          scrutinee
           (Domain.Neutral (Domain.Var var) Tsil.Empty)
           _
           (Presyntax.Pattern span (Presyntax.ConOrVar _ name _))
@@ -703,7 +704,7 @@ splitConstructorOr context config matches k =
                     splitConstructorOr context config matches' k
 
                   Elaboration.Resolved constr ->
-                    splitConstructor context config var span constr type_
+                    splitConstructor context config scrutinee var span constr type_
 
               _ ->
                 splitConstructorOr context config matches' k
@@ -714,12 +715,13 @@ splitConstructorOr context config matches k =
 splitConstructor
   :: Context v
   -> Config
+  -> Domain.Value
   -> Var
   -> Span.Relative
   -> Name.QualifiedConstructor
   -> Domain.Type
   -> M (Syntax.Term v)
-splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor typeName _) outerType = do
+splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.QualifiedConstructor typeName _) outerType = do
   maybeDefinition <- fetch $ Query.ElaboratedDefinition typeName
   case maybeDefinition of
     Just (Syntax.DataDefinition tele, _) -> do
@@ -753,7 +755,7 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
           matchedConstructors <-
             HashMap.fromListWith (<>) . concat . takeWhile (not . null) <$>
               mapM
-                (findVarConstructorMatches context scrutinee . _matches)
+                (findVarConstructorMatches context scrutineeVar . _matches)
                 (_clauses config)
 
           branches <- flip HashMap.traverseWithKey matchedConstructors $ \qualifiedConstr@(Name.QualifiedConstructor _ constr) patterns -> do
@@ -783,13 +785,13 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
             else
               Just <$> elaborate context config
                 { _coveredConstructors =
-                  IntMap.insertWith (<>) scrutinee (HashSet.fromMap $ void matchedConstructors) $
+                  IntMap.insertWith (<>) scrutineeVar (HashSet.fromMap $ void matchedConstructors) $
                   _coveredConstructors config
                 }
 
-          scrutinee' <- Elaboration.readback context (Domain.var scrutinee)
+          scrutinee <- Elaboration.readback context scrutineeValue
 
-          pure $ Syntax.Case scrutinee' branches defaultBranch
+          pure $ Syntax.Case scrutinee branches defaultBranch
 
         ((plicity1, param):params', Domain.Telescope.Extend _ _ plicity2 domainClosure)
           | plicity1 == plicity2 -> do
@@ -821,7 +823,7 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
               Constraint ->
                 pure (Binding.Unspanned piName, patterns)
 
-          (context' , fieldVar) <- Context.extendBefore context scrutinee name source
+          (context' , fieldVar) <- Context.extendBefore context scrutineeVar name source
           let
             fieldValue =
               Domain.var fieldVar
@@ -836,7 +838,7 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
         Domain.Fun source domain -> do
           source'' <- Elaboration.readback context source
           (name, patterns') <- SuggestedName.nextExplicit context patterns
-          (context' , fieldVar) <- Context.extendBefore context scrutinee name source
+          (context' , fieldVar) <- Context.extendBefore context scrutineeVar name source
           let
             fieldValue =
               Domain.var fieldVar
@@ -850,7 +852,7 @@ splitConstructor outerContext config scrutinee span (Name.QualifiedConstructor t
         _ -> do
           let
             context' =
-              Context.defineWellOrdered context scrutinee $ Domain.Neutral (Domain.Con constr) conArgs
+              Context.defineWellOrdered context scrutineeVar $ Domain.Neutral (Domain.Con constr) conArgs
           result <- elaborate context' config
           pure $ Telescope.Empty result
 
@@ -864,7 +866,7 @@ findVarConstructorMatches context var matches =
       [] ->
         pure []
 
-      Match (Domain.Neutral (Domain.Var var') Tsil.Empty) _ (Presyntax.Pattern _ (Presyntax.ConOrVar span name patterns)) type_:matches' 
+      Match _ (Domain.Neutral (Domain.Var var') Tsil.Empty) _ (Presyntax.Pattern _ (Presyntax.ConOrVar span name patterns)) type_:matches'
         | var == var' -> do
           maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
           case maybeScopeEntry of
@@ -905,6 +907,7 @@ splitEqualityOr context config matches k =
     match:matches' ->
       case match of
         Match
+          _
           (Domain.Neutral (Domain.Var var) Tsil.Empty)
           _
           (Presyntax.Pattern _ Presyntax.WildcardPattern)
