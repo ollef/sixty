@@ -41,20 +41,25 @@ implicitPi name type_ plicity =
   Pi name type_ (implicitise plicity)
 
 apps :: Foldable f => Term v -> f (Plicity, Term v) -> Term v
-apps = foldl (\fun (plicity, arg) -> App fun plicity arg)
+apps =
+  foldl (\fun (plicity, arg) -> App fun plicity arg)
 
 funs :: Foldable f => f (Term v) -> Plicity -> Term v -> Term v
-funs args plicity res = foldr (\a b -> Fun a plicity b) res args
+funs args plicity res =
+  foldr (\a b -> Fun a plicity b) res args
 
 succ :: Term v -> Term (Succ v)
-succ = coerce
+succ =
+  coerce
 
 fromVoid :: Term Void -> Term v
-fromVoid = coerce
+fromVoid =
+  coerce
 
 coerce :: Term v -> Term v'
 -- Can't be Data.Coerce.coerce anymore due to role limitations for Telescopes
-coerce = unsafeCoerce
+coerce =
+  unsafeCoerce
 
 type MetaSolutions =
   IntMap Meta.Index (Syntax.Term Void, Syntax.Type Void)
