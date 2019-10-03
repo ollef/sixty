@@ -9,8 +9,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
-    - name: Install Stack
-      run: curl -sSL https://get.haskellstack.org/ | sh
     - name: Add ~/.local/bin to PATH
       run: echo ::add-path::$HOME/.local/bin
     - name: Setup Stack
