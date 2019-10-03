@@ -184,7 +184,8 @@ apply fun plicity arg =
       panic "applying non-function"
 
 applySpine :: Domain.Value -> Domain.Spine -> M Domain.Value
-applySpine = foldM (\val (plicity, arg) -> apply val plicity arg)
+applySpine =
+  foldM (\val (plicity, arg) -> apply val plicity arg)
 
 evaluateClosure :: Domain.Closure -> Domain.Value -> M Domain.Value
 evaluateClosure (Domain.Closure env body) argument = do
