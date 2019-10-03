@@ -23,7 +23,7 @@ data Value
   | Glued !Head Spine !(Lazy Value)
   | Lam !Name !Type !Plicity !Closure
   | Pi !Name !Type !Plicity !Closure
-  | Fun !Type !Type
+  | Fun !Type !Plicity !Type
   | Case !Value !Branches
 
 type Type = Value

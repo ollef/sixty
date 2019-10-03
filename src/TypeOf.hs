@@ -17,7 +17,6 @@ import qualified Environment
 import qualified Evaluation
 import qualified Meta
 import Monad
-import Plicity
 import qualified Query
 import qualified Syntax
 import Syntax.Telescope (Telescope)
@@ -102,8 +101,8 @@ typeOfApplication context type_ spine = do
       type' <- typeOfApplication context type_ spine'
       type'' <- Context.forceHead context type'
       case type'' of
-        Domain.Fun _ domain
-          | Explicit <- plicity ->
+        Domain.Fun _ plicity' domain
+          | plicity == plicity' ->
             pure domain
 
         Domain.Pi _ _ plicity' domainClosure

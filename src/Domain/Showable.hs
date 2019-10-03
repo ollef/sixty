@@ -20,7 +20,7 @@ data Value
   | Glued !Domain.Head Spine !Value
   | Lam !Name !Type !Plicity !Closure
   | Pi !Name !Type !Plicity !Closure
-  | Fun !Type !Type
+  | Fun !Type !Plicity !Type
   | Case !Value !Branches
   deriving Show
 
@@ -55,8 +55,8 @@ to value =
     Domain.Pi name type_ plicity closure ->
       Pi name <$> to type_ <*> pure plicity <*> closureTo closure
 
-    Domain.Fun source domain ->
-      Fun <$> to source <*> to domain
+    Domain.Fun source plicity domain ->
+      Fun <$> to source <*> pure plicity <*> to domain
 
     Domain.Case scrutinee branches ->
       Case <$> to scrutinee <*> branchesTo branches

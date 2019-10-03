@@ -140,7 +140,7 @@ data InnerValue
   | Meta !Meta.Index (Tsil Value)
   | Let !Binding !Var !Value !Type !Value
   | Pi !Binding !Var !Type !Plicity !Type
-  | Fun !Type !Type
+  | Fun !Type !Plicity !Type
   | Lam !Binding !Var !Type !Plicity !Value
   | App !Value !Plicity !Value
   | Case !Value Branches !(Maybe Value)
@@ -215,9 +215,9 @@ makePi name var source plicity domain =
     occurrences source <>
     occurrences domain
 
-makeFun :: Type -> Type -> Value
-makeFun source domain =
-  Value (Fun source domain) $
+makeFun :: Type -> Plicity -> Type -> Value
+makeFun source plicity domain =
+  Value (Fun source plicity domain) $
     occurrences source <>
     occurrences domain
 
@@ -287,9 +287,10 @@ evaluate env term =
         pure plicity <*>
         evaluate env' domain
 
-    Syntax.Fun source domain ->
+    Syntax.Fun source plicity domain ->
       makeFun <$>
         evaluate env source <*>
+        pure plicity <*>
         evaluate env domain
 
     Syntax.Lam name type_ plicity body -> do
@@ -372,8 +373,8 @@ readback env metas (Value value occs) =
         plicity
         (readback (Environment.extendVar env var) metas domain)
 
-    Fun source domain ->
-      Syntax.Fun (readback env metas source) (readback env metas domain)
+    Fun source plicity domain ->
+      Syntax.Fun (readback env metas source) plicity (readback env metas domain)
 
     Lam name var type_ plicity body ->
       Syntax.Lam
@@ -483,8 +484,8 @@ substitute subst
         Pi name var source plicity domain ->
           makePi name var (go source) plicity (go domain)
 
-        Fun source domain ->
-          makeFun (go source) (go domain)
+        Fun source plicity domain ->
+          makeFun (go source) plicity (go domain)
 
         Lam name var type_ plicity body ->
           makeLam name var (go type_) plicity (go body)
@@ -600,10 +601,10 @@ inlineIndex index targetScope solution@ ~(solutionVar, varArgs, solutionValue, s
         domain' <- recurseScope var domain
         pure $ makePi name var source' plicity domain'
 
-      Fun source domain -> do
+      Fun source plicity domain -> do
         source' <- recurse source
         domain' <- recurse domain
-        pure $ makeFun source' domain'
+        pure $ makeFun source' plicity domain'
 
       Lam name var type_ plicity body -> do
         type' <- recurse type_

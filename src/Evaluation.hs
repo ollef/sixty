@@ -79,10 +79,10 @@ evaluate env term =
       t' <- evaluate env t
       pure $ Domain.Pi (Binding.toName b) t' p (Domain.Closure env s)
 
-    Syntax.Fun t1 t2 -> do
+    Syntax.Fun t1 p t2 -> do
       t1' <- evaluate env t1
       t2' <- evaluate env t2
-      pure $ Domain.Fun t1' t2'
+      pure $ Domain.Fun t1' p t2'
 
     Syntax.Lam b t p s -> do
       t' <- evaluate env t

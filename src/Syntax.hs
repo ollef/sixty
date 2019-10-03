@@ -25,7 +25,7 @@ data Term v
   | Meta !Meta.Index
   | Let !Binding !(Term v) !(Type v) !(Scope Term v)
   | Pi !Binding !(Type v) !Plicity !(Scope Type v)
-  | Fun !(Type v) !(Type v)
+  | Fun !(Type v) !Plicity !(Type v)
   | Lam !Binding !(Type v) !Plicity !(Scope Term v)
   | App !(Term v) !Plicity !(Term v)
   | Case !(Term v) (Branches v) !(Maybe (Term v))
@@ -43,8 +43,8 @@ implicitPi name type_ plicity =
 apps :: Foldable f => Term v -> f (Plicity, Term v) -> Term v
 apps = foldl (\fun (plicity, arg) -> App fun plicity arg)
 
-funs :: Foldable f => f (Term v) -> Term v -> Term v
-funs args res = foldr Fun res args
+funs :: Foldable f => f (Term v) -> Plicity -> Term v -> Term v
+funs args plicity res = foldr (\a b -> Fun a plicity b) res args
 
 succ :: Term v -> Term (Succ v)
 succ = coerce
@@ -75,8 +75,8 @@ constructorFieldPlicities type_ =
     Pi _ _ plicity type' ->
       plicity : constructorFieldPlicities type'
 
-    Fun _ type' ->
-      Explicit : constructorFieldPlicities type'
+    Fun _ plicity type' ->
+      plicity : constructorFieldPlicities type'
 
     _ ->
       []

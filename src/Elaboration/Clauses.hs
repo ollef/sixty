@@ -57,7 +57,7 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
               (Domain.var var)
           explicitFunCase context' (Binding.Unspanned name) var source domain
 
-      Domain.Fun source domain
+      Domain.Fun source Explicit domain
         | HashMap.null implicits -> do
           binding <- nextExplicitBinding context clauses
           (context', var) <- Context.extendUnnamed context (Binding.toName binding) source

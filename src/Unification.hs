@@ -112,21 +112,24 @@ unify context flexibility value1 value2 = do
       | plicity1 == plicity2 ->
       unifyAbstraction name1 source1 domainClosure1 source2 domainClosure2
 
-    (Domain.Pi name1 source1 Explicit domainClosure1, Domain.Fun source2 domain2) -> do
-      unify context flexibility source2 source1
-      (context', var) <- Context.extendUnnamed context name1 source1
-      domain1 <- Evaluation.evaluateClosure domainClosure1 $ Domain.var var
-      unify context' flexibility domain1 domain2
+    (Domain.Pi name1 source1 plicity1 domainClosure1, Domain.Fun source2 plicity2 domain2)
+      | plicity1 == plicity2 -> do
+        unify context flexibility source2 source1
+        (context', var) <- Context.extendUnnamed context name1 source1
+        domain1 <- Evaluation.evaluateClosure domainClosure1 $ Domain.var var
+        unify context' flexibility domain1 domain2
 
-    (Domain.Fun source1 domain1, Domain.Pi name2 source2 Explicit domainClosure2) -> do
-      unify context flexibility source2 source1
-      (context', var) <- Context.extendUnnamed context name2 source2
-      domain2 <- Evaluation.evaluateClosure domainClosure2 $ Domain.var var
-      unify context' flexibility domain1 domain2
+    (Domain.Fun source1 plicity1 domain1, Domain.Pi name2 source2 plicity2 domainClosure2)
+      | plicity1 == plicity2 -> do
+        unify context flexibility source2 source1
+        (context', var) <- Context.extendUnnamed context name2 source2
+        domain2 <- Evaluation.evaluateClosure domainClosure2 $ Domain.var var
+        unify context' flexibility domain1 domain2
 
-    (Domain.Fun source1 domain1, Domain.Fun source2 domain2) -> do
-      unify context flexibility source2 source1
-      unify context flexibility domain1 domain2
+    (Domain.Fun source1 plicity1 domain1, Domain.Fun source2 plicity2 domain2)
+      | plicity1 == plicity2 -> do
+        unify context flexibility source2 source1
+        unify context flexibility domain1 domain2
 
     -- Eta expand
     (Domain.Lam name1 type1 plicity1 closure1, v2) -> do
@@ -612,9 +615,10 @@ checkInnerSolution outerContext occurs env flexibility value = do
         <*> pure plicity
         <*> checkInnerClosure outerContext occurs env flexibility closure
 
-    Domain.Fun source domain ->
+    Domain.Fun source plicity domain ->
       Syntax.Fun
         <$> checkInnerSolution outerContext occurs env flexibility source
+        <*> pure plicity
         <*> checkInnerSolution outerContext occurs env flexibility domain
 
     Domain.Case scrutinee (Domain.Branches env' branches defaultBranch) -> do
@@ -746,7 +750,7 @@ pruneMeta context meta allowedArgs = do
 
         allowed:alloweds' ->
           case type_ of
-            Domain.Fun source domain -> do
+            Domain.Fun source plicity domain -> do
               source' <-
                 Readback.readback
                   (Context.toEnvironment context')
@@ -762,7 +766,7 @@ pruneMeta context meta allowedArgs = do
                     (Domain.Glued (Domain.Var fakeVar) mempty $ Lazy $ throwError $ Error.TypeMismatch mempty)
                     source
               body <- go alloweds' context'' domain
-              pure $ Syntax.Lam "x" source' Explicit body
+              pure $ Syntax.Lam "x" source' plicity body
 
             Domain.Pi name source plicity domainClosure -> do
               (context'', v) <-

@@ -192,7 +192,7 @@ inferDataDefinition context preParams constrs paramVars =
           returnType <- force lazyReturnType
           let
             type_ =
-              Syntax.funs types' returnType
+              Syntax.funs types' Explicit returnType
           pure [(constr, Syntax.Let thisBinding this thisType type_)]
       pure
         ( Telescope.Empty (Syntax.ConstructorDefinitions $ HashMap.fromList $ concat constrs')
@@ -271,9 +271,9 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
           domain' <- goTerm context'' domain
           pure $ Syntax.Pi binding source plicity domain'
 
-        Syntax.Fun source domain -> do
+        Syntax.Fun source plicity domain -> do
           domain' <- goTerm context' domain
-          pure $ Syntax.Fun source domain'
+          pure $ Syntax.Fun source plicity domain'
 
         _ -> do
           constrType' <- evaluate context' constrType
@@ -290,10 +290,10 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
           domain' <- goValue context'' domain
           pure $ Syntax.Pi (Binding.Unspanned name) source' plicity domain'
 
-        Domain.Fun source domain -> do
+        Domain.Fun source plicity domain -> do
           source' <- readback context' source
           domain' <- goValue context' domain
-          pure $ Syntax.Fun source' domain'
+          pure $ Syntax.Fun source' plicity domain'
 
         Domain.Neutral (Domain.Var headVar) indices
           | headVar == dataVar ->
@@ -414,7 +414,7 @@ checkUnspanned context term expectedType = do
     (Presyntax.Lam (Presyntax.ExplicitPattern pat) body, Domain.Pi name source Explicit domainClosure) ->
       checkLambda context name source Explicit pat domainClosure body
 
-    (Presyntax.Lam (Presyntax.ExplicitPattern pat) body, Domain.Fun source domain) -> do
+    (Presyntax.Lam (Presyntax.ExplicitPattern pat) body, Domain.Fun source Explicit domain) -> do
       source' <- readback context source
       maybeBinding <- runMaybeT $ SuggestedName.patternBinding context pat
       let
@@ -460,7 +460,7 @@ checkUnspanned context term expectedType = do
           f <- subtype context domain expectedType
           pure $ f $ Syntax.App function' Explicit argument'
 
-        Domain.Fun source domain -> do
+        Domain.Fun source Explicit domain -> do
           f <- subtype context domain expectedType
           argument' <- check context argument source
           pure $ f $ Syntax.App function' Explicit argument'
@@ -470,7 +470,7 @@ checkUnspanned context term expectedType = do
           domain <- Context.newMetaType context
           let
             metaFunctionType =
-              Domain.Fun source expectedType
+              Domain.Fun source Explicit expectedType
           f <- Unification.tryUnify context functionType metaFunctionType
           g <- subtype context domain expectedType
           argument' <- check context argument source
@@ -527,7 +527,7 @@ inferUnspanned context term expectedTypeName =
       source' <- check context source Builtin.type_
       domain' <- check context domain Builtin.type_
       pure
-        ( Syntax.Fun source' domain'
+        ( Syntax.Fun source' Explicit domain'
         , Builtin.type_
         )
 
@@ -559,7 +559,7 @@ inferUnspanned context term expectedTypeName =
             , domain
             )
 
-        Domain.Fun source domain -> do
+        Domain.Fun source Explicit domain -> do
           argument' <- check context argument source
           pure
             ( Syntax.App function' Explicit argument'
@@ -571,7 +571,7 @@ inferUnspanned context term expectedTypeName =
           domain <- Context.newMetaType context
           let
             metaFunctionType =
-              Domain.Fun source domain
+              Domain.Fun source Explicit domain
 
           f <- Unification.tryUnify context functionType metaFunctionType
           argument' <- check context argument source
@@ -849,7 +849,7 @@ getExpectedTypeName context type_ = do
       domain <- Evaluation.evaluateClosure domainClosure $ Domain.var var
       getExpectedTypeName context' domain
 
-    Domain.Fun _ domain ->
+    Domain.Fun _ _ domain ->
       getExpectedTypeName context domain
 
     Domain.Lam {} ->
@@ -900,10 +900,10 @@ insertMetas context until type_ = do
     (UntilTheEnd, Domain.Pi _ source plicity domainClosure) ->
       instantiate source plicity domainClosure
 
-    (UntilTheEnd, Domain.Fun source domain) -> do
+    (UntilTheEnd, Domain.Fun source plicity domain) -> do
       meta <- Context.newMeta source context
       (args, res) <- insertMetas context until domain
-      pure ((Explicit, meta) : args, res)
+      pure ((plicity, meta) : args, res)
 
     (UntilExplicit, Domain.Pi _ source Implicit domainClosure) ->
       instantiate source Implicit domainClosure
@@ -921,6 +921,20 @@ insertMetas context until type_ = do
             value =
               Builtin.Refl kind term1 term2
           domain <- Evaluation.evaluateClosure domainClosure value
+          (args, res) <- insertMetas context until domain
+          pure ((Constraint, f value) : args, res)
+
+        _ ->
+          panic "insertMetas: non-equality constraint"
+
+    (_, Domain.Fun source Constraint domain) -> do
+      source' <- Context.forceHead context source
+      case source' of
+        Builtin.Equals kind term1 term2 -> do
+          f <- Unification.tryUnifyD context term1 term2
+          let
+            value =
+              Builtin.Refl kind term1 term2
           (args, res) <- insertMetas context until domain
           pure ((Constraint, f value) : args, res)
 

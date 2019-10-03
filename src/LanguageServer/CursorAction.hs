@@ -221,7 +221,7 @@ termAction k env term =
         termAction k env source <|>
         termAction k env' domain
 
-    Syntax.Fun source domain ->
+    Syntax.Fun source _ domain ->
       termAction k env source <|>
       termAction k env domain
 

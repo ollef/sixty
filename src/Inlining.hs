@@ -70,7 +70,7 @@ data Value
   | Meta !Meta.Index
   | Let !Binding !Var !Value !Type !Value
   | Pi !Binding !Var !Type !Plicity !Type
-  | Fun !Type !Type
+  | Fun !Type !Plicity !Type
   | Lam !Binding !Var !Type !Plicity !Value
   | App !Value !Plicity !Value
   | Case !Value Branches !(Maybe Value)
@@ -128,8 +128,8 @@ evaluate env term =
         pure plicity <*>
         evaluate env' domain
 
-    Syntax.Fun source domain ->
-      Fun <$> evaluate env source <*> evaluate env domain
+    Syntax.Fun source plicity domain ->
+      Fun <$> evaluate env source <*> pure plicity <*> evaluate env domain
 
     Syntax.Lam name type_ plicity body -> do
       (env', var) <- Environment.extend env
@@ -199,8 +199,8 @@ readback env value =
           Environment.extendVar env var
       Syntax.Pi name (readback env source) plicity (readback env' domain)
 
-    Fun source domain ->
-      Syntax.Fun (readback env source) (readback env domain)
+    Fun source plicity domain ->
+      Syntax.Fun (readback env source) plicity (readback env domain)
 
     Lam name var type_ plicity body -> do
       let

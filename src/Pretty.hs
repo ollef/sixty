@@ -21,7 +21,7 @@ import Name (Name(Name))
 import qualified Name
 import Binding (Binding)
 import qualified Binding
-import qualified Plicity
+import Plicity
 import Query (Query)
 import qualified Query
 import qualified Query.Mapped as Mapped
@@ -115,9 +115,9 @@ prettyTerm prec env term =
       prettyParen (prec > funPrec) $
         prettyPiTerm env term
 
-    Syntax.Fun source domain ->
+    Syntax.Fun source plicity domain ->
       prettyParen (prec > funPrec) $
-        prettyTerm (funPrec + 1) env source <+> "->" <+> prettyTerm funPrec env domain
+        Plicity.prettyAnnotation plicity <> prettyTerm (funPrec + 1) env source <+> "->" <+> prettyTerm funPrec env domain
 
     Syntax.Lam {} ->
       prettyParen (prec > lamPrec) $

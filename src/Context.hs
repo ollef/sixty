@@ -317,7 +317,7 @@ dependencies context value = do
     Domain.Pi name type' _ closure ->
       abstractionDependencies name type' closure
 
-    Domain.Fun source domain -> do
+    Domain.Fun source _ domain -> do
       sourceVars <- dependencies context source
       domainVars <- dependencies context domain
       pure $ sourceVars <> domainVars
@@ -586,7 +586,8 @@ instantiateType context type_ spine = do
     (_, []) ->
       pure type'
 
-    (Domain.Fun _ domain, (Explicit, _):spine') ->
+    (Domain.Fun _ plicity1 domain, (plicity2, _):spine')
+      | plicity1 == plicity2 ->
       instantiateType context domain spine'
 
     (Domain.Pi _ _ plicity1 domainClosure, (plicity2, arg):spine')
