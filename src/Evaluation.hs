@@ -64,34 +64,34 @@ evaluate env term =
       else
         pure $ Domain.global name
 
-    Syntax.Con c ->
-      pure $ Domain.con c
+    Syntax.Con con ->
+      pure $ Domain.con con
 
-    Syntax.Meta i ->
-      pure $ Domain.meta i
+    Syntax.Meta meta ->
+      pure $ Domain.meta meta
 
-    Syntax.Let _ t _ s -> do
-      t' <- evaluate env t
-      env' <- Environment.extendValue env t'
-      evaluate env' s
+    Syntax.Let _ type_ _ body -> do
+      type' <- evaluate env type_
+      env' <- Environment.extendValue env type'
+      evaluate env' body
 
-    Syntax.Pi b t p s -> do
-      t' <- evaluate env t
-      pure $ Domain.Pi (Binding.toName b) t' p (Domain.Closure env s)
+    Syntax.Pi binding source plicity domain -> do
+      source' <- evaluate env source
+      pure $ Domain.Pi (Binding.toName binding) source' plicity (Domain.Closure env domain)
 
-    Syntax.Fun t1 p t2 -> do
-      t1' <- evaluate env t1
-      t2' <- evaluate env t2
-      pure $ Domain.Fun t1' p t2'
+    Syntax.Fun source plicity domain -> do
+      source' <- evaluate env source
+      domain' <- evaluate env domain
+      pure $ Domain.Fun source' plicity domain'
 
-    Syntax.Lam b t p s -> do
-      t' <- evaluate env t
-      pure $ Domain.Lam (Binding.toName b) t' p (Domain.Closure env s)
+    Syntax.Lam binding type_ plicity body -> do
+      type' <- evaluate env type_
+      pure $ Domain.Lam (Binding.toName binding) type' plicity (Domain.Closure env body)
 
-    Syntax.App t1 p t2 -> do
-      t1' <- evaluate env t1
-      t2' <- evaluate env t2
-      apply t1' p t2'
+    Syntax.App fun plicity arg -> do
+      fun' <- evaluate env fun
+      arg' <- evaluate env arg
+      apply fun' plicity arg'
 
     Syntax.Case scrutinee branches defaultBranch -> do
       scrutineeValue <- evaluate env scrutinee
