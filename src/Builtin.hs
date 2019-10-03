@@ -6,6 +6,7 @@ import qualified Data.Tsil as Tsil
 import qualified Domain
 import qualified Name
 import Plicity
+import qualified Syntax
 
 module_ :: Name.Module
 module_ =
@@ -36,6 +37,15 @@ pattern Equals k a b =
   Domain.Neutral
     (Domain.Global EqualsName)
     (Tsil.Empty Tsil.:> (Implicit, k) Tsil.:> (Explicit, a) Tsil.:> (Explicit, b))
+
+equals
+  :: Syntax.Type v
+  -> Syntax.Term v
+  -> Syntax.Term v
+  -> Syntax.Term v
+equals k a b =
+  Syntax.apps (Syntax.Global EqualsName)
+    [(Implicit, k), (Explicit, a), (Explicit, b)]
 
 pattern ReflName :: Name.QualifiedConstructor
 pattern ReflName =

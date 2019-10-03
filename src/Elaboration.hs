@@ -1,6 +1,7 @@
 {-# language LambdaCase #-}
 {-# language OverloadedStrings #-}
 {-# language PackageImports #-}
+{-# language ViewPatterns #-}
 module Elaboration where
 
 import Protolude hiding (Seq, force, check, evaluate, until)
@@ -275,6 +276,10 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
           domain' <- goTerm context' domain
           pure $ Syntax.Fun source plicity domain'
 
+        (Syntax.appsView -> (hd@(Syntax.varView -> Just headIndex), indices))
+          | Context.lookupIndexVar headIndex context' == dataVar ->
+            termIndexEqualities context' (toList indices) (toList paramVars) hd mempty
+
         _ -> do
           constrType' <- evaluate context' constrType
           goValue context' constrType'
@@ -297,7 +302,7 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
 
         Domain.Neutral (Domain.Var headVar) indices
           | headVar == dataVar ->
-            indexEqualities context' (toList indices) (toList paramVars)
+            valueIndexEqualities context' (toList indices) (toList paramVars)
 
         _ -> do
           Unification.unify
@@ -309,12 +314,49 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
               ((\(plicity, var) -> (plicity, Domain.var var)) <$> paramVars))
           readback context' constrType
 
-    indexEqualities
+    termIndexEqualities
+      :: Context v
+      -> [(Plicity, Syntax.Term v)]
+      -> [(Plicity, Var)]
+      -> Syntax.Term v
+      -> Tsil (Plicity, Syntax.Term v)
+      -> M (Syntax.Term v)
+    termIndexEqualities context' indices paramVars' hd params =
+      case (indices, paramVars') of
+        ((plicity1, index):indices', (plicity2, paramVar):paramVars'')
+          | plicity1 == plicity2 -> do
+            index' <- evaluate context' index
+            index'' <- Context.forceHead context' index'
+            case index'' of
+              Domain.Neutral (Domain.Var indexVar) Tsil.Empty
+                | indexVar == paramVar ->
+                  termIndexEqualities context' indices' paramVars'' hd (params Tsil.:> (plicity1, index))
+
+              _ -> do
+                paramType <- readback context' $ Context.lookupVarType paramVar context'
+                param <- readback context' $ Domain.var paramVar
+                let
+                  source =
+                    Builtin.equals paramType index param
+
+                domain <- termIndexEqualities context' indices' paramVars'' hd (params Tsil.:> (plicity1, param))
+                pure $ Syntax.Fun source Constraint domain
+
+          | otherwise ->
+            panic "indexEqualities plicity mismatch"
+
+        ([], []) ->
+          pure $ Syntax.apps hd params
+
+        _ ->
+          panic "indexEqualities length mismatch"
+
+    valueIndexEqualities
       :: Context v
       -> [(Plicity, Domain.Value)]
       -> [(Plicity, Var)]
       -> M (Syntax.Term v)
-    indexEqualities context' indices paramVars' =
+    valueIndexEqualities context' indices paramVars' =
       case (indices, paramVars') of
         ((plicity1, index):indices', (plicity2, paramVar):paramVars'')
           | plicity1 == plicity2 -> do
@@ -322,7 +364,7 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
             case index' of
               Domain.Neutral (Domain.Var indexVar) Tsil.Empty
                 | indexVar == paramVar ->
-                  indexEqualities context' indices' paramVars''
+                  valueIndexEqualities context' indices' paramVars''
 
               _ -> do
                 let
@@ -334,9 +376,8 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
 
                 source' <- readback context' source
 
-                (context'', _) <- Context.extendUnnamed context' "eq" source
-                domain <- indexEqualities context'' indices' paramVars''
-                pure $ Syntax.Pi "eq" source' Constraint domain
+                domain <- valueIndexEqualities context' indices' paramVars''
+                pure $ Syntax.Fun source' Constraint domain
 
           | otherwise ->
             panic "indexEqualities plicity mismatch"

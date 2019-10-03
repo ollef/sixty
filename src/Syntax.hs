@@ -10,13 +10,15 @@ import Data.HashMap.Lazy (HashMap)
 import Unsafe.Coerce
 
 import "this" Data.IntMap (IntMap)
+import Binding (Binding)
+import Data.Tsil (Tsil)
+import qualified Data.Tsil as Tsil
 import Index
 import qualified Meta
 import qualified Name
 import Plicity
 import qualified Span
 import Syntax.Telescope (Telescope)
-import Binding (Binding)
 
 data Term v
   = Var !(Index v)
@@ -43,6 +45,35 @@ implicitPi name type_ plicity =
 apps :: Foldable f => Term v -> f (Plicity, Term v) -> Term v
 apps =
   foldl (\fun (plicity, arg) -> App fun plicity arg)
+
+appsView :: Term v -> (Term v, Tsil (Plicity, Term v))
+appsView term =
+  case term of
+    App t1 plicity t2 ->
+      second (Tsil.:> (plicity, t2)) $ appsView t1
+
+    Spanned span term' ->
+      case appsView term' of
+        (hd, Tsil.Empty) ->
+          (Spanned span hd, Tsil.Empty)
+
+        result ->
+          result
+
+    _ ->
+      (term, mempty)
+
+varView :: Term v -> Maybe (Index v)
+varView term =
+  case term of
+    Var v ->
+      Just v
+
+    Spanned _ term' ->
+      varView term'
+
+    _ ->
+      Nothing
 
 funs :: Foldable f => f (Term v) -> Plicity -> Term v -> Term v
 funs args plicity res =
