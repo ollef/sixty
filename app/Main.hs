@@ -6,6 +6,7 @@ module Main where
 import Protolude hiding (check, force)
 
 import qualified Data.HashSet as HashSet
+import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
 import Data.Text.Prettyprint.Doc.Render.Text
 import Options.Applicative
@@ -16,6 +17,7 @@ import qualified Error.Hydrated
 import qualified LanguageServer
 import qualified Name
 import qualified Pretty
+import qualified Project
 import qualified Query
 import qualified Syntax
 
@@ -49,7 +51,12 @@ checkCommand =
       (check <$>
         many (strArgument
         $ metavar "FILES..."
-        <> help "Input source FILES or directories"
+        <> help
+          (toS $ Text.unlines
+            [ "Input source files, project files, or directories."
+            , "If no files are given, I will look for a 'sixten.json' file in the current directory and its parent directories."
+            ]
+          )
         <> action "file"
         )
       )
@@ -59,12 +66,13 @@ checkCommand =
     <> header "sixten check"
 
 check :: [FilePath] -> IO ()
-check filePaths = do
+check argumentFiles = do
+  filePaths <- Project.filesFromArguments argumentFiles
   let
     prettyError err =
       Error.Hydrated.pretty err
 
-  ((), errs) <- Driver.runTask filePaths prettyError $
+  ((), errs) <- Driver.runTask (toList filePaths) prettyError $
     forM_ filePaths $ \filePath -> do
       (module_, _, defs) <- fetch $ Query.ParsedFile filePath
       let

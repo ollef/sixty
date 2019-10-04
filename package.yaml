@@ -38,11 +38,15 @@ dependencies:
 library:
   source-dirs: src
   dependencies:
+    - aeson
+    - aeson-casing
     - containers
     - data-default
     - dependent-map
     - dependent-sum
     - dependent-sum-template
+    - directory
+    - filepath
     - fingertree
     - haskell-lsp
     - lens
@@ -62,6 +66,7 @@ executables:
     dependencies:
       - optparse-applicative
       - sixty
+      - text
 
 tests:
   test-sixty:
