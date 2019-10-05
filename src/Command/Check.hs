@@ -42,4 +42,4 @@ check argumentFiles = do
             putDoc $ Pretty.prettyDefinition emptyPrettyEnv name def <> line
           putDoc line
   forM_ errs $ \err ->
-    liftIO $ putDoc $ err <> line
+    putDoc $ err <> line
