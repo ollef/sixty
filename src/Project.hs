@@ -18,17 +18,6 @@ data Project = Project
 
 Aeson.deriveJSON (Aeson.aesonDrop 1 Aeson.trainCase) ''Project
 
-filesFromProjectInWorkingDirectory :: IO (HashSet FilePath)
-filesFromProjectInWorkingDirectory = do
-  maybeProjectFile <- findProjectFile
-  case maybeProjectFile of
-    Nothing ->
-      -- TODO report error
-      pure mempty
-
-    Just file ->
-      listProjectFile file
-
 filesFromArguments :: [FilePath] -> IO (HashSet FilePath)
 filesFromArguments files =
   case files of
@@ -53,6 +42,17 @@ filesFromArguments files =
               | otherwise ->
                 -- TODO report error
                 pure mempty
+
+filesFromProjectInWorkingDirectory :: IO (HashSet FilePath)
+filesFromProjectInWorkingDirectory = do
+  maybeProjectFile <- findProjectFile
+  case maybeProjectFile of
+    Nothing ->
+      -- TODO report error
+      pure mempty
+
+    Just file ->
+      listProjectFile file
 
 findProjectFile :: IO (Maybe FilePath)
 findProjectFile = do
