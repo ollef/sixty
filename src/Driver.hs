@@ -9,6 +9,8 @@ import Protolude hiding (force, State, state)
 
 import Data.Dependent.Map (DMap)
 import qualified Data.Dependent.Map as DMap
+import Data.HashMap.Lazy (HashMap)
+import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import qualified Data.Text.IO as Text
 import Rock
@@ -76,20 +78,19 @@ data Prune
 
 runIncrementalTask
   :: State err
-  -> FilePath
-  -> Text
+  -> HashMap FilePath Text
   -> (Error.Hydrated -> Task Query err)
   -> Prune
   -> Task Query a
   -> IO (a, [err])
-runIncrementalTask state file text prettyError prune task =
+runIncrementalTask state files prettyError prune task =
   handleEx $ do
     startedVar <- newMVar mempty
     -- printVar <- newMVar 0
     let
-      readSourceFile_ file'
-        | file == file' = return text
-        | otherwise = readFile file'
+      readSourceFile_ file
+        | Just text <- HashMap.lookup file files = return text
+        | otherwise = readFile file
       traceFetch_
         :: GenRules (Writer TaskKind Query) Query
         -> GenRules (Writer TaskKind Query) Query
@@ -113,7 +114,7 @@ runIncrementalTask state file text prettyError prune task =
         verifyTraces (_tracesVar state) $
         traceFetch_ $
         writer writeErrors $
-        Rules.rules (pure file) readSourceFile_
+        Rules.rules (HashMap.keys files) readSourceFile_
     result <- Rock.runTask sequentially tasks task
     started <- readMVar startedVar
     errorsMap <- case prune of

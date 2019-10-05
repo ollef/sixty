@@ -11,6 +11,7 @@ import Protolude hiding (state)
 import Control.Concurrent.STM as STM
 import Control.Lens
 import Data.Default (def)
+import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.Rope.UTF16 as Rope
 import Data.Text (Text)
 import qualified Data.Text.IO as Text
@@ -29,9 +30,9 @@ import Rock (Task)
 import qualified Driver
 import qualified Error.Hydrated as Error (Hydrated)
 import qualified Error.Hydrated
-import qualified Position
-import qualified LanguageServer.Hover as Hover
 import qualified LanguageServer.GoToDefinition as GoToDefinition
+import qualified LanguageServer.Hover as Hover
+import qualified Position
 import Query (Query)
 import qualified Span
 
@@ -191,7 +192,7 @@ runTask state uri contents prune task = do
       (heading, body) <- Error.Hydrated.headingAndBody $ Error.Hydrated._error err
       pure (err, heading <> Doc.line <> body)
 
-  Driver.runIncrementalTask state (uriToFilePath uri) contents prettyError prune task
+  Driver.runIncrementalTask state (HashMap.singleton (uriToFilePath uri) contents) prettyError prune task
 
 -------------------------------------------------------------------------------
 
