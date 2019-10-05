@@ -48,6 +48,7 @@ library:
     - directory
     - filepath
     - fingertree
+    - fsnotify
     - haskell-lsp
     - lens
     - mtl
