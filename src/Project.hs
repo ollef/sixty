@@ -41,8 +41,7 @@ filesFromArguments files =
           isDir <- Directory.doesDirectoryExist file
           isFile <- Directory.doesFileExist file
           case () of
-            _
-              | isDir ->
+            _ | isDir ->
                 listDirectoryRecursive isSourcePath file
 
               | isFile, isProjectPath file ->
