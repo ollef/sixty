@@ -9,12 +9,13 @@ import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc as Doc
 import qualified Data.Text.Unsafe as Text
 import Rock
+import qualified System.Directory as Directory
 
+import qualified Binding
 import Error (Error)
 import qualified Error
 import qualified Error.Parsing
 import Name (Name)
-import qualified Binding
 import Plicity
 import qualified Position
 import qualified Pretty
@@ -165,11 +166,12 @@ headingAndBody error =
               "Its type is:" <> line <> line <> type'
             )
 
-pretty :: MonadFetch Query m => Hydrated -> m (Doc ann)
+pretty :: (MonadFetch Query m, MonadIO m) => Hydrated -> m (Doc ann)
 pretty h = do
+  filePath <- liftIO $ Directory.makeRelativeToCurrentDirectory $ _filePath h
   (heading, body) <- headingAndBody $ _error h
   pure $
-    Doc.pretty (_filePath h) <> ":" <> Doc.pretty (_lineColumn h) <> ":" <+> heading <> line <> line <>
+    Doc.pretty filePath <> ":" <> Doc.pretty (_lineColumn h) <> ":" <+> heading <> line <> line <>
     body <> line <> line <>
     spannedLine
   where
