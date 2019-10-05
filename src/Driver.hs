@@ -131,7 +131,6 @@ runIncrementalTask state file text prettyError prune task =
       errors = do
         (_ DMap.:=> Const errs) <- DMap.toList errorsMap
         errs
-    Text.hPutStrLn stderr $ "all errors length " <> show (length errors)
     return (result, errors)
   where
     handleEx m = do
