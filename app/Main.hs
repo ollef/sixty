@@ -5,21 +5,11 @@ module Main where
 
 import Protolude hiding (check, force)
 
-import qualified Data.HashSet as HashSet
 import qualified Data.Text as Text
-import Data.Text.Prettyprint.Doc
-import Data.Text.Prettyprint.Doc.Render.Text
 import Options.Applicative
-import Rock
 
-import qualified Driver
-import qualified Error.Hydrated
+import qualified Command.Check as Command
 import qualified LanguageServer
-import qualified Name
-import qualified Pretty
-import qualified Project
-import qualified Query
-import qualified Syntax
 
 main :: IO ()
 main =
@@ -48,7 +38,7 @@ checkCommand :: ParserInfo (IO ())
 checkCommand =
   info
     (helper <*>
-      (check <$>
+      (Command.check <$>
         many (strArgument
         $ metavar "FILES..."
         <> help
@@ -64,30 +54,3 @@ checkCommand =
     $ fullDesc
     <> progDesc "Type check a Sixten program"
     <> header "sixten check"
-
-check :: [FilePath] -> IO ()
-check argumentFiles = do
-  filePaths <- Project.filesFromArguments argumentFiles
-  let
-    prettyError err =
-      Error.Hydrated.pretty err
-
-  ((), errs) <- Driver.runTask (toList filePaths) prettyError $
-    forM_ filePaths $ \filePath -> do
-      (module_, _, defs) <- fetch $ Query.ParsedFile filePath
-      let
-        names =
-          HashSet.fromList $
-            Name.Qualified module_ . fst . snd <$> defs
-      emptyPrettyEnv <- Pretty.emptyM module_
-      liftIO $ putDoc $ "module" <+> pretty module_ <> line <> line
-      forM_ names $ \name -> do
-        type_ <- fetch $ Query.ElaboratedType name
-        liftIO $ putDoc $ Pretty.prettyDefinition emptyPrettyEnv name (Syntax.TypeDeclaration type_) <> line
-        maybeDef <- fetch $ Query.ElaboratedDefinition name
-        liftIO $ do
-          forM_ maybeDef $ \(def, _) ->
-            putDoc $ Pretty.prettyDefinition emptyPrettyEnv name def <> line
-          putDoc line
-  forM_ errs $ \err ->
-    liftIO $ putDoc $ err <> line
