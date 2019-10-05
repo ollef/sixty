@@ -6,7 +6,7 @@ import Protolude
 
 import qualified Data.HashSet as HashSet
 import Data.Text.Prettyprint.Doc
-import Data.Text.Prettyprint.Doc.Render.Text
+import Data.Text.Prettyprint.Doc.Render.Text (putDoc)
 import Rock
 
 import qualified Driver
