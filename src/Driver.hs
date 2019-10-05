@@ -95,13 +95,14 @@ runIncrementalTask state files prettyError prune task =
         :: GenRules (Writer TaskKind Query) Query
         -> GenRules (Writer TaskKind Query) Query
       traceFetch_ = identity
-        -- traceFetch
-        --   (\(Writer key) -> liftIO $ modifyMVar_ printVar $ \n -> do
-        --     _logAction logEnv_ $ fold (replicate n "| ") <> "fetching " <> show key
-        --     return $ n + 1)
-        --   (\_ _ -> liftIO $ modifyMVar_ printVar $ \n -> do
-        --     _logAction logEnv_ $ fold (replicate (n - 1) "| ") <> "*"
-        --     return $ n - 1)
+      -- traceFetch_ =
+      --   traceFetch
+      --     (\(Writer key) -> liftIO $ modifyMVar_ printVar $ \n -> do
+      --       putText $ fold (replicate n "| ") <> "fetching " <> show key
+      --       return $ n + 1)
+      --     (\_ _ -> liftIO $ modifyMVar_ printVar $ \n -> do
+      --       putText $ fold (replicate (n - 1) "| ") <> "*"
+      --       return $ n - 1)
       writeErrors :: Writer TaskKind Query a -> [Error] -> Task Query ()
       writeErrors (Writer key) errs = do
         errs' <- mapM (prettyError <=< Error.Hydrated.fromError) errs
