@@ -268,9 +268,9 @@ elaborate context config = do
           maybeInst <- solved context matches
           case maybeInst of
             Nothing -> do
-             Context.report context $ Error.IndeterminateIndexUnification $ _matchKind config
-             targetType <- Elaboration.readback context $ _expectedType config
-             pure $ Syntax.App (Syntax.Global Builtin.fail) Explicit targetType
+              Context.report context $ Error.IndeterminateIndexUnification $ _matchKind config
+              targetType <- Elaboration.readback context $ _expectedType config
+              pure $ Syntax.App (Syntax.Global Builtin.fail) Explicit targetType
 
             Just inst -> do
               context' <- Context.extendUnindexedDefs context inst
