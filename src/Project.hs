@@ -21,8 +21,9 @@ Aeson.deriveJSON (Aeson.aesonDrop 1 Aeson.trainCase) ''Project
 filesFromArguments :: [FilePath] -> IO (HashSet FilePath)
 filesFromArguments files =
   case files of
-    [] ->
-      filesFromProjectInWorkingDirectory
+    [] -> do
+      workingDirectory <- Directory.getCurrentDirectory
+      filesFromProjectInDirectory workingDirectory
 
     _ ->
       fmap mconcat $
@@ -43,9 +44,9 @@ filesFromArguments files =
                 -- TODO report error
                 pure mempty
 
-filesFromProjectInWorkingDirectory :: IO (HashSet FilePath)
-filesFromProjectInWorkingDirectory = do
-  maybeProjectFile <- findProjectFile
+filesFromProjectInDirectory :: FilePath -> IO (HashSet FilePath)
+filesFromProjectInDirectory directory = do
+  maybeProjectFile <- findProjectFile directory
   case maybeProjectFile of
     Nothing ->
       -- TODO report error
@@ -54,21 +55,20 @@ filesFromProjectInWorkingDirectory = do
     Just file ->
       listProjectFile file
 
-findProjectFile :: IO (Maybe FilePath)
-findProjectFile = do
-  currentDir <- Directory.getCurrentDirectory
+findProjectFile :: FilePath -> IO (Maybe FilePath)
+findProjectFile directory = do
   let
     candidateDirectories =
       map FilePath.joinPath $
       reverse $
       drop 1 $
       inits $
-      FilePath.splitDirectories currentDir
+      FilePath.splitDirectories directory
   runMaybeT $ asum $
-    foreach candidateDirectories $ \dir -> do
+    foreach candidateDirectories $ \candidateDirectory -> do
       let
         file =
-          dir FilePath.</> "sixten.json"
+          candidateDirectory FilePath.</> "sixten.json"
       fileExists <- liftIO $ Directory.doesFileExist file
       guard fileExists
       pure file

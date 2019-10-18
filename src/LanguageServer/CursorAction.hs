@@ -42,14 +42,31 @@ type Callback a =
 
 cursorAction
   :: FilePath
-  -> Text
   -> Position.LineColumn
   -> Callback a
   -> Task Query (Maybe a)
-cursorAction filePath contents (Position.LineColumn line column) k = do
+cursorAction filePath (Position.LineColumn line column) k = do
   result <- runM $ runMaybeT $ do
     (moduleName, _, _) <- fetch $ Query.ParsedFile filePath
     spans <- fetch $ Query.ModuleSpanMap moduleName
+    contents <- fetch $ Query.FileText filePath
+    let
+      -- TODO use the rope that we get from the LSP library instead
+      rope =
+        Rope.fromText contents
+
+      toLineColumn (Position.Absolute i) =
+        let
+          rope' =
+            Rope.take i rope
+        in
+        Position.LineColumn (Rope.rows rope') (Rope.columns rope')
+
+      toLineColumns (Span.Absolute start end) =
+        Span.LineColumns (toLineColumn start) (toLineColumn end)
+
+      pos =
+        Position.Absolute $ Rope.rowColumnCodeUnits (Rope.RowColumn line column) rope
 
     asum $ foreach (HashMap.toList spans) $ \((key, name), span@(Span.Absolute defPos _)) -> do
       guard $ span `Span.contains` pos
@@ -79,23 +96,6 @@ cursorAction filePath contents (Position.LineColumn line column) k = do
 
     Right result' ->
       result'
-  where
-    -- TODO use the rope that we get from the LSP library instead
-    rope =
-      Rope.fromText contents
-
-    toLineColumn (Position.Absolute i) =
-      let
-        rope' =
-          Rope.take i rope
-      in
-      Position.LineColumn (Rope.rows rope') (Rope.columns rope')
-
-    toLineColumns (Span.Absolute start end) =
-      Span.LineColumns (toLineColumn start) (toLineColumn end)
-
-    pos =
-      Position.Absolute $ Rope.rowColumnCodeUnits (Rope.RowColumn line column) rope
 
 data Environment v = Environment
   { _actionPosition :: !Position.Relative

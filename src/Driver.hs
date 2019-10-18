@@ -12,6 +12,7 @@ import qualified Data.Dependent.Map as DMap
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
+import Data.HashSet (HashSet)
 import qualified Data.Text.IO as Text
 import Rock
 
@@ -19,6 +20,7 @@ import Error (Error)
 import qualified Error.Hydrated as Error (Hydrated)
 import qualified Error.Hydrated
 import qualified Name
+import qualified Paths_sixty as Paths
 import Query (Query)
 import qualified Query
 import qualified Rules
@@ -59,16 +61,22 @@ runTask files prettyError task = do
 -------------------------------------------------------------------------------
 -- Incremental execution
 data State err = State
-  { _tracesVar :: !(MVar (Traces Query))
+  { _startedVar :: !(MVar (DMap Query MVar))
+  , _reverseDependenciesVar :: !(MVar (ReverseDependencies Query))
+  , _tracesVar :: !(MVar (Traces Query))
   , _errorsVar :: !(MVar (DMap Query (Const [err])))
   }
 
 initialState :: IO (State err)
 initialState = do
+  startedVar <- newMVar mempty
+  reverseDependenciesVar <- newMVar mempty
   tracesVar <- newMVar mempty
   errorsVar <- newMVar mempty
   return State
-    { _tracesVar = tracesVar
+    { _startedVar = startedVar
+    , _reverseDependenciesVar = reverseDependenciesVar
+    , _tracesVar = tracesVar
     , _errorsVar = errorsVar
     }
 
@@ -78,14 +86,53 @@ data Prune
 
 runIncrementalTask
   :: State err
+  -> HashSet FilePath
   -> HashMap FilePath Text
   -> (Error.Hydrated -> Task Query err)
   -> Prune
   -> Task Query a
   -> IO (a, [err])
-runIncrementalTask state files prettyError prune task =
+runIncrementalTask state changedFiles files prettyError prune task =
   handleEx $ do
-    startedVar <- newMVar mempty
+    do
+      reverseDependencies <- takeMVar $ _reverseDependenciesVar state
+      started <- takeMVar $ _startedVar state
+
+      case DMap.lookup Query.InputFiles started of
+        Nothing -> do
+          putMVar (_reverseDependenciesVar state) mempty
+          putMVar (_startedVar state) mempty
+
+        Just inputFilesVar -> do
+          inputFiles <- readMVar inputFilesVar
+          -- TODO find a nicer way to do this
+          builtinFile <- Paths.getDataFileName "builtin/Builtin.vix"
+          if HashSet.fromList inputFiles /= HashSet.insert builtinFile (HashSet.fromMap $ void files) then do
+            putMVar (_reverseDependenciesVar state) mempty
+            putMVar (_startedVar state) mempty
+
+          else do
+            changedFiles' <- flip filterM (toList changedFiles) $ \file -> do
+              case DMap.lookup (Query.FileText file) started of
+                Just resultVar -> do
+                  text <- readMVar resultVar
+                  pure $ Just text /= HashMap.lookup file files
+
+                Nothing ->
+                  pure True
+            Text.hPutStrLn stderr $ "Driver changed files " <> show changedFiles'
+            let
+              (reverseDependencies', started') =
+                foldl'
+                  (\(reverseDependencies_, started_) file ->
+                    invalidateReverseDependencies (Query.FileText file) reverseDependencies_ started_
+                  )
+                  (reverseDependencies, started)
+                  changedFiles'
+
+            putMVar (_startedVar state) started'
+            putMVar (_reverseDependenciesVar state) reverseDependencies'
+
     -- printVar <- newMVar 0
     let
       readSourceFile_ file
@@ -111,13 +158,14 @@ runIncrementalTask state files prettyError prune task =
             pure . DMap.insert key (Const errs')
       tasks :: Rules Query
       tasks =
-        memoise startedVar $
+        memoise (_startedVar state) $
+        trackReverseDependencies (_reverseDependenciesVar state) $
         verifyTraces (_tracesVar state) $
         traceFetch_ $
         writer writeErrors $
         Rules.rules (HashMap.keys files) readSourceFile_
     result <- Rock.runTask sequentially tasks task
-    started <- readMVar startedVar
+    started <- readMVar $ _startedVar state
     errorsMap <- case prune of
       Don'tPrune ->
         readMVar $ _errorsVar state

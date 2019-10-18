@@ -24,26 +24,27 @@ import qualified Syntax
 import Var (Var)
 import qualified Var
 
-goToDefinition :: FilePath -> Text -> Position.LineColumn -> Task Query (Maybe (FilePath, Span.LineColumn))
-goToDefinition filePath contents pos = do
-  CursorAction.cursorAction filePath contents pos $ \context varSpans term _ -> do
+goToDefinition :: FilePath -> Position.LineColumn -> Task Query (Maybe (FilePath, Span.LineColumn))
+goToDefinition filePath pos = do
+  CursorAction.cursorAction filePath pos $ \context varSpans term _ -> do
+    contents <- fetch $ Query.FileText filePath
+    let
+      -- TODO use the rope that we get from the LSP library instead
+      rope =
+        Rope.fromText contents
+
+      toLineColumn (Position.Absolute i) =
+        let
+          rope' =
+            Rope.take i rope
+        in
+        Position.LineColumn (Rope.rows rope') (Rope.columns rope')
+
+      toLineColumns (Span.Absolute start end) =
+        Span.LineColumns (toLineColumn start) (toLineColumn end)
     (keyedName, relativeSpan) <- go context varSpans term
     (file, Span.Absolute absolutePosition _) <- fetch $ Query.KeyedNameSpan keyedName
     pure (file, toLineColumns $ Span.absoluteFrom absolutePosition relativeSpan)
-  where
-    -- TODO use the rope that we get from the LSP library instead
-    rope =
-      Rope.fromText contents
-
-    toLineColumn (Position.Absolute i) =
-      let
-        rope' =
-          Rope.take i rope
-      in
-      Position.LineColumn (Rope.rows rope') (Rope.columns rope')
-
-    toLineColumns (Span.Absolute start end) =
-      Span.LineColumns (toLineColumn start) (toLineColumn end)
 
 go
   :: Context v

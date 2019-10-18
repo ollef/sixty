@@ -123,7 +123,8 @@ watcherFromArguments :: [FilePath] -> IO (Watcher (HashSet FilePath) (HashMap Fi
 watcherFromArguments files =
   case files of
     [] -> do
-      maybeProjectFile <- Project.findProjectFile
+      workingDirectory <- Directory.getCurrentDirectory
+      maybeProjectFile <- Project.findProjectFile workingDirectory
       case maybeProjectFile of
         Nothing ->
           mempty

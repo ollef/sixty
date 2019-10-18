@@ -22,17 +22,22 @@ watch argumentFiles = do
   watcher <- FileSystem.watcherFromArguments argumentFiles
   signalChangeVar <- newEmptyMVar
   fileStateVar <- newMVar mempty
-  FSNotify.withManager $ \manager -> do
+  FSNotify.withManagerConf config $ \manager -> do
     stopListening <- FileSystem.runWatcher watcher manager $ \changedFiles files -> do
-      void $ tryPutMVar signalChangeVar ()
       modifyMVar_ fileStateVar $ \(changedFiles', _) ->
         pure (changedFiles <> changedFiles', files)
+      void $ tryPutMVar signalChangeVar ()
 
     (`finally` stopListening) $ do
       driverState <- Driver.initialState
       forever $ do
-        (_changedFiles, files) <- waitForChanges signalChangeVar fileStateVar driverState
-        checkAndPrintErrors driverState files
+        (changedFiles, files) <- waitForChanges signalChangeVar fileStateVar driverState
+        checkAndPrintErrors driverState changedFiles files
+  where
+    config =
+      FSNotify.defaultConfig
+        { FSNotify.confDebounce = FSNotify.Debounce 0.010
+        }
 
 waitForChanges
   :: MVar ()
@@ -51,9 +56,9 @@ waitForChanges signalChangeVar fileStateVar driverState = do
   else
     pure (changedFiles, files)
 
-checkAndPrintErrors :: Driver.State (Doc ann) -> HashMap FilePath Text -> IO ()
-checkAndPrintErrors driverState files = do
-  (_, errs) <- Driver.runIncrementalTask driverState files Error.Hydrated.pretty Driver.Prune $
+checkAndPrintErrors :: Driver.State (Doc ann) -> HashSet FilePath -> HashMap FilePath Text -> IO ()
+checkAndPrintErrors driverState changedFiles files = do
+  (_, errs) <- Driver.runIncrementalTask driverState changedFiles files Error.Hydrated.pretty Driver.Prune $
     Driver.checkAll $ HashMap.keys files
 
   System.Console.ANSI.clearScreen

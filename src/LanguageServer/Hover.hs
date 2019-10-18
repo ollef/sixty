@@ -16,9 +16,9 @@ import qualified Span
 import qualified TypeOf
 import qualified LanguageServer.CursorAction as CursorAction
 
-hover :: FilePath -> Text -> Position.LineColumn -> Task Query (Maybe (Span.LineColumn, Doc ann))
-hover filePath contents pos = do
-  CursorAction.cursorAction filePath contents pos $ \context _ term lineColumn -> do
+hover :: FilePath -> Position.LineColumn -> Task Query (Maybe (Span.LineColumn, Doc ann))
+hover filePath pos = do
+  CursorAction.cursorAction filePath pos $ \context _ term lineColumn -> do
     value <- lift $ Elaboration.evaluate context term
     type_ <- lift $ TypeOf.typeOf context value
     type' <- lift $ Elaboration.readback context type_
