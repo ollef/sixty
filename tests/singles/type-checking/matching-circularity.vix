@@ -1,0 +1,6 @@
+data Id a = MkId a
+
+id : forall a. a -> Id a
+id -- type mismatch error expected
+  (MkId a) -- type mismatch error expected
+  = MkId a

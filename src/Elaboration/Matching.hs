@@ -12,6 +12,7 @@ import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.HashSet (HashSet)
+import qualified Data.IntSeq as IntSeq
 import Data.IORef
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -737,7 +738,15 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
         _ -> do
           typeType <- fetch $ Query.ElaboratedType typeName
           typeType' <- Evaluation.evaluate (Environment.empty $ Context.scopeKey outerContext) typeType
-          (metas, _) <- Elaboration.insertMetas outerContext Elaboration.UntilTheEnd typeType'
+          let
+            -- Ensure the metas don't depend on the scrutineeVar, because that
+            -- is guaranteed to lead to circularity when solving scrutineeVar
+            -- later.
+            contextWithoutScrutineeVar =
+              outerContext
+                { Context.boundVars = IntSeq.delete scrutineeVar $ Context.boundVars outerContext
+                }
+          (metas, _) <- Elaboration.insertMetas contextWithoutScrutineeVar Elaboration.UntilTheEnd typeType'
           f <- Unification.tryUnify outerContext (Domain.Neutral (Domain.Global typeName) $ Tsil.fromList metas) outerType
           result <- goParams (Context.spanned span outerContext) metas mempty tele'
           pure $ f result
