@@ -250,8 +250,8 @@ prettyPrettyableTerm prec (Error.PrettyableTerm moduleName_ names term) = do
 
         name:names'' ->
           let
-            (env'', _) = Pretty.extend env' $ Binding.Unspanned name
-
+            (env'', _) =
+              Pretty.extend env' $ Binding.Unspanned name
           in
           go names'' env''
 
@@ -268,7 +268,8 @@ prettyPrettyablePattern prec (plicity, Error.PrettyablePattern moduleName_ names
 
         name:names'' ->
           let
-            (env'', _) = Pretty.extend env' $ Binding.Unspanned name
+            (env'', _) =
+              Pretty.extend env' $ Binding.Unspanned name
 
           in
           go names'' env''

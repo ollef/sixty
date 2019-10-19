@@ -3,8 +3,8 @@ module Elaboration.Matching.SuggestedName where
 
 import Protolude
 
-import Control.Monad.Trans.Maybe
 import qualified Data.HashMap.Lazy as HashMap
+import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.HashSet as HashSet
 import Rock
 
@@ -18,24 +18,28 @@ import qualified Name
 import qualified Presyntax
 import qualified Query
 import qualified Scope
+import qualified Span
 
 nextExplicit
   :: Context v
   -> [[Presyntax.PlicitPattern]]
   -> M (Binding, [[Presyntax.PlicitPattern]])
 nextExplicit context clauses = do
-  maybeBinding <-
-    runMaybeT $ asum $ asum . fmap (explicitBinding context) <$> clauses
-  pure (fromMaybe "x" maybeBinding, shiftExplicit <$> clauses)
+  spannedNames <-
+    concatMapM (concatMapM $ explicitNames context) $ maybeToList . headMay <$> clauses
+  pure
+    ( maybe "x" Binding.Spanned $ NonEmpty.nonEmpty spannedNames
+    , shiftExplicit <$> clauses
+    )
 
-explicitBinding :: Context v -> Presyntax.PlicitPattern -> MaybeT M Binding
-explicitBinding context pattern =
+explicitNames :: Context v -> Presyntax.PlicitPattern -> M [(Span.Relative, Name)]
+explicitNames context pattern =
   case pattern of
     Presyntax.ExplicitPattern pattern' ->
-      patternBinding context pattern'
+      patternNames context pattern'
 
     _ ->
-      empty
+      pure []
 
 shiftExplicit :: [Presyntax.PlicitPattern] -> [Presyntax.PlicitPattern]
 shiftExplicit patterns =
@@ -55,19 +59,22 @@ nextImplicit
   -> [[Presyntax.PlicitPattern]]
   -> M (Binding, [[Presyntax.PlicitPattern]])
 nextImplicit context piName clauses = do
-  maybeBinding <-
-    runMaybeT $ asum $ asum . fmap (implicitBinding context piName) . headMay <$> clauses
-  pure (fromMaybe (Binding.Unspanned piName) maybeBinding, shiftImplicit piName <$> clauses)
+  spannedNames <-
+    concatMapM (concatMapM $ implicitNames context piName) $ maybeToList . headMay <$> clauses
+  pure
+    ( maybe (Binding.Unspanned piName) Binding.Spanned $ NonEmpty.nonEmpty spannedNames
+    , shiftImplicit piName <$> clauses
+    )
 
-implicitBinding :: Context v -> Name -> Presyntax.PlicitPattern -> MaybeT M Binding
-implicitBinding context piName pattern =
+implicitNames :: Context v -> Name -> Presyntax.PlicitPattern -> M [(Span.Relative, Name)]
+implicitNames context piName pattern =
   case pattern of
     Presyntax.ImplicitPattern _ namedPats
       | Just pattern' <- HashMap.lookup piName namedPats -> do
-        patternBinding context pattern'
+        patternNames context pattern'
 
     _ ->
-      empty
+      pure []
 
 shiftImplicit :: Name -> [Presyntax.PlicitPattern] -> [Presyntax.PlicitPattern]
 shiftImplicit name patterns =
@@ -87,16 +94,23 @@ shiftImplicit name patterns =
     _ ->
       patterns
 
-patternBinding :: Context v -> Presyntax.Pattern -> MaybeT M Binding
-patternBinding context pattern =
+patternNames :: Context v -> Presyntax.Pattern -> M [(Span.Relative, Name)]
+patternNames context pattern =
   case pattern of
     Presyntax.Pattern span (Presyntax.ConOrVar _ prename@(Name.Pre nameText) []) -> do
       maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) prename
       if HashSet.null $ foldMap Scope.entryConstructors maybeScopeEntry then
-        pure $ Binding.Spanned span $ Name nameText
+        pure [(span, Name nameText)]
 
       else
-        empty
+        pure []
 
     _ ->
-      empty
+      pure []
+
+patternBinding :: Context v -> Presyntax.Pattern -> Name -> M Binding
+patternBinding context pattern fallbackName = do
+  spannedNames <- patternNames context pattern
+  pure $
+    maybe (Binding.Unspanned fallbackName) Binding.Spanned $
+    NonEmpty.nonEmpty spannedNames

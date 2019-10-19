@@ -8,6 +8,7 @@ import Protolude hiding (IntMap, evaluate, moduleName)
 
 import Control.Monad.Trans.Maybe
 import qualified Data.HashMap.Lazy as HashMap
+import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Rope.UTF16 as Rope
 import Rock
 
@@ -38,7 +39,7 @@ import qualified Var
 import Var (Var)
 
 type Callback a =
-  forall v. Context v -> IntMap Var (Scope.KeyedName, Span.Relative) -> Syntax.Term v -> Span.LineColumn -> MaybeT M a
+  forall v. Context v -> IntMap Var (Scope.KeyedName, NonEmpty Span.Relative) -> Syntax.Term v -> Span.LineColumn -> MaybeT M a
 
 cursorAction
   :: FilePath
@@ -100,7 +101,7 @@ cursorAction filePath (Position.LineColumn line column) k = do
 data Environment v = Environment
   { _actionPosition :: !Position.Relative
   , _context :: Context v
-  , _varSpans :: IntMap Var Span.Relative
+  , _varSpans :: IntMap Var (NonEmpty Span.Relative)
   }
 
 extend :: Environment v -> Binding -> Syntax.Type v -> MaybeT M (Environment (Index.Succ v), Var)
@@ -110,7 +111,7 @@ extend env binding type_ = do
   pure
     ( env
       { _context = context'
-      , _varSpans = maybe identity (IntMap.insert var) (Binding.span binding) (_varSpans env)
+      , _varSpans = maybe identity (IntMap.insert var) (NonEmpty.nonEmpty $ Binding.spans binding) (_varSpans env)
       }
     , var
     )
@@ -308,14 +309,15 @@ bindingAction
   -> MaybeT M a
 bindingAction k env binding var =
   case binding of
-    Binding.Spanned span _ -> do
-      guard $ span `Span.relativeContains` _actionPosition env
+    Binding.Spanned spannedNames -> do
       case Context.lookupVarIndex var $ _context env of
         Nothing ->
           empty
 
         Just index ->
-          k env (Syntax.Var index) span
+          asum $ foreach spannedNames $ \(span, _) -> do
+            guard $ span `Span.relativeContains` _actionPosition env
+            k env (Syntax.Var index) span
 
     Binding.Unspanned _ ->
       empty

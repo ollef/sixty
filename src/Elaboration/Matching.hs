@@ -655,7 +655,7 @@ matchInstantiation context match =
     (Match value _ _ (Presyntax.Pattern span (Presyntax.ConOrVar _ prename@(Name.Pre name) [])) type_) -> do
       maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) prename
       if HashSet.null $ foldMap Scope.entryConstructors maybeScopeEntry then
-        pure $ pure (Binding.Spanned span $ Name name, value, type_)
+        pure $ pure (Binding.Spanned $ pure (span, Name name), value, type_)
 
       else
         fail "No match instantiation"

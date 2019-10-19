@@ -564,7 +564,8 @@ addAndCheckLambdas outerContext meta vars term =
           Flexibility.Rigid
           type_
       let
-        term' = Syntax.Lam (Binding.Unspanned name) type' Explicit (Syntax.succ term)
+        term' =
+          Syntax.Lam (Binding.Unspanned name) type' Explicit (Syntax.succ term)
       addAndCheckLambdas outerContext meta vars' term'
 
 checkInnerSolution

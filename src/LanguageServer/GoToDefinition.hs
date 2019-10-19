@@ -5,7 +5,9 @@ module LanguageServer.GoToDefinition where
 import Protolude hiding (IntMap, evaluate, moduleName)
 
 import Control.Monad.Trans.Maybe
+import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Rope.UTF16 as Rope
+import qualified Data.Text.IO as Text
 import Rock
 
 import Context (Context)
@@ -19,6 +21,7 @@ import qualified Position
 import Query (Query)
 import qualified Query
 import qualified Scope
+import Span (LineColumn(LineColumns))
 import qualified Span
 import qualified Syntax
 import Var (Var)
@@ -42,15 +45,35 @@ goToDefinition filePath pos = do
 
       toLineColumns (Span.Absolute start end) =
         Span.LineColumns (toLineColumn start) (toLineColumn end)
-    (keyedName, relativeSpan) <- go context varSpans term
+    (keyedName, relativeSpans) <- go context varSpans term
     (file, Span.Absolute absolutePosition _) <- fetch $ Query.KeyedNameSpan keyedName
-    pure (file, toLineColumns $ Span.absoluteFrom absolutePosition relativeSpan)
+    let
+      absoluteSpans =
+        toLineColumns . Span.absoluteFrom absolutePosition <$> relativeSpans
+
+      spanStart (LineColumns s _) =
+        s
+
+      resultSpan
+        | filePath == file =
+          case sortBy (flip $ comparing spanStart) $ NonEmpty.filter ((<= pos) . spanStart) absoluteSpans of
+            span:_ ->
+              span
+
+            [] ->
+              NonEmpty.head absoluteSpans
+        | otherwise =
+          NonEmpty.head absoluteSpans
+
+    liftIO $ Text.hPutStrLn stderr $ show absoluteSpans
+
+    pure (file, resultSpan)
 
 go
   :: Context v
-  -> IntMap Var (Scope.KeyedName, Span.Relative)
+  -> IntMap Var (Scope.KeyedName, NonEmpty Span.Relative)
   -> Syntax.Term v
-  -> MaybeT M (Scope.KeyedName, Span.Relative)
+  -> MaybeT M (Scope.KeyedName, NonEmpty Span.Relative)
 go context varMap term =
   case term of
     Syntax.Var index ->
@@ -59,7 +82,7 @@ go context varMap term =
     Syntax.Global qualifiedName -> do
       asum $ foreach [Scope.Type, Scope.Definition] $ \key -> do
         spans <- CursorAction.definitionNameSpans key qualifiedName
-        asum $ pure <$> ((,) (Scope.KeyedName key qualifiedName) <$> spans)
+        asum $ pure <$> ((,) (Scope.KeyedName key qualifiedName) . pure <$> spans)
 
     Syntax.Con constr@(Name.QualifiedConstructor qualifiedName _) -> do
       spans <- CursorAction.definitionConstructorSpans Scope.Definition qualifiedName
@@ -67,7 +90,7 @@ go context varMap term =
         mapMaybe
           (\(span, constr') ->
             if constr == constr' then
-              Just (Scope.KeyedName Scope.Definition qualifiedName, span)
+              Just (Scope.KeyedName Scope.Definition qualifiedName, pure span)
             else
               Nothing
           )

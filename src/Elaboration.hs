@@ -6,7 +6,6 @@ module Elaboration where
 
 import Protolude hiding (Seq, force, check, evaluate, until)
 
-import Control.Monad.Trans.Maybe
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
@@ -170,10 +169,10 @@ inferDataDefinition context preParams constrs paramVars =
           Span.Relative 0 $ Position.Relative $ Text.lengthWord16 thisNameText
 
         thisBinding =
-          Binding.Spanned thisSpan thisName
+          Binding.Spanned $ pure (thisSpan, thisName)
 
       (context', var) <-
-        Context.extend context (Binding.Spanned thisSpan thisName) thisType'
+        Context.extend context thisBinding thisType'
 
       lazyReturnType <-
         lazy $
@@ -457,10 +456,7 @@ checkUnspanned context term expectedType = do
 
     (Presyntax.Lam (Presyntax.ExplicitPattern pat) body, Domain.Fun source Explicit domain) -> do
       source' <- readback context source
-      maybeBinding <- runMaybeT $ SuggestedName.patternBinding context pat
-      let
-        binding =
-          fromMaybe (Binding.Unspanned "x") maybeBinding
+      binding <- SuggestedName.patternBinding context pat "x"
       (context', var) <- Context.extendUnnamed context (Binding.toName binding) source
       body' <- Matching.elaborateSingle context' var Explicit pat body domain
       pure $ Syntax.Lam binding source' Explicit body'
@@ -766,10 +762,7 @@ checkLambda context name source plicity pat domainClosure body = do
       domainClosure
       (Domain.var var)
   body' <- Matching.elaborateSingle context' var plicity pat body domain
-  maybeBinding <- runMaybeT $ SuggestedName.patternBinding context pat
-  let
-    binding =
-      fromMaybe (Binding.Unspanned name) maybeBinding
+  binding <- SuggestedName.patternBinding context pat name
   pure $ Syntax.Lam binding source' plicity body'
 
 inferLambda
@@ -786,10 +779,7 @@ inferLambda context name plicity pat body = do
   domain <- Context.newMetaType context'
   body' <- Matching.elaborateSingle context' var plicity pat body domain
   domain' <- readback context' domain
-  maybeBinding <- runMaybeT $ SuggestedName.patternBinding context pat
-  let
-    binding =
-      fromMaybe (Binding.Unspanned name) maybeBinding
+  binding <- SuggestedName.patternBinding context pat name
   pure
     ( Syntax.Lam binding source' plicity body'
     , Domain.Pi name source plicity
