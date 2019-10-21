@@ -121,6 +121,19 @@ extend env binding type_ = do
     , var
     )
 
+extendDef :: Environment v -> Binding -> Syntax.Term v -> Syntax.Type v -> MaybeT M (Environment (Index.Succ v), Var)
+extendDef env binding term type_ = do
+  value <- lift $ Elaboration.evaluate (_context env) term
+  type' <- lift $ Elaboration.evaluate (_context env) type_
+  (context', var) <- lift $ Context.extendUnnamedDef (_context env) (Binding.toName binding) value type'
+  pure
+    ( env
+      { _context = context'
+      , _varSpans = maybe identity (IntMap.insert var) (NonEmpty.nonEmpty $ Binding.spans binding) (_varSpans env)
+      }
+    , var
+    )
+
 type RelativeCallback a =
   forall v. Environment v -> Syntax.Term v -> Span.Relative -> MaybeT M a
 
@@ -215,7 +228,7 @@ termAction k env term =
       empty
 
     Syntax.Let binding term' type_ body -> do
-      (env', var) <- extend env binding type_
+      (env', var) <- extendDef env binding term' type_
       bindingAction k env' binding var <|>
         termAction k env term' <|>
         termAction k env type_ <|>
