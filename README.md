@@ -62,6 +62,8 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Jump to definition
   - [x] Multi file projects
   - [x] Reverse dependency tracking
+  - [x] Completion
+  - [ ] Type-based refinement completion snippets
   - [ ] Language server tests
 - [x] File watcher
 - [ ] Prevent CBV-incompatible circular values

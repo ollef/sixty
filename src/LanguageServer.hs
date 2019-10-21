@@ -35,6 +35,7 @@ import qualified Driver
 import qualified Error.Hydrated as Error (Hydrated)
 import qualified Error.Hydrated
 import qualified FileSystem
+import qualified LanguageServer.Complete as Complete
 import qualified LanguageServer.GoToDefinition as GoToDefinition
 import qualified LanguageServer.Hover as Hover
 import qualified Position
@@ -103,16 +104,21 @@ handlers sendMessage =
     , LSP.didCloseTextDocumentNotificationHandler = Just $ sendMessage . LSP.NotDidCloseTextDocument
     , LSP.hoverHandler = Just $ sendMessage . LSP.ReqHover
     , LSP.definitionHandler = Just $ sendMessage . LSP.ReqDefinition
+    , LSP.completionHandler = Just $ sendMessage . LSP.ReqCompletion
     }
 
 options :: LSP.Options
 options = def
-  { Language.Haskell.LSP.Core.textDocumentSync = Just $ LSP.TextDocumentSyncOptions
+  { Language.Haskell.LSP.Core.textDocumentSync = Just LSP.TextDocumentSyncOptions
     { LSP._openClose = Just True
     , LSP._change = Just LSP.TdSyncIncremental
     , LSP._willSave = Just False
     , LSP._willSaveWaitUntil = Just False
     , LSP._save = Just $ LSP.SaveOptions $ Just False
+    }
+  , Language.Haskell.LSP.Core.completionProvider = Just LSP.CompletionOptions
+    { LSP._resolveProvider = Nothing
+    , LSP._triggerCharacters = Just ["?"]
     }
   }
 
@@ -250,6 +256,26 @@ messagePump state = do
                 LSP.makeResponseMessage req $
                 LSP.SingleLoc $
                 spanToLocation file span
+          messagePump state
+
+        LSP.ReqCompletion req -> do
+          sendNotification state $ "messagePump: CompletionRequest: " <> show req
+          let
+            LSP.CompletionParams (LSP.TextDocumentIdentifier uri) position _ =
+              req ^. LSP.params
+
+          (completions, _) <- runTask state Driver.Don'tPrune $
+            Complete.complete (uriToFilePath uri) (positionFromPosition position)
+          sendNotification state $ "messagePump: CompletionResponse: " <> show completions
+
+          let
+            response =
+              LSP.CompletionList LSP.CompletionListType
+                { LSP._isIncomplete = False
+                , LSP._items = LSP.List $ fold completions
+                }
+
+          LSP.sendFunc (_lspFuncs state) $ LSP.RspCompletion $ LSP.makeResponseMessage req response
           messagePump state
 
         _ ->

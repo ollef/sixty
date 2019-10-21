@@ -71,13 +71,13 @@ goToDefinition filePath pos = do
 
 go
   :: Context v
-  -> IntMap Var (Scope.KeyedName, NonEmpty Span.Relative)
+  -> IntMap Var (NonEmpty Span.Relative)
   -> Syntax.Term v
   -> MaybeT M (Scope.KeyedName, NonEmpty Span.Relative)
 go context varMap term =
   case term of
     Syntax.Var index ->
-      asum $ pure <$> IntMap.lookup (Context.lookupIndexVar index context) varMap
+      asum $ pure . (,) (Context.scopeKey context) <$> IntMap.lookup (Context.lookupIndexVar index context) varMap
 
     Syntax.Global qualifiedName -> do
       asum $ foreach [Scope.Type, Scope.Definition] $ \key -> do
