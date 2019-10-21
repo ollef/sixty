@@ -20,19 +20,19 @@ import qualified Scope
 moduleScopes
   :: Name.Module
   -> [(Name, Presyntax.Definition)]
-  -> (((Scope, Scope.Visibility), Scope.Module), [Error])
+  -> (((Scope, Scope, Scope.Visibility), Scope.Module), [Error])
 moduleScopes module_@(Name.Module moduleText) definitions =
   let
-    (finalScope, finalVisibility, scopes, errs) =
-      foldl' go (mempty, mempty, mempty, mempty) definitions
+    (finalPrivateScope, finalPublicScope, finalVisibility, scopes, errs) =
+      foldl' go mempty definitions
   in
-  (((finalScope, finalVisibility), scopes), reverse errs)
+  (((finalPrivateScope, finalPublicScope, finalVisibility), scopes), reverse errs)
   where
     duplicate key qualifiedName =
       Error.DuplicateName
         (Scope.KeyedName key qualifiedName)
 
-    go (!scope, !visibility, !scopes, !errs) (name@(Name nameText), def) =
+    go (!privateScope, !publicScope, !visibility, !scopes, !errs) (name@(Name nameText), def) =
       let
         prename =
           Name.Pre nameText
@@ -43,16 +43,20 @@ moduleScopes module_@(Name.Module moduleText) definitions =
         qualifiedName =
           Name.Qualified module_ name
 
-        scope' =
+        privateScope' =
           HashMap.insertWith (<>) qualifiedPreName (Scope.Name qualifiedName) $
-          HashMap.insertWith (<>) prename (Scope.Name qualifiedName) scope
+          HashMap.insertWith (<>) prename (Scope.Name qualifiedName) privateScope
+
+        publicScope' =
+          HashMap.insertWith (<>) prename (Scope.Name qualifiedName) publicScope
 
         definitionCase =
           let
             ok =
-              ( scope'
+              ( privateScope'
+              , publicScope'
               , HashMap.insertWith max qualifiedName Scope.Definition visibility
-              , HashMap.insert (name, Scope.Definition) (scope, visibility) scopes
+              , HashMap.insert (name, Scope.Definition) (privateScope, visibility) scopes
               , errs
               )
           in
@@ -64,7 +68,8 @@ moduleScopes module_@(Name.Module moduleText) definitions =
               ok
 
             Just Scope.Definition ->
-              ( scope
+              ( privateScope
+              , publicScope
               , visibility
               , scopes
               , duplicate Scope.Definition qualifiedName : errs
@@ -74,16 +79,18 @@ moduleScopes module_@(Name.Module moduleText) definitions =
         Presyntax.TypeDeclaration {} ->
           case HashMap.lookup qualifiedName visibility of
             Just key ->
-              ( scope
+              ( privateScope
+              , publicScope
               , visibility
               , scopes
               , duplicate key qualifiedName : errs
               )
 
             Nothing ->
-              ( scope'
+              ( privateScope'
+              , publicScope'
               , HashMap.insertWith max qualifiedName Scope.Type visibility
-              , HashMap.insert (name, Scope.Type) (scope, visibility) scopes
+              , HashMap.insert (name, Scope.Type) (privateScope, visibility) scopes
               , errs
               )
 
@@ -92,37 +99,46 @@ moduleScopes module_@(Name.Module moduleText) definitions =
 
         Presyntax.DataDefinition _ _ constrDefs ->
           let
-            (scope'', visibility', scopes', errs') =
+            (privateScope'', publicScope'', visibility', scopes', errs') =
               definitionCase
 
             constructors =
-              HashMap.fromListWith (<>) $
-              concat
-                [ [ ( Name.Pre text
-                    , Scope.Constructors $
-                      HashSet.singleton $
-                      Name.QualifiedConstructor qualifiedName constr
-                    )
-                  , ( Name.Pre $ moduleText <> "." <> text
-                    , Scope.Constructors $
-                      HashSet.singleton $
-                      Name.QualifiedConstructor qualifiedName constr
-                    )
-                  ]
-                | constrDef <- constrDefs
-                , let
-                    constrs =
-                      case constrDef of
-                        Presyntax.GADTConstructors cs _ ->
-                          snd <$> cs
+              [ ( ( Name.Pre text
+                  , Scope.Constructors $
+                    HashSet.singleton $
+                    Name.QualifiedConstructor qualifiedName constr
+                  )
+                , ( Name.Pre $ moduleText <> "." <> text
+                  , Scope.Constructors $
+                    HashSet.singleton $
+                    Name.QualifiedConstructor qualifiedName constr
+                  )
+                )
+              | constrDef <- constrDefs
+              , let
+                  constrs =
+                    case constrDef of
+                      Presyntax.GADTConstructors cs _ ->
+                        snd <$> cs
 
-                        Presyntax.ADTConstructor _ c _ ->
-                          [c]
-                , constr@(Name.Constructor text) <- constrs
-                ]
+                      Presyntax.ADTConstructor _ c _ ->
+                        [c]
+              , constr@(Name.Constructor text) <- constrs
+              ]
+
+            publicConstructors =
+              HashMap.fromListWith (<>) $ fst <$> constructors
+
+            privateConstructors =
+              HashMap.fromListWith (<>) $ concatMap (\(a, b) -> [a, b]) constructors
 
           in
-          (HashMap.unionWith (<>) constructors scope'', visibility', scopes', errs')
+          ( HashMap.unionWith (<>) privateConstructors privateScope''
+          , HashMap.unionWith (<>) publicConstructors publicScope''
+          , visibility'
+          , scopes'
+          , errs'
+          )
 
 -- TODO: Error for names that aren't exposed
 exposedNames :: Module.ExposedNames -> HashMap Name.Pre a -> HashMap Name.Pre a

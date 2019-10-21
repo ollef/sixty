@@ -71,7 +71,7 @@ empty = Environment
 emptyM :: MonadFetch Query m => Name.Module -> m (Environment Void)
 emptyM module_ = do
   importedNames <- fetch $ Query.ImportedNames module_ Mapped.Map
-  ((localScope, _), _) <- fetch $ Query.Scopes module_
+  ((localScope, _, _), _) <- fetch $ Query.Scopes module_
   (constrAliases, aliases) <- fetch $ Query.NameAliases module_
   pure Environment
     { varNames = mempty

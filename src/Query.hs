@@ -35,7 +35,7 @@ data Query a where
   ModulePositionMap :: Name.Module -> Query (HashMap (Scope.Key, Name) Position.Absolute)
   ModuleSpanMap :: Name.Module -> Query (HashMap (Scope.Key, Name) Span.Absolute)
   ParsedDefinition :: Name.Module -> Mapped.Query (Scope.Key, Name) Presyntax.Definition a -> Query a
-  Scopes :: Name.Module -> Query ((Scope, Scope.Visibility), Scope.Module)
+  Scopes :: Name.Module -> Query ((Scope, Scope, Scope.Visibility), Scope.Module)
   ResolvedName :: Scope.KeyedName -> Name.Pre -> Query (Maybe Scope.Entry)
   IsDefinitionVisible :: Scope.KeyedName -> Name.Qualified -> Query Bool
   ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void)

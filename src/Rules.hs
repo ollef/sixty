@@ -92,17 +92,17 @@ rules files readFile_ (Writer (Writer query)) =
         header <- fetch $ ModuleHeader module_
         scopes <- forM (Module._imports header) $ \import_ -> do
           importedHeader <- fetch $ ModuleHeader $ Module._module import_
-          ((scope, _), _) <- fetch $ Scopes $ Module._module import_
+          ((_, publicScope, _), _) <- fetch $ Scopes $ Module._module import_
           pure $
             Resolution.importedNames import_ $
-            Resolution.exposedNames (Module._exposedNames importedHeader) scope
+            Resolution.exposedNames (Module._exposedNames importedHeader) publicScope
 
         pure $ foldl' (HashMap.unionWith (<>)) mempty scopes
 
     NameAliases module_ ->
       noError $ do
         importedNames <- fetch $ ImportedNames module_ Mapped.Map
-        ((localScope, _), _) <- fetch $ Scopes module_
+        ((localScope, _, _), _) <- fetch $ Scopes module_
         pure $ Scope.aliases $ HashMap.unionWith (<>) localScope importedNames
 
     ParsedDefinition module_ subQuery ->
@@ -168,7 +168,7 @@ rules files readFile_ (Writer (Writer query)) =
 
       | otherwise ->
         noError $ do
-          ((_, finalVisibility), _) <- fetch $ Scopes nameModule
+          ((_, _, finalVisibility), _) <- fetch $ Scopes nameModule
           pure $
             HashMap.lookup qualifiedName finalVisibility == Just Scope.Definition
 
