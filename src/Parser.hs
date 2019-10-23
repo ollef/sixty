@@ -303,7 +303,7 @@ atomicTerm =
   symbol "(" *> term <* symbol ")"
   <|> lets
   <|> spannedTerm
-    ( Wildcard <$ reserved "_"
+    ( Wildcard <$ (reserved "_" <|> reserved "?")
       <|> Var <$> prename
       <|> Case <$ reserved "case" <*> term <* reserved "of" <*> blockOfMany branch
       <|> unspanned <$>

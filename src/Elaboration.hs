@@ -1004,6 +1004,29 @@ subtype context type1 type2 = do
   f <- Unification.tryUnify context type1' type2
   pure $ \term -> f $ Syntax.apps term args
 
+subtypeWithoutRecovery
+  :: Context v
+  -> Domain.Type
+  -> Domain.Type
+  -> M (Syntax.Term v -> Syntax.Term v)
+subtypeWithoutRecovery context type1 type2 = do
+  type2' <- Context.forceHead context type2
+  let
+    until =
+      case type2' of
+        Domain.Pi _ _ Implicit _ ->
+          UntilImplicit $ const True
+
+        Domain.Neutral (Domain.Meta _) _ ->
+          UntilImplicit $ const True
+
+        _ ->
+          UntilExplicit
+
+  (args, type1') <- insertMetasReturningSyntax context until type1
+  Unification.unify context Flexibility.Rigid type1' type2
+  pure $ \term -> Syntax.apps term args
+
 -------------------------------------------------------------------------------
 -- Meta solutions
 

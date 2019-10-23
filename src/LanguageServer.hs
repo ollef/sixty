@@ -261,11 +261,18 @@ messagePump state = do
         LSP.ReqCompletion req -> do
           sendNotification state $ "messagePump: CompletionRequest: " <> show req
           let
-            LSP.CompletionParams (LSP.TextDocumentIdentifier uri) position _ =
+            LSP.CompletionParams (LSP.TextDocumentIdentifier uri) position maybeContext =
               req ^. LSP.params
 
-          (completions, _) <- runTask state Driver.Don'tPrune $
-            Complete.complete (uriToFilePath uri) (positionFromPosition position)
+          (completions, _) <-
+            runTask state Driver.Don'tPrune $
+              case maybeContext of
+                Just (LSP.CompletionContext LSP.CtTriggerCharacter (Just "?")) ->
+                  Complete.questionMark (uriToFilePath uri) (positionFromPosition position)
+
+                _ ->
+                  Complete.complete (uriToFilePath uri) (positionFromPosition position)
+
           sendNotification state $ "messagePump: CompletionResponse: " <> show completions
 
           let
