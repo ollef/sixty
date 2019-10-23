@@ -1017,10 +1017,34 @@ checkMetaSolutions context = do
       Meta.Unsolved type_ span -> do
         Context.report (Context.spanned span context) $
           Error.UnsolvedMetaVariable index (Context.toPrettyableClosedTerm context type_)
-        pure (Syntax.App (Syntax.Global Builtin.fail) Explicit type_, type_)
+        type' <- evaluate (Context.emptyFrom context) type_
+        failTerm <- addLambdas (Context.emptyFrom context) type'
+        pure (failTerm, type_)
 
       Meta.Solved solution type_ ->
         pure (solution, type_)
+  where
+    addLambdas :: Context v -> Domain.Type -> M (Syntax.Term v)
+    addLambdas context' type_ = do
+      type' <- Context.forceHead context' type_
+      case type' of
+        Domain.Fun source Explicit domain -> do
+          source' <- readback context' source
+          (context'', _) <- Context.extendUnnamed context' "x" source
+          body <- addLambdas context'' domain
+          pure $ Syntax.Lam "x" source' Explicit body
+
+        Domain.Pi name source Explicit domainClosure -> do
+          source' <- readback context' source
+          (context'', var) <- Context.extendUnnamed context' name source
+          domain <- Evaluation.evaluateClosure domainClosure $ Domain.var var
+          body <- addLambdas context'' domain
+          pure $ Syntax.Lam (Binding.Unspanned name) source' Explicit body
+
+        _ -> do
+          typeTerm <- readback context' type_
+          pure $ Syntax.App (Syntax.Global Builtin.fail) Explicit typeTerm
+
 
 -------------------------------------------------------------------------------
 
