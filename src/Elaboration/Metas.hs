@@ -78,7 +78,7 @@ inlineSolutions scopeKey solutions def type_ = do
                   inlineArguments solutionValue solutionType varArgsList mempty
 
                 Shared _ value' =
-                  sharing value' $
+                  sharing value $
                     inlineIndex index (IntSet.fromList $ catMaybes varArgsList) (solutionVar, varArgsList, inlinedSolutionValue, inlinedSolutionType) value
 
                 metaVars' =
