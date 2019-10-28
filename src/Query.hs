@@ -12,6 +12,7 @@ import Data.HashMap.Lazy (HashMap)
 import Data.HashSet (HashSet)
 import Rock
 
+import qualified Meta
 import qualified Module
 import Name (Name)
 import qualified Name
@@ -38,6 +39,7 @@ data Query a where
   Scopes :: Name.Module -> Query ((Scope, Scope, Scope.Visibility), Scope.Module)
   ResolvedName :: Scope.KeyedName -> Name.Pre -> Query (Maybe Scope.Entry)
   IsDefinitionVisible :: Scope.KeyedName -> Name.Qualified -> Query Bool
+  ElaboratingDefinition :: Scope.KeyedName -> Query (Maybe (Syntax.Definition, Syntax.Type Void, Meta.Vars (Syntax.Term Void)))
   ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void)
   ElaboratedDefinition :: Name.Qualified -> Query (Maybe (Syntax.Definition, Syntax.Type Void))
   ConstructorType :: Name.QualifiedConstructor -> Query (Telescope Syntax.Type Syntax.Type Void)
@@ -83,5 +85,6 @@ instance HashTag Query where
       IsDefinitionVisible {} -> hash
       ElaboratedType {} -> hash
       ElaboratedDefinition {} -> hash
+      ElaboratingDefinition {} -> hash
       ConstructorType {} -> hash
       KeyedNameSpan {} -> hash

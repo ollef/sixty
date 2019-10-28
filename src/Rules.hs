@@ -174,68 +174,86 @@ rules files readFile_ (Writer (Writer query)) =
           pure $
             HashMap.lookup qualifiedName finalVisibility == Just Scope.Definition
 
-    ElaboratedType qualifiedName@(Name.Qualified module_ name)
-      | qualifiedName == Builtin.typeName ->
-        nonInput $
-          pure (Syntax.Global Builtin.typeName, mempty)
-
-      | otherwise ->
-        nonInput $ do
-          mtype <- fetch $ ParsedDefinition module_ $ Mapped.Query (Scope.Type, name)
-          let
-            key =
-              Scope.KeyedName Scope.Type qualifiedName
-          case mtype of
-            Nothing -> do
-              mdef <- fetch $ ElaboratedDefinition qualifiedName
-              case mdef of
-                Nothing ->
-                  panic $ "ElaboratedType: No type or definition " <> show key
-
-                Just (_, type_) ->
-                  pure (type_, mempty)
-
-            Just def -> do
-              (maybeResult, errs) <- runElaborator key $
-                Elaboration.checkTopLevelDefinition key def Builtin.type_
-              pure $
-                case maybeResult of
-                  Nothing ->
-                    ( Syntax.App
-                      (Syntax.Global Builtin.fail)
-                      Explicit
-                      (Syntax.Global Builtin.typeName)
-                    , errs
-                    )
-
-                  Just (Syntax.TypeDeclaration result) ->
-                    (result, errs)
-
-                  Just _ ->
-                    panic "ElaboratedType: Not a type declaration"
-
-    ElaboratedDefinition qualifiedName@(Name.Qualified module_ name) ->
+    ElaboratingDefinition keyedName@(Scope.KeyedName key qualifiedName@(Name.Qualified module_ name)) ->
       nonInput $ do
-        mdef <- fetch $ ParsedDefinition module_ $ Mapped.Query (Scope.Definition, name)
+        mdef <- fetch $ ParsedDefinition module_ $ Mapped.Query (key, name)
         case mdef of
           Nothing ->
             pure (Nothing, mempty)
 
           Just def -> do
-            mtype <- fetch $ ParsedDefinition module_ $ Mapped.Query (Scope.Type, name)
-            let
-              defKey =
-                Scope.KeyedName Scope.Definition qualifiedName
+            mtype <-
+              case key of
+                Scope.Type ->
+                  pure $ Just Builtin.type_
+
+                Scope.Definition -> do
+                  mtype <- fetch $ ParsedDefinition module_ $ Mapped.Query (Scope.Type, name)
+                  forM mtype $ \_ -> do
+                    fetch $ ElaboratedType qualifiedName
+
             case mtype of
               Nothing ->
-                runElaborator defKey $ Elaboration.inferTopLevelDefinition defKey def
+                runElaborator keyedName $ Elaboration.inferTopLevelDefinition keyedName def
 
-              Just _ -> do
-                type_ <- fetch $ ElaboratedType qualifiedName
-                runElaborator defKey $ do
-                  typeValue <- Evaluation.evaluate (Environment.empty defKey) type_
-                  (def', errs) <- Elaboration.checkTopLevelDefinition defKey def typeValue
-                  pure ((def', type_), errs)
+              Just type_ ->
+                runElaborator keyedName $ do
+                  typeValue <- Evaluation.evaluate (Environment.empty keyedName) type_
+                  ((def', metaVars), errs) <- Elaboration.checkTopLevelDefinition keyedName def typeValue
+                  pure ((def', type_, metaVars), errs)
+
+    ElaboratedType Builtin.TypeName ->
+      nonInput $
+        pure (Syntax.Global Builtin.TypeName, mempty)
+
+    ElaboratedType qualifiedName ->
+      nonInput $ do
+        let
+          typeKey =
+            Scope.KeyedName Scope.Type qualifiedName
+        mtypeDecl <- fetch $ ElaboratingDefinition typeKey
+        case mtypeDecl of
+          Nothing -> do
+            mdef <- fetch $ ElaboratedDefinition qualifiedName
+            case mdef of
+              Nothing ->
+                panic $ "ElaboratedType: No type or definition " <> show qualifiedName
+
+              Just (_, type_) ->
+                pure (type_, mempty)
+
+          Just (typeDecl, type_, metaVars) -> do
+            (maybeResult, errs) <- runElaborator typeKey $
+              Elaboration.checkDefinitionMetaSolutions typeKey typeDecl type_ metaVars
+            pure $
+              case maybeResult of
+                Nothing ->
+                  ( Syntax.App
+                    (Syntax.Global Builtin.fail)
+                    Explicit
+                    (Syntax.Global Builtin.TypeName)
+                  , errs
+                  )
+
+                Just (Syntax.TypeDeclaration result, _) ->
+                  (result, errs)
+
+                Just _ ->
+                  panic "ElaboratedType: Not a type declaration"
+
+    ElaboratedDefinition qualifiedName ->
+      nonInput $ do
+        let
+          defKey =
+            Scope.KeyedName Scope.Definition qualifiedName
+        maybeDef <- fetch $ ElaboratingDefinition defKey
+        case maybeDef of
+          Nothing ->
+            pure (Nothing, mempty)
+
+          Just (def, type_, metaVars) -> do
+            runElaborator defKey $
+              Elaboration.checkDefinitionMetaSolutions defKey def type_ metaVars
 
     ConstructorType (Name.QualifiedConstructor dataTypeName constr) ->
       noError $ do

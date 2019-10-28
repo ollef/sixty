@@ -54,31 +54,44 @@ import Var (Var)
 inferTopLevelDefinition
   :: Scope.KeyedName
   -> Presyntax.Definition
-  -> M ((Syntax.Definition, Syntax.Type Void), [Error])
+  -> M ((Syntax.Definition, Syntax.Type Void, Meta.Vars (Syntax.Term Void)), [Error])
 inferTopLevelDefinition key def = do
   context <- Context.empty key
   (def', typeValue) <- inferDefinition context def
   type_ <- readback context typeValue
-  metas <- checkMetaSolutions context
-  (def'', type') <- Metas.inlineSolutions key metas def' type_
-  def''' <- Inlining.inlineDefinition key def''
-  type'' <- Inlining.inlineTerm (Environment.empty key) type'
-  errors <- liftIO $ readIORef (Context.errors context)
-  pure ((def''', type''), toList errors)
+  metaVars <- liftIO $ readIORef $ Context.metas context
+  errors <- liftIO $ readIORef $ Context.errors context
+  pure ((def', type_, metaVars), toList errors)
 
 checkTopLevelDefinition
   :: Scope.KeyedName
   -> Presyntax.Definition
   -> Domain.Type
-  -> M (Syntax.Definition, [Error])
+  -> M ((Syntax.Definition, Meta.Vars (Syntax.Term Void)), [Error])
 checkTopLevelDefinition key def type_ = do
   context <- Context.empty key
   def' <- checkDefinition context def type_
-  metas <- checkMetaSolutions context
-  (def'', _) <- Metas.inlineSolutions key metas def' $ Syntax.Global Builtin.fail
-  def''' <- Inlining.inlineDefinition key def''
+  metaVars <- liftIO $ readIORef $ Context.metas context
   errors <- liftIO $ readIORef $ Context.errors context
-  pure (def''', toList errors)
+  pure ((def', metaVars), toList errors)
+
+checkDefinitionMetaSolutions
+  :: Scope.KeyedName
+  -> Syntax.Definition
+  -> Syntax.Type Void
+  -> Meta.Vars (Syntax.Term Void)
+  -> M ((Syntax.Definition, Syntax.Type Void), [Error])
+checkDefinitionMetaSolutions key def type_ metas = do
+  context <- Context.empty key
+  metasVar <- liftIO $ newIORef metas
+  let
+    context' = context { Context.metas = metasVar }
+  metas' <- checkMetaSolutions context' metas
+  (def', type') <- Metas.inlineSolutions key metas' def type_
+  def'' <- Inlining.inlineDefinition key def'
+  type'' <- Inlining.inlineTerm (Environment.empty key) type'
+  errors <- liftIO $ readIORef $ Context.errors context'
+  pure ((def'', type''), toList errors)
 
 checkDefinition
   :: Context Void
@@ -1031,10 +1044,10 @@ subtypeWithoutRecovery context type1 type2 = do
 -- Meta solutions
 
 checkMetaSolutions
-  :: Context v
+  :: Context Void
+  -> Meta.Vars (Syntax.Term Void)
   -> M Syntax.MetaSolutions
-checkMetaSolutions context = do
-  metaVars <- liftIO $ readIORef $ Context.metas context
+checkMetaSolutions context metaVars = do
   flip IntMap.traverseWithKey (Meta.vars metaVars) $ \index var ->
     case var of
       Meta.Unsolved type_ span -> do
