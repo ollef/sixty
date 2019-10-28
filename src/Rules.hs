@@ -67,15 +67,17 @@ rules files readFile_ (Writer (Writer query)) =
                 (errors, definitions) =
                   partitionEithers errorsAndDefinitions
 
-                header'
-                  | module_ == Builtin.module_ =
-                    header
-                  | otherwise =
-                    header
-                      { Module._imports =
-                        Module.Import Builtin.module_ "Sixten.Builtin" Module.AllExposed
-                        : Module._imports header
-                      }
+                header' =
+                  case module_ of
+                    Builtin.Module ->
+                      header
+
+                    _ ->
+                      header
+                        { Module._imports =
+                          Module.Import Builtin.Module "Sixten.Builtin" Module.AllExposed
+                          : Module._imports header
+                        }
               ((module_, header', definitions), map (Error.Parse filePath) errors)
 
             Left err ->

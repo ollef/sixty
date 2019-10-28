@@ -118,8 +118,8 @@ inferDefinition
 inferDefinition context def =
   case def of
     Presyntax.TypeDeclaration _ type_ -> do
-      type' <- check context type_ Builtin.type_
-      pure (Syntax.TypeDeclaration type', Builtin.type_)
+      type' <- check context type_ Builtin.Type
+      pure (Syntax.TypeDeclaration type', Builtin.Type)
 
     Presyntax.ConstantDefinition clauses -> do
       let
@@ -157,7 +157,7 @@ inferDataDefinition context preParams constrs paramVars =
             context
             (Environment.empty $ Context.scopeKey context)
             (toList paramVars)
-            Builtin.type_
+            Builtin.Type
 
       thisType' <- evaluate context thisType
 
@@ -187,7 +187,7 @@ inferDataDefinition context preParams constrs paramVars =
 
         Presyntax.ADTConstructor _ constr types -> do
           types' <- forM types $ \type_ ->
-            check context' type_ Builtin.type_
+            check context' type_ Builtin.Type
 
           returnType <- force lazyReturnType
           let
@@ -196,11 +196,11 @@ inferDataDefinition context preParams constrs paramVars =
           pure [(constr, Syntax.Let thisBinding this thisType type_)]
       pure
         ( Telescope.Empty (Syntax.ConstructorDefinitions $ HashMap.fromList $ concat constrs')
-        , Syntax.Global Builtin.typeName
+        , Syntax.Global Builtin.TypeName
         )
 
     (binding, type_, plicity):preParams' -> do
-      type' <- check context type_ Builtin.type_
+      type' <- check context type_ Builtin.Type
       type'' <- evaluate context type'
       (context', paramVar) <- Context.extend context (Binding.fromPresyntax binding) type''
       let
@@ -251,11 +251,11 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
   let
     context' =
       Context.spanned span context
-  constrType <- check context' term Builtin.type_
+  constrType <- check context' term Builtin.Type
   maybeConstrType'' <- Context.try context' $ goTerm context' constrType
   pure $
     fromMaybe
-      (Syntax.App (Syntax.Global Builtin.fail) Explicit $ Syntax.Global Builtin.typeName)
+      (Syntax.App (Syntax.Global Builtin.fail) Explicit Builtin.type_)
       maybeConstrType''
   where
     goTerm :: Context v -> Syntax.Term v -> M (Syntax.Term v)
@@ -549,23 +549,23 @@ inferUnspanned context term expectedTypeName =
       pure (Syntax.Let (Binding.fromPresyntax binding) boundTerm typeTerm body', type_)
 
     Presyntax.Pi binding plicity source domain -> do
-      source' <- check context source Builtin.type_
+      source' <- check context source Builtin.Type
       source'' <- evaluate context source'
 
       (context', _) <- Context.extend context (Binding.fromPresyntax binding) source''
 
-      domain' <- check context' domain Builtin.type_
+      domain' <- check context' domain Builtin.Type
       pure
         ( Syntax.Pi (Binding.fromPresyntax binding) source' plicity domain'
-        , Builtin.type_
+        , Builtin.Type
         )
 
     Presyntax.Fun source domain -> do
-      source' <- check context source Builtin.type_
-      domain' <- check context domain Builtin.type_
+      source' <- check context source Builtin.Type
+      domain' <- check context domain Builtin.Type
       pure
         ( Syntax.Fun source' Explicit domain'
-        , Builtin.type_
+        , Builtin.Type
         )
 
     Presyntax.Lam (Presyntax.ExplicitPattern pat) body ->
@@ -816,7 +816,7 @@ elaborateLet context binding maybeType clauses = do
         pure (boundTerm, typeTerm, typeValue)
 
       Just type_ -> do
-        typeTerm <- check context type_ Builtin.type_
+        typeTerm <- check context type_ Builtin.Type
         typeValue <- evaluate context typeTerm
         boundTerm <- Clauses.check context clauses' typeValue
         pure (boundTerm, typeTerm, typeValue)

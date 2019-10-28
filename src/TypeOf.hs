@@ -42,10 +42,10 @@ typeOf context value =
         Domain.Closure (Context.toEnvironment context) bodyType'
 
     Domain.Pi {} ->
-      pure Builtin.type_
+      pure Builtin.Type
 
     Domain.Fun {} ->
-      pure Builtin.type_
+      pure Builtin.Type
 
     Domain.Case _ (Domain.Branches env branches defaultBranch) ->
       case defaultBranch of

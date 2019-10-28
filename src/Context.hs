@@ -427,7 +427,7 @@ newMeta type_ context = do
 
 newMetaType :: Context v -> M Domain.Value
 newMetaType =
-  newMeta Builtin.type_
+  newMeta Builtin.Type
 
 piBoundVars :: Context v -> Domain.Type -> M (Syntax.Type Void)
 piBoundVars context type_ = do

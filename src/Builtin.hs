@@ -8,17 +8,21 @@ import qualified Name
 import Plicity
 import qualified Syntax
 
-module_ :: Name.Module
-module_ =
+pattern Module :: Name.Module
+pattern Module =
   "Sixten.Builtin"
 
-typeName :: Name.Qualified
-typeName =
+pattern TypeName :: Name.Qualified
+pattern TypeName =
   "Sixten.Builtin.Type"
 
-type_ :: Domain.Value
+pattern Type :: Domain.Value
+pattern Type =
+  Domain.Neutral (Domain.Global TypeName) Tsil.Empty
+
+type_ :: Syntax.Term v
 type_ =
-  Domain.global typeName
+  Syntax.Global TypeName
 
 fail :: Name.Qualified
 fail =

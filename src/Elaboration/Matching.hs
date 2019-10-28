@@ -634,7 +634,7 @@ expandAnnotations context matches =
           case match of
             Match value forcedValue plicity (Presyntax.Pattern span (Presyntax.Anno pat annoType)) type_ -> do
               lift $ do
-                annoType' <- Elaboration.check context annoType Builtin.type_
+                annoType' <- Elaboration.check context annoType Builtin.Type
                 annoType'' <- Elaboration.evaluate context annoType'
                 let
                   context' =
