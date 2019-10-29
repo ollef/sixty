@@ -34,7 +34,7 @@ import qualified Var
 
 complete :: FilePath -> Position.LineColumn -> Task Query (Maybe [LSP.CompletionItem])
 complete filePath pos =
-  CursorAction.cursorAction filePath pos $ \context varPositions _ _ -> do
+  CursorAction.cursorAction filePath pos CursorAction.Elaborated $ \context varPositions _ _ -> do
     names <- lift $ getUsableNames context varPositions
     lift $ forM names $ \(name, term, kind) -> do
       value <- Elaboration.evaluate context term
@@ -62,7 +62,7 @@ complete filePath pos =
 
 questionMark :: FilePath -> Position.LineColumn -> Task Query (Maybe [LSP.CompletionItem])
 questionMark filePath (Position.LineColumn line column) =
-  CursorAction.cursorAction filePath (Position.LineColumn line $ max 0 $ column - 1) $ \context varPositions termUnderCursor _ -> do
+  CursorAction.cursorAction filePath (Position.LineColumn line $ max 0 $ column - 1) CursorAction.Elaborating $ \context varPositions termUnderCursor _ -> do
     valueUnderCursor <- lift $ Elaboration.evaluate context termUnderCursor
     typeUnderCursor <- lift $ TypeOf.typeOf context valueUnderCursor
     names <- lift $ getUsableNames context varPositions
