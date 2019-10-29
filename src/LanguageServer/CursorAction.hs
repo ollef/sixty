@@ -21,7 +21,9 @@ import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import qualified Domain
 import qualified Elaboration
+import qualified Environment
 import qualified Index
+import qualified Meta
 import Monad
 import qualified Name
 import Plicity
@@ -38,6 +40,7 @@ import qualified Syntax.Telescope as Telescope
 import qualified TypeOf
 import qualified Var
 import Var (Var)
+import qualified Zonking
 
 type Callback a
   = forall v
@@ -360,3 +363,32 @@ bindingAction k env binding var =
 
     Binding.Unspanned _ ->
       empty
+
+zonk
+  :: Context v
+  -> IORef (IntMap Meta.Index (Maybe (Syntax.Term Void)))
+  -> Syntax.Term v
+  -> M (Syntax.Term v)
+zonk context metaVars =
+  Zonking.zonkTerm (Context.toEnvironment context) go
+  where
+    go :: Meta.Index -> M (Maybe (Syntax.Term Void))
+    go index = do
+      indexMap <- liftIO $ readIORef metaVars
+      case IntMap.lookup index indexMap of
+        Nothing -> do
+          solution <- Context.lookupMeta index context
+          case solution of
+            Meta.Unsolved _ _ -> do
+              liftIO $ atomicModifyIORef metaVars $ \indexMap' ->
+                (IntMap.insert index Nothing indexMap', ())
+              pure Nothing
+
+            Meta.Solved term _ -> do
+              term' <- Zonking.zonkTerm (Environment.empty $ Context.scopeKey context) go term
+              liftIO $ atomicModifyIORef metaVars $ \indexMap' ->
+                (IntMap.insert index (Just term') indexMap', ())
+              pure $ Just term'
+
+        Just solution ->
+          pure solution

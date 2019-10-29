@@ -7,6 +7,7 @@ import Protolude hiding (IntMap, evaluate, moduleName)
 
 import qualified Data.HashMap.Lazy as HashMap
 -- import qualified Data.Text.IO as Text
+import Data.IORef
 import Data.Text.Prettyprint.Doc ((<+>))
 import qualified Language.Haskell.LSP.Types as LSP
 import Rock
@@ -34,13 +35,15 @@ import qualified Var
 
 complete :: FilePath -> Position.LineColumn -> Task Query (Maybe [LSP.CompletionItem])
 complete filePath pos =
-  CursorAction.cursorAction filePath pos CursorAction.Elaborated $ \context varPositions _ _ -> do
+  CursorAction.cursorAction filePath pos CursorAction.Elaborating $ \context varPositions _ _ -> do
     names <- lift $ getUsableNames context varPositions
+    metaVars <- liftIO $ newIORef mempty
     lift $ forM names $ \(name, term, kind) -> do
       value <- Elaboration.evaluate context term
       type_ <- TypeOf.typeOf context value
       type' <- Elaboration.readback context type_
-      prettyType <- Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context type'
+      type'' <- CursorAction.zonk context metaVars type'
+      prettyType <- Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context type''
       pure
         LSP.CompletionItem
           { _label = name
@@ -67,6 +70,7 @@ questionMark filePath (Position.LineColumn line column) =
     typeUnderCursor <- lift $ TypeOf.typeOf context valueUnderCursor
     names <- lift $ getUsableNames context varPositions
 
+    metaVars <- liftIO $ newIORef mempty
     lift $ fmap concat $ forM names $ \(name, term, kind) -> do
       value <- Elaboration.evaluate context term
       type_ <- TypeOf.typeOf context value
@@ -90,7 +94,8 @@ questionMark filePath (Position.LineColumn line column) =
           value' <- Elaboration.evaluate context term'
           type' <- TypeOf.typeOf context value'
           type'' <- Elaboration.readback context type'
-          prettyType <- Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context type''
+          type''' <- CursorAction.zonk context metaVars type''
+          prettyType <- Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context type'''
           -- liftIO $ Text.hPutStrLn stderr $ show prettyType
           pure $ pure
             LSP.CompletionItem
