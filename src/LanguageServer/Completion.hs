@@ -1,7 +1,7 @@
 {-# language FlexibleContexts #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# language OverloadedStrings #-}
-module LanguageServer.Complete where
+module LanguageServer.Completion where
 
 import Protolude hiding (IntMap, evaluate, moduleName)
 

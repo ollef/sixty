@@ -35,7 +35,7 @@ import qualified Driver
 import qualified Error.Hydrated as Error (Hydrated)
 import qualified Error.Hydrated
 import qualified FileSystem
-import qualified LanguageServer.Complete as Complete
+import qualified LanguageServer.Completion as Completion
 import qualified LanguageServer.GoToDefinition as GoToDefinition
 import qualified LanguageServer.Hover as Hover
 import qualified Position
@@ -268,10 +268,10 @@ messagePump state = do
             runTask state Driver.Don'tPrune $
               case maybeContext of
                 Just (LSP.CompletionContext LSP.CtTriggerCharacter (Just "?")) ->
-                  Complete.questionMark (uriToFilePath uri) (positionFromPosition position)
+                  Completion.questionMark (uriToFilePath uri) (positionFromPosition position)
 
                 _ ->
-                  Complete.complete (uriToFilePath uri) (positionFromPosition position)
+                  Completion.complete (uriToFilePath uri) (positionFromPosition position)
 
           sendNotification state $ "messagePump: CompletionResponse: " <> show completions
 
