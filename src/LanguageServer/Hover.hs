@@ -4,7 +4,6 @@ module LanguageServer.Hover where
 
 import Protolude hiding (evaluate, moduleName)
 
-import Data.IORef
 import Data.Text.Prettyprint.Doc (Doc, (<+>))
 import Rock
 
@@ -23,11 +22,8 @@ hover filePath pos = do
     value <- lift $ Elaboration.evaluate context term
     type_ <- lift $ TypeOf.typeOf context value
     type' <- lift $ Elaboration.readback context type_
-    metaVars <- liftIO $ newIORef mempty
-    term' <- lift $ CursorAction.zonk context metaVars term
-    type'' <- lift $ CursorAction.zonk context metaVars type'
-    prettyTerm <- Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context term'
-    prettyType <- Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context type''
+    prettyTerm <- Error.prettyPrettyableTerm 0 =<< lift (Context.toPrettyableTerm context term)
+    prettyType <- Error.prettyPrettyableTerm 0 =<< lift (Context.toPrettyableTerm context type')
     pure
       ( lineColumn
       , prettyTerm <+> ":" <+> prettyType

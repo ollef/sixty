@@ -249,21 +249,25 @@ unify context flexibility value1 value2 = do
               Error.TypeMismatch stack -> do
                 term1 <- Elaboration.readback context value1
                 term2 <- Elaboration.readback context value2
+                pterm1 <- Context.toPrettyableTerm context term1
+                pterm2 <- Context.toPrettyableTerm context term2
                 throwError $
                   Error.TypeMismatch $
                       stack Tsil.:>
-                      ( Context.toPrettyableTerm context term1
-                      , Context.toPrettyableTerm context term2
+                      ( pterm1
+                      , pterm2
                       )
 
               Error.OccursCheck stack -> do
                 term1 <- Elaboration.readback context value1
                 term2 <- Elaboration.readback context value2
+                pterm1 <- Context.toPrettyableTerm context term1
+                pterm2 <- Context.toPrettyableTerm context term2
                 throwError $
                   Error.OccursCheck $
                       stack Tsil.:>
-                      ( Context.toPrettyableTerm context term1
-                      , Context.toPrettyableTerm context term2
+                      ( pterm1
+                      , pterm2
                       )
 
               _ ->

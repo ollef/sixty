@@ -673,11 +673,13 @@ inferUnspanned context term expectedTypeName =
 
               _ -> do
                 functionType'' <- readback context functionType'
+                pfunction <- Context.toPrettyableTerm context function''
+                pfunctionType <- Context.toPrettyableTerm context functionType''
                 Context.report context $
                   Error.ImplicitApplicationMismatch
                     (HashSet.fromMap $ void arguments')
-                    (Context.toPrettyableTerm context function'')
-                    (Context.toPrettyableTerm context functionType'')
+                    pfunction
+                    pfunctionType
                 inferenceFailed context
 
     Presyntax.Case scrutinee branches -> do
@@ -1051,8 +1053,9 @@ checkMetaSolutions context metaVars = do
   flip IntMap.traverseWithKey (Meta.vars metaVars) $ \index var ->
     case var of
       Meta.Unsolved type_ span -> do
+        ptype <- Context.toPrettyableClosedTerm context type_
         Context.report (Context.spanned span context) $
-          Error.UnsolvedMetaVariable index (Context.toPrettyableClosedTerm context type_)
+          Error.UnsolvedMetaVariable index ptype
         type' <- evaluate (Context.emptyFrom context) type_
         failTerm <- addLambdas (Context.emptyFrom context) type'
         pure (failTerm, type_)
@@ -1096,8 +1099,9 @@ readback context =
   Readback.readback (Context.toEnvironment context)
 
 prettyTerm :: Context v -> Syntax.Term v -> M (Doc ann)
-prettyTerm context term =
-  Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context term
+prettyTerm context term = do
+  pterm <- Context.toPrettyableTerm context term
+  Error.prettyPrettyableTerm 0 pterm
 
 prettyValue :: Context v -> Domain.Value -> M (Doc ann)
 prettyValue context value = do

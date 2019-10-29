@@ -31,6 +31,7 @@ import qualified Error.Parsing as Error
 import qualified Evaluation
 import Index
 import qualified Index.Map
+import qualified Zonking
 import qualified Index.Map as Index
 import qualified Meta
 import Monad
@@ -70,22 +71,25 @@ toEnvironment context =
     , values = values context
     }
 
-toPrettyableTerm :: Context v -> Syntax.Term v -> Error.PrettyableTerm
+toPrettyableTerm :: Context v -> Syntax.Term v -> M Error.PrettyableTerm
 toPrettyableTerm context term = do
+  term' <- zonk context term
   let
     Scope.KeyedName _ (Name.Qualified module_ _) =
       Context.scopeKey context
-  Error.PrettyableTerm
-    module_
-    (fmap (flip lookupVarName context) $ toList $ indices context)
-    (Syntax.coerce term)
+  pure $
+    Error.PrettyableTerm
+      module_
+      (fmap (flip lookupVarName context) $ toList $ indices context)
+      (Syntax.coerce term')
 
-toPrettyableClosedTerm :: Context v -> Syntax.Term Void -> Error.PrettyableTerm
+toPrettyableClosedTerm :: Context v -> Syntax.Term Void -> M Error.PrettyableTerm
 toPrettyableClosedTerm context term = do
+  term' <- zonk (emptyFrom context) term
   let
     Scope.KeyedName _ (Name.Qualified module_ _) =
       Context.scopeKey context
-  Error.PrettyableTerm module_ mempty (Syntax.coerce term)
+  pure $ Error.PrettyableTerm module_ mempty (Syntax.coerce term')
 
 toPrettyablePattern :: Context v -> Pattern -> Error.PrettyablePattern
 toPrettyablePattern context pattern = do
@@ -636,3 +640,34 @@ try_ context m =
   (True <$ m) `catchError` \err -> do
     report context err
     pure False
+
+
+-------------------------------------------------------------------------------
+-- Zonking
+zonk
+  :: Context v
+  -> Syntax.Term v
+  -> M (Syntax.Term v)
+zonk context term = do
+  metaVars <- liftIO $ newIORef mempty
+  Zonking.zonkTerm (Context.toEnvironment context) (go metaVars) term
+  where
+    go metaVars index = do
+      indexMap <- liftIO $ readIORef metaVars
+      case IntMap.lookup index indexMap of
+        Nothing -> do
+          solution <- Context.lookupMeta index context
+          case solution of
+            Meta.Unsolved _ _ -> do
+              liftIO $ atomicModifyIORef metaVars $ \indexMap' ->
+                (IntMap.insert index Nothing indexMap', ())
+              pure Nothing
+
+            Meta.Solved term' _ -> do
+              term'' <- Zonking.zonkTerm (Environment.empty $ Context.scopeKey context) (go metaVars) term'
+              liftIO $ atomicModifyIORef metaVars $ \indexMap' ->
+                (IntMap.insert index (Just term'') indexMap', ())
+              pure $ Just term''
+
+        Just solution ->
+          pure solution
