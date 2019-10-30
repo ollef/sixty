@@ -7,6 +7,8 @@ import Protolude hiding (IntMap, evaluate, moduleName)
 
 import qualified Data.HashMap.Lazy as HashMap
 -- import qualified Data.Text.IO as Text
+import Control.Monad.Trans.Maybe
+import Data.IORef
 import Data.Text.Prettyprint.Doc ((<+>))
 import qualified Language.Haskell.LSP.Types as LSP
 import Rock
@@ -18,10 +20,12 @@ import qualified Data.IntMap as IntMap
 import qualified Domain
 import qualified Elaboration
 import qualified Error.Hydrated as Error
+import qualified Evaluation
 import qualified LanguageServer.CursorAction as CursorAction
 import Monad
 import Name (Name(Name))
 import qualified Name
+import Plicity
 import qualified Position
 import qualified Query
 import Query (Query)
@@ -65,15 +69,28 @@ questionMark filePath (Position.LineColumn line column) =
   CursorAction.cursorAction filePath (Position.LineColumn line $ max 0 $ column - 1) CursorAction.Elaborating $ \context varPositions termUnderCursor _ -> do
     valueUnderCursor <- lift $ Elaboration.evaluate context termUnderCursor
     typeUnderCursor <- lift $ TypeOf.typeOf context valueUnderCursor
+    typeUnderCursor' <- lift $ Elaboration.readback context typeUnderCursor
+    prettyTypeUnderCursor <- lift $ Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context typeUnderCursor'
     names <- lift $ getUsableNames context varPositions
 
+    metasBefore <- liftIO $ readIORef $ Context.metas context
     lift $ fmap concat $ forM names $ \(name, term, kind) -> do
+      liftIO $ writeIORef (Context.metas context) metasBefore
       value <- Elaboration.evaluate context term
       type_ <- TypeOf.typeOf context value
-      maybeFun <- (Just <$> Elaboration.subtypeWithoutRecovery context type_ typeUnderCursor)
-        `catchError` \_ -> pure Nothing
+      (maxArgs, _) <- Elaboration.insertMetas context Elaboration.UntilTheEnd type_
+      metasBefore' <- liftIO $ readIORef $ Context.metas context
+      maybeArgs <- runMaybeT $ asum $ foreach (inits maxArgs) $ \args -> do
+        liftIO $ writeIORef (Context.metas context) metasBefore'
+        appliedValue <- lift $ foldM (\fun (plicity, arg) -> Evaluation.apply fun plicity arg) value args
+        appliedType <- lift $ TypeOf.typeOf context appliedValue
+        _ <- MaybeT $
+          (Just <$> Elaboration.subtypeWithoutRecovery context appliedType typeUnderCursor)
+          `catchError` \_ -> pure Nothing
+        pure args
 
-      case maybeFun of
+
+      pure $ case maybeArgs of
         Nothing -> do
           -- typeUnderCursor' <- Elaboration.readback context typeUnderCursor
           -- type' <- Elaboration.readback context type_
@@ -81,29 +98,24 @@ questionMark filePath (Position.LineColumn line column) =
           -- prettyTypeUnderCursor <- Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context typeUnderCursor'
           -- liftIO $ Text.hPutStrLn stderr $ "nothing " <> show prettyType
           -- liftIO $ Text.hPutStrLn stderr $ "nothing toc " <> show prettyTypeUnderCursor
-          pure []
+          []
 
-        Just fun -> do
+        Just args -> do
           let
-            term' =
-              fun term
-          value' <- Elaboration.evaluate context term'
-          type' <- TypeOf.typeOf context value'
-          type'' <- Elaboration.readback context type'
-          prettyType <- Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context type''
-          -- liftIO $ Text.hPutStrLn stderr $ show prettyType
-          pure $ pure
+            explicitArgs =
+              filter ((== Explicit) . fst) args
+          pure
             LSP.CompletionItem
               { _label = name
               , _kind = Just kind
-              , _detail = Just $ show $ ":" <+> prettyType
+              , _detail = Just $ show $ ":" <+> prettyTypeUnderCursor
               , _documentation = Nothing
               , _deprecated = Nothing
               , _preselect = Nothing
               , _sortText = Nothing
               , _filterText = Nothing
               , _insertText = Nothing
-              , _insertTextFormat = Nothing
+              , _insertTextFormat = Just LSP.Snippet
               , _textEdit = Just LSP.TextEdit
                 { _range =
                   LSP.Range
@@ -116,7 +128,14 @@ questionMark filePath (Position.LineColumn line column) =
                       , _character = column
                       }
                     }
-                , _newText = name
+                    , _newText =
+                      (if null explicitArgs then "" else "(") <>
+                      name <>
+                      mconcat
+                      [" ${" <> show (n :: Int) <> ":?}"
+                      | (n, _) <- zip [1..] explicitArgs
+                      ] <>
+                      (if null explicitArgs then "" else ")")
                 }
               , _additionalTextEdits = Nothing
               , _commitCharacters = Nothing
