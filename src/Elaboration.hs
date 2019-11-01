@@ -647,7 +647,8 @@ inferUnspanned context term expectedTypeName =
             let
               function'' =
                 Syntax.apps function' metaArgs
-            case functionType' of
+            functionType'' <- Context.forceHead context functionType'
+            case functionType'' of
               Domain.Pi name source Implicit domainClosure
                 | name `HashMap.member` arguments' -> do
                   argument' <- check context (arguments' HashMap.! name) source
@@ -672,9 +673,9 @@ inferUnspanned context term expectedTypeName =
                   pure (Syntax.App (f function'') Implicit argument', domain)
 
               _ -> do
-                functionType'' <- readback context functionType'
+                functionType''' <- readback context functionType'
                 pfunction <- Context.toPrettyableTerm context function''
-                pfunctionType <- Context.toPrettyableTerm context functionType''
+                pfunctionType <- Context.toPrettyableTerm context functionType'''
                 Context.report context $
                   Error.ImplicitApplicationMismatch
                     (HashSet.fromMap $ void arguments')
