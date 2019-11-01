@@ -67,7 +67,6 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [ ] Language server tests
 - [x] File watcher
 - [ ] Prevent CBV-incompatible circular values
-- [ ] Generalisation?
 - [ ] Literals
   - [ ] Numbers
   - [ ] Strings
