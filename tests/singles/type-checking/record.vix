@@ -1,0 +1,35 @@
+data Telescope where
+  Nil : Telescope
+  Cons : (A : Type) -> (A -> Telescope) -> Telescope
+
+data Record (tele : Telescope) where
+  Nil : Record Nil
+  Cons : forall A B. (a : A) -> Record (B a) -> Record (Cons A B)
+
+project1 : forall A B. Record (Cons A B) -> A
+project1 (Cons a _) =
+  a
+
+project2 : forall A B. (rec : Record (Cons A B)) -> Record (B (project1 rec))
+project2 (Cons _ b) =
+  b
+
+implicitPis : (tele : Telescope) -> (Record tele -> Type) -> Type
+implicitPis tele f =
+  case tele of
+    Nil ->
+      f Nil
+
+    Cons A B ->
+      forall (a : A). implicitPis (B a) (\b. f (Cons a b))
+
+implicitApps : forall tele f. implicitPis tele f -> (args : Record tele) -> f args
+implicitApps @{tele, f} fun args =
+  case args of
+    Nil ->
+      fun
+
+    Cons arg args' ->
+      case tele of
+        Cons a tele' ->
+          implicitApps @{f = \b. f (Cons arg b)} (fun @{a = arg}) args'
