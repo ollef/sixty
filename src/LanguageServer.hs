@@ -37,6 +37,7 @@ import qualified Error.Hydrated
 import qualified FileSystem
 import qualified LanguageServer.Completion as Completion
 import qualified LanguageServer.GoToDefinition as GoToDefinition
+import qualified LanguageServer.DocumentHighlights as DocumentHighlights
 import qualified LanguageServer.Hover as Hover
 import qualified Position
 import qualified Project
@@ -105,6 +106,7 @@ handlers sendMessage =
     , LSP.hoverHandler = Just $ sendMessage . LSP.ReqHover
     , LSP.definitionHandler = Just $ sendMessage . LSP.ReqDefinition
     , LSP.completionHandler = Just $ sendMessage . LSP.ReqCompletion
+    , LSP.documentHighlightHandler = Just $ sendMessage . LSP.ReqDocumentHighlights
     }
 
 options :: LSP.Options
@@ -283,6 +285,30 @@ messagePump state = do
                 }
 
           LSP.sendFunc (_lspFuncs state) $ LSP.RspCompletion $ LSP.makeResponseMessage req response
+          messagePump state
+
+        LSP.ReqDocumentHighlights req -> do
+          sendNotification state $ "messagePump: document highlights request: " <> show req
+          let
+            LSP.TextDocumentPositionParams (LSP.TextDocumentIdentifier uri) position =
+              req ^. LSP.params
+
+
+          (highlights, _) <- runTask state Driver.Don'tPrune $
+            DocumentHighlights.highlights (uriToFilePath uri) (positionFromPosition position)
+
+          let
+            response =
+              LSP.List
+                [ LSP.DocumentHighlight
+                  { _range = spanToRange span
+                  , _kind = Just LSP.HkRead
+                  }
+                | span <- highlights
+                ]
+
+          sendNotification state $ "messagePump: document highlights response: " <> show highlights
+          LSP.sendFunc (_lspFuncs state) $ LSP.RspDocumentHighlights $ LSP.makeResponseMessage req response
           messagePump state
 
         _ ->

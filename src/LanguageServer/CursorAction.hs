@@ -23,13 +23,12 @@ import qualified Domain
 import qualified Elaboration
 import qualified Index
 import Monad
+import qualified Occurrences
 import qualified Name
 import Plicity
 import qualified Position
-import qualified Presyntax
 import Query (Query)
 import qualified Query
-import qualified Query.Mapped as Mapped
 import qualified Scope
 import qualified Span
 import qualified Syntax
@@ -164,8 +163,8 @@ definitionAction k env key qualifiedName =
   where
     definitionNameActions :: MaybeT M a
     definitionNameActions = do
-      constructorSpans <- definitionConstructorSpans key qualifiedName
-      spans <- definitionNameSpans key qualifiedName
+      constructorSpans <- Occurrences.definitionConstructorSpans key qualifiedName
+      spans <- Occurrences.definitionNameSpans key qualifiedName
       asum $
         (foreach constructorSpans $ \(span, constr) -> do
           guard $ span `Span.relativeContains` _actionPosition env
@@ -175,32 +174,6 @@ definitionAction k env key qualifiedName =
           guard $ span `Span.relativeContains` _actionPosition env
           k env (Syntax.Global qualifiedName) span
         )
-
-definitionNameSpans :: MonadFetch Query m => Scope.Key -> Name.Qualified -> m [Span.Relative]
-definitionNameSpans key (Name.Qualified moduleName name) = do
-  maybeParsedDefinition <- fetch $ Query.ParsedDefinition moduleName $ Mapped.Query (key, name)
-  pure $
-    case maybeParsedDefinition of
-      Nothing ->
-        []
-
-      Just parsedDefinition ->
-        Presyntax.spans parsedDefinition
-
-definitionConstructorSpans
-  :: MonadFetch Query m
-  => Scope.Key
-  -> Name.Qualified
-  -> m [(Span.Relative, Name.QualifiedConstructor)]
-definitionConstructorSpans key qualifiedName@(Name.Qualified moduleName name) = do
-  maybeParsedDefinition <- fetch $ Query.ParsedDefinition moduleName $ Mapped.Query (key, name)
-  pure $
-    case maybeParsedDefinition of
-      Nothing ->
-        []
-
-      Just parsedDefinition ->
-        second (Name.QualifiedConstructor qualifiedName) <$> Presyntax.constructorSpans parsedDefinition
 
 termAction
   :: RelativeCallback a

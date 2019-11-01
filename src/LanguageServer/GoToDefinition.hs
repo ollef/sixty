@@ -17,6 +17,7 @@ import qualified Data.IntMap as IntMap
 import qualified LanguageServer.CursorAction as CursorAction
 import Monad
 import qualified Name
+import qualified Occurrences
 import qualified Position
 import Query (Query)
 import qualified Query
@@ -81,11 +82,11 @@ go context varMap term =
 
     Syntax.Global qualifiedName -> do
       asum $ foreach [Scope.Type, Scope.Definition] $ \key -> do
-        spans <- CursorAction.definitionNameSpans key qualifiedName
+        spans <- Occurrences.definitionNameSpans key qualifiedName
         asum $ pure <$> ((,) (Scope.KeyedName key qualifiedName) . pure <$> spans)
 
     Syntax.Con constr@(Name.QualifiedConstructor qualifiedName _) -> do
-      spans <- CursorAction.definitionConstructorSpans Scope.Definition qualifiedName
+      spans <- Occurrences.definitionConstructorSpans Scope.Definition qualifiedName
       asum $ pure <$>
         mapMaybe
           (\(span, constr') ->

@@ -23,6 +23,7 @@ import qualified Module
 import Monad
 import Name (Name(Name))
 import qualified Name
+import qualified Occurrences
 import qualified Parser
 import qualified Paths_sixty as Paths
 import Plicity
@@ -294,6 +295,18 @@ rules files readFile_ (Writer (Writer query)) =
                 position
                 (position + Position.Absolute (Text.lengthWord16 textName))
           )
+
+    Occurrences scopeKey@(Scope.KeyedName key name) ->
+      nonInput $
+      fmap (first fold) $
+      runElaborator scopeKey $ do
+        intervals <- Occurrences.run $
+          Occurrences.definitionOccurrences
+            (Environment.empty scopeKey)
+            key
+            name
+        pure (intervals, mempty)
+
   where
     input :: Functor m => m a -> m ((a, TaskKind), [Error])
     input = fmap ((, mempty) . (, Input))

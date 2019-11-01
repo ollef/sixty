@@ -16,6 +16,7 @@ import qualified Meta
 import qualified Module
 import Name (Name)
 import qualified Name
+import qualified Occurrences.Intervals as Occurrences
 import qualified Position
 import qualified Presyntax
 import qualified Query.Mapped as Mapped
@@ -44,6 +45,7 @@ data Query a where
   ElaboratedDefinition :: Name.Qualified -> Query (Maybe (Syntax.Definition, Syntax.Type Void))
   ConstructorType :: Name.QualifiedConstructor -> Query (Telescope Syntax.Type Syntax.Type Void)
   KeyedNameSpan :: Scope.KeyedName -> Query (FilePath, Span.Absolute)
+  Occurrences :: Scope.KeyedName -> Query Occurrences.Intervals
 
 fetchModuleFile :: MonadFetch Query m => Name.Module -> m FilePath
 fetchModuleFile module_ = do
@@ -88,3 +90,4 @@ instance HashTag Query where
       ElaboratingDefinition {} -> hash
       ConstructorType {} -> hash
       KeyedNameSpan {} -> hash
+      Occurrences {} -> hash
