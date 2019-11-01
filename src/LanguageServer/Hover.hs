@@ -18,7 +18,7 @@ import qualified TypeOf
 
 hover :: FilePath -> Position.LineColumn -> Task Query (Maybe (Span.LineColumn, Doc ann))
 hover filePath pos = do
-  CursorAction.cursorAction filePath pos CursorAction.Elaborating $ \context _ term lineColumn -> do
+  CursorAction.cursorAction filePath pos $ \context _ term lineColumn -> do
     value <- lift $ Elaboration.evaluate context term
     type_ <- lift $ TypeOf.typeOf context value
     type' <- lift $ Elaboration.readback context type_

@@ -47,17 +47,12 @@ type Callback a
   -> Span.LineColumn
   -> MaybeT M a
 
-data FetchDefinitionMethod
-  = Elaborated
-  | Elaborating
-
 cursorAction
   :: FilePath
   -> Position.LineColumn
-  -> FetchDefinitionMethod
   -> Callback a
   -> Task Query (Maybe a)
-cursorAction filePath (Position.LineColumn line column) fetchDefinitionMethod k = do
+cursorAction filePath (Position.LineColumn line column) k = do
   result <- runM $ runMaybeT $ do
     (moduleName, _, _) <- fetch $ Query.ParsedFile filePath
     spans <- fetch $ Query.ModuleSpanMap moduleName
@@ -101,7 +96,6 @@ cursorAction filePath (Position.LineColumn line column) fetchDefinitionMethod k 
           , _varSpans = mempty
           }
         key
-        fetchDefinitionMethod
         qualifiedName
   pure $ case result of
     Left _ ->
@@ -149,45 +143,24 @@ definitionAction
   . RelativeCallback a
   -> Environment Void
   -> Scope.Key
-  -> FetchDefinitionMethod
   -> Name.Qualified
   -> MaybeT M a
-definitionAction k env key fetchDefinitionMethod qualifiedName =
+definitionAction k env key qualifiedName =
   definitionNameActions <|> do
-    case fetchDefinitionMethod of
-      Elaborating -> do
-        (def, _, metaVars) <- MaybeT $ fetch $ Query.ElaboratingDefinition $ Scope.KeyedName key qualifiedName
-        metaVarsVar <- liftIO $ newIORef metaVars
-        let
-          env' =
-            env { _context = (_context env) { Context.metas = metaVarsVar } }
-        case def of
-          Syntax.TypeDeclaration type_ ->
-            termAction k env' type_
+    (def, _, metaVars) <- MaybeT $ fetch $ Query.ElaboratingDefinition $ Scope.KeyedName key qualifiedName
+    metaVarsVar <- liftIO $ newIORef metaVars
+    let
+      env' =
+        env { _context = (_context env) { Context.metas = metaVarsVar } }
+    case def of
+      Syntax.TypeDeclaration type_ ->
+        termAction k env' type_
 
-          Syntax.ConstantDefinition term ->
-            termAction k env' term
+      Syntax.ConstantDefinition term ->
+        termAction k env' term
 
-          Syntax.DataDefinition tele ->
-            dataDefinitionAction k env' tele
-
-      Elaborated ->
-        case key of
-          Scope.Type -> do
-            type_ <- fetch $ Query.ElaboratedType qualifiedName
-            termAction k env type_
-
-          Scope.Definition -> do
-            (def, _) <- MaybeT $ fetch $ Query.ElaboratedDefinition qualifiedName
-            case def of
-              Syntax.TypeDeclaration type_ ->
-                termAction k env type_
-
-              Syntax.ConstantDefinition term ->
-                termAction k env term
-
-              Syntax.DataDefinition tele ->
-                dataDefinitionAction k env tele
+      Syntax.DataDefinition tele ->
+        dataDefinitionAction k env' tele
   where
     definitionNameActions :: MaybeT M a
     definitionNameActions = do

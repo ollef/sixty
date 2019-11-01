@@ -29,7 +29,7 @@ import qualified Var
 
 goToDefinition :: FilePath -> Position.LineColumn -> Task Query (Maybe (FilePath, Span.LineColumn))
 goToDefinition filePath pos = do
-  CursorAction.cursorAction filePath pos CursorAction.Elaborating $ \context varSpans term _ -> do
+  CursorAction.cursorAction filePath pos $ \context varSpans term _ -> do
     contents <- fetch $ Query.FileText filePath
     let
       -- TODO use the rope that we get from the LSP library instead
