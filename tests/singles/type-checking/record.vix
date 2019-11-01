@@ -24,12 +24,10 @@ implicitPis tele f =
       forall (a : A). implicitPis (B a) (\b. f (Cons a b))
 
 implicitApps : forall tele f. implicitPis tele f -> (args : Record tele) -> f args
-implicitApps @{tele, f} fun args =
+implicitApps @{f} fun args =
   case args of
     Nil ->
       fun
 
     Cons arg args' ->
-      case tele of
-        Cons a tele' ->
-          implicitApps @{f = \b. f (Cons arg b)} (fun @{a = arg}) args'
+      implicitApps @{f = \b. f (Cons arg b)} (fun @{a = arg}) args'
