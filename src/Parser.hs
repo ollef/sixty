@@ -31,9 +31,9 @@ data Environment = Environment
   , basePosition :: !Position.Absolute
   }
 
-newtype Parser a = Parser { unparser :: ReaderT Environment Parsix.Parser a }
+newtype Parser a = Parser { unparser :: ReaderT Environment (StateT Position.Absolute Parsix.Parser) a }
   deriving
-    ( Monad, MonadReader Environment, MonadPlus, Functor, Applicative, Alternative
+    ( Monad, MonadReader Environment, MonadState Position.Absolute, MonadPlus, Functor, Applicative, Alternative
     , Parsix.Parsing, Parsix.CharParsing, Parsix.SliceParsing, LookAhead.LookAheadParsing
     , Parsix.RecoveryParsing
     )
@@ -44,7 +44,7 @@ parseTest p s =
 
 parseText :: Parser a -> Text -> FilePath -> Either Error.Parsing a
 parseText p input filePath =
-  case Parsix.parseText (runReaderT (unparser $ Parsix.whiteSpace *> p <* Parsix.eof) startEnv) input filePath of
+  case Parsix.parseText (evalStateT (runReaderT (unparser $ Parsix.whiteSpace *> p <* Parsix.eof) startEnv) 0) input filePath of
     Parsix.Success a ->
       Right a
 
@@ -151,7 +151,7 @@ spanned parser = do
   base <- asks basePosition
   start <- position
   result <- parser
-  end <- position
+  end <- get
   pure (Span.relativeTo base (Span.Absolute start end), result)
 
 positioned :: Parser a -> Parser (Position.Relative, a)
@@ -201,6 +201,10 @@ instance Parsix.TokenParsing Parser where
           (lineComment <|> multilineComment)
         *> Parsix.whiteSpace
   highlight h (Parser p) = Parser $ Parsix.highlight h p
+  token p = p <* do
+    pos <- position
+    put pos
+    Parsix.someSpace <|> pure ()
 
 lineComment :: Parser ()
 lineComment =

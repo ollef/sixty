@@ -217,10 +217,8 @@ fromError err = do
         pure (file, Span.absoluteFrom absolutePosition relativeSpan)
   text <- fetch $ Query.FileText filePath
   let
-    trimmedSpan =
-      Span.trim text span
     (lineColumn, lineText) =
-      Span.lineColumn trimmedSpan text
+      Span.lineColumn span text
   pure Hydrated
     { _filePath = filePath
     , _lineColumn = lineColumn

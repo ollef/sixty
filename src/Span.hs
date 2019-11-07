@@ -6,10 +6,7 @@ module Span where
 
 import Protolude
 
-import qualified Data.Char as Char
-import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
-import qualified Data.Text.Unsafe as Text
 
 import qualified Position
 
@@ -68,23 +65,3 @@ instance Pretty LineColumn where
 
     | otherwise =
       pretty startLine <> ":" <> pretty startColumn <> "-" <> pretty endLine <> ":" <> pretty endColumn
-
-trim
-  :: Text
-  -> Span.Absolute
-  -> Span.Absolute
-trim text (Absolute (Position.Absolute start) (Position.Absolute end)) =
-  let
-    span =
-      Text.takeWord16 (end - start) $
-      Text.dropWord16 start text
-    startSpaces =
-      Text.lengthWord16 $
-      Text.takeWhile Char.isSpace span
-    endSpaces =
-      Text.lengthWord16 $
-      Text.takeWhileEnd Char.isSpace span
-  in
-  Absolute
-    (Position.Absolute $ start + startSpaces)
-    (Position.Absolute $ end - endSpaces)
