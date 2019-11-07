@@ -36,7 +36,7 @@ data Term v
 
 type Type = Term
 
-type Branches v = HashMap Name.QualifiedConstructor (Span.Relative, Telescope Type Term v)
+type Branches v = HashMap Name.QualifiedConstructor ([Span.Relative], Telescope Type Term v)
 
 implicitPi :: Binding -> Type v -> Plicity -> Scope Type v -> Type v
 implicitPi name type_ plicity =

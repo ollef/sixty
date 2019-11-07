@@ -777,16 +777,11 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
                   constr
                   constructors
 
-              conSpan =
-                case patterns of
-                  (s, _):_ ->
-                    s
-
-                  _ ->
-                    Span.Relative 0 0
+              conSpans =
+                fst <$> patterns
 
             tele <- goConstrFields context qualifiedConstr conArgs constrType $ snd <$> patterns
-            pure (conSpan, tele)
+            pure (conSpans, tele)
 
 
           defaultBranch <-

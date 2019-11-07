@@ -147,7 +147,7 @@ data InnerValue
   | Spanned !Span.Relative !InnerValue
   deriving Show
 
-type Branches = HashMap Name.QualifiedConstructor (Span.Relative, ([(Binding, Var, Type, Plicity)], Value))
+type Branches = HashMap Name.QualifiedConstructor ([Span.Relative], ([(Binding, Var, Type, Plicity)], Value))
 
 newtype Occurrences = Occurrences { unoccurrences :: IntMap Meta.Index (Tsil (Maybe Var)) }
 

@@ -251,22 +251,23 @@ branchAction
   :: RelativeCallback a
   -> Environment v
   -> Syntax.Term v
-  -> (Name.QualifiedConstructor, (Span.Relative, Telescope Syntax.Type Syntax.Term v))
+  -> (Name.QualifiedConstructor, ([Span.Relative], Telescope Syntax.Type Syntax.Term v))
   -> MaybeT M a
-branchAction k env scrutinee (constr@(Name.QualifiedConstructor typeName _), (span, tele)) =
+branchAction k env scrutinee (constr@(Name.QualifiedConstructor typeName _), (spans, tele)) =
   (do
-    guard $ span `Span.relativeContains` _actionPosition env
-    scrutinee' <- lift $ Elaboration.evaluate (_context env) scrutinee
-    scrutineeType <- lift $ TypeOf.typeOf (_context env) scrutinee'
-    scrutineeType' <- lift $ Context.forceHead (_context env) scrutineeType
-    case scrutineeType' of
-      Domain.Neutral (Domain.Global headName) spine
-        | headName == typeName -> do
-          spine' <- lift $ mapM (mapM $ Elaboration.readback $ _context env) spine
-          k env (Syntax.Con constr `Syntax.apps` fmap (first implicitise) spine') span
+    asum $ foreach spans $ \span -> do
+      guard $ any (`Span.relativeContains` _actionPosition env) spans
+      scrutinee' <- lift $ Elaboration.evaluate (_context env) scrutinee
+      scrutineeType <- lift $ TypeOf.typeOf (_context env) scrutinee'
+      scrutineeType' <- lift $ Context.forceHead (_context env) scrutineeType
+      case scrutineeType' of
+        Domain.Neutral (Domain.Global headName) spine
+          | headName == typeName -> do
+            spine' <- lift $ mapM (mapM $ Elaboration.readback $ _context env) spine
+            k env (Syntax.Con constr `Syntax.apps` fmap (first implicitise) spine') span
 
-      _ ->
-        k env (Syntax.Con constr) span
+        _ ->
+          k env (Syntax.Con constr) span
   ) <|>
   teleAction k env tele
 

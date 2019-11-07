@@ -186,10 +186,10 @@ dataDefinitionOccurrences env tele =
 
 branchOccurrences
   :: Domain.Environment v
-  -> (Name.QualifiedConstructor, (Span.Relative, Telescope Syntax.Type Syntax.Term v))
+  -> (Name.QualifiedConstructor, ([Span.Relative], Telescope Syntax.Type Syntax.Term v))
   -> M Intervals
-branchOccurrences env (constr, (span, tele)) =
-  pure (singleton span $ Intervals.Con constr) <> teleOccurrences env tele
+branchOccurrences env (constr, (spans, tele)) =
+  pure (mconcat [singleton span $ Intervals.Con constr | span <- spans]) <> teleOccurrences env tele
 
 teleOccurrences
   :: Domain.Environment v

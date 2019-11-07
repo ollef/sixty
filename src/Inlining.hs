@@ -79,7 +79,7 @@ data Value
 
 type Environment = Environment.Environment Value
 
-type Branches = HashMap Name.QualifiedConstructor (Span.Relative, ([(Binding, Var, Type, Plicity)], Value))
+type Branches = HashMap Name.QualifiedConstructor ([Span.Relative], ([(Binding, Var, Type, Plicity)], Value))
 
 type Type = Value
 
