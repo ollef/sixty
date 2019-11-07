@@ -11,7 +11,6 @@ import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import Data.IORef
 import Data.Text.Prettyprint.Doc (Doc)
-import qualified Data.Text.Unsafe as Text
 import Rock
 
 import qualified Binding
@@ -35,10 +34,9 @@ import Index
 import qualified Inlining
 import qualified Meta
 import Monad
-import Name (Name(Name))
+import Name (Name)
 import qualified Name
 import Plicity
-import qualified Position
 import qualified Presyntax
 import qualified "this" Data.IntMap as IntMap
 import qualified Query
@@ -111,8 +109,8 @@ checkDefinition context def expectedType =
       term' <- Clauses.check context clauses' expectedType
       pure $ Syntax.ConstantDefinition term'
 
-    Presyntax.DataDefinition _ params constrs -> do
-      (tele, type_) <- inferDataDefinition context params constrs mempty
+    Presyntax.DataDefinition span params constrs -> do
+      (tele, type_) <- inferDataDefinition context span params constrs mempty
       type' <- evaluate context type_
       success <- Context.try_ context $ Unification.unify context Flexibility.Rigid type' expectedType
       if success then
@@ -141,8 +139,8 @@ inferDefinition context def =
       (term', type_) <- Clauses.infer context clauses'
       pure (Syntax.ConstantDefinition term', type_)
 
-    Presyntax.DataDefinition _ params constrs -> do
-      (tele, type_) <- inferDataDefinition context params constrs mempty
+    Presyntax.DataDefinition span params constrs -> do
+      (tele, type_) <- inferDataDefinition context span params constrs mempty
       type' <- evaluate context type_
       pure (Syntax.DataDefinition tele, type')
 
@@ -150,11 +148,12 @@ inferDefinition context def =
 
 inferDataDefinition
   :: Context v
+  -> Span.Relative
   -> [(Presyntax.Binding, Presyntax.Type, Plicity)]
   -> [Presyntax.ConstructorDefinition]
   -> Tsil (Plicity, Var)
   -> M (Telescope Syntax.Type Syntax.ConstructorDefinitions v, Syntax.Type v)
-inferDataDefinition context preParams constrs paramVars =
+inferDataDefinition context thisSpan preParams constrs paramVars =
   case preParams of
     [] -> do
       let
@@ -175,12 +174,6 @@ inferDataDefinition context preParams constrs paramVars =
       thisType' <- evaluate context thisType
 
       let
-        Name thisNameText =
-          thisName
-
-        thisSpan =
-          Span.Relative 0 $ Position.Relative $ Text.lengthWord16 thisNameText
-
         thisBinding =
           Binding.Spanned $ pure (thisSpan, thisName)
 
@@ -222,7 +215,7 @@ inferDataDefinition context preParams constrs paramVars =
 
         binding' =
           Binding.fromPresyntax binding
-      (tele, dataType) <- inferDataDefinition context' preParams' constrs paramVars'
+      (tele, dataType) <- inferDataDefinition context' thisSpan preParams' constrs paramVars'
       pure
         ( Telescope.Extend binding' type' plicity tele
         , Syntax.Pi binding' type' plicity dataType
