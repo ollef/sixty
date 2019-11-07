@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 module LanguageServer.DocumentHighlights where
 
 import Protolude hiding (moduleName)
@@ -39,6 +40,15 @@ highlights filePath (Position.LineColumn line column) = do
 
     pos =
       Position.Absolute $ Rope.rowColumnCodeUnits (Rope.RowColumn line column) rope
+
+    itemSpans item =
+      fmap concat $ forM (HashMap.toList spans) $ \((key, name), (Span.Absolute defPos _)) -> do
+        occurrenceIntervals <- fetch $
+          Query.Occurrences $
+          Scope.KeyedName key $
+          Name.Qualified moduleName name
+        pure $ toLineColumns . Span.absoluteFrom defPos <$> Intervals.itemSpans item occurrenceIntervals
+
   fmap concat $ forM (HashMap.toList spans) $ \((key, name), span@(Span.Absolute defPos _)) ->
     if span `Span.contains` pos then do
       occurrenceIntervals <- fetch $
@@ -49,10 +59,19 @@ highlights filePath (Position.LineColumn line column) = do
         relativePos =
           Position.relativeTo defPos pos
 
-        relativeIntervals =
+        items =
           Intervals.intersect relativePos occurrenceIntervals
-      pure $
-        toLineColumns . Span.absoluteFrom defPos <$> relativeIntervals
+
+      fmap concat $ forM items $ \item ->
+        case item of
+          Intervals.Var _ ->
+            pure $ toLineColumns . Span.absoluteFrom defPos <$> Intervals.itemSpans item occurrenceIntervals
+
+          Intervals.Global _ -> do
+            itemSpans item
+
+          Intervals.Con _ -> do
+            itemSpans item
 
     else
       pure []

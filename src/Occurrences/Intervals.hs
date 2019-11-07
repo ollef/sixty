@@ -50,7 +50,11 @@ null :: Intervals -> Bool
 null =
   HashMap.null . _items
 
-intersect :: Position.Relative -> Intervals -> [Span.Relative]
-intersect pos (Intervals intervalMap items) = do
+intersect :: Position.Relative -> Intervals -> [Item]
+intersect pos (Intervals intervalMap _) = do
   (_, item) <- IntervalMap.search pos intervalMap
-  toList $ HashMap.lookupDefault mempty item items
+  pure item
+
+itemSpans :: Item -> Intervals -> [Span.Relative]
+itemSpans item (Intervals _ items) =
+  foldMap toList $ HashMap.lookup item items
