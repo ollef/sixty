@@ -25,7 +25,7 @@ unspanned (Term _ term) =
 
 data UnspannedTerm
   = Var !Name.Pre
-  | Let !Binding !(Maybe Type) [Clause] !Term
+  | Let !Name !(Maybe (Span.Relative, Type)) [(Span.Relative, Clause)] !Term
   | Pi !Binding !Plicity !Type !Type
   | Fun !Type !Type
   | Lam !PlicitPattern !Term

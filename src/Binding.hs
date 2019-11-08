@@ -1,5 +1,6 @@
 {-# language DeriveAnyClass #-}
 {-# language DeriveGeneric #-}
+{-# language TupleSections #-}
 module Binding where
 
 import Protolude
@@ -15,6 +16,10 @@ data Binding
   = Spanned !(NonEmpty (Span.Relative, Name))
   | Unspanned !Name
   deriving (Eq, Show, Generic, Hashable)
+
+fromName :: [Span.Relative] -> Name -> Binding
+fromName spans_ name =
+  maybe (Unspanned name) (Spanned . fmap (, name)) $ NonEmpty.nonEmpty spans_
 
 toName :: Binding -> Name
 toName binding =

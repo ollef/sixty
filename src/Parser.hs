@@ -332,10 +332,12 @@ atomicTerm =
       flip (foldr $ \(span, binding_) rhs -> Term span $ binding_ rhs) <$ reserved "let" <*> blockOfMany letBinding <* reserved "in" <*> term
 
     letBinding = spanned $ do
-      binding_@(Binding span (Name nameText)) <- binding
-      Let binding_ . Just <$ symbol ":" <*> recoveringIndentedTerm <*>
-        sameLevel (withIndentationBlock $ fmap snd <$ reserved nameText <*> clauses span nameText)
-        <|> Let binding_ Nothing . fmap snd <$> clauses span nameText
+      Binding span name_@(Name nameText) <- binding
+      Let name_ . Just . (,) span <$ symbol ":" <*> recoveringIndentedTerm <*>
+        sameLevel (withIndentationBlock $ do
+          (span', _) <- spanned $ reserved nameText
+          clauses span' nameText)
+        <|> Let name_ Nothing <$> clauses span nameText
       <?> "let binding"
 
 plicitAtomicTerm :: Parser (Either (HashMap Name Term) Term)

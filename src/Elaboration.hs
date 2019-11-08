@@ -13,6 +13,7 @@ import Data.IORef
 import Data.Text.Prettyprint.Doc (Doc)
 import Rock
 
+import Binding (Binding)
 import qualified Binding
 import qualified Builtin
 import Context (Context)
@@ -447,10 +448,10 @@ checkUnspanned
 checkUnspanned context term expectedType = do
   expectedType' <- Context.forceHead context expectedType
   case (term, expectedType') of
-    (Presyntax.Let binding maybeType clauses body, _) -> do
-      (context', boundTerm, typeTerm) <- elaborateLet context binding maybeType clauses
+    (Presyntax.Let name maybeType clauses body, _) -> do
+      (context', binding, boundTerm, typeTerm) <- elaborateLet context name maybeType clauses
       body' <- check context' body expectedType
-      pure $ Syntax.Let (Binding.fromPresyntax binding) boundTerm typeTerm body'
+      pure $ Syntax.Let binding boundTerm typeTerm body'
 
     (Presyntax.Case scrutinee branches, _) -> do
       (scrutinee', scrutineeType) <-
@@ -549,10 +550,10 @@ inferUnspanned context term expectedTypeName =
     Presyntax.Var name ->
       inferName context name expectedTypeName
 
-    Presyntax.Let binding maybeType clauses body -> do
-      (context', boundTerm, typeTerm) <- elaborateLet context binding maybeType clauses
+    Presyntax.Let name maybeType clauses body -> do
+      (context', binding, boundTerm, typeTerm) <- elaborateLet context name maybeType clauses
       (body', type_) <- infer context' body expectedTypeName
-      pure (Syntax.Let (Binding.fromPresyntax binding) boundTerm typeTerm body', type_)
+      pure (Syntax.Let binding boundTerm typeTerm body', type_)
 
     Presyntax.Pi binding plicity source domain -> do
       source' <- check context source Builtin.Type
@@ -809,30 +810,30 @@ checkApplication context argument source domainClosure = do
 
 elaborateLet
   :: Context v
-  -> Presyntax.Binding
-  -> Maybe Presyntax.Type
-  -> [Presyntax.Clause]
-  -> M (Context (Succ v), Syntax.Term v, Syntax.Type v)
-elaborateLet context binding maybeType clauses = do
+  -> Name
+  -> Maybe (Span.Relative, Presyntax.Type)
+  -> [(Span.Relative, Presyntax.Clause)]
+  -> M (Context (Succ v), Binding, Syntax.Term v, Syntax.Type v)
+elaborateLet context name maybeType clauses = do
   let
     clauses' =
-      [ Clauses.Clause clause mempty | clause <- clauses]
-  (boundTerm, typeTerm, typeValue) <-
+      [ Clauses.Clause clause mempty | (_, clause) <- clauses]
+  (binding, boundTerm, typeTerm, typeValue) <-
     case maybeType of
       Nothing -> do
         (boundTerm, typeValue) <- Clauses.infer context clauses'
         typeTerm <- readback context typeValue
-        pure (boundTerm, typeTerm, typeValue)
+        pure (Binding.fromName (map fst clauses) name, boundTerm, typeTerm, typeValue)
 
-      Just type_ -> do
+      Just (span, type_) -> do
         typeTerm <- check context type_ Builtin.Type
         typeValue <- evaluate context typeTerm
         boundTerm <- Clauses.check context clauses' typeValue
-        pure (boundTerm, typeTerm, typeValue)
+        pure (Binding.fromName (span : map fst clauses) name, boundTerm, typeTerm, typeValue)
 
   boundTerm' <- evaluate context boundTerm
-  (context', _) <- Context.extendDef context (Binding.fromPresyntax binding) boundTerm' typeValue
-  pure (context', boundTerm, typeTerm)
+  (context', _) <- Context.extendDef context binding boundTerm' typeValue
+  pure (context', binding, boundTerm, typeTerm)
 
 data ResolvedConstructor
   = Ambiguous (HashSet Name.QualifiedConstructor)
