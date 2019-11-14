@@ -8,6 +8,7 @@ import Protolude
 import Data.HashSet (HashSet)
 
 import qualified Name
+import qualified Span
 
 data Header = Header
   { _exposedNames :: !ExposedNames
@@ -45,7 +46,8 @@ instance Monoid ExposedNames where
     Exposed mempty
 
 data Import = Import
-  { _module :: !Name.Module
+  { _span :: !Span.Absolute
+  , _module :: !Name.Module
   , _alias :: !Name.Pre
   , _importedNames :: !ExposedNames
   } deriving (Eq, Show, Generic, Hashable)

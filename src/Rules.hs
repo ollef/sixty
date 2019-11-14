@@ -76,7 +76,12 @@ rules files readFile_ (Writer (Writer query)) =
                     _ ->
                       header
                         { Module._imports =
-                          Module.Import Builtin.Module "Sixten.Builtin" Module.AllExposed
+                          Module.Import
+                            { _span = Span.Absolute 0 0
+                            , _module = Builtin.Module
+                            , _alias = "Sixten.Builtin"
+                            , _importedNames = Module.AllExposed
+                            }
                           : Module._imports header
                         }
               ((module_, header', definitions), map (Error.Parse filePath) errors)

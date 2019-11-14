@@ -1,4 +1,5 @@
 {-# language FlexibleContexts #-}
+{-# language GADTs #-}
 {-# language OverloadedStrings #-}
 {-# language RankNTypes #-}
 {-# language ScopedTypeVariables #-}
@@ -22,9 +23,10 @@ import qualified Data.IntMap as IntMap
 import qualified Domain
 import qualified Elaboration
 import qualified Index
+import qualified Module
 import Monad
-import qualified Occurrences
 import qualified Name
+import qualified Occurrences
 import Plicity
 import qualified Position
 import Query (Query)
@@ -38,22 +40,27 @@ import qualified TypeOf
 import qualified Var
 import Var (Var)
 
-type Callback a
-  = forall v
-  . Context v
-  -> IntMap Var (NonEmpty Span.Relative)
-  -> Syntax.Term v
-  -> Span.LineColumn
-  -> MaybeT M a
+type Callback a = ItemUnderCursor -> Span.LineColumn -> MaybeT M a
+
+data ItemUnderCursor where
+  Term
+    :: Context v
+    -> IntMap Var (NonEmpty Span.Relative)
+    -> Syntax.Term v
+    -> ItemUnderCursor
+  Import
+    :: Name.Module
+    -> ItemUnderCursor
 
 cursorAction
-  :: FilePath
+  :: forall a
+  . FilePath
   -> Position.LineColumn
   -> Callback a
   -> Task Query (Maybe a)
 cursorAction filePath (Position.LineColumn line column) k = do
   result <- runM $ runMaybeT $ do
-    (moduleName, _, _) <- fetch $ Query.ParsedFile filePath
+    (moduleName, moduleHeader, _) <- fetch $ Query.ParsedFile filePath
     spans <- fetch $ Query.ModuleSpanMap moduleName
     contents <- fetch $ Query.FileText filePath
     let
@@ -74,28 +81,37 @@ cursorAction filePath (Position.LineColumn line column) k = do
       pos =
         Position.Absolute $ Rope.rowColumnCodeUnits (Rope.RowColumn line column) rope
 
-    asum $ foreach (HashMap.toList spans) $ \((key, name), span@(Span.Absolute defPos _)) -> do
-      guard $ span `Span.contains` pos
-      let
-        qualifiedName =
-          Name.Qualified moduleName name
+    asum $
+      (foreach (HashMap.toList spans) $ \((key, name), span@(Span.Absolute defPos _)) -> do
+        guard $ span `Span.contains` pos
+        let
+          qualifiedName =
+            Name.Qualified moduleName name
 
-        k' env term actionSpan =
-          k
-            (_context env)
-            (_varSpans env)
-            term
-            (toLineColumns $ Span.absoluteFrom defPos actionSpan)
-      context <- Context.empty $ Scope.KeyedName key qualifiedName
-      definitionAction
-        k'
-        Environment
-          { _actionPosition = Position.relativeTo defPos pos
-          , _context = context
-          , _varSpans = mempty
-          }
-        key
-        qualifiedName
+          k' :: RelativeCallback a
+          k' env term actionSpan =
+            k
+              (Term (_context env) (_varSpans env) term)
+              (toLineColumns $ Span.absoluteFrom defPos actionSpan)
+        context <- Context.empty $ Scope.KeyedName key qualifiedName
+        definitionAction
+          k'
+          Environment
+            { _actionPosition = Position.relativeTo defPos pos
+            , _context = context
+            , _varSpans = mempty
+            }
+          key
+          qualifiedName
+      ) <>
+      (foreach (Module._imports moduleHeader) $ \import_ -> do
+        let
+          span =
+            Module._span import_
+        guard $ span `Span.contains` pos
+        k (Import (Module._module import_)) $ toLineColumns span
+      )
+
   pure $ case result of
     Left _ ->
       Nothing

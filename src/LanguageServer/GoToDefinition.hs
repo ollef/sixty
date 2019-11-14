@@ -30,45 +30,51 @@ import qualified Var
 
 goToDefinition :: FilePath -> Position.LineColumn -> Task Query (Maybe (FilePath, Span.LineColumn))
 goToDefinition filePath pos = do
-  CursorAction.cursorAction filePath pos $ \context varSpans term _ -> do
-    contents <- fetch $ Query.FileText filePath
-    let
-      -- TODO use the rope that we get from the LSP library instead
-      rope =
-        Rope.fromText contents
+  CursorAction.cursorAction filePath pos $ \item _ ->
+    case item of
+      CursorAction.Import moduleName -> do
+        moduleFile <- Query.fetchModuleFile moduleName
+        pure (moduleFile, Span.LineColumns (Position.LineColumn 0 0) (Position.LineColumn 0 0))
 
-      toLineColumn (Position.Absolute i) =
+      CursorAction.Term context varSpans term -> do
+        contents <- fetch $ Query.FileText filePath
         let
-          rope' =
-            Rope.take i rope
-        in
-        Position.LineColumn (Rope.rows rope') (Rope.columns rope')
+          -- TODO use the rope that we get from the LSP library instead
+          rope =
+            Rope.fromText contents
 
-      toLineColumns (Span.Absolute start end) =
-        Span.LineColumns (toLineColumn start) (toLineColumn end)
-    (keyedName, relativeSpans) <- go context varSpans term
-    (file, Span.Absolute absolutePosition _) <- fetch $ Query.KeyedNameSpan keyedName
-    let
-      absoluteSpans =
-        toLineColumns . Span.absoluteFrom absolutePosition <$> relativeSpans
+          toLineColumn (Position.Absolute i) =
+            let
+              rope' =
+                Rope.take i rope
+            in
+            Position.LineColumn (Rope.rows rope') (Rope.columns rope')
 
-      spanStart (LineColumns s _) =
-        s
+          toLineColumns (Span.Absolute start end) =
+            Span.LineColumns (toLineColumn start) (toLineColumn end)
+        (keyedName, relativeSpans) <- go context varSpans term
+        (file, Span.Absolute absolutePosition _) <- fetch $ Query.KeyedNameSpan keyedName
+        let
+          absoluteSpans =
+            toLineColumns . Span.absoluteFrom absolutePosition <$> relativeSpans
 
-      resultSpan
-        | filePath == file =
-          case sortBy (flip $ comparing spanStart) $ NonEmpty.filter ((<= pos) . spanStart) absoluteSpans of
-            span:_ ->
-              span
+          spanStart (LineColumns s _) =
+            s
 
-            [] ->
+          resultSpan
+            | filePath == file =
+              case sortBy (flip $ comparing spanStart) $ NonEmpty.filter ((<= pos) . spanStart) absoluteSpans of
+                span:_ ->
+                  span
+
+                [] ->
+                  NonEmpty.head absoluteSpans
+            | otherwise =
               NonEmpty.head absoluteSpans
-        | otherwise =
-          NonEmpty.head absoluteSpans
 
-    liftIO $ Text.hPutStrLn stderr $ show absoluteSpans
+        liftIO $ Text.hPutStrLn stderr $ show absoluteSpans
 
-    pure (file, resultSpan)
+        pure (file, resultSpan)
 
 go
   :: Context v

@@ -38,110 +38,120 @@ import qualified Var
 
 complete :: FilePath -> Position.LineColumn -> Task Query (Maybe [LSP.CompletionItem])
 complete filePath pos =
-  CursorAction.cursorAction filePath pos $ \context varPositions _ _ -> do
-    names <- lift $ getUsableNames context varPositions
-    lift $ forM names $ \(name, term, kind) -> do
-      value <- Elaboration.evaluate context term
-      type_ <- TypeOf.typeOf context value
-      type' <- Elaboration.readback context type_
-      prettyType <- Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context type'
-      pure
-        LSP.CompletionItem
-          { _label = name
-          , _kind = Just kind
-          , _detail = Just $ show $ ":" <+> prettyType
-          , _documentation = Nothing
-          , _deprecated = Nothing
-          , _preselect = Nothing
-          , _sortText = Nothing
-          , _filterText = Nothing
-          , _insertText = Nothing
-          , _insertTextFormat = Nothing
-          , _textEdit = Nothing
-          , _additionalTextEdits = Nothing
-          , _commitCharacters = Nothing
-          , _command = Nothing
-          , _xdata = Nothing
-          }
+  CursorAction.cursorAction filePath pos $ \item _ ->
+    case item of
+      CursorAction.Import _ ->
+        empty
 
-questionMark :: FilePath -> Position.LineColumn -> Task Query (Maybe [LSP.CompletionItem])
-questionMark filePath (Position.LineColumn line column) =
-  CursorAction.cursorAction filePath (Position.LineColumn line $ max 0 $ column - 1) $ \context varPositions termUnderCursor _ -> do
-    valueUnderCursor <- lift $ Elaboration.evaluate context termUnderCursor
-    typeUnderCursor <- lift $ TypeOf.typeOf context valueUnderCursor
-    typeUnderCursor' <- lift $ Elaboration.readback context typeUnderCursor
-    prettyTypeUnderCursor <- lift $ Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context typeUnderCursor'
-    names <- lift $ getUsableNames context varPositions
-
-    metasBefore <- liftIO $ readIORef $ Context.metas context
-    lift $ fmap concat $ forM names $ \(name, term, kind) -> do
-      liftIO $ writeIORef (Context.metas context) metasBefore
-      value <- Elaboration.evaluate context term
-      type_ <- TypeOf.typeOf context value
-      (maxArgs, _) <- Elaboration.insertMetas context Elaboration.UntilTheEnd type_
-      metasBefore' <- liftIO $ readIORef $ Context.metas context
-      maybeArgs <- runMaybeT $ asum $ foreach (inits maxArgs) $ \args -> do
-        liftIO $ writeIORef (Context.metas context) metasBefore'
-        appliedValue <- lift $ foldM (\fun (plicity, arg) -> Evaluation.apply fun plicity arg) value args
-        appliedType <- lift $ TypeOf.typeOf context appliedValue
-        _ <- MaybeT $
-          (Just <$> Elaboration.subtypeWithoutRecovery context appliedType typeUnderCursor)
-          `catchError` \_ -> pure Nothing
-        pure args
-
-
-      pure $ case maybeArgs of
-        Nothing -> do
-          -- typeUnderCursor' <- Elaboration.readback context typeUnderCursor
-          -- type' <- Elaboration.readback context type_
-          -- prettyType <- Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context type'
-          -- prettyTypeUnderCursor <- Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context typeUnderCursor'
-          -- liftIO $ Text.hPutStrLn stderr $ "nothing " <> show prettyType
-          -- liftIO $ Text.hPutStrLn stderr $ "nothing toc " <> show prettyTypeUnderCursor
-          []
-
-        Just args -> do
-          let
-            explicitArgs =
-              filter ((== Explicit) . fst) args
+      CursorAction.Term context varPositions _ -> do
+        names <- lift $ getUsableNames context varPositions
+        lift $ forM names $ \(name, term, kind) -> do
+          value <- Elaboration.evaluate context term
+          type_ <- TypeOf.typeOf context value
+          type' <- Elaboration.readback context type_
+          prettyType <- Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context type'
           pure
             LSP.CompletionItem
               { _label = name
               , _kind = Just kind
-              , _detail = Just $ show $ ":" <+> prettyTypeUnderCursor
+              , _detail = Just $ show $ ":" <+> prettyType
               , _documentation = Nothing
               , _deprecated = Nothing
               , _preselect = Nothing
               , _sortText = Nothing
               , _filterText = Nothing
               , _insertText = Nothing
-              , _insertTextFormat = Just LSP.Snippet
-              , _textEdit = Just LSP.TextEdit
-                { _range =
-                  LSP.Range
-                    { _start = LSP.Position
-                      { _line = line
-                      , _character = column - 1
-                      }
-                    , _end = LSP.Position
-                      { _line = line
-                      , _character = column
-                      }
-                    }
-                    , _newText =
-                      (if null explicitArgs then "" else "(") <>
-                      name <>
-                      mconcat
-                      [" ${" <> show (n :: Int) <> ":?}"
-                      | (n, _) <- zip [1..] explicitArgs
-                      ] <>
-                      (if null explicitArgs then "" else ")")
-                }
+              , _insertTextFormat = Nothing
+              , _textEdit = Nothing
               , _additionalTextEdits = Nothing
               , _commitCharacters = Nothing
               , _command = Nothing
               , _xdata = Nothing
               }
+
+questionMark :: FilePath -> Position.LineColumn -> Task Query (Maybe [LSP.CompletionItem])
+questionMark filePath (Position.LineColumn line column) =
+  CursorAction.cursorAction filePath (Position.LineColumn line $ max 0 $ column - 1) $ \item _ ->
+    case item of
+      CursorAction.Import _ ->
+        empty
+
+      CursorAction.Term context varPositions termUnderCursor -> do
+        valueUnderCursor <- lift $ Elaboration.evaluate context termUnderCursor
+        typeUnderCursor <- lift $ TypeOf.typeOf context valueUnderCursor
+        typeUnderCursor' <- lift $ Elaboration.readback context typeUnderCursor
+        prettyTypeUnderCursor <- lift $ Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context typeUnderCursor'
+        names <- lift $ getUsableNames context varPositions
+
+        metasBefore <- liftIO $ readIORef $ Context.metas context
+        lift $ fmap concat $ forM names $ \(name, term, kind) -> do
+          liftIO $ writeIORef (Context.metas context) metasBefore
+          value <- Elaboration.evaluate context term
+          type_ <- TypeOf.typeOf context value
+          (maxArgs, _) <- Elaboration.insertMetas context Elaboration.UntilTheEnd type_
+          metasBefore' <- liftIO $ readIORef $ Context.metas context
+          maybeArgs <- runMaybeT $ asum $ foreach (inits maxArgs) $ \args -> do
+            liftIO $ writeIORef (Context.metas context) metasBefore'
+            appliedValue <- lift $ foldM (\fun (plicity, arg) -> Evaluation.apply fun plicity arg) value args
+            appliedType <- lift $ TypeOf.typeOf context appliedValue
+            _ <- MaybeT $
+              (Just <$> Elaboration.subtypeWithoutRecovery context appliedType typeUnderCursor)
+              `catchError` \_ -> pure Nothing
+            pure args
+
+
+          pure $ case maybeArgs of
+            Nothing -> do
+              -- typeUnderCursor' <- Elaboration.readback context typeUnderCursor
+              -- type' <- Elaboration.readback context type_
+              -- prettyType <- Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context type'
+              -- prettyTypeUnderCursor <- Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context typeUnderCursor'
+              -- liftIO $ Text.hPutStrLn stderr $ "nothing " <> show prettyType
+              -- liftIO $ Text.hPutStrLn stderr $ "nothing toc " <> show prettyTypeUnderCursor
+              []
+
+            Just args -> do
+              let
+                explicitArgs =
+                  filter ((== Explicit) . fst) args
+              pure
+                LSP.CompletionItem
+                  { _label = name
+                  , _kind = Just kind
+                  , _detail = Just $ show $ ":" <+> prettyTypeUnderCursor
+                  , _documentation = Nothing
+                  , _deprecated = Nothing
+                  , _preselect = Nothing
+                  , _sortText = Nothing
+                  , _filterText = Nothing
+                  , _insertText = Nothing
+                  , _insertTextFormat = Just LSP.Snippet
+                  , _textEdit = Just LSP.TextEdit
+                    { _range =
+                      LSP.Range
+                        { _start = LSP.Position
+                          { _line = line
+                          , _character = column - 1
+                          }
+                        , _end = LSP.Position
+                          { _line = line
+                          , _character = column
+                          }
+                        }
+                        , _newText =
+                          (if null explicitArgs then "" else "(") <>
+                          name <>
+                          mconcat
+                          [" ${" <> show (n :: Int) <> ":?}"
+                          | (n, _) <- zip [1..] explicitArgs
+                          ] <>
+                          (if null explicitArgs then "" else ")")
+                    }
+                  , _additionalTextEdits = Nothing
+                  , _commitCharacters = Nothing
+                  , _command = Nothing
+                  , _xdata = Nothing
+                  }
 
 getUsableNames :: Context v -> IntMap Var value -> M [(Text, Syntax.Term v, LSP.CompletionItemKind)]
 getUsableNames context varPositions = do

@@ -1,3 +1,4 @@
+{-# language DuplicateRecordFields #-}
 {-# language GeneralizedNewtypeDeriving #-}
 {-# language OverloadedStrings #-}
 module Parser where
@@ -448,12 +449,17 @@ import_ :: Parser Module.Import
 import_ =
   withIndentationBlock $
     mkImport
-      <$ reserved "import" <*> moduleName
+      <$ reserved "import" <*> spanned moduleName
       <*> Parsix.optional (reserved "as" *> prename)
       <*> Parsix.optional (reserved "exposing" *> exposedNames)
   where
-    mkImport n@(Name.Module text) malias mexposed =
-      Module.Import n (fromMaybe (Name.Pre text) malias) (fold mexposed)
+    mkImport (span, n@(Name.Module text)) malias mexposed =
+      Module.Import
+        { _span = Span.absoluteFrom 0 span
+        , _module = n
+        , _alias = fromMaybe (Name.Pre text) malias
+        , _importedNames = fold mexposed
+        }
 
 exposedNames :: Parser Module.ExposedNames
 exposedNames =
