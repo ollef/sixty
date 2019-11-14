@@ -17,6 +17,7 @@ import Binding (Binding)
 import qualified Binding
 import qualified Builtin
 import Context (Context)
+import qualified Substitution
 import qualified Context
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
@@ -190,7 +191,8 @@ inferDataDefinition context thisSpan preParams constrs paramVars =
       constrs' <- forM constrs $ \case
         Presyntax.GADTConstructors cs type_ -> do
           type' <- checkConstructorType context' type_ var paramVars
-          pure [(constr, Syntax.Let thisBinding this thisType type') | (_, constr) <- cs]
+          type'' <- Substitution.let_ context this type'
+          pure [(constr, type'') | (_, constr) <- cs]
 
         Presyntax.ADTConstructor _ constr types -> do
           types' <- forM types $ \type_ ->
@@ -200,7 +202,8 @@ inferDataDefinition context thisSpan preParams constrs paramVars =
           let
             type_ =
               Syntax.funs types' Explicit returnType
-          pure [(constr, Syntax.Let thisBinding this thisType type_)]
+          type' <- Substitution.let_ context this type_
+          pure [(constr, type')]
       pure
         ( Telescope.Empty (Syntax.ConstructorDefinitions $ HashMap.fromList $ concat constrs')
         , Syntax.Global Builtin.TypeName

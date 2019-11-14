@@ -1,5 +1,6 @@
 {-# language DuplicateRecordFields #-}
 {-# language OverloadedStrings #-}
+{-# language RankNTypes #-}
 module Inlining where
 
 import Protolude hiding (Type, IntMap, evaluate, empty)
@@ -52,7 +53,7 @@ inlineDataDefinition env tele =
 
 inlineTerm :: Environment v -> Syntax.Term v -> M (Syntax.Term v)
 inlineTerm env term = do
-  value <- evaluate env term
+  value <- evaluate duplicable env term
   pure $ readback
     Environment.Environment
       { scopeKey = Environment.scopeKey env
@@ -85,8 +86,10 @@ type Type = Value
 
 -------------------------------------------------------------------------------
 
-evaluate :: Environment v -> Syntax.Term v -> M Value
-evaluate env term =
+type Duplicable = forall v. Syntax.Term v -> Bool
+
+evaluate :: Duplicable -> Environment v -> Syntax.Term v -> M Value
+evaluate dup env term =
   case term of
     Syntax.Var index -> do
       let
@@ -110,61 +113,62 @@ evaluate env term =
 
     Syntax.Let name term' type_ body
       | duplicable term' -> do
-        value <- evaluate env term'
+        value <- evaluate dup env term'
         env' <- Environment.extendValue env value
-        evaluate env' body
+        evaluate dup env' body
 
       | otherwise -> do
         (env', var) <- Environment.extend env
         Let name var <$>
-          evaluate env term' <*>
-          evaluate env type_ <*>
-          evaluate env' body
+          evaluate dup env term' <*>
+          evaluate dup env type_ <*>
+          evaluate dup env' body
 
     Syntax.Pi name source plicity domain -> do
       (env', var) <- Environment.extend env
       Pi name var <$>
-        evaluate env source <*>
+        evaluate dup env source <*>
         pure plicity <*>
-        evaluate env' domain
+        evaluate dup env' domain
 
     Syntax.Fun source plicity domain ->
-      Fun <$> evaluate env source <*> pure plicity <*> evaluate env domain
+      Fun <$> evaluate dup env source <*> pure plicity <*> evaluate dup env domain
 
     Syntax.Lam name type_ plicity body -> do
       (env', var) <- Environment.extend env
       Lam name var <$>
-        evaluate env type_ <*>
+        evaluate dup env type_ <*>
         pure plicity <*>
-        evaluate env' body
+        evaluate dup env' body
 
     Syntax.App fun plicity arg ->
-      App <$> evaluate env fun <*> pure plicity <*> evaluate env arg
+      App <$> evaluate dup env fun <*> pure plicity <*> evaluate dup env arg
 
     Syntax.Case scrutinee branches defaultBranch -> do
-      scrutinee' <- evaluate env scrutinee
+      scrutinee' <- evaluate dup env scrutinee
       -- TODO choose branch if variable is inlined to constructor
       Case scrutinee' <$>
-        mapM (mapM $ evaluateBranch env) branches <*>
-        mapM (evaluate env) defaultBranch
+        mapM (mapM $ evaluateBranch dup env) branches <*>
+        mapM (evaluate dup env) defaultBranch
 
     Syntax.Spanned span term' ->
-      Spanned span <$> evaluate env term'
+      Spanned span <$> evaluate dup env term'
 
 evaluateBranch
-  :: Environment v
+  :: Duplicable
+  -> Environment v
   -> Telescope Syntax.Type Syntax.Term v
   -> M ([(Binding, Var, Type, Plicity)], Value)
-evaluateBranch env tele =
+evaluateBranch dup env tele =
   case tele of
     Telescope.Empty body -> do
-      body' <- evaluate env body
+      body' <- evaluate dup env body
       pure ([], body')
 
     Telescope.Extend name type_ plicity tele' -> do
-      type' <- evaluate env type_
+      type' <- evaluate dup env type_
       (env', var) <- Environment.extend env
-      (bindings, body) <- evaluateBranch env' tele'
+      (bindings, body) <- evaluateBranch dup env' tele'
       pure ((name, var, type', plicity):bindings, body)
 
 readback :: Environment v -> Value -> Syntax.Term v
