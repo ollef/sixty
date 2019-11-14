@@ -264,6 +264,7 @@ atomicPattern =
   <|> spannedPattern
     ((\(span, name_) -> ConOrVar span name_ mempty) <$> spanned prename
     <|> WildcardPattern <$ reserved "_"
+    <|> (\(span, _) -> ConOrVar span "?" mempty) <$> spanned (reserved "?")
     <|> Forced <$ symbol "~" <*> atomicTerm
     )
   <?> "pattern"
