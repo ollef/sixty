@@ -1,0 +1,3 @@
+import NonExistentModule -- import not found error expected
+
+f : Type

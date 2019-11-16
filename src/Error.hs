@@ -8,20 +8,22 @@ import Protolude
 import Data.HashSet (HashSet)
 import Data.Text.Prettyprint.Doc
 
+import Data.Tsil (Tsil)
+import Domain.Pattern (Pattern)
 import qualified Error.Parsing as Error
 import qualified Meta
-import Data.Tsil (Tsil)
+import qualified Module
 import Name (Name)
 import qualified Name
 import Plicity
 import qualified Scope
-import Domain.Pattern (Pattern)
 import qualified Span
 import qualified Syntax
 
 data Error
   = Parse FilePath !Error.Parsing
   | DuplicateName !Scope.KeyedName
+  | ImportNotFound !Name.Module !Module.Import
   | Elaboration !Scope.KeyedName !Error.Spanned
   deriving (Eq, Show, Generic, Hashable)
 

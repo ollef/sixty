@@ -115,6 +115,7 @@ verifyErrors filePath errs expectedErrors = do
 data ExpectedError
   = Parse
   | DuplicateName
+  | ImportNotFound
   | NotInScope
   | Ambiguous
   | TypeMismatch
@@ -136,6 +137,9 @@ errorToExpectedError err =
 
     Error.DuplicateName {} ->
       DuplicateName
+
+    Error.ImportNotFound {} ->
+      ImportNotFound
 
     Error.Elaboration _ (Error.Spanned _ elaborationError) ->
       case elaborationError of
@@ -187,6 +191,9 @@ expectedErrorsFromSource sourceText =
 
             "duplicate name error expected" ->
               [(lineNumber, DuplicateName)]
+
+            "import not found error expected" ->
+              [(lineNumber, ImportNotFound)]
 
             "not in scope error expected" ->
               [(lineNumber, NotInScope)]

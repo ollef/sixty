@@ -90,11 +90,14 @@ rules files readFile_ (Writer (Writer query)) =
               ((Name.Module $ fromString filePath, mempty, mempty), pure $ Error.Parse filePath err)
 
     ModuleHeader module_ ->
-      noError $ do
+      nonInput $ do
         maybeFilePath <- fetch $ Query.ModuleFile $ Mapped.Query module_
         fmap fold $ forM maybeFilePath $ \filePath -> do
           (_, header, _) <- fetch $ ParsedFile filePath
-          pure header
+          errors <- fmap concat $ forM (Module._imports header) $ \import_ -> do
+            maybeModuleFile <- fetch $ Query.ModuleFile $ Mapped.Query $ Module._module import_
+            pure [Error.ImportNotFound module_ import_ | isNothing maybeModuleFile]
+          pure (header, errors)
 
     ImportedNames module_ subQuery ->
       noError $ Mapped.rule (ImportedNames module_) subQuery $ do

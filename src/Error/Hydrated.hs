@@ -15,12 +15,14 @@ import qualified Binding
 import Error (Error)
 import qualified Error
 import qualified Error.Parsing
+import qualified Module
 import Name (Name)
 import Plicity
 import qualified Position
 import qualified Pretty
 import Query (Query)
 import qualified Query
+import qualified Query.Mapped as Mapped
 import qualified Scope
 import qualified Span
 
@@ -48,8 +50,18 @@ headingAndBody error =
 
     Error.DuplicateName (Scope.KeyedName _ name) ->
       pure
-        ( "Duplicate name: " <+> Doc.pretty name
+        ( "Duplicate name:" <+> Doc.pretty name
         , Doc.pretty name <+> "has already been defined."
+        )
+
+    Error.ImportNotFound _ import_ ->
+      let
+        prettyModule =
+          Doc.pretty (Module._module import_)
+      in
+      pure
+        ( "Module not found:" <+> prettyModule
+        , "The imported module" <+> prettyModule <+> "wasn't found in the current project."
         )
 
     Error.Elaboration _ (Error.Spanned _ err') ->
@@ -211,6 +223,10 @@ fromError err = do
 
       Error.DuplicateName keyedName ->
         fetch $ Query.KeyedNameSpan keyedName
+
+      Error.ImportNotFound module_ import_ -> do
+        maybeModuleFile <- fetch $ Query.ModuleFile $ Mapped.Query module_
+        pure (fromMaybe "<no file>" maybeModuleFile, Module._span import_)
 
       Error.Elaboration keyedName (Error.Spanned relativeSpan _) -> do
         (file, Span.Absolute absolutePosition _) <- fetch $ Query.KeyedNameSpan keyedName
