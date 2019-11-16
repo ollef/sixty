@@ -1,6 +1,7 @@
 {-# language FlexibleContexts #-}
 {-# language OverloadedStrings #-}
 {-# language RankNTypes #-}
+{-# language ScopedTypeVariables #-}
 {-# language TupleSections #-}
 {-# language TypeFamilies #-}
 module Driver where
@@ -46,7 +47,8 @@ runTask files prettyError task = do
       memoise startedVar $
       writer ignoreTaskKind $
       writer writeErrors $
-      Rules.rules files readFile
+      Rules.rules files $ \file ->
+        readFile file `catch` \(_ :: IOException) -> pure mempty
 
   Rock.runTask sequentially rules $ do
     result <- task
@@ -136,8 +138,11 @@ runIncrementalTask state changedFiles files prettyError prune task =
     -- printVar <- newMVar 0
     let
       readSourceFile_ file
-        | Just text <- HashMap.lookup file files = return text
-        | otherwise = readFile file
+        | Just text <- HashMap.lookup file files =
+          return text
+        | otherwise =
+          readFile file `catch` \(_ :: IOException) -> pure mempty
+
       traceFetch_
         :: GenRules (Writer TaskKind Query) Query
         -> GenRules (Writer TaskKind Query) Query
