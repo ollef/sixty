@@ -37,14 +37,14 @@ import Var (Var)
 import qualified Var
 
 complete :: FilePath -> Position.LineColumn -> Task Query (Maybe [LSP.CompletionItem])
-complete filePath pos =
-  CursorAction.cursorAction filePath pos $ \item _ ->
+complete filePath (Position.LineColumn line column) =
+  CursorAction.cursorAction filePath (Position.LineColumn line $ max 0 $ column - 1) $ \item _ ->
     case item of
       CursorAction.Import _ ->
         empty
 
-      CursorAction.Term context varPositions _ -> do
-        names <- lift $ getUsableNames context varPositions
+      CursorAction.Term itemContext context varPositions _ -> do
+        names <- lift $ getUsableNames itemContext context varPositions
         lift $ forM names $ \(name, term, kind) -> do
           value <- Elaboration.evaluate context term
           type_ <- TypeOf.typeOf context value
@@ -76,12 +76,12 @@ questionMark filePath (Position.LineColumn line column) =
       CursorAction.Import _ ->
         empty
 
-      CursorAction.Term context varPositions termUnderCursor -> do
+      CursorAction.Term itemContext context varPositions termUnderCursor -> do
         valueUnderCursor <- lift $ Elaboration.evaluate context termUnderCursor
         typeUnderCursor <- lift $ TypeOf.typeOf context valueUnderCursor
         typeUnderCursor' <- lift $ Elaboration.readback context typeUnderCursor
         prettyTypeUnderCursor <- lift $ Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context typeUnderCursor'
-        names <- lift $ getUsableNames context varPositions
+        names <- lift $ getUsableNames itemContext context varPositions
 
         metasBefore <- liftIO $ readIORef $ Context.metas context
         lift $ fmap concat $ forM names $ \(name, term, kind) -> do
@@ -153,14 +153,24 @@ questionMark filePath (Position.LineColumn line column) =
                   , _xdata = Nothing
                   }
 
-getUsableNames :: Context v -> IntMap Var value -> M [(Text, Syntax.Term v, LSP.CompletionItemKind)]
-getUsableNames context varPositions = do
-  locals <- forM (IntMap.toList varPositions) $ \(var, _) -> do
-    let
-      Name text =
-        Context.lookupVarName var context
-    term <- Elaboration.readback context $ Domain.var var
-    pure (text, term, LSP.CiVariable)
+getUsableNames :: CursorAction.ItemContext -> Context v -> IntMap Var value -> M [(Text, Syntax.Term v, LSP.CompletionItemKind)]
+getUsableNames itemContext context varPositions = do
+  hPutStrLn stderr $ "getUsableNames " ++ show itemContext
+  locals <- case itemContext of
+    CursorAction.ExpressionContext ->
+      forM (IntMap.toList varPositions) $ \(var, _) -> do
+        let
+          Name text =
+            Context.lookupVarName var context
+        term <- Elaboration.readback context $ Domain.var var
+        pure (text, term, LSP.CiVariable)
+
+    CursorAction.PatternContext ->
+      pure []
+
+    CursorAction.DefinitionContext ->
+      pure []
+
   let
     Scope.KeyedName key (Name.Qualified module_ keyName) =
       Context.scopeKey context
@@ -176,30 +186,52 @@ getUsableNames context varPositions = do
   imports <- forM (HashMap.toList scopeEntries) $ \(Name.Pre name, entry) ->
     case entry of
       Scope.Name global -> do
-        maybeDefinition <- fetch $ Query.ElaboratedDefinition global
-        pure
-          [ ( name
-            , Syntax.Global global
-            , case maybeDefinition of
-                Just (Syntax.DataDefinition {}, _) ->
-                  LSP.CiEnum
+        let
+          go = do
+            maybeDefinition <- fetch $ Query.ElaboratedDefinition global
+            pure
+              [ ( name
+                , Syntax.Global global
+                , case maybeDefinition of
+                    Just (Syntax.DataDefinition {}, _) ->
+                      LSP.CiEnum
 
-                Just (Syntax.ConstantDefinition {}, _) ->
-                  LSP.CiConstant
+                    Just (Syntax.ConstantDefinition {}, _) ->
+                      LSP.CiConstant
 
-                Just (Syntax.TypeDeclaration {}, _) ->
-                  LSP.CiConstant
+                    Just (Syntax.TypeDeclaration {}, _) ->
+                      LSP.CiConstant
 
-                Nothing ->
-                  LSP.CiConstant
-            )
-          ]
+                    Nothing ->
+                      LSP.CiConstant
+                )
+              ]
+        case itemContext of
+          CursorAction.ExpressionContext ->
+            go
 
-      Scope.Constructors constrs ->
-        pure
-          [ (name, Syntax.Con con, LSP.CiEnumMember)
-          | con <- toList constrs
-          ]
+          CursorAction.PatternContext ->
+            pure []
+
+          CursorAction.DefinitionContext ->
+            go
+
+      Scope.Constructors constrs -> do
+        let
+          go =
+            pure
+              [ (name, Syntax.Con con, LSP.CiEnumMember)
+              | con <- toList constrs
+              ]
+        case itemContext of
+          CursorAction.ExpressionContext ->
+            go
+
+          CursorAction.PatternContext ->
+            go
+
+          CursorAction.DefinitionContext ->
+            pure []
 
       Scope.Ambiguous _ _ ->
         pure []

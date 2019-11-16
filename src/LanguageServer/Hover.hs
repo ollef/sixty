@@ -20,7 +20,7 @@ hover :: FilePath -> Position.LineColumn -> Task Query (Maybe (Span.LineColumn, 
 hover filePath pos = do
   CursorAction.cursorAction filePath pos $ \item lineColumn ->
     case item of
-      CursorAction.Term context _ term -> do
+      CursorAction.Term _ context _ term -> do
         value <- lift $ Elaboration.evaluate context term
         type_ <- lift $ TypeOf.typeOf context value
         type' <- lift $ Elaboration.readback context type_

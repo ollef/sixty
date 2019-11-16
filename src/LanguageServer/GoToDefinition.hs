@@ -36,7 +36,7 @@ goToDefinition filePath pos = do
         moduleFile <- Query.fetchModuleFile moduleName
         pure (moduleFile, Span.LineColumns (Position.LineColumn 0 0) (Position.LineColumn 0 0))
 
-      CursorAction.Term context varSpans term -> do
+      CursorAction.Term _ context varSpans term -> do
         contents <- fetch $ Query.FileText filePath
         let
           -- TODO use the rope that we get from the LSP library instead

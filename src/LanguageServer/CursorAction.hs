@@ -44,13 +44,20 @@ type Callback a = ItemUnderCursor -> Span.LineColumn -> MaybeT M a
 
 data ItemUnderCursor where
   Term
-    :: Context v
+    :: ItemContext
+    -> Context v
     -> IntMap Var (NonEmpty Span.Relative)
     -> Syntax.Term v
     -> ItemUnderCursor
   Import
     :: Name.Module
     -> ItemUnderCursor
+
+data ItemContext
+  = ExpressionContext
+  | PatternContext
+  | DefinitionContext
+  deriving Show
 
 cursorAction
   :: forall a
@@ -89,9 +96,9 @@ cursorAction filePath (Position.LineColumn line column) k = do
             Name.Qualified moduleName name
 
           k' :: RelativeCallback a
-          k' env term actionSpan =
+          k' itemContext env term actionSpan =
             k
-              (Term (_context env) (_varSpans env) term)
+              (Term itemContext (_context env) (_varSpans env) term)
               (toLineColumns $ Span.absoluteFrom defPos actionSpan)
         context <- Context.empty $ Scope.KeyedName key qualifiedName
         definitionAction
@@ -151,7 +158,7 @@ extendDef env binding term type_ = do
     )
 
 type RelativeCallback a =
-  forall v. Environment v -> Syntax.Term v -> Span.Relative -> MaybeT M a
+  forall v. ItemContext -> Environment v -> Syntax.Term v -> Span.Relative -> MaybeT M a
 
 definitionAction
   :: forall a
@@ -184,11 +191,11 @@ definitionAction k env key qualifiedName =
       asum $
         (foreach constructorSpans $ \(span, constr) -> do
           guard $ span `Span.relativeContains` _actionPosition env
-          k env (Syntax.Con constr) span
+          k DefinitionContext env (Syntax.Con constr) span
         ) <>
         (foreach spans $ \span -> do
           guard $ span `Span.relativeContains` _actionPosition env
-          k env (Syntax.Global qualifiedName) span
+          k DefinitionContext env (Syntax.Global qualifiedName) span
         )
 
 termAction
@@ -245,7 +252,7 @@ termAction k env term =
     Syntax.Spanned span term' ->
       termAction k env term' <|> do
         guard $ span `Span.relativeContains` _actionPosition env
-        k env term' span
+        k ExpressionContext env term' span
 
 dataDefinitionAction
   :: RelativeCallback a
@@ -280,10 +287,10 @@ branchAction k env scrutinee (constr@(Name.QualifiedConstructor typeName _), (sp
         Domain.Neutral (Domain.Global headName) spine
           | headName == typeName -> do
             spine' <- lift $ mapM (mapM $ Elaboration.readback $ _context env) spine
-            k env (Syntax.Con constr `Syntax.apps` fmap (first implicitise) spine') span
+            k PatternContext env (Syntax.Con constr `Syntax.apps` fmap (first implicitise) spine') span
 
         _ ->
-          k env (Syntax.Con constr) span
+          k PatternContext env (Syntax.Con constr) span
   ) <|>
   teleAction k env tele
 
@@ -319,7 +326,7 @@ bindingAction k env binding var =
         Just index ->
           asum $ foreach spannedNames $ \(span, _) -> do
             guard $ span `Span.relativeContains` _actionPosition env
-            k env (Syntax.Var index) span
+            k PatternContext env (Syntax.Var index) span
 
     Binding.Unspanned _ ->
       empty
