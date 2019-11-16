@@ -91,9 +91,10 @@ rules files readFile_ (Writer (Writer query)) =
 
     ModuleHeader module_ ->
       noError $ do
-        filePath <- fetchModuleFile module_
-        (_, header, _) <- fetch $ ParsedFile filePath
-        pure header
+        maybeFilePath <- fetch $ Query.ModuleFile $ Mapped.Query module_
+        fmap fold $ forM maybeFilePath $ \filePath -> do
+          (_, header, _) <- fetch $ ParsedFile filePath
+          pure header
 
     ImportedNames module_ subQuery ->
       noError $ Mapped.rule (ImportedNames module_) subQuery $ do
@@ -115,12 +116,13 @@ rules files readFile_ (Writer (Writer query)) =
 
     ParsedDefinition module_ subQuery ->
       noError $ Mapped.rule (ParsedDefinition module_) subQuery $ do
-        filePath <- fetchModuleFile module_
-        (_, _, defs) <- fetch $ ParsedFile filePath
-        pure $ HashMap.fromList
-          [ ((Presyntax.key def, name), def)
-          | (_, (name, def)) <- defs
-          ]
+        maybeFilePath <- fetch $ Query.ModuleFile $ Mapped.Query module_
+        fmap fold $ forM maybeFilePath $ \filePath -> do
+          (_, _, defs) <- fetch $ ParsedFile filePath
+          pure $ HashMap.fromList
+            [ ((Presyntax.key def, name), def)
+            | (_, (name, def)) <- defs
+            ]
 
     ModulePositionMap module_ ->
       noError $ do
@@ -129,27 +131,29 @@ rules files readFile_ (Writer (Writer query)) =
 
     ModuleSpanMap module_ ->
       noError $ do
-        filePath <- fetchModuleFile module_
-        text <- fetch $ FileText filePath
-        (_, _, defs) <- fetch $ ParsedFile filePath
-        let
-          go = \case
-            [] ->
-              []
+        maybeFilePath <- fetch $ Query.ModuleFile $ Mapped.Query module_
+        fmap fold $ forM maybeFilePath $ \filePath -> do
+          text <- fetch $ FileText filePath
+          (_, _, defs) <- fetch $ ParsedFile filePath
+          let
+            go = \case
+              [] ->
+                []
 
-            [(loc, (name, def))] ->
-              [((Presyntax.key def, name), Span.Absolute loc $ Position.Absolute $ Text.lengthWord16 text)]
+              [(loc, (name, def))] ->
+                [((Presyntax.key def, name), Span.Absolute loc $ Position.Absolute $ Text.lengthWord16 text)]
 
-            (loc1, (name, def)):defs'@((loc2, _):_) ->
-              ((Presyntax.key def, name), Span.Absolute loc1 loc2) : go defs'
+              (loc1, (name, def)):defs'@((loc2, _):_) ->
+                ((Presyntax.key def, name), Span.Absolute loc1 loc2) : go defs'
 
-        pure $ HashMap.fromList $ go defs
+          pure $ HashMap.fromList $ go defs
 
     Scopes module_ ->
       nonInput $ do
-        filePath <- fetchModuleFile module_
-        (_, _, defs) <- fetch $ ParsedFile filePath
-        pure $ Resolution.moduleScopes module_ $ snd <$> defs
+        maybeFilePath <- fetch $ Query.ModuleFile $ Mapped.Query module_
+        fmap fold $ forM maybeFilePath $ \filePath -> do
+          (_, _, defs) <- fetch $ ParsedFile filePath
+          pure $ Resolution.moduleScopes module_ $ snd <$> defs
 
     ResolvedName (Scope.KeyedName key (Name.Qualified module_ keyName)) prename ->
       noError $ do
@@ -288,18 +292,24 @@ rules files readFile_ (Writer (Writer query)) =
     KeyedNameSpan (Scope.KeyedName key (Name.Qualified module_ name@(Name textName))) ->
       noError $ do
         positions <- fetch $ ModulePositionMap module_
-        filePath <- fetchModuleFile module_
-        pure
-          ( filePath
-          , case HashMap.lookup (key, name) positions of
-            Nothing ->
-              Span.Absolute 0 0
+        maybeFilePath <- fetch $ Query.ModuleFile $ Mapped.Query module_
+        pure $ case maybeFilePath of
+          Nothing ->
+            ( "<no file>"
+            , Span.Absolute 0 0
+            )
 
-            Just position ->
-              Span.Absolute
-                position
-                (position + Position.Absolute (Text.lengthWord16 textName))
-          )
+          Just filePath ->
+            ( filePath
+            , case HashMap.lookup (key, name) positions of
+              Nothing ->
+                Span.Absolute 0 0
+
+              Just position ->
+                Span.Absolute
+                  position
+                  (position + Position.Absolute (Text.lengthWord16 textName))
+            )
 
     Occurrences scopeKey@(Scope.KeyedName key name) ->
       nonInput $

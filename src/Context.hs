@@ -10,6 +10,7 @@ import Protolude hiding (IntMap, IntSet, force)
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef
+import Rock
 
 import "this" Data.IntMap (IntMap)
 import qualified Binding
@@ -31,7 +32,6 @@ import qualified Error.Parsing as Error
 import qualified Evaluation
 import Index
 import qualified Index.Map
-import qualified Zonking
 import qualified Index.Map as Index
 import qualified Meta
 import Monad
@@ -40,6 +40,7 @@ import qualified Name
 import Plicity
 import qualified "this" Data.IntMap as IntMap
 import qualified Query
+import qualified Query.Mapped as Mapped
 import qualified Readback
 import qualified Scope
 import qualified Span
@@ -47,6 +48,7 @@ import qualified Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
 import Var
+import qualified Zonking
 
 data Context v = Context
   { scopeKey :: !Scope.KeyedName
@@ -621,13 +623,13 @@ reportParseError context err = do
     Scope.KeyedName _ (Name.Qualified module_ _) =
       Context.scopeKey context
 
-  filePath <- Query.fetchModuleFile module_
-
-  let
-    err' =
-      Error.Parse filePath err
-  liftIO $ atomicModifyIORef (errors context) $ \errs ->
-    (errs Tsil.:> err', ())
+  maybeFilePath <- fetch $ Query.ModuleFile $ Mapped.Query module_
+  forM_ maybeFilePath $ \filePath -> do
+    let
+      err' =
+        Error.Parse filePath err
+    liftIO $ atomicModifyIORef (errors context) $ \errs ->
+      (errs Tsil.:> err', ())
 
 try :: Context v -> M a -> M (Maybe a)
 try context m =

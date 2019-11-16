@@ -47,15 +47,6 @@ data Query a where
   KeyedNameSpan :: Scope.KeyedName -> Query (FilePath, Span.Absolute)
   Occurrences :: Scope.KeyedName -> Query Occurrences.Intervals
 
-fetchModuleFile :: MonadFetch Query m => Name.Module -> m FilePath
-fetchModuleFile module_ = do
-  maybeFilePath <- fetch $ ModuleFile $ Mapped.Query module_
-  -- TODO error message
-  pure $
-    fromMaybe
-      ("fetchModuleFile: no such module " <> show module_)
-      maybeFilePath
-
 fetchImportedName
   :: MonadFetch Query m
   => Name.Module

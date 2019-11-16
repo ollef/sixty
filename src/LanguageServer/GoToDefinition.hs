@@ -21,6 +21,7 @@ import qualified Occurrences
 import qualified Position
 import Query (Query)
 import qualified Query
+import qualified Query.Mapped as Mapped
 import qualified Scope
 import Span (LineColumn(LineColumns))
 import qualified Span
@@ -33,8 +34,13 @@ goToDefinition filePath pos = do
   CursorAction.cursorAction filePath pos $ \item _ ->
     case item of
       CursorAction.Import moduleName -> do
-        moduleFile <- Query.fetchModuleFile moduleName
-        pure (moduleFile, Span.LineColumns (Position.LineColumn 0 0) (Position.LineColumn 0 0))
+        maybeModuleFile <- fetch $ Query.ModuleFile $ Mapped.Query moduleName
+        case maybeModuleFile of
+          Nothing ->
+            empty
+
+          Just moduleFile ->
+            pure (moduleFile, Span.LineColumns (Position.LineColumn 0 0) (Position.LineColumn 0 0))
 
       CursorAction.Term _ context varSpans term -> do
         contents <- fetch $ Query.FileText filePath
