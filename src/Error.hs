@@ -24,6 +24,7 @@ data Error
   = Parse FilePath !Error.Parsing
   | DuplicateName !Scope.KeyedName
   | ImportNotFound !Name.Module !Module.Import
+  | MultipleFilesWithModuleName !Name.Module FilePath FilePath
   | Elaboration !Scope.KeyedName !Error.Spanned
   deriving (Eq, Show, Generic, Hashable)
 

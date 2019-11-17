@@ -2,7 +2,7 @@
 {-# language OverloadedStrings #-}
 module Error.Hydrated where
 
-import Protolude
+import Protolude hiding (moduleName)
 
 import Data.Coerce
 import qualified Data.Text as Text
@@ -33,7 +33,7 @@ data Hydrated = Hydrated
   , _error :: !Error
   } deriving Show
 
-headingAndBody :: MonadFetch Query m => Error -> m (Doc ann, Doc ann)
+headingAndBody :: (MonadFetch Query m, MonadIO m) => Error -> m (Doc ann, Doc ann)
 headingAndBody error =
   case error of
     Error.Parse _ parse ->
@@ -64,6 +64,17 @@ headingAndBody error =
         , "The imported module" <+> prettyModule <+> "wasn't found in the current project."
         )
 
+    Error.MultipleFilesWithModuleName moduleName file1 file2 -> do
+      file1' <- liftIO $ Directory.makeRelativeToCurrentDirectory file1
+      file2' <- liftIO $ Directory.makeRelativeToCurrentDirectory file2
+      pure
+        ( "Multiple files use the module name" <+> Doc.pretty moduleName
+        , "Both" <> line <>
+          indent 2 (Doc.pretty file1') <> line <>
+          "and" <> line <>
+          indent 2 (Doc.pretty file2') <> line <>
+          "use the same module name."
+        )
     Error.Elaboration _ (Error.Spanned _ err') ->
       case err' of
         Error.NotInScope name ->
@@ -227,6 +238,9 @@ fromError err = do
       Error.ImportNotFound module_ import_ -> do
         maybeModuleFile <- fetch $ Query.ModuleFile $ Mapped.Query module_
         pure (fromMaybe "<no file>" maybeModuleFile, Module._span import_)
+
+      Error.MultipleFilesWithModuleName _ _ file2 ->
+        pure (file2, Span.Absolute 0 0)
 
       Error.Elaboration keyedName (Error.Spanned relativeSpan _) -> do
         (file, Span.Absolute absolutePosition _) <- fetch $ Query.KeyedNameSpan keyedName

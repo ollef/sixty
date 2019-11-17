@@ -1,4 +1,5 @@
 {-# language DuplicateRecordFields #-}
+{-# language FlexibleContexts #-}
 {-# language GADTs #-}
 {-# language LambdaCase #-}
 {-# language OverloadedStrings #-}
@@ -50,13 +51,22 @@ rules files readFile_ (Writer (Writer query)) =
       input $ liftIO $ readFile_ filePath
 
     ModuleFile subQuery ->
-      noError $ Mapped.rule ModuleFile subQuery $ do
+      nonInput $ Mapped.errorRule ModuleFile subQuery $ do
         filePaths <- fetch InputFiles
         -- TODO check and remove duplicates
-        moduleFiles <- forM filePaths $ \filePath -> do
+        foldM go mempty filePaths
+      where
+        go (modulesMap, errors) filePath = do
           (module_, _, _) <- fetch $ ParsedFile filePath
-          pure (module_, filePath)
-        pure $ HashMap.fromList moduleFiles
+          pure
+            ( HashMap.insert module_ filePath modulesMap
+            , case HashMap.lookup module_ modulesMap of
+              Nothing ->
+                errors
+
+              Just filePath' ->
+                Error.MultipleFilesWithModuleName module_ filePath' filePath : errors
+            )
 
     ParsedFile filePath ->
       nonInput $ do
