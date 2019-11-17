@@ -4,18 +4,30 @@ on: [push]
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v1
+
+    - name: Cache .stack
+      uses: actions/cache@v1
+      with:
+        path: ~/.stack
+        key: ${{ runner.OS }}-stack-${{ hashFiles('stack.yaml') }}
+        restore-keys: |
+          ${{ runner.OS }}-stack-
+
     - name: Add ~/.local/bin to PATH
       run: echo ::add-path::$HOME/.local/bin
+
     - name: Setup Stack
       run: stack setup
+
     - name: Build dependencies
       run: stack test --dependencies-only
+
     - name: Build
       run: stack test --no-run-tests
+
     - name: Run tests
       run: stack test
