@@ -37,6 +37,7 @@ import qualified Error.Hydrated
 import qualified FileSystem
 import qualified LanguageServer.Completion as Completion
 import qualified LanguageServer.GoToDefinition as GoToDefinition
+import qualified LanguageServer.References as References
 import qualified LanguageServer.DocumentHighlights as DocumentHighlights
 import qualified LanguageServer.Hover as Hover
 import qualified Position
@@ -107,6 +108,7 @@ handlers sendMessage =
     , LSP.definitionHandler = Just $ sendMessage . LSP.ReqDefinition
     , LSP.completionHandler = Just $ sendMessage . LSP.ReqCompletion
     , LSP.documentHighlightHandler = Just $ sendMessage . LSP.ReqDocumentHighlights
+    , LSP.referencesHandler = Just $ sendMessage . LSP.ReqFindReferences
     }
 
 options :: LSP.Options
@@ -309,6 +311,31 @@ messagePump state = do
 
           sendNotification state $ "messagePump: document highlights response: " <> show highlights
           LSP.sendFunc (_lspFuncs state) $ LSP.RspDocumentHighlights $ LSP.makeResponseMessage req response
+          messagePump state
+
+        LSP.ReqFindReferences req -> do
+          sendNotification state $ "messagePump: references request: " <> show req
+          let
+            -- TODO use context
+            LSP.ReferenceParams (LSP.TextDocumentIdentifier uri) position _context =
+              req ^. LSP.params
+
+
+          (references, _) <- runTask state Driver.Don'tPrune $
+            References.references (uriToFilePath uri) (positionFromPosition position)
+
+          let
+            response =
+              LSP.List
+                [ LSP.Location
+                  { _uri = LSP.filePathToUri filePath
+                  , _range = spanToRange span
+                  }
+                | (filePath, span) <- references
+                ]
+
+          sendNotification state $ "messagePump: references response: " <> show references
+          LSP.sendFunc (_lspFuncs state) $ LSP.RspFindReferences $ LSP.makeResponseMessage req response
           messagePump state
 
         _ ->
