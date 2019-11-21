@@ -108,27 +108,27 @@ unify context flexibility value1 value2 = do
       | plicity1 == plicity2 ->
       unifyAbstraction name1 type1 closure1 type2 closure2
 
-    (Domain.Pi name1 source1 plicity1 targetClosure1, Domain.Pi _ source2 plicity2 targetClosure2)
+    (Domain.Pi name1 domain1 plicity1 targetClosure1, Domain.Pi _ domain2 plicity2 targetClosure2)
       | plicity1 == plicity2 ->
-      unifyAbstraction name1 source1 targetClosure1 source2 targetClosure2
+      unifyAbstraction name1 domain1 targetClosure1 domain2 targetClosure2
 
-    (Domain.Pi name1 source1 plicity1 targetClosure1, Domain.Fun source2 plicity2 target2)
+    (Domain.Pi name1 domain1 plicity1 targetClosure1, Domain.Fun domain2 plicity2 target2)
       | plicity1 == plicity2 -> do
-        unify context flexibility source2 source1
-        (context', var) <- Context.extendUnnamed context name1 source1
+        unify context flexibility domain2 domain1
+        (context', var) <- Context.extendUnnamed context name1 domain1
         target1 <- Evaluation.evaluateClosure targetClosure1 $ Domain.var var
         unify context' flexibility target1 target2
 
-    (Domain.Fun source1 plicity1 target1, Domain.Pi name2 source2 plicity2 targetClosure2)
+    (Domain.Fun domain1 plicity1 target1, Domain.Pi name2 domain2 plicity2 targetClosure2)
       | plicity1 == plicity2 -> do
-        unify context flexibility source2 source1
-        (context', var) <- Context.extendUnnamed context name2 source2
+        unify context flexibility domain2 domain1
+        (context', var) <- Context.extendUnnamed context name2 domain2
         target2 <- Evaluation.evaluateClosure targetClosure2 $ Domain.var var
         unify context' flexibility target1 target2
 
-    (Domain.Fun source1 plicity1 target1, Domain.Fun source2 plicity2 target2)
+    (Domain.Fun domain1 plicity1 target1, Domain.Fun domain2 plicity2 target2)
       | plicity1 == plicity2 -> do
-        unify context flexibility source2 source1
+        unify context flexibility domain2 domain1
         unify context flexibility target1 target2
 
     -- Eta expand
@@ -620,9 +620,9 @@ checkInnerSolution outerContext occurs env flexibility value = do
         <*> pure plicity
         <*> checkInnerClosure outerContext occurs env flexibility closure
 
-    Domain.Fun source plicity target ->
+    Domain.Fun domain plicity target ->
       Syntax.Fun
-        <$> checkInnerSolution outerContext occurs env flexibility source
+        <$> checkInnerSolution outerContext occurs env flexibility domain
         <*> pure plicity
         <*> checkInnerSolution outerContext occurs env flexibility target
 
@@ -650,15 +650,15 @@ checkInnerBranch outerContext occurs outerEnv innerEnv flexibility tele =
       term' <- checkInnerSolution outerContext occurs outerEnv flexibility value
       pure $ Telescope.Empty term'
 
-    Telescope.Extend name source plicity tele' -> do
-      source' <- Evaluation.evaluate innerEnv source
-      source'' <- checkInnerSolution outerContext occurs outerEnv flexibility source'
+    Telescope.Extend name domain plicity tele' -> do
+      domain' <- Evaluation.evaluate innerEnv domain
+      domain'' <- checkInnerSolution outerContext occurs outerEnv flexibility domain'
       (outerEnv', var) <- Environment.extend outerEnv
       let
         innerEnv' =
           Environment.extendVar innerEnv var
       tele'' <- checkInnerBranch outerContext occurs outerEnv' innerEnv' flexibility tele'
-      pure $ Telescope.Extend name source'' plicity tele''
+      pure $ Telescope.Extend name domain'' plicity tele''
 
 checkInnerClosure
   :: Context v
@@ -755,44 +755,44 @@ pruneMeta context meta allowedArgs = do
 
         allowed:alloweds' ->
           case type_ of
-            Domain.Fun source plicity target -> do
-              source' <-
+            Domain.Fun domain plicity target -> do
+              domain' <-
                 Readback.readback
                   (Context.toEnvironment context')
-                  source
+                  domain
               (context'', _) <-
                 if allowed then
-                  Context.extendUnnamed context' "x" source
+                  Context.extendUnnamed context' "x" domain
                 else do
                   fakeVar <- freshVar
                   Context.extendUnnamedDef
                     context'
                     "x"
                     (Domain.Glued (Domain.Var fakeVar) mempty $ Lazy $ throwError $ Error.TypeMismatch mempty)
-                    source
+                    domain
               body <- go alloweds' context'' target
-              pure $ Syntax.Lam "x" source' plicity body
+              pure $ Syntax.Lam "x" domain' plicity body
 
-            Domain.Pi name source plicity targetClosure -> do
+            Domain.Pi name domain plicity targetClosure -> do
               (context'', v) <-
                 if allowed then
-                  Context.extendUnnamed context' name source
+                  Context.extendUnnamed context' name domain
                 else do
                   fakeVar <- freshVar
                   Context.extendUnnamedDef
                     context'
                     name
                     (Domain.Glued (Domain.Var fakeVar) mempty $ Lazy $ throwError $ Error.TypeMismatch mempty)
-                    source
+                    domain
               target <-
                 Evaluation.evaluateClosure
                   targetClosure
                   (Domain.var v)
-              source'' <-
+              domain'' <-
                 Readback.readback
                   (Context.toEnvironment context')
-                  source
+                  domain
               body <- go alloweds' context'' target
-              pure $ Syntax.Lam (Binding.Unspanned name) source'' plicity body
+              pure $ Syntax.Lam (Binding.Unspanned name) domain'' plicity body
 
             _ -> panic "pruneMeta wrong type"

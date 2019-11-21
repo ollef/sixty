@@ -38,8 +38,8 @@ readback env value =
     Domain.Pi name type_ plicity closure ->
       Syntax.Pi (Binding.Unspanned name) <$> readback env type_ <*> pure plicity <*> readbackClosure env closure
 
-    Domain.Fun source plicity target ->
-      Syntax.Fun <$> readback env source <*> pure plicity <*> readback env target
+    Domain.Fun domain plicity target ->
+      Syntax.Fun <$> readback env domain <*> pure plicity <*> readback env target
 
     Domain.Case scrutinee (Domain.Branches env' branches defaultBranch) -> do
       scrutinee' <- readback env scrutinee
@@ -106,12 +106,12 @@ readbackBranch outerEnv innerEnv tele =
       term' <- readback outerEnv value
       pure $ Telescope.Empty term'
 
-    Telescope.Extend name source plicity tele' -> do
-      source' <- Evaluation.evaluate innerEnv source
-      source'' <- readback outerEnv source'
+    Telescope.Extend name domain plicity tele' -> do
+      domain' <- Evaluation.evaluate innerEnv domain
+      domain'' <- readback outerEnv domain'
       (outerEnv', var) <- Environment.extend outerEnv
       let
         innerEnv' =
           Environment.extendVar innerEnv var
       tele'' <- readbackBranch outerEnv' innerEnv' tele'
-      pure $ Telescope.Extend name source'' plicity tele''
+      pure $ Telescope.Extend name domain'' plicity tele''

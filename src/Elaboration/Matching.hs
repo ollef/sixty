@@ -515,12 +515,12 @@ matchPrepatterns context values patterns type_ =
     (Presyntax.ExplicitPattern pat:patterns', (Explicit, value):values') -> do
       type' <- Context.forceHead context type_
       case type' of
-        Domain.Pi _ source Explicit targetClosure -> do
+        Domain.Pi _ domain Explicit targetClosure -> do
           target <- Evaluation.evaluateClosure targetClosure value
-          explicitFunCase value values' pat patterns' source target
+          explicitFunCase value values' pat patterns' domain target
 
-        Domain.Fun source Explicit target ->
-          explicitFunCase value values' pat patterns' source target
+        Domain.Fun domain Explicit target ->
+          explicitFunCase value values' pat patterns' domain target
 
         _ ->
           panic "matchPrepatterns explicit non-pi"
@@ -532,7 +532,7 @@ matchPrepatterns context values patterns type_ =
     (Presyntax.ImplicitPattern patSpan namedPats:patterns', (Implicit, value):values') -> do
       type' <- Context.forceHead context type_
       case type' of
-        Domain.Pi name source Implicit targetClosure
+        Domain.Pi name domain Implicit targetClosure
           | HashMap.member name namedPats -> do
             target <- Evaluation.evaluateClosure targetClosure value
             (matches, type'') <-
@@ -541,7 +541,7 @@ matchPrepatterns context values patterns type_ =
                 values'
                 (Presyntax.ImplicitPattern patSpan (HashMap.delete name namedPats) : patterns')
                 target
-            pure (Match value value Implicit (namedPats HashMap.! name) source : matches, type'')
+            pure (Match value value Implicit (namedPats HashMap.! name) domain : matches, type'')
 
           | otherwise -> do
             target <- Evaluation.evaluateClosure targetClosure value
@@ -566,7 +566,7 @@ matchPrepatterns context values patterns type_ =
     (_, (Constraint, value):values') -> do
       type' <- Context.forceHead context type_
       case type' of
-        Domain.Pi _ source Constraint targetClosure -> do
+        Domain.Pi _ domain Constraint targetClosure -> do
           target <- Evaluation.evaluateClosure targetClosure value
           (matches, type'') <-
             matchPrepatterns
@@ -577,9 +577,9 @@ matchPrepatterns context values patterns type_ =
           let
             pattern_ =
               Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern
-          pure (Match value value Constraint pattern_ source : matches, type'')
+          pure (Match value value Constraint pattern_ domain : matches, type'')
 
-        Domain.Fun source Constraint target -> do
+        Domain.Fun domain Constraint target -> do
           (matches, type'') <-
             matchPrepatterns
               context
@@ -589,7 +589,7 @@ matchPrepatterns context values patterns type_ =
           let
             pattern_ =
               Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern
-          pure (Match value value Constraint pattern_ source : matches, type'')
+          pure (Match value value Constraint pattern_ domain : matches, type'')
 
         _ ->
           panic "matchPrepatterns constraint non-pi"
@@ -607,9 +607,9 @@ matchPrepatterns context values patterns type_ =
       matchPrepatterns context values patterns' type_
 
   where
-    explicitFunCase value values' pat patterns' source target = do
+    explicitFunCase value values' pat patterns' domain target = do
       (matches, type'') <- matchPrepatterns context values' patterns' target
-      pure (Match value value Explicit pat source : matches, type'')
+      pure (Match value value Explicit pat domain : matches, type'')
 
 type PatternInstantiation = Tsil (Binding, Domain.Value, Domain.Value)
 
@@ -816,8 +816,8 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
       -> M (Telescope Syntax.Type Syntax.Term v)
     goConstrFields context constr conArgs type_ patterns =
       case type_ of
-        Domain.Pi piName source plicity targetClosure -> do
-          source'' <- Elaboration.readback context source
+        Domain.Pi piName domain plicity targetClosure -> do
+          domain'' <- Elaboration.readback context domain
           (name, patterns') <-
             case plicity of
               Explicit ->
@@ -829,7 +829,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
               Constraint ->
                 pure (Binding.Unspanned piName, patterns)
 
-          (context' , fieldVar) <- Context.extendBefore context scrutineeVar name source
+          (context' , fieldVar) <- Context.extendBefore context scrutineeVar name domain
           let
             fieldValue =
               Domain.var fieldVar
@@ -839,10 +839,10 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
 
           target <- Evaluation.evaluateClosure targetClosure fieldValue
           tele <- goConstrFields context' constr conArgs' target patterns'
-          pure $ Telescope.Extend name source'' plicity tele
+          pure $ Telescope.Extend name domain'' plicity tele
 
-        Domain.Fun source plicity target -> do
-          source'' <- Elaboration.readback context source
+        Domain.Fun domain plicity target -> do
+          domain'' <- Elaboration.readback context domain
           (name, patterns') <-
             case plicity of
              Explicit ->
@@ -853,7 +853,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
 
              Constraint ->
                pure (Binding.Unspanned "x", patterns)
-          (context' , fieldVar) <- Context.extendBefore context scrutineeVar name source
+          (context' , fieldVar) <- Context.extendBefore context scrutineeVar name domain
           let
             fieldValue =
               Domain.var fieldVar
@@ -862,7 +862,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
               conArgs Tsil.:> (plicity, fieldValue)
 
           tele <- goConstrFields context' constr conArgs' target patterns'
-          pure $ Telescope.Extend name source'' plicity tele
+          pure $ Telescope.Extend name domain'' plicity tele
 
         _ -> do
           let
@@ -1026,18 +1026,18 @@ uninhabitedConstrType context fuel type_ =
     _ -> do
       type' <- Context.forceHead context type_
       case type' of
-        Domain.Pi name source _ targetClosure -> do
-          uninhabited <- uninhabitedType context (fuel - 1) mempty source
+        Domain.Pi name domain _ targetClosure -> do
+          uninhabited <- uninhabitedType context (fuel - 1) mempty domain
           if uninhabited then
             pure True
 
           else do
-            (context', var) <- Context.extendUnnamed context name source
+            (context', var) <- Context.extendUnnamed context name domain
             target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
             uninhabitedConstrType context' fuel target
 
-        Domain.Fun source _ target -> do
-          uninhabited <- uninhabitedType context (fuel - 1) mempty source
+        Domain.Fun domain _ target -> do
+          uninhabited <- uninhabitedType context (fuel - 1) mempty domain
           if uninhabited then
             pure True
 

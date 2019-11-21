@@ -31,9 +31,9 @@ evaluateConstructorDefinitions env tele =
       constrs' <- forM constrs $ evaluate env
       pure $ Domain.Telescope.Empty constrs'
 
-    Telescope.Extend name source plicity target -> do
-      source' <- evaluate env source
-      pure $ Domain.Telescope.Extend (Binding.toName name) source' plicity $ \param -> do
+    Telescope.Extend name domain plicity target -> do
+      domain' <- evaluate env domain
+      pure $ Domain.Telescope.Extend (Binding.toName name) domain' plicity $ \param -> do
         env' <- Environment.extendValue env param
         evaluateConstructorDefinitions env' target
 
@@ -75,14 +75,14 @@ evaluate env term =
       env' <- Environment.extendValue env type'
       evaluate env' body
 
-    Syntax.Pi binding source plicity target -> do
-      source' <- evaluate env source
-      pure $ Domain.Pi (Binding.toName binding) source' plicity (Domain.Closure env target)
+    Syntax.Pi binding domain plicity target -> do
+      domain' <- evaluate env domain
+      pure $ Domain.Pi (Binding.toName binding) domain' plicity (Domain.Closure env target)
 
-    Syntax.Fun source plicity target -> do
-      source' <- evaluate env source
+    Syntax.Fun domain plicity target -> do
+      domain' <- evaluate env domain
       target' <- evaluate env target
-      pure $ Domain.Fun source' plicity target'
+      pure $ Domain.Fun domain' plicity target'
 
     Syntax.Lam binding type_ plicity body -> do
       type' <- evaluate env type_

@@ -73,29 +73,29 @@ unify context flexibility untouchables value1 value2 = do
       | plicity1 == plicity2 ->
       unifyAbstraction name1 type1 closure1 type2 closure2
 
-    (Domain.Pi name1 source1 plicity1 targetClosure1, Domain.Pi _ source2 plicity2 targetClosure2)
+    (Domain.Pi name1 domain1 plicity1 targetClosure1, Domain.Pi _ domain2 plicity2 targetClosure2)
       | plicity1 == plicity2 ->
-      unifyAbstraction name1 source1 targetClosure1 source2 targetClosure2
+      unifyAbstraction name1 domain1 targetClosure1 domain2 targetClosure2
 
-    (Domain.Pi name1 source1 plicity1 targetClosure1, Domain.Fun source2 plicity2 target2)
+    (Domain.Pi name1 domain1 plicity1 targetClosure1, Domain.Fun domain2 plicity2 target2)
       | plicity1 == plicity2 -> do
-        context1 <- unify context flexibility untouchables source2 source1
-        (context2, var) <- lift $ Context.extendUnnamed context1 name1 source1
+        context1 <- unify context flexibility untouchables domain2 domain1
+        (context2, var) <- lift $ Context.extendUnnamed context1 name1 domain1
         target1 <- lift $ Evaluation.evaluateClosure targetClosure1 $ Domain.var var
         context3 <- unify context2 flexibility (IntSet.insert var untouchables) target1 target2
         pure $ unextend context3
 
-    (Domain.Fun source1 plicity1 target1, Domain.Pi name2 source2 plicity2 targetClosure2)
+    (Domain.Fun domain1 plicity1 target1, Domain.Pi name2 domain2 plicity2 targetClosure2)
       | plicity1 == plicity2 -> do
-        context1 <- unify context flexibility untouchables source2 source1
-        (context2, var) <- lift $ Context.extendUnnamed context1 name2 source2
+        context1 <- unify context flexibility untouchables domain2 domain1
+        (context2, var) <- lift $ Context.extendUnnamed context1 name2 domain2
         target2 <- lift $ Evaluation.evaluateClosure targetClosure2 $ Domain.var var
         context3 <- unify context2 flexibility (IntSet.insert var untouchables) target1 target2
         pure $ unextend context3
 
-    (Domain.Fun source1 plicity1 target1, Domain.Fun source2 plicity2 target2)
+    (Domain.Fun domain1 plicity1 target1, Domain.Fun domain2 plicity2 target2)
       | plicity1 == plicity2 -> do
-        context1 <- unify context flexibility untouchables source2 source1
+        context1 <- unify context flexibility untouchables domain2 domain1
         unify context1 flexibility untouchables target1 target2
 
     -- Eta expand
@@ -283,11 +283,11 @@ occurs context flexibility untouchables value = do
     Domain.Lam name type_ _ closure ->
       occursAbstraction name type_ closure
 
-    Domain.Pi name source _ targetClosure ->
-      occursAbstraction name source targetClosure
+    Domain.Pi name domain _ targetClosure ->
+      occursAbstraction name domain targetClosure
 
-    Domain.Fun source _ target -> do
-      occurs context flexibility untouchables source
+    Domain.Fun domain _ target -> do
+      occurs context flexibility untouchables domain
       occurs context flexibility untouchables target
 
     Domain.Case scrutinee branches -> do

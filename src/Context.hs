@@ -323,10 +323,10 @@ dependencies context value = do
     Domain.Pi name type' _ closure ->
       abstractionDependencies name type' closure
 
-    Domain.Fun source _ target -> do
-      sourceVars <- dependencies context source
+    Domain.Fun domain _ target -> do
+      domainVars <- dependencies context domain
       targetVars <- dependencies context target
-      pure $ sourceVars <> targetVars
+      pure $ domainVars <> targetVars
 
     Domain.Case scrutinee (Domain.Branches env branches defaultBranch) -> do
       scrutineeVars <- dependencies context scrutinee
@@ -381,16 +381,16 @@ dependencies context value = do
           body' <- lift $ Evaluation.evaluate env body
           dependencies context' body'
 
-        Telescope.Extend binding source _ tele' -> do
-          source' <- lift $ Evaluation.evaluate env source
-          sourceVars <- dependencies context' source'
-          (context'', var) <- lift $ Context.extendUnnamed context' (Binding.toName binding) source'
+        Telescope.Extend binding domain _ tele' -> do
+          domain' <- lift $ Evaluation.evaluate env domain
+          domainVars <- dependencies context' domain'
+          (context'', var) <- lift $ Context.extendUnnamed context' (Binding.toName binding) domain'
           let
             env' =
               Environment.extendVar env var
 
           rest <- branchVars context'' env' tele'
-          pure $ sourceVars <> IntSet.delete var rest
+          pure $ domainVars <> IntSet.delete var rest
 
 lookupNameVar :: Name.Pre -> Context v -> Maybe Var
 lookupNameVar (Name.Pre name) context =

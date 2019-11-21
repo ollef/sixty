@@ -158,7 +158,7 @@ watcherFromArguments files =
 
 projectWatcher :: FilePath -> Watcher (HashSet FilePath) (HashMap FilePath Text)
 projectWatcher file = do
-  bindForM (foldMap (HashSet.fromList . Project._sourceDirectories) <$> jsonFileWatcher file) $
+  bindForM (foldMap (HashSet.fromList . Project._domainDirectories) <$> jsonFileWatcher file) $
     directoryWatcher Project.isSourcePath
 
 fileWatcher :: FilePath -> Watcher () (Maybe Text)
