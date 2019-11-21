@@ -101,13 +101,13 @@ typeOfApplication context type_ spine = do
       type' <- typeOfApplication context type_ spine'
       type'' <- Context.forceHead context type'
       case type'' of
-        Domain.Fun _ plicity' domain
+        Domain.Fun _ plicity' target
           | plicity == plicity' ->
-            pure domain
+            pure target
 
-        Domain.Pi _ _ plicity' domainClosure
+        Domain.Pi _ _ plicity' targetClosure
           | plicity == plicity' ->
-            Evaluation.evaluateClosure domainClosure arg
+            Evaluation.evaluateClosure targetClosure arg
 
         _ ->
           panic "typeOfApplication: type or plicity mismatch"

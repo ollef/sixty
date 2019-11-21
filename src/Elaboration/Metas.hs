@@ -210,16 +210,16 @@ makeLet name var value type_ body =
     occurrences body
 
 makePi :: Binding -> Var -> Type -> Plicity -> Value -> Value
-makePi name var source plicity domain =
-  Value (Pi name var source plicity domain) $
+makePi name var source plicity target =
+  Value (Pi name var source plicity target) $
     occurrences source <>
-    occurrences domain
+    occurrences target
 
 makeFun :: Type -> Plicity -> Type -> Value
-makeFun source plicity domain =
-  Value (Fun source plicity domain) $
+makeFun source plicity target =
+  Value (Fun source plicity target) $
     occurrences source <>
-    occurrences domain
+    occurrences target
 
 makeLam :: Binding -> Var -> Type -> Plicity -> Value -> Value
 makeLam name var type_ plicity body =
@@ -280,18 +280,18 @@ evaluate env term =
         evaluate env type_ <*>
         evaluate env' body
 
-    Syntax.Pi name source plicity domain -> do
+    Syntax.Pi name source plicity target -> do
       (env', var) <- Environment.extend env
       makePi name var <$>
         evaluate env source <*>
         pure plicity <*>
-        evaluate env' domain
+        evaluate env' target
 
-    Syntax.Fun source plicity domain ->
+    Syntax.Fun source plicity target ->
       makeFun <$>
         evaluate env source <*>
         pure plicity <*>
-        evaluate env domain
+        evaluate env target
 
     Syntax.Lam name type_ plicity body -> do
       (env', var) <- Environment.extend env
@@ -366,15 +366,15 @@ readback env metas (Value value occs) =
         (readback env metas type_)
         (readback (Environment.extendVar env var) metas body)
 
-    Pi name var source plicity domain ->
+    Pi name var source plicity target ->
       Syntax.Pi
         name
         (readback env metas source)
         plicity
-        (readback (Environment.extendVar env var) metas domain)
+        (readback (Environment.extendVar env var) metas target)
 
-    Fun source plicity domain ->
-      Syntax.Fun (readback env metas source) plicity (readback env metas domain)
+    Fun source plicity target ->
+      Syntax.Fun (readback env metas source) plicity (readback env metas target)
 
     Lam name var type_ plicity body ->
       Syntax.Lam
@@ -425,20 +425,20 @@ inlineArguments value@(Value innerValue _) type_@(Value innerType _) args subst 
 
     Just argVar:args' ->
       case (innerValue, innerType) of
-        (Lam _ var _ _ body, Pi _ var' _ _ domain) ->
+        (Lam _ var _ _ body, Pi _ var' _ _ target) ->
           let
             subst' =
               IntMap.insert var (makeVar argVar) $
               IntMap.insert var' (makeVar argVar) subst
           in
-          inlineArguments body domain args' subst'
+          inlineArguments body target args' subst'
 
         _ ->
           (substitute subst value, substitute subst type_)
 
     Nothing:args' ->
       case (innerValue, innerType) of
-        (Lam name var argType plicity1 body, Pi name' var' source plicity2 domain)
+        (Lam name var argType plicity1 body, Pi name' var' source plicity2 target)
           | plicity1 == plicity2 ->
             let
               argType' =
@@ -447,11 +447,11 @@ inlineArguments value@(Value innerValue _) type_@(Value innerType _) args subst 
               source' =
                 substitute subst source
 
-              (body', domain') =
-                inlineArguments body domain args' subst
+              (body', target') =
+                inlineArguments body target args' subst
             in
             ( makeLam name var argType' plicity1 body'
-            , makePi name' var' source' plicity1 domain'
+            , makePi name' var' source' plicity1 target'
             )
 
         _ ->
@@ -481,11 +481,11 @@ substitute subst
         Let name var value' type_ body ->
           makeLet name var (go value') (go type_) (go body)
 
-        Pi name var source plicity domain ->
-          makePi name var (go source) plicity (go domain)
+        Pi name var source plicity target ->
+          makePi name var (go source) plicity (go target)
 
-        Fun source plicity domain ->
-          makeFun (go source) plicity (go domain)
+        Fun source plicity target ->
+          makeFun (go source) plicity (go target)
 
         Lam name var type_ plicity body ->
           makeLam name var (go type_) plicity (go body)
@@ -596,15 +596,15 @@ inlineIndex index targetScope solution@ ~(solutionVar, varArgs, solutionValue, s
         body' <- recurseScope var body
         pure $ makeLet name var value'' type' body'
 
-      Pi name var source plicity domain -> do
+      Pi name var source plicity target -> do
         source' <- recurse source
-        domain' <- recurseScope var domain
-        pure $ makePi name var source' plicity domain'
+        target' <- recurseScope var target
+        pure $ makePi name var source' plicity target'
 
-      Fun source plicity domain -> do
+      Fun source plicity target -> do
         source' <- recurse source
-        domain' <- recurse domain
-        pure $ makeFun source' plicity domain'
+        target' <- recurse target
+        pure $ makeFun source' plicity target'
 
       Lam name var type_ plicity body -> do
         type' <- recurse type_

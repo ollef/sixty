@@ -515,12 +515,12 @@ matchPrepatterns context values patterns type_ =
     (Presyntax.ExplicitPattern pat:patterns', (Explicit, value):values') -> do
       type' <- Context.forceHead context type_
       case type' of
-        Domain.Pi _ source Explicit domainClosure -> do
-          domain <- Evaluation.evaluateClosure domainClosure value
-          explicitFunCase value values' pat patterns' source domain
+        Domain.Pi _ source Explicit targetClosure -> do
+          target <- Evaluation.evaluateClosure targetClosure value
+          explicitFunCase value values' pat patterns' source target
 
-        Domain.Fun source Explicit domain ->
-          explicitFunCase value values' pat patterns' source domain
+        Domain.Fun source Explicit target ->
+          explicitFunCase value values' pat patterns' source target
 
         _ ->
           panic "matchPrepatterns explicit non-pi"
@@ -532,20 +532,20 @@ matchPrepatterns context values patterns type_ =
     (Presyntax.ImplicitPattern patSpan namedPats:patterns', (Implicit, value):values') -> do
       type' <- Context.forceHead context type_
       case type' of
-        Domain.Pi name source Implicit domainClosure
+        Domain.Pi name source Implicit targetClosure
           | HashMap.member name namedPats -> do
-            domain <- Evaluation.evaluateClosure domainClosure value
+            target <- Evaluation.evaluateClosure targetClosure value
             (matches, type'') <-
               matchPrepatterns
                 context
                 values'
                 (Presyntax.ImplicitPattern patSpan (HashMap.delete name namedPats) : patterns')
-                domain
+                target
             pure (Match value value Implicit (namedPats HashMap.! name) source : matches, type'')
 
           | otherwise -> do
-            domain <- Evaluation.evaluateClosure domainClosure value
-            matchPrepatterns context values' patterns domain
+            target <- Evaluation.evaluateClosure targetClosure value
+            matchPrepatterns context values' patterns target
 
         _ ->
           panic "matchPrepatterns implicit non-pi"
@@ -553,12 +553,12 @@ matchPrepatterns context values patterns type_ =
     (_, (Implicit, value):values') -> do
       type' <- Context.forceHead context type_
       case type' of
-        Domain.Pi _ _ Implicit domainClosure -> do
-          domain <- Evaluation.evaluateClosure domainClosure value
-          matchPrepatterns context values' patterns domain
+        Domain.Pi _ _ Implicit targetClosure -> do
+          target <- Evaluation.evaluateClosure targetClosure value
+          matchPrepatterns context values' patterns target
 
-        Domain.Fun _ Implicit domain ->
-          matchPrepatterns context values' patterns domain
+        Domain.Fun _ Implicit target ->
+          matchPrepatterns context values' patterns target
 
         _ ->
           panic "matchPrepatterns implicit non-pi 2"
@@ -566,26 +566,26 @@ matchPrepatterns context values patterns type_ =
     (_, (Constraint, value):values') -> do
       type' <- Context.forceHead context type_
       case type' of
-        Domain.Pi _ source Constraint domainClosure -> do
-          domain <- Evaluation.evaluateClosure domainClosure value
+        Domain.Pi _ source Constraint targetClosure -> do
+          target <- Evaluation.evaluateClosure targetClosure value
           (matches, type'') <-
             matchPrepatterns
               context
               values'
               patterns
-              domain
+              target
           let
             pattern_ =
               Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern
           pure (Match value value Constraint pattern_ source : matches, type'')
 
-        Domain.Fun source Constraint domain -> do
+        Domain.Fun source Constraint target -> do
           (matches, type'') <-
             matchPrepatterns
               context
               values'
               patterns
-              domain
+              target
           let
             pattern_ =
               Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern
@@ -607,8 +607,8 @@ matchPrepatterns context values patterns type_ =
       matchPrepatterns context values patterns' type_
 
   where
-    explicitFunCase value values' pat patterns' source domain = do
-      (matches, type'') <- matchPrepatterns context values' patterns' domain
+    explicitFunCase value values' pat patterns' source target = do
+      (matches, type'') <- matchPrepatterns context values' patterns' target
       pure (Match value value Explicit pat source : matches, type'')
 
 type PatternInstantiation = Tsil (Binding, Domain.Value, Domain.Value)
@@ -799,10 +799,10 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
 
           pure $ Syntax.Case scrutinee branches defaultBranch
 
-        ((plicity1, param):params', Domain.Telescope.Extend _ _ plicity2 domainClosure)
+        ((plicity1, param):params', Domain.Telescope.Extend _ _ plicity2 targetClosure)
           | plicity1 == plicity2 -> do
-            domain <- domainClosure param
-            goParams context params' (conArgs Tsil.:> (implicitise plicity1, param)) domain
+            target <- targetClosure param
+            goParams context params' (conArgs Tsil.:> (implicitise plicity1, param)) target
 
         _ ->
           panic "goParams mismatch"
@@ -816,7 +816,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
       -> M (Telescope Syntax.Type Syntax.Term v)
     goConstrFields context constr conArgs type_ patterns =
       case type_ of
-        Domain.Pi piName source plicity domainClosure -> do
+        Domain.Pi piName source plicity targetClosure -> do
           source'' <- Elaboration.readback context source
           (name, patterns') <-
             case plicity of
@@ -837,11 +837,11 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
             conArgs' =
               conArgs Tsil.:> (plicity, fieldValue)
 
-          domain <- Evaluation.evaluateClosure domainClosure fieldValue
-          tele <- goConstrFields context' constr conArgs' domain patterns'
+          target <- Evaluation.evaluateClosure targetClosure fieldValue
+          tele <- goConstrFields context' constr conArgs' target patterns'
           pure $ Telescope.Extend name source'' plicity tele
 
-        Domain.Fun source plicity domain -> do
+        Domain.Fun source plicity target -> do
           source'' <- Elaboration.readback context source
           (name, patterns') <-
             case plicity of
@@ -861,7 +861,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
             conArgs' =
               conArgs Tsil.:> (plicity, fieldValue)
 
-          tele <- goConstrFields context' constr conArgs' domain patterns'
+          tele <- goConstrFields context' constr conArgs' target patterns'
           pure $ Telescope.Extend name source'' plicity tele
 
         _ -> do
@@ -1026,23 +1026,23 @@ uninhabitedConstrType context fuel type_ =
     _ -> do
       type' <- Context.forceHead context type_
       case type' of
-        Domain.Pi name source _ domainClosure -> do
+        Domain.Pi name source _ targetClosure -> do
           uninhabited <- uninhabitedType context (fuel - 1) mempty source
           if uninhabited then
             pure True
 
           else do
             (context', var) <- Context.extendUnnamed context name source
-            domain <- Evaluation.evaluateClosure domainClosure $ Domain.var var
-            uninhabitedConstrType context' fuel domain
+            target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
+            uninhabitedConstrType context' fuel target
 
-        Domain.Fun source _ domain -> do
+        Domain.Fun source _ target -> do
           uninhabited <- uninhabitedType context (fuel - 1) mempty source
           if uninhabited then
             pure True
 
           else
-            uninhabitedConstrType context fuel domain
+            uninhabitedConstrType context fuel target
 
         _ ->
           pure False

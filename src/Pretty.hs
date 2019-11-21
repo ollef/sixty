@@ -115,9 +115,9 @@ prettyTerm prec env term =
       prettyParen (prec > funPrec) $
         prettyPiTerm env term
 
-    Syntax.Fun source plicity domain ->
+    Syntax.Fun source plicity target ->
       prettyParen (prec > funPrec) $
-        Plicity.prettyAnnotation plicity <> prettyTerm (funPrec + 1) env source <+> "->" <+> prettyTerm funPrec env domain
+        Plicity.prettyAnnotation plicity <> prettyTerm (funPrec + 1) env source <+> "->" <+> prettyTerm funPrec env target
 
     Syntax.Lam {} ->
       prettyParen (prec > lamPrec) $

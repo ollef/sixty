@@ -224,15 +224,15 @@ termAction k env term =
         termAction k env type_ <|>
         termAction k env' body
 
-    Syntax.Pi binding source _ domain -> do
+    Syntax.Pi binding source _ target -> do
       (env', var) <- extend env binding source
       bindingAction k env' binding var <|>
         termAction k env source <|>
-        termAction k env' domain
+        termAction k env' target
 
-    Syntax.Fun source _ domain ->
+    Syntax.Fun source _ target ->
       termAction k env source <|>
-      termAction k env domain
+      termAction k env target
 
     Syntax.Lam binding type_ _ body -> do
       (env', var) <- extend env binding type_

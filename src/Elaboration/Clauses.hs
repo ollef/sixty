@@ -48,30 +48,30 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
   | otherwise = do
     expectedType' <- Context.forceHead context expectedType
     case expectedType' of
-      Domain.Pi name source Explicit domainClosure
+      Domain.Pi name source Explicit targetClosure
         | HashMap.null implicits -> do
           (context', var) <- Context.extendUnnamed context name source
-          domain <-
+          target <-
             Evaluation.evaluateClosure
-              domainClosure
+              targetClosure
               (Domain.var var)
-          explicitFunCase context' (Binding.Unspanned name) var source domain
+          explicitFunCase context' (Binding.Unspanned name) var source target
 
-      Domain.Fun source Explicit domain
+      Domain.Fun source Explicit target
         | HashMap.null implicits -> do
           binding <- nextExplicitBinding context clauses
           (context', var) <- Context.extendUnnamed context (Binding.toName binding) source
-          explicitFunCase context' binding var source domain
+          explicitFunCase context' binding var source target
 
-      Domain.Pi piName source Implicit domainClosure -> do
+      Domain.Pi piName source Implicit targetClosure -> do
         binding <- nextImplicitBinding context piName clauses
         (context', var) <- Context.extendUnnamed context (Binding.toName binding) source
         let
           value =
             Domain.var var
-        domain <- Evaluation.evaluateClosure domainClosure value
+        target <- Evaluation.evaluateClosure targetClosure value
         source'' <- Elaboration.readback context source
-        body <- check context' (shiftImplicit (Binding.toName binding) value source <$> clauses) domain
+        body <- check context' (shiftImplicit (Binding.toName binding) value source <$> clauses) target
         pure $ Syntax.Lam binding source'' Implicit body
 
       _ -> do
@@ -82,10 +82,10 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
     implicits =
       foldMap clauseImplicits clauses
 
-    explicitFunCase context' binding var source domain = do
+    explicitFunCase context' binding var source target = do
       source'' <- Elaboration.readback context source
       clauses' <- mapM (shiftExplicit context (Domain.var var) source) clauses
-      body <- check context' clauses' domain
+      body <- check context' clauses' target
       pure $ Syntax.Lam binding source'' Explicit body
 
 infer
@@ -118,13 +118,13 @@ infer context (fmap removeEmptyImplicits -> clauses)
             Binding.toName binding
         (context', var) <- Context.extendUnnamed context name source
         clauses' <- mapM (shiftExplicit context (Domain.var var) source) clauses
-        (body, domain) <- infer context' clauses'
-        domain' <- Elaboration.readback context' domain
+        (body, target) <- infer context' clauses'
+        target' <- Elaboration.readback context' target
 
         pure
           ( Syntax.Lam binding source' Explicit body
           , Domain.Pi name source Explicit
-            $ Domain.Closure (Context.toEnvironment context) domain'
+            $ Domain.Closure (Context.toEnvironment context) target'
           )
 
       [(piName, _)] -> do
@@ -138,13 +138,13 @@ infer context (fmap removeEmptyImplicits -> clauses)
         let
           value =
             Domain.var var
-        (body, domain) <- infer context' (shiftImplicit name value source <$> clauses)
-        domain' <- Elaboration.readback context' domain
+        (body, target) <- infer context' (shiftImplicit name value source <$> clauses)
+        target' <- Elaboration.readback context' target
 
         pure
           ( Syntax.Lam binding source' Implicit body
           , Domain.Pi name source Implicit
-            $ Domain.Closure (Context.toEnvironment context) domain'
+            $ Domain.Closure (Context.toEnvironment context) target'
           )
 
       _ -> do

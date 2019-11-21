@@ -323,8 +323,8 @@ atomicTerm =
     )
   <?> "term"
   where
-    implicitPis vss domain =
-      foldr (\(vs, source) domain' -> pis Implicit vs source domain') domain vss
+    implicitPis vss target =
+      foldr (\(vs, source) target' -> pis Implicit vs source target') target vss
 
     branch :: Parser (Pattern, Term)
     branch =

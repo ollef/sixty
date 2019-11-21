@@ -136,15 +136,15 @@ termOccurrences env maybeSpan term =
         termOccurrences env Nothing type_ <>
         termOccurrences env' Nothing body
 
-    Syntax.Pi binding source _ domain -> do
+    Syntax.Pi binding source _ target -> do
       (env', var) <- extend env
       bindingOccurrences binding var <>
         termOccurrences env Nothing source <>
-        termOccurrences env' Nothing domain
+        termOccurrences env' Nothing target
 
-    Syntax.Fun source _ domain ->
+    Syntax.Fun source _ target ->
       termOccurrences env Nothing source <>
-      termOccurrences env Nothing domain
+      termOccurrences env Nothing target
 
     Syntax.Lam binding type_ _ body -> do
       (env', var) <- extend env

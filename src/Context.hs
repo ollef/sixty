@@ -323,10 +323,10 @@ dependencies context value = do
     Domain.Pi name type' _ closure ->
       abstractionDependencies name type' closure
 
-    Domain.Fun source _ domain -> do
+    Domain.Fun source _ target -> do
       sourceVars <- dependencies context source
-      domainVars <- dependencies context domain
-      pure $ sourceVars <> domainVars
+      targetVars <- dependencies context target
+      pure $ sourceVars <> targetVars
 
     Domain.Case scrutinee (Domain.Branches env branches defaultBranch) -> do
       scrutineeVars <- dependencies context scrutinee
@@ -592,14 +592,14 @@ instantiateType context type_ spine = do
     (_, []) ->
       pure type'
 
-    (Domain.Fun _ plicity1 domain, (plicity2, _):spine')
+    (Domain.Fun _ plicity1 target, (plicity2, _):spine')
       | plicity1 == plicity2 ->
-      instantiateType context domain spine'
+      instantiateType context target spine'
 
-    (Domain.Pi _ _ plicity1 domainClosure, (plicity2, arg):spine')
+    (Domain.Pi _ _ plicity1 targetClosure, (plicity2, arg):spine')
       | plicity1 == plicity2 -> do
-        domain <- Evaluation.evaluateClosure domainClosure arg
-        instantiateType context domain spine'
+        target <- Evaluation.evaluateClosure targetClosure arg
+        instantiateType context target spine'
 
     _ ->
       panic "instantiateType"

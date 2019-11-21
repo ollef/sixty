@@ -55,8 +55,8 @@ to value =
     Domain.Pi name type_ plicity closure ->
       Pi name <$> to type_ <*> pure plicity <*> closureTo closure
 
-    Domain.Fun source plicity domain ->
-      Fun <$> to source <*> pure plicity <*> to domain
+    Domain.Fun source plicity target ->
+      Fun <$> to source <*> pure plicity <*> to target
 
     Domain.Case scrutinee branches ->
       Case <$> to scrutinee <*> branchesTo branches

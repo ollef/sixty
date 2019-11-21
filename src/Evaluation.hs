@@ -31,11 +31,11 @@ evaluateConstructorDefinitions env tele =
       constrs' <- forM constrs $ evaluate env
       pure $ Domain.Telescope.Empty constrs'
 
-    Telescope.Extend name source plicity domain -> do
+    Telescope.Extend name source plicity target -> do
       source' <- evaluate env source
       pure $ Domain.Telescope.Extend (Binding.toName name) source' plicity $ \param -> do
         env' <- Environment.extendValue env param
-        evaluateConstructorDefinitions env' domain
+        evaluateConstructorDefinitions env' target
 
 evaluate :: Domain.Environment v -> Syntax.Term v -> M Domain.Value
 evaluate env term =
@@ -75,14 +75,14 @@ evaluate env term =
       env' <- Environment.extendValue env type'
       evaluate env' body
 
-    Syntax.Pi binding source plicity domain -> do
+    Syntax.Pi binding source plicity target -> do
       source' <- evaluate env source
-      pure $ Domain.Pi (Binding.toName binding) source' plicity (Domain.Closure env domain)
+      pure $ Domain.Pi (Binding.toName binding) source' plicity (Domain.Closure env target)
 
-    Syntax.Fun source plicity domain -> do
+    Syntax.Fun source plicity target -> do
       source' <- evaluate env source
-      domain' <- evaluate env domain
-      pure $ Domain.Fun source' plicity domain'
+      target' <- evaluate env target
+      pure $ Domain.Fun source' plicity target'
 
     Syntax.Lam binding type_ plicity body -> do
       type' <- evaluate env type_
@@ -153,10 +153,10 @@ chooseBranch outerEnv constr outerArgs branches defaultBranch =
         ([], Telescope.Empty branch) ->
           evaluate env branch
 
-        ((plicity1, arg):args', Telescope.Extend _ _ plicity2 domain)
+        ((plicity1, arg):args', Telescope.Extend _ _ plicity2 target)
           | plicity1 == plicity2 -> do
             env' <- Environment.extendValue env arg
-            go env' args' domain
+            go env' args' target
 
           | otherwise ->
             panic $ "chooseBranch mismatch " <> show (plicity1, plicity2)

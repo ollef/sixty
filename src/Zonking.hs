@@ -75,19 +75,19 @@ zonk env metas term =
         zonkTerm env' metas scope
       pure $ Right result
 
-    Syntax.Pi binding source plicity domainScope -> do
+    Syntax.Pi binding source plicity targetScope -> do
       (env', _) <- Environment.extend env
       result <- Syntax.Pi binding <$>
         zonkTerm env metas source <*>
         pure plicity <*>
-        zonkTerm env' metas domainScope
+        zonkTerm env' metas targetScope
       pure $ Right result
 
-    Syntax.Fun source plicity domain -> do
+    Syntax.Fun source plicity target -> do
       result <- Syntax.Fun <$>
         zonkTerm env metas source <*>
         pure plicity <*>
-        zonkTerm env metas domain
+        zonkTerm env metas target
       pure $ Right result
 
     Syntax.Lam binding type_ plicity bodyScope -> do

@@ -79,12 +79,12 @@ lams vs body@(Term (Span.Relative _ end) _) =
   foldr (\(start, pat) -> Term (Span.Relative start end) . Lam pat) body vs
 
 pis :: Foldable f => Plicity -> f Binding -> Type -> Type -> Type
-pis plicity vs source domain@(Term (Span.Relative _ end) _) =
-  foldr (\binding@(Binding (Span.Relative start _) _) -> Term (Span.Relative start end) . Pi binding plicity source) domain vs
+pis plicity vs source target@(Term (Span.Relative _ end) _) =
+  foldr (\binding@(Binding (Span.Relative start _) _) -> Term (Span.Relative start end) . Pi binding plicity source) target vs
 
 function :: Term -> Term -> Term
-function source@(Term span1 _) domain@(Term span2 _) =
-  Term (Span.add span1 span2) $ Fun source domain
+function source@(Term span1 _) target@(Term span2 _) =
+  Term (Span.add span1 span2) $ Fun source target
 
 anno :: Pattern -> Type -> Pattern
 anno pat@(Pattern span1 _) type_@(Term span2 _) =

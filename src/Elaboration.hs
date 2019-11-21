@@ -231,10 +231,10 @@ varPis
   -> [(Plicity, Var)]
   -> Domain.Value
   -> M (Syntax.Term v')
-varPis context env vars domain =
+varPis context env vars target =
   case vars of
     [] ->
-      Readback.readback env domain
+      Readback.readback env target
 
     (plicity, var):vars'-> do
       let
@@ -244,12 +244,12 @@ varPis context env vars domain =
         source =
           Context.lookupVarType var context
       source' <- Readback.readback env source
-      domain' <- varPis context env' vars' domain
+      target' <- varPis context env' vars' target
       let
         binding =
           Binding.Unspanned $ Context.lookupVarName var context
 
-      pure $ Syntax.Pi binding source' plicity domain'
+      pure $ Syntax.Pi binding source' plicity target'
 
 checkConstructorType
   :: Context v
@@ -275,15 +275,15 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
           constrType'' <- goTerm (Context.spanned span' context') constrType'
           pure $ Syntax.Spanned span' constrType''
 
-        Syntax.Pi binding source plicity domain -> do
+        Syntax.Pi binding source plicity target -> do
           source' <- evaluate context' source
           (context'', _) <- Context.extendUnnamed context' (Binding.toName binding) source'
-          domain' <- goTerm context'' domain
-          pure $ Syntax.Pi binding source plicity domain'
+          target' <- goTerm context'' target
+          pure $ Syntax.Pi binding source plicity target'
 
-        Syntax.Fun source plicity domain -> do
-          domain' <- goTerm context' domain
-          pure $ Syntax.Fun source plicity domain'
+        Syntax.Fun source plicity target -> do
+          target' <- goTerm context' target
+          pure $ Syntax.Fun source plicity target'
 
         (Syntax.appsView -> (hd@(Syntax.varView -> Just headIndex), indices))
           | Context.lookupIndexVar headIndex context' == dataVar ->
@@ -297,17 +297,17 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
     goValue context' constrType = do
       constrType' <- Context.forceHead context constrType
       case constrType' of
-        Domain.Pi name source plicity domainClosure -> do
+        Domain.Pi name source plicity targetClosure -> do
           source' <- readback context' source
           (context'', var) <- Context.extendUnnamed context' name source
-          domain <- Evaluation.evaluateClosure domainClosure $ Domain.var var
-          domain' <- goValue context'' domain
-          pure $ Syntax.Pi (Binding.Unspanned name) source' plicity domain'
+          target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
+          target' <- goValue context'' target
+          pure $ Syntax.Pi (Binding.Unspanned name) source' plicity target'
 
-        Domain.Fun source plicity domain -> do
+        Domain.Fun source plicity target -> do
           source' <- readback context' source
-          domain' <- goValue context' domain
-          pure $ Syntax.Fun source' plicity domain'
+          target' <- goValue context' target
+          pure $ Syntax.Fun source' plicity target'
 
         Domain.Neutral (Domain.Var headVar) indices
           | headVar == dataVar ->
@@ -348,8 +348,8 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
                   source =
                     Builtin.equals paramType index param
 
-                domain <- termIndexEqualities context' indices' paramVars'' hd (params Tsil.:> (plicity1, param))
-                pure $ Syntax.Fun source Constraint domain
+                target <- termIndexEqualities context' indices' paramVars'' hd (params Tsil.:> (plicity1, param))
+                pure $ Syntax.Fun source Constraint target
 
           | otherwise ->
             panic "indexEqualities plicity mismatch"
@@ -385,8 +385,8 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
 
                 source' <- readback context' source
 
-                domain <- valueIndexEqualities context' indices' paramVars''
-                pure $ Syntax.Fun source' Constraint domain
+                target <- valueIndexEqualities context' indices' paramVars''
+                pure $ Syntax.Fun source' Constraint target
 
           | otherwise ->
             panic "indexEqualities plicity mismatch"
@@ -461,21 +461,21 @@ checkUnspanned context term expectedType = do
         inferAndInsertMetas context UntilExplicit scrutinee $ pure Nothing
       Matching.elaborateCase context scrutinee' scrutineeType branches expectedType
 
-    (Presyntax.Lam (Presyntax.ExplicitPattern pat) body, Domain.Pi name source Explicit domainClosure) ->
-      checkLambda context name source Explicit pat domainClosure body
+    (Presyntax.Lam (Presyntax.ExplicitPattern pat) body, Domain.Pi name source Explicit targetClosure) ->
+      checkLambda context name source Explicit pat targetClosure body
 
-    (Presyntax.Lam (Presyntax.ExplicitPattern pat) body, Domain.Fun source Explicit domain) -> do
+    (Presyntax.Lam (Presyntax.ExplicitPattern pat) body, Domain.Fun source Explicit target) -> do
       source' <- readback context source
       binding <- SuggestedName.patternBinding context pat "x"
       (context', var) <- Context.extendUnnamed context (Binding.toName binding) source
-      body' <- Matching.elaborateSingle context' var Explicit pat body domain
+      body' <- Matching.elaborateSingle context' var Explicit pat body target
       pure $ Syntax.Lam binding source' Explicit body'
 
     (Presyntax.Lam (Presyntax.ImplicitPattern _ namedPats) body, _)
       | HashMap.null namedPats ->
         check context body expectedType
 
-    (Presyntax.Lam (Presyntax.ImplicitPattern span namedPats) body, Domain.Pi name source Implicit domainClosure)
+    (Presyntax.Lam (Presyntax.ImplicitPattern span namedPats) body, Domain.Pi name source Implicit targetClosure)
       | name `HashMap.member` namedPats -> do
         let
           pat =
@@ -484,13 +484,13 @@ checkUnspanned context term expectedType = do
           body' =
             Presyntax.Term (Context.span context) $
               Presyntax.Lam (Presyntax.ImplicitPattern span (HashMap.delete name namedPats)) body
-        checkLambda context name source Implicit pat domainClosure body'
+        checkLambda context name source Implicit pat targetClosure body'
 
-    (_, Domain.Pi name source Implicit domainClosure) -> do
+    (_, Domain.Pi name source Implicit targetClosure) -> do
       (context', v) <- Context.extendUnnamed context name source
-      domain <- Evaluation.evaluateClosure domainClosure $ Domain.var v
+      target <- Evaluation.evaluateClosure targetClosure $ Domain.var v
       source' <- readback context source
-      term' <- checkUnspanned context' term domain
+      term' <- checkUnspanned context' term target
       pure $ Syntax.Lam (Binding.Unspanned name) source' Implicit term'
 
     (Presyntax.App function argument, _) -> do
@@ -502,24 +502,24 @@ checkUnspanned context term expectedType = do
       functionType' <- Context.forceHead context functionType
 
       case functionType' of
-        Domain.Pi _ source Explicit domainClosure -> do
-          (argument', domain) <- checkApplication context argument source domainClosure
-          f <- subtype context domain expectedType
+        Domain.Pi _ source Explicit targetClosure -> do
+          (argument', target) <- checkApplication context argument source targetClosure
+          f <- subtype context target expectedType
           pure $ f $ Syntax.App function' Explicit argument'
 
-        Domain.Fun source Explicit domain -> do
-          f <- subtype context domain expectedType
+        Domain.Fun source Explicit target -> do
+          f <- subtype context target expectedType
           argument' <- check context argument source
           pure $ f $ Syntax.App function' Explicit argument'
 
         _ -> do
           source <- Context.newMetaType context
-          domain <- Context.newMetaType context
+          target <- Context.newMetaType context
           let
             metaFunctionType =
               Domain.Fun source Explicit expectedType
           f <- Unification.tryUnify context functionType metaFunctionType
-          g <- subtype context domain expectedType
+          g <- subtype context target expectedType
           argument' <- check context argument source
           pure $ g $ Syntax.App (f function') Explicit argument'
 
@@ -558,23 +558,23 @@ inferUnspanned context term expectedTypeName =
       (body', type_) <- infer context' body expectedTypeName
       pure (Syntax.Let binding boundTerm typeTerm body', type_)
 
-    Presyntax.Pi binding plicity source domain -> do
+    Presyntax.Pi binding plicity source target -> do
       source' <- check context source Builtin.Type
       source'' <- evaluate context source'
 
       (context', _) <- Context.extend context (Binding.fromPresyntax binding) source''
 
-      domain' <- check context' domain Builtin.Type
+      target' <- check context' target Builtin.Type
       pure
-        ( Syntax.Pi (Binding.fromPresyntax binding) source' plicity domain'
+        ( Syntax.Pi (Binding.fromPresyntax binding) source' plicity target'
         , Builtin.Type
         )
 
-    Presyntax.Fun source domain -> do
+    Presyntax.Fun source target -> do
       source' <- check context source Builtin.Type
-      domain' <- check context domain Builtin.Type
+      target' <- check context target Builtin.Type
       pure
-        ( Syntax.Fun source' Explicit domain'
+        ( Syntax.Fun source' Explicit target'
         , Builtin.Type
         )
 
@@ -599,32 +599,32 @@ inferUnspanned context term expectedTypeName =
       functionType' <- Context.forceHead context functionType
 
       case functionType' of
-        Domain.Pi _ source Explicit domainClosure -> do
-          (argument', domain) <- checkApplication context argument source domainClosure
+        Domain.Pi _ source Explicit targetClosure -> do
+          (argument', target) <- checkApplication context argument source targetClosure
           pure
             ( Syntax.App function' Explicit argument'
-            , domain
+            , target
             )
 
-        Domain.Fun source Explicit domain -> do
+        Domain.Fun source Explicit target -> do
           argument' <- check context argument source
           pure
             ( Syntax.App function' Explicit argument'
-            , domain
+            , target
             )
 
         _ -> do
           source <- Context.newMetaType context
-          domain <- Context.newMetaType context
+          target <- Context.newMetaType context
           let
             metaFunctionType =
-              Domain.Fun source Explicit domain
+              Domain.Fun source Explicit target
 
           f <- Unification.tryUnify context functionType metaFunctionType
           argument' <- check context argument source
           pure
             ( Syntax.App (f function') Explicit argument'
-            , domain
+            , target
             )
 
     Presyntax.ImplicitApps function arguments -> do
@@ -646,28 +646,28 @@ inferUnspanned context term expectedTypeName =
                 Syntax.apps function' metaArgs
             functionType'' <- Context.forceHead context functionType'
             case functionType'' of
-              Domain.Pi name source Implicit domainClosure
+              Domain.Pi name source Implicit targetClosure
                 | name `HashMap.member` arguments' -> do
                   argument' <- check context (arguments' HashMap.! name) source
                   argument'' <- evaluate context argument'
-                  domain <- Evaluation.evaluateClosure domainClosure argument''
+                  target <- Evaluation.evaluateClosure targetClosure argument''
                   go
                     (Syntax.App function'' Implicit argument')
                     (HashMap.delete name arguments')
-                    domain
+                    target
               _
                 | [(name, argument)] <- HashMap.toList arguments' -> do
                   source <- Context.newMetaType context
-                  domain <- Context.newMetaType context
+                  target <- Context.newMetaType context
                   (context', _) <- Context.extendUnnamed context name source
-                  domain' <- readback context' domain
+                  target' <- readback context' target
                   let
                     metaFunctionType =
                       Domain.Pi name source Implicit $
-                      Domain.Closure (Context.toEnvironment context) domain'
+                      Domain.Closure (Context.toEnvironment context) target'
                   f <- Unification.tryUnify context functionType' metaFunctionType
                   argument' <- check context argument source
-                  pure (Syntax.App (f function'') Implicit argument', domain)
+                  pure (Syntax.App (f function'') Implicit argument', target)
 
               _ -> do
                 functionType''' <- readback context functionType'
@@ -767,14 +767,14 @@ checkLambda
   -> Domain.Closure
   -> Presyntax.Term
   -> M (Syntax.Term v)
-checkLambda context name source plicity pat domainClosure body = do
+checkLambda context name source plicity pat targetClosure body = do
   (context', var) <- Context.extendUnnamed context name source
   source' <- readback context source
-  domain <-
+  target <-
     Evaluation.evaluateClosure
-      domainClosure
+      targetClosure
       (Domain.var var)
-  body' <- Matching.elaborateSingle context' var plicity pat body domain
+  body' <- Matching.elaborateSingle context' var plicity pat body target
   binding <- SuggestedName.patternBinding context pat name
   pure $ Syntax.Lam binding source' plicity body'
 
@@ -789,14 +789,14 @@ inferLambda context name plicity pat body = do
   source <- Context.newMetaType context
   source' <- readback context source
   (context', var) <- Context.extendUnnamed context name source
-  domain <- Context.newMetaType context'
-  body' <- Matching.elaborateSingle context' var plicity pat body domain
-  domain' <- readback context' domain
+  target <- Context.newMetaType context'
+  body' <- Matching.elaborateSingle context' var plicity pat body target
+  target' <- readback context' target
   binding <- SuggestedName.patternBinding context pat name
   pure
     ( Syntax.Lam binding source' plicity body'
     , Domain.Pi name source plicity
-      $ Domain.Closure (Context.toEnvironment context) domain'
+      $ Domain.Closure (Context.toEnvironment context) target'
     )
 
 checkApplication
@@ -805,11 +805,11 @@ checkApplication
   -> Domain.Type
   -> Domain.Closure
   -> M (Syntax.Term v, Domain.Value)
-checkApplication context argument source domainClosure = do
+checkApplication context argument source targetClosure = do
   argument' <- check context argument source
   argument'' <- evaluate context argument'
-  domain <- Evaluation.evaluateClosure domainClosure argument''
-  pure (argument', domain)
+  target <- Evaluation.evaluateClosure targetClosure argument''
+  pure (argument', target)
 
 elaborateLet
   :: Context v
@@ -888,13 +888,13 @@ getExpectedTypeName context type_ = do
       value' <- force value
       getExpectedTypeName context value'
 
-    Domain.Pi name source _ domainClosure -> do
+    Domain.Pi name source _ targetClosure -> do
       (context', var) <- Context.extendUnnamed context name source
-      domain <- Evaluation.evaluateClosure domainClosure $ Domain.var var
-      getExpectedTypeName context' domain
+      target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
+      getExpectedTypeName context' target
 
-    Domain.Fun _ _ domain ->
-      getExpectedTypeName context domain
+    Domain.Fun _ _ target ->
+      getExpectedTypeName context target
 
     Domain.Lam {} ->
       pure Nothing
@@ -941,22 +941,22 @@ insertMetas
 insertMetas context until type_ = do
   type' <- Context.forceHead context type_
   case (until, type') of
-    (UntilTheEnd, Domain.Pi _ source plicity domainClosure) ->
-      instantiate source plicity domainClosure
+    (UntilTheEnd, Domain.Pi _ source plicity targetClosure) ->
+      instantiate source plicity targetClosure
 
-    (UntilTheEnd, Domain.Fun source plicity domain) -> do
+    (UntilTheEnd, Domain.Fun source plicity target) -> do
       meta <- Context.newMeta source context
-      (args, res) <- insertMetas context until domain
+      (args, res) <- insertMetas context until target
       pure ((plicity, meta) : args, res)
 
-    (UntilExplicit, Domain.Pi _ source Implicit domainClosure) ->
-      instantiate source Implicit domainClosure
+    (UntilExplicit, Domain.Pi _ source Implicit targetClosure) ->
+      instantiate source Implicit targetClosure
 
-    (UntilImplicit stopAt, Domain.Pi name source Implicit domainClosure)
+    (UntilImplicit stopAt, Domain.Pi name source Implicit targetClosure)
       | not $ stopAt name ->
-        instantiate source Implicit domainClosure
+        instantiate source Implicit targetClosure
 
-    (_, Domain.Pi _ source Constraint domainClosure) -> do
+    (_, Domain.Pi _ source Constraint targetClosure) -> do
       source' <- Context.forceHead context source
       case source' of
         Builtin.Equals kind term1 term2 -> do
@@ -964,14 +964,14 @@ insertMetas context until type_ = do
           let
             value =
               Builtin.Refl kind term1 term2
-          domain <- Evaluation.evaluateClosure domainClosure value
-          (args, res) <- insertMetas context until domain
+          target <- Evaluation.evaluateClosure targetClosure value
+          (args, res) <- insertMetas context until target
           pure ((Constraint, f value) : args, res)
 
         _ ->
           panic "insertMetas: non-equality constraint"
 
-    (_, Domain.Fun source Constraint domain) -> do
+    (_, Domain.Fun source Constraint target) -> do
       source' <- Context.forceHead context source
       case source' of
         Builtin.Equals kind term1 term2 -> do
@@ -979,7 +979,7 @@ insertMetas context until type_ = do
           let
             value =
               Builtin.Refl kind term1 term2
-          (args, res) <- insertMetas context until domain
+          (args, res) <- insertMetas context until target
           pure ((Constraint, f value) : args, res)
 
         _ ->
@@ -988,10 +988,10 @@ insertMetas context until type_ = do
     _ ->
       pure ([], type_)
   where
-    instantiate source plicity domainClosure = do
+    instantiate source plicity targetClosure = do
       meta <- Context.newMeta source context
-      domain <- Evaluation.evaluateClosure domainClosure meta
-      (args, res) <- insertMetas context until domain
+      target <- Evaluation.evaluateClosure targetClosure meta
+      (args, res) <- insertMetas context until target
       pure ((plicity, meta) : args, res)
 
 subtype
@@ -1065,17 +1065,17 @@ checkMetaSolutions context metaVars = do
     addLambdas context' type_ = do
       type' <- Context.forceHead context' type_
       case type' of
-        Domain.Fun source Explicit domain -> do
+        Domain.Fun source Explicit target -> do
           source' <- readback context' source
           (context'', _) <- Context.extendUnnamed context' "x" source
-          body <- addLambdas context'' domain
+          body <- addLambdas context'' target
           pure $ Syntax.Lam "x" source' Explicit body
 
-        Domain.Pi name source Explicit domainClosure -> do
+        Domain.Pi name source Explicit targetClosure -> do
           source' <- readback context' source
           (context'', var) <- Context.extendUnnamed context' name source
-          domain <- Evaluation.evaluateClosure domainClosure $ Domain.var var
-          body <- addLambdas context'' domain
+          target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
+          body <- addLambdas context'' target
           pure $ Syntax.Lam (Binding.Unspanned name) source' Explicit body
 
         _ -> do

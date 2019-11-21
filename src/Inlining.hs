@@ -124,15 +124,15 @@ evaluate dup env term =
           evaluate dup env type_ <*>
           evaluate dup env' body
 
-    Syntax.Pi name source plicity domain -> do
+    Syntax.Pi name source plicity target -> do
       (env', var) <- Environment.extend env
       Pi name var <$>
         evaluate dup env source <*>
         pure plicity <*>
-        evaluate dup env' domain
+        evaluate dup env' target
 
-    Syntax.Fun source plicity domain ->
-      Fun <$> evaluate dup env source <*> pure plicity <*> evaluate dup env domain
+    Syntax.Fun source plicity target ->
+      Fun <$> evaluate dup env source <*> pure plicity <*> evaluate dup env target
 
     Syntax.Lam name type_ plicity body -> do
       (env', var) <- Environment.extend env
@@ -197,14 +197,14 @@ readback env value =
           Environment.extendVar env var
       Syntax.Let name (readback env term) (readback env type_) (readback env' body)
 
-    Pi name var source plicity domain -> do
+    Pi name var source plicity target -> do
       let
         env' =
           Environment.extendVar env var
-      Syntax.Pi name (readback env source) plicity (readback env' domain)
+      Syntax.Pi name (readback env source) plicity (readback env' target)
 
-    Fun source plicity domain ->
-      Syntax.Fun (readback env source) plicity (readback env domain)
+    Fun source plicity target ->
+      Syntax.Fun (readback env source) plicity (readback env target)
 
     Lam name var type_ plicity body -> do
       let
