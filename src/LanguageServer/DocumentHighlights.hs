@@ -64,8 +64,8 @@ highlights filePath (Position.LineColumn line column) = do
 
       fmap concat $ forM items $ \item ->
         case item of
-          Intervals.Var _ ->
-            pure $ toLineColumns . Span.absoluteFrom defPos <$> Intervals.itemSpans item occurrenceIntervals
+          Intervals.Var var ->
+            pure $ toLineColumns . Span.absoluteFrom defPos <$> Intervals.varSpans var relativePos occurrenceIntervals
 
           Intervals.Global _ -> do
             itemSpans item

@@ -93,8 +93,8 @@ references filePath (Position.LineColumn line column) = do
 
       fmap concat $ forM items $ \item ->
         case item of
-          Intervals.Var _ ->
-            pure $ (,) filePath . toLineColumns . Span.absoluteFrom defPos <$> Intervals.itemSpans item occurrenceIntervals
+          Intervals.Var var ->
+            pure $ (,) filePath . toLineColumns . Span.absoluteFrom defPos <$> Intervals.varSpans var relativePos occurrenceIntervals
 
           Intervals.Global (Name.Qualified definingModule _) -> do
             itemSpans definingModule item

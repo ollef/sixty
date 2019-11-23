@@ -6,19 +6,16 @@ module Occurrences where
 import Protolude hiding (moduleName)
 
 import qualified Data.HashMap.Lazy as HashMap
-import qualified Data.HashSet as HashSet
-import qualified Data.IntervalMap.FingerTree as IntervalMap
 import Rock
 
 import Binding (Binding)
-import qualified Binding
 import qualified Domain
 import Environment (Environment)
 import qualified Environment
 import qualified Index
 import qualified Monad
 import qualified Name
-import Occurrences.Intervals (Intervals(Intervals))
+import Occurrences.Intervals (Intervals)
 import qualified Occurrences.Intervals as Intervals
 import qualified Presyntax
 import qualified Query
@@ -48,13 +45,6 @@ extend
 extend =
   M . Environment.extend
 
-singleton :: Span.Relative -> Intervals.Item -> Intervals
-singleton span@(Span.Relative start end) item =
-  Intervals
-    { _intervals = IntervalMap.singleton (IntervalMap.Interval start (end - 1)) item
-    , _items = HashMap.singleton item $ HashSet.singleton span
-    }
-
 definitionOccurrences
   :: Domain.Environment Void
   -> Scope.Key
@@ -81,8 +71,8 @@ definitionOccurrences env key qualifiedName =
       constructorSpans <- definitionConstructorSpans key qualifiedName
       spans <- definitionNameSpans key qualifiedName
       pure $ mconcat $
-        foreach constructorSpans (\(span, con) -> singleton span $ Intervals.Con con) <>
-        foreach spans (`singleton` Intervals.Global qualifiedName)
+        foreach constructorSpans (\(span, con) -> Intervals.singleton span $ Intervals.Con con) <>
+        foreach spans (`Intervals.singleton` Intervals.Global qualifiedName)
 
 definitionNameSpans :: MonadFetch Query m => Scope.Key -> Name.Qualified -> m [Span.Relative]
 definitionNameSpans key (Name.Qualified moduleName name) = do
@@ -118,13 +108,13 @@ termOccurrences
 termOccurrences env maybeSpan term =
   case term of
     Syntax.Var index ->
-      pure $ foldMap (\span -> singleton span $ Intervals.Var $ Environment.lookupIndexVar index env) maybeSpan
+      pure $ foldMap (\span -> Intervals.singleton span $ Intervals.Var $ Environment.lookupIndexVar index env) maybeSpan
 
     Syntax.Global global ->
-      pure $ foldMap (\span -> singleton span $ Intervals.Global global) maybeSpan
+      pure $ foldMap (\span -> Intervals.singleton span $ Intervals.Global global) maybeSpan
 
     Syntax.Con con ->
-      pure $ foldMap (\span -> singleton span $ Intervals.Con con) maybeSpan
+      pure $ foldMap (\span -> Intervals.singleton span $ Intervals.Con con) maybeSpan
 
     Syntax.Meta _ ->
       mempty
@@ -189,7 +179,7 @@ branchOccurrences
   -> (Name.QualifiedConstructor, ([Span.Relative], Telescope Syntax.Type Syntax.Term v))
   -> M Intervals
 branchOccurrences env (constr, (spans, tele)) =
-  pure (mconcat [singleton span $ Intervals.Con constr | span <- spans]) <> teleOccurrences env tele
+  pure (mconcat [Intervals.singleton span $ Intervals.Con constr | span <- spans]) <> teleOccurrences env tele
 
 teleOccurrences
   :: Domain.Environment v
@@ -211,9 +201,4 @@ bindingOccurrences
   -> Var
   -> M Intervals
 bindingOccurrences binding var =
-  pure $ case binding of
-    Binding.Spanned spannedNames -> do
-      foldMap (\(span, _) -> singleton span $ Intervals.Var var) spannedNames
-
-    Binding.Unspanned _ ->
-      mempty
+  pure $ Intervals.binding binding var
