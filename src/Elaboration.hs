@@ -1082,7 +1082,6 @@ checkMetaSolutions context metaVars = do
           typeTerm <- readback context' type_
           pure $ Syntax.App (Syntax.Global Builtin.fail) Explicit typeTerm
 
-
 -------------------------------------------------------------------------------
 
 evaluate
