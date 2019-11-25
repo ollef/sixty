@@ -1,5 +1,5 @@
 {-# language FlexibleContexts #-}
-module LanguageServer.LineColumn where
+module LanguageServer.LineColumns where
 
 import Protolude hiding (moduleName)
 

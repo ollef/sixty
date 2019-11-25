@@ -39,7 +39,7 @@ import qualified Syntax.Telescope as Telescope
 import qualified TypeOf
 import qualified Var
 import Var (Var)
-import qualified LanguageServer.LineColumn as LineColumn
+import qualified LanguageServer.LineColumns as LineColumns
 
 type Callback a = ItemUnderCursor -> Span.LineColumn -> MaybeT M a
 
@@ -78,7 +78,7 @@ cursorAction filePath (Position.LineColumn line column) k = do
           Rope.rowColumnCodeUnits (Rope.RowColumn line column) $
           Rope.fromText contents
 
-    toLineColumns <- LineColumn.fromAbsolute moduleName
+    toLineColumns <- LineColumns.fromAbsolute moduleName
     asum $
       (foreach (HashMap.toList spans) $ \((key, name), span@(Span.Absolute defPos _)) -> do
         guard $ span `Span.contains` pos

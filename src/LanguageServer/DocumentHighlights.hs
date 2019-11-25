@@ -7,7 +7,7 @@ import Data.HashMap.Lazy as HashMap
 import qualified Data.Rope.UTF16 as Rope
 import Rock
 
-import qualified LanguageServer.LineColumn as LineColumn
+import qualified LanguageServer.LineColumns as LineColumns
 import qualified Name
 import qualified Occurrences.Intervals as Intervals
 import qualified Position
@@ -31,7 +31,7 @@ highlights filePath (Position.LineColumn line column) = do
         Rope.rowColumnCodeUnits (Rope.RowColumn line column) $
         Rope.fromText contents
 
-  toLineColumns <- LineColumn.fromAbsolute moduleName
+  toLineColumns <- LineColumns.fromAbsolute moduleName
 
   let
     itemSpans item =

@@ -9,7 +9,7 @@ import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.Rope.UTF16 as Rope
 import Rock
 
-import qualified LanguageServer.LineColumn as LineColumn
+import qualified LanguageServer.LineColumns as LineColumns
 import qualified Module
 import qualified Name
 import qualified Occurrences
@@ -64,7 +64,7 @@ goToDefinition filePath (Position.LineColumn line column) = do
       asum $ foreach items $ \item ->
         case item of
           Intervals.Var var -> do
-            toLineColumns <- LineColumn.fromKeyedName $ Scope.KeyedName key $ Name.Qualified moduleName name
+            toLineColumns <- LineColumns.fromKeyedName $ Scope.KeyedName key $ Name.Qualified moduleName name
             MaybeT $ pure $ (,) filePath . toLineColumns <$> Intervals.bindingSpan var relativePos occurrenceIntervals
 
           Intervals.Global qualifiedName@(Name.Qualified definingModule _)  ->
@@ -77,7 +77,7 @@ goToDefinition filePath (Position.LineColumn line column) = do
                   empty
 
                 Just definingFile -> do
-                  toLineColumns <- LineColumn.fromKeyedName $ Scope.KeyedName definingKey qualifiedName
+                  toLineColumns <- LineColumns.fromKeyedName $ Scope.KeyedName definingKey qualifiedName
                   asum $ pure <$> (,) definingFile . toLineColumns <$> relativeSpans
 
           Intervals.Con constr@(Name.QualifiedConstructor qualifiedName@(Name.Qualified definingModule _) _) -> do
@@ -88,7 +88,7 @@ goToDefinition filePath (Position.LineColumn line column) = do
                 empty
 
               Just definingFile -> do
-                toLineColumns <- LineColumn.fromKeyedName $ Scope.KeyedName key qualifiedName
+                toLineColumns <- LineColumns.fromKeyedName $ Scope.KeyedName key qualifiedName
                 asum $ pure <$>
                   mapMaybe
                     (\(constrSpan, constr') ->

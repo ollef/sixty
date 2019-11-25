@@ -13,7 +13,7 @@ import qualified Occurrences.Intervals as Intervals
 import qualified Position
 import Query (Query)
 import qualified Query
-import qualified LanguageServer.LineColumn as LineColumn
+import qualified LanguageServer.LineColumns as LineColumns
 import qualified Scope
 import qualified Span
 
@@ -34,7 +34,7 @@ references filePath (Position.LineColumn line column) = do
         (moduleName, header, _) <- fetch $ Query.ParsedFile inputFile
         if mightUseDefiningModule moduleName header then do
           spans <- fetch $ Query.ModuleSpanMap moduleName
-          toLineColumns <- LineColumn.fromAbsolute moduleName
+          toLineColumns <- LineColumns.fromAbsolute moduleName
           fmap concat $ forM (HashMap.toList spans) $ \((key, name), (Span.Absolute defPos _)) -> do
             occurrenceIntervals <- fetch $
               Query.Occurrences $
@@ -51,7 +51,7 @@ references filePath (Position.LineColumn line column) = do
       Position.Absolute $
         Rope.rowColumnCodeUnits (Rope.RowColumn line column) $
         Rope.fromText contents
-  toLineColumns <- LineColumn.fromAbsolute originalModuleName
+  toLineColumns <- LineColumns.fromAbsolute originalModuleName
   spans <- fetch $ Query.ModuleSpanMap originalModuleName
   fmap concat $ forM (HashMap.toList spans) $ \((key, name), span@(Span.Absolute defPos _)) ->
     if span `Span.contains` pos then do
