@@ -64,7 +64,7 @@ goToDefinition filePath (Position.LineColumn line column) = do
       asum $ foreach items $ \item ->
         case item of
           Intervals.Var var -> do
-            toLineColumns <- lift $ LineColumn.fromKeyedName $ Scope.KeyedName key $ Name.Qualified moduleName name
+            toLineColumns <- LineColumn.fromKeyedName $ Scope.KeyedName key $ Name.Qualified moduleName name
             MaybeT $ pure $ (,) filePath . toLineColumns <$> Intervals.bindingSpan var relativePos occurrenceIntervals
 
           Intervals.Global qualifiedName@(Name.Qualified definingModule _)  ->
@@ -77,7 +77,7 @@ goToDefinition filePath (Position.LineColumn line column) = do
                   empty
 
                 Just definingFile -> do
-                  toLineColumns <- lift $ LineColumn.fromKeyedName $ Scope.KeyedName definingKey qualifiedName
+                  toLineColumns <- LineColumn.fromKeyedName $ Scope.KeyedName definingKey qualifiedName
                   asum $ pure <$> (,) definingFile . toLineColumns <$> relativeSpans
 
           Intervals.Con constr@(Name.QualifiedConstructor qualifiedName@(Name.Qualified definingModule _) _) -> do
@@ -88,7 +88,7 @@ goToDefinition filePath (Position.LineColumn line column) = do
                 empty
 
               Just definingFile -> do
-                toLineColumns <- lift $ LineColumn.fromKeyedName $ Scope.KeyedName key qualifiedName
+                toLineColumns <- LineColumn.fromKeyedName $ Scope.KeyedName key qualifiedName
                 asum $ pure <$>
                   mapMaybe
                     (\(constrSpan, constr') ->
