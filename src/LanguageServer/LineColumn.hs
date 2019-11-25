@@ -1,3 +1,4 @@
+{-# language FlexibleContexts #-}
 module LanguageServer.LineColumn where
 
 import Protolude hiding (moduleName)
@@ -12,7 +13,7 @@ import qualified Scope
 import qualified Span
 import Span (LineColumn(LineColumns))
 
-fromKeyedName :: Scope.KeyedName -> Task Query (Span.Relative -> Span.LineColumn)
+fromKeyedName :: MonadFetch Query m => Scope.KeyedName -> m (Span.Relative -> Span.LineColumn)
 fromKeyedName keyedName = do
   (filePath, Span.Absolute absolutePosition _) <-
     fetch $ Query.KeyedNameSpan keyedName
