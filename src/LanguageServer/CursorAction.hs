@@ -39,6 +39,7 @@ import qualified Syntax.Telescope as Telescope
 import qualified TypeOf
 import qualified Var
 import Var (Var)
+import qualified LanguageServer.LineColumn as LineColumn
 
 type Callback a = ItemUnderCursor -> Span.LineColumn -> MaybeT M a
 
@@ -72,22 +73,12 @@ cursorAction filePath (Position.LineColumn line column) k = do
     contents <- fetch $ Query.FileText filePath
     let
       -- TODO use the rope that we get from the LSP library instead
-      rope =
-        Rope.fromText contents
-
-      toLineColumn (Position.Absolute i) =
-        let
-          rope' =
-            Rope.take i rope
-        in
-        Position.LineColumn (Rope.rows rope') (Rope.columns rope')
-
-      toLineColumns (Span.Absolute start end) =
-        Span.LineColumns (toLineColumn start) (toLineColumn end)
-
       pos =
-        Position.Absolute $ Rope.rowColumnCodeUnits (Rope.RowColumn line column) rope
+        Position.Absolute $
+          Rope.rowColumnCodeUnits (Rope.RowColumn line column) $
+          Rope.fromText contents
 
+    toLineColumns <- LineColumn.fromAbsolute moduleName
     asum $
       (foreach (HashMap.toList spans) $ \((key, name), span@(Span.Absolute defPos _)) -> do
         guard $ span `Span.contains` pos
