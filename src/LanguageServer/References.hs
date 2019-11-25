@@ -23,7 +23,6 @@ references
 references filePath (Position.LineColumn line column) = do
   (originalModuleName, _, _) <- fetch $ Query.ParsedFile filePath
   let
-
     itemSpans definingModule item = do
       let
         mightUseDefiningModule moduleName header =
