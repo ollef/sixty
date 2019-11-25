@@ -30,8 +30,8 @@ goToDefinition filePath (Position.LineColumn line column) = do
     -- TODO use the rope that we get from the LSP library instead
     pos =
       Position.Absolute $
-      Rope.rowColumnCodeUnits (Rope.RowColumn line column) $
-      Rope.fromText contents
+        Rope.rowColumnCodeUnits (Rope.RowColumn line column) $
+        Rope.fromText contents
 
   runMaybeT $ asum $
     foreach (Module._imports moduleHeader) (\import_ -> do
