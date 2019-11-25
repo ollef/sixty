@@ -90,6 +90,22 @@ itemSpans :: Item -> Intervals -> [Span.Relative]
 itemSpans item (Intervals _ items _) =
   foldMap toList $ HashMap.lookup item items
 
+bindingSpan :: Var -> Position.Relative -> Intervals -> Maybe Span.Relative
+bindingSpan var position intervals =
+  case IntMap.lookup var (_varBindingSpans intervals) of
+    Nothing ->
+      Nothing
+
+    Just bindingSpans -> do
+      let
+        sortedBindingSpans =
+          sortBy (comparing spanStart) $ toList bindingSpans
+
+        befores =
+          List.takeWhile ((<= position) . spanStart) sortedBindingSpans
+
+      head $ reverse befores
+
 varSpans :: Var -> Position.Relative -> Intervals -> [Span.Relative]
 varSpans var position intervals = do
   let
@@ -122,6 +138,7 @@ varSpans var position intervals = do
 
             after:_ ->
               filter ((< spanStart after) . spanStart) candidates'
-  where
-    spanStart (Span.Relative s _) =
-      s
+
+spanStart :: Span.Relative -> Position.Relative
+spanStart (Span.Relative s _) =
+  s

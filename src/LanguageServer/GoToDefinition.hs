@@ -5,130 +5,97 @@ module LanguageServer.GoToDefinition where
 import Protolude hiding (IntMap, evaluate, moduleName)
 
 import Control.Monad.Trans.Maybe
-import qualified Data.List.NonEmpty as NonEmpty
+import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.Rope.UTF16 as Rope
-import qualified Data.Text.IO as Text
 import Rock
 
-import Context (Context)
-import qualified Context
-import Data.IntMap (IntMap)
-import qualified Data.IntMap as IntMap
-import qualified LanguageServer.CursorAction as CursorAction
-import Monad
+import qualified LanguageServer.LineColumn as LineColumn
+import qualified Module
 import qualified Name
 import qualified Occurrences
+import qualified Occurrences.Intervals as Intervals
 import qualified Position
 import Query (Query)
 import qualified Query
 import qualified Query.Mapped as Mapped
 import qualified Scope
-import Span (LineColumn(LineColumns))
 import qualified Span
-import qualified Syntax
-import Var (Var)
-import qualified Var
 
 goToDefinition :: FilePath -> Position.LineColumn -> Task Query (Maybe (FilePath, Span.LineColumn))
-goToDefinition filePath pos = do
-  CursorAction.cursorAction filePath pos $ \item _ ->
-    case item of
-      CursorAction.Import moduleName -> do
-        maybeModuleFile <- fetch $ Query.ModuleFile $ Mapped.Query moduleName
-        case maybeModuleFile of
-          Nothing ->
-            empty
+goToDefinition filePath (Position.LineColumn line column) = do
+  (moduleName, moduleHeader, _) <- fetch $ Query.ParsedFile filePath
+  spans <- fetch $ Query.ModuleSpanMap moduleName
+  contents <- fetch $ Query.FileText filePath
+  let
+    -- TODO use the rope that we get from the LSP library instead
+    pos =
+      Position.Absolute $
+      Rope.rowColumnCodeUnits (Rope.RowColumn line column) $
+      Rope.fromText contents
 
-          Just moduleFile ->
-            pure (moduleFile, Span.LineColumns (Position.LineColumn 0 0) (Position.LineColumn 0 0))
+  runMaybeT $ asum $
+    foreach (Module._imports moduleHeader) (\import_ -> do
+      let
+        span =
+          Module._span import_
+      guard $ span `Span.contains` pos
+      maybeDefiningFile <- fetch $ Query.ModuleFile $ Mapped.Query $ Module._module import_
+      case maybeDefiningFile of
+        Nothing ->
+          empty
 
-      CursorAction.Term _ context varSpans term -> do
-        contents <- fetch $ Query.FileText filePath
-        let
-          -- TODO use the rope that we get from the LSP library instead
-          rope =
-            Rope.fromText contents
+        Just definingFile ->
+          pure (definingFile, Span.LineColumns (Position.LineColumn 0 0) (Position.LineColumn 0 0))
+    )
+    <>
+    foreach (HashMap.toList spans) (\((key, name), span@(Span.Absolute defPos _)) -> do
+      guard $ span `Span.contains` pos
+      occurrenceIntervals <- lift $ fetch $
+        Query.Occurrences $
+        Scope.KeyedName key $
+        Name.Qualified moduleName name
+      let
+        relativePos =
+          Position.relativeTo defPos pos
 
-          toLineColumn (Position.Absolute i) =
-            let
-              rope' =
-                Rope.take i rope
-            in
-            Position.LineColumn (Rope.rows rope') (Rope.columns rope')
+        items =
+          Intervals.intersect relativePos occurrenceIntervals
 
-          toLineColumns (Span.Absolute start end) =
-            Span.LineColumns (toLineColumn start) (toLineColumn end)
-        (keyedName, relativeSpans) <- go context varSpans term
-        (file, Span.Absolute absolutePosition _) <- fetch $ Query.KeyedNameSpan keyedName
-        let
-          absoluteSpans =
-            toLineColumns . Span.absoluteFrom absolutePosition <$> relativeSpans
+      asum $ foreach items $ \item ->
+        case item of
+          Intervals.Var var -> do
+            toLineColumns <- lift $ LineColumn.fromKeyedName $ Scope.KeyedName key $ Name.Qualified moduleName name
+            MaybeT $ pure $ (,) filePath . toLineColumns <$> Intervals.bindingSpan var relativePos occurrenceIntervals
 
-          spanStart (LineColumns s _) =
-            s
+          Intervals.Global qualifiedName@(Name.Qualified definingModule _)  ->
+            asum $ foreach [Scope.Type, Scope.Definition] $ \definingKey -> do
+              relativeSpans <- Occurrences.definitionNameSpans definingKey qualifiedName
 
-          resultSpan
-            | filePath == file =
-              case sortBy (flip $ comparing spanStart) $ NonEmpty.filter ((<= pos) . spanStart) absoluteSpans of
-                span:_ ->
-                  span
+              maybeDefiningFile <- fetch $ Query.ModuleFile $ Mapped.Query definingModule
+              case maybeDefiningFile of
+                Nothing ->
+                  empty
 
-                [] ->
-                  NonEmpty.head absoluteSpans
-            | otherwise =
-              NonEmpty.head absoluteSpans
+                Just definingFile -> do
+                  toLineColumns <- lift $ LineColumn.fromKeyedName $ Scope.KeyedName definingKey qualifiedName
+                  asum $ pure <$> (,) definingFile . toLineColumns <$> relativeSpans
 
-        liftIO $ Text.hPutStrLn stderr $ show absoluteSpans
+          Intervals.Con constr@(Name.QualifiedConstructor qualifiedName@(Name.Qualified definingModule _) _) -> do
+            relativeSpans <- Occurrences.definitionConstructorSpans Scope.Definition qualifiedName
+            maybeDefiningFile <- fetch $ Query.ModuleFile $ Mapped.Query definingModule
+            case maybeDefiningFile of
+              Nothing ->
+                empty
 
-        pure (file, resultSpan)
-
-go
-  :: Context v
-  -> IntMap Var (NonEmpty Span.Relative)
-  -> Syntax.Term v
-  -> MaybeT M (Scope.KeyedName, NonEmpty Span.Relative)
-go context varMap term =
-  case term of
-    Syntax.Var index ->
-      asum $ pure . (,) (Context.scopeKey context) <$> IntMap.lookup (Context.lookupIndexVar index context) varMap
-
-    Syntax.Global qualifiedName -> do
-      asum $ foreach [Scope.Type, Scope.Definition] $ \key -> do
-        spans <- Occurrences.definitionNameSpans key qualifiedName
-        asum $ pure <$> ((,) (Scope.KeyedName key qualifiedName) . pure <$> spans)
-
-    Syntax.Con constr@(Name.QualifiedConstructor qualifiedName _) -> do
-      spans <- Occurrences.definitionConstructorSpans Scope.Definition qualifiedName
-      asum $ pure <$>
-        mapMaybe
-          (\(span, constr') ->
-            if constr == constr' then
-              Just (Scope.KeyedName Scope.Definition qualifiedName, pure span)
-            else
-              Nothing
-          )
-          spans
-
-    Syntax.Meta _ ->
-      empty
-
-    Syntax.Let {} ->
-      empty
-
-    Syntax.Pi {} ->
-      empty
-
-    Syntax.Fun {} ->
-      empty
-
-    Syntax.Lam {} ->
-      empty
-
-    Syntax.App term' _ _ ->
-      go context varMap term'
-
-    Syntax.Case {} ->
-      empty
-
-    Syntax.Spanned _ term' ->
-      go context varMap term'
+              Just definingFile -> do
+                toLineColumns <- lift $ LineColumn.fromKeyedName $ Scope.KeyedName key qualifiedName
+                asum $ pure <$>
+                  mapMaybe
+                    (\(constrSpan, constr') ->
+                      if constr == constr' then
+                        Just (definingFile, toLineColumns constrSpan)
+                      else
+                        Nothing
+                    )
+                    relativeSpans
+    )
