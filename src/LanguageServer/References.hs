@@ -13,6 +13,7 @@ import qualified Occurrences.Intervals as Intervals
 import qualified Position
 import Query (Query)
 import qualified Query
+import qualified LanguageServer.LineColumn as LineColumn
 import qualified Scope
 import qualified Span
 
@@ -33,22 +34,7 @@ references filePath (Position.LineColumn line column) = do
         (moduleName, header, _) <- fetch $ Query.ParsedFile inputFile
         if mightUseDefiningModule moduleName header then do
           spans <- fetch $ Query.ModuleSpanMap moduleName
-          contents <- fetch $ Query.FileText inputFile
-          let
-            -- TODO use the rope that we get from the LSP library instead
-            rope =
-              Rope.fromText contents
-
-            toLineColumn (Position.Absolute i) =
-              let
-                rope' =
-                  Rope.take i rope
-              in
-              Position.LineColumn (Rope.rows rope') (Rope.columns rope')
-
-            toLineColumns (Span.Absolute start end) =
-              Span.LineColumns (toLineColumn start) (toLineColumn end)
-
+          toLineColumns <- LineColumn.fromAbsolute moduleName
           fmap concat $ forM (HashMap.toList spans) $ \((key, name), (Span.Absolute defPos _)) -> do
             occurrenceIntervals <- fetch $
               Query.Occurrences $
@@ -61,21 +47,11 @@ references filePath (Position.LineColumn line column) = do
   contents <- fetch $ Query.FileText filePath
   let
     -- TODO use the rope that we get from the LSP library instead
-    rope =
-      Rope.fromText contents
-
-    toLineColumn (Position.Absolute i) =
-      let
-        rope' =
-          Rope.take i rope
-      in
-      Position.LineColumn (Rope.rows rope') (Rope.columns rope')
-
-    toLineColumns (Span.Absolute start end) =
-      Span.LineColumns (toLineColumn start) (toLineColumn end)
-
     pos =
-      Position.Absolute $ Rope.rowColumnCodeUnits (Rope.RowColumn line column) rope
+      Position.Absolute $
+        Rope.rowColumnCodeUnits (Rope.RowColumn line column) $
+        Rope.fromText contents
+  toLineColumns <- LineColumn.fromAbsolute originalModuleName
   spans <- fetch $ Query.ModuleSpanMap originalModuleName
   fmap concat $ forM (HashMap.toList spans) $ \((key, name), span@(Span.Absolute defPos _)) ->
     if span `Span.contains` pos then do
