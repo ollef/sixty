@@ -7,6 +7,7 @@ import Data.HashMap.Lazy as HashMap
 import qualified Data.Rope.UTF16 as Rope
 import Rock
 
+import qualified LanguageServer.LineColumn as LineColumn
 import qualified Name
 import qualified Occurrences.Intervals as Intervals
 import qualified Position
@@ -25,22 +26,14 @@ highlights filePath (Position.LineColumn line column) = do
   contents <- fetch $ Query.FileText filePath
   let
     -- TODO use the rope that we get from the LSP library instead
-    rope =
-      Rope.fromText contents
-
-    toLineColumn (Position.Absolute i) =
-      let
-        rope' =
-          Rope.take i rope
-      in
-      Position.LineColumn (Rope.rows rope') (Rope.columns rope')
-
-    toLineColumns (Span.Absolute start end) =
-      Span.LineColumns (toLineColumn start) (toLineColumn end)
-
     pos =
-      Position.Absolute $ Rope.rowColumnCodeUnits (Rope.RowColumn line column) rope
+      Position.Absolute $
+        Rope.rowColumnCodeUnits (Rope.RowColumn line column) $
+        Rope.fromText contents
 
+  toLineColumns <- LineColumn.fromAbsolute moduleName
+
+  let
     itemSpans item =
       fmap concat $ forM (HashMap.toList spans) $ \((key, name), (Span.Absolute defPos _)) -> do
         occurrenceIntervals <- fetch $
