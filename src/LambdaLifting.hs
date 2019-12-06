@@ -2,7 +2,7 @@
 
 module LambdaLifting where
 
-import Protolude hiding (Type, IntSet, evaluate)
+import Protolude hiding (Type, IntSet, evaluate, state)
 
 import Data.Graph (SCC(AcyclicSCC))
 import Data.HashMap.Lazy (HashMap)
@@ -24,6 +24,31 @@ import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
 import Var (Var)
 import qualified Var
+
+liftDefinition
+  :: Name.Qualified
+  -> Syntax.Definition
+  -> M (LambdaLifted.Definition, [(Name.Lifted, Telescope LambdaLifted.Type LambdaLifted.Term Void)])
+liftDefinition name def = do
+  let
+    env =
+      Environment.empty $ Scope.KeyedName Scope.Definition name
+  case def of
+    Syntax.TypeDeclaration {} ->
+      panic "lifting type declaration"
+
+    Syntax.ConstantDefinition term -> do
+      ((vars, def'), state) <- runStateT (liftLambda env term) emptyState
+      unless (null vars) $
+        panic "lift definition: non-closed constant definition"
+
+      pure (LambdaLifted.ConstantDefinition def', _liftedDefinitions state)
+
+    Syntax.DataDefinition tele -> do
+      (tele', state) <- runStateT (liftDataDefinition env tele) emptyState
+      pure (LambdaLifted.DataDefinition tele', _liftedDefinitions state)
+
+-------------------------------------------------------------------------------
 
 data Value = Value !InnerValue Occurrences
   deriving Show
@@ -217,6 +242,22 @@ evaluateBranch env tele =
       (bindings, body) <- evaluateBranch env' tele'
       pure ((name, var, type', plicity):bindings, body)
 
+evaluateLambdaTelescope :: Environment v -> Syntax.Term v -> Lift ([(Binding, Var, Type, Plicity)], Value)
+evaluateLambdaTelescope env term =
+  case term of
+    Syntax.Lam name type_ plicity body -> do
+      type' <- evaluate env type_
+      (env', var) <- extend env type'
+      (tele, body') <- evaluateLambdaTelescope env' body
+      pure ((name, var, type', plicity):tele, body')
+
+    Syntax.Spanned _ term' ->
+      evaluateLambdaTelescope env term'
+
+    _ -> do
+      term' <- evaluate env term
+      pure ([], term')
+
 liftLambda
   :: Environment v
   -> Syntax.Term v
@@ -252,18 +293,23 @@ liftLambda env term = do
     acyclic (AcyclicSCC a) = a
     acyclic _ = panic "liftLambda cyclic"
 
-evaluateLambdaTelescope :: Environment v -> Syntax.Term v -> Lift ([(Binding, Var, Type, Plicity)], Value)
-evaluateLambdaTelescope env term =
-  case term of
-    Syntax.Lam name type_ plicity body -> do
-      type' <- evaluate env type_
-      (env', var) <- extend env type'
-      (tele, body') <- evaluateLambdaTelescope env' body
-      pure ((name, var, type', plicity):tele, body')
+liftDataDefinition
+  :: Environment v
+  -> Telescope Syntax.Type Syntax.ConstructorDefinitions v
+  -> Lift (Telescope LambdaLifted.Type LambdaLifted.ConstructorDefinitions v)
+liftDataDefinition env tele =
+  case tele of
+    Telescope.Empty (Syntax.ConstructorDefinitions constrDefs) -> do
+      constrDefs' <- forM constrDefs $ \type_ -> do
+        type' <- evaluate env type_
+        pure $ readback env type'
+      pure $ Telescope.Empty $ LambdaLifted.ConstructorDefinitions constrDefs'
 
-    _ -> do
-      term' <- evaluate env term
-      pure ([], term')
+    Telescope.Extend name type_ plicity tele' -> do
+      type' <- evaluate env type_
+      (env', _) <- extend env type'
+      tele'' <- liftDataDefinition env' tele'
+      pure (Telescope.Extend name (readback env type') plicity tele'')
 
 -------------------------------------------------------------------------------
 
