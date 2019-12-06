@@ -68,6 +68,12 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Find references
   - [ ] Language server tests
 - [x] File watcher
+- [ ] Backend
+  - [ ] Lambda lifting
+  - [ ] Closure conversion
+  - [ ] Code generation
+  - [ ] Reference counting
+  - [ ] Extern code
 - [ ] Prevent CBV-incompatible circular values
 - [ ] Literals
   - [ ] Numbers
