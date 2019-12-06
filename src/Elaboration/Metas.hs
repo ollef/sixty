@@ -342,8 +342,8 @@ readback env metas (Value value occs) =
     Global global ->
       Syntax.Global global
 
-    Con global ->
-      Syntax.Con global
+    Con con ->
+      Syntax.Con con
 
     Meta index arguments ->
       let
