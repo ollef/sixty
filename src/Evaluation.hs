@@ -191,3 +191,33 @@ evaluateClosure :: Domain.Closure -> Domain.Value -> M Domain.Value
 evaluateClosure (Domain.Closure env body) argument = do
   (env', _) <- Environment.extendValue env argument
   evaluate env' body
+
+-- | Evaluate the head of a value further, if possible
+-- due to new value bindings. Also evalutes through glued values.
+forceHead
+  :: Domain.Environment v
+  -> Domain.Value
+  -> M Domain.Value
+forceHead env value =
+  case value of
+    Domain.Neutral (Domain.Var var) spine
+      | Just headValue <- Environment.lookupVarValue var env -> do
+        value' <- Evaluation.applySpine headValue spine
+        forceHead env value'
+
+    Domain.Glued _ _ value' -> do
+      value'' <- force value'
+      forceHead env value''
+
+    Domain.Case scrutinee branches@(Domain.Branches branchEnv brs defaultBranch) -> do
+      scrutinee' <- forceHead env scrutinee
+      case scrutinee' of
+        Domain.Neutral (Domain.Con constr) spine -> do
+          value' <- Evaluation.chooseBranch branchEnv constr (toList spine) brs defaultBranch
+          forceHead env value'
+
+        _ ->
+          pure $ Domain.Case scrutinee' branches
+
+    _ ->
+      pure value

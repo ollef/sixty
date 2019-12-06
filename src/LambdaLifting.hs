@@ -6,17 +6,23 @@ import Protolude hiding (Type, IntSet, evaluate, state)
 
 import Data.Graph (SCC(AcyclicSCC))
 import Data.HashMap.Lazy (HashMap)
+import Rock
 
 import Binding (Binding)
 import qualified Binding
 import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
+import qualified Data.Tsil as Tsil
+import qualified Domain
 import qualified Environment as Environment
+import qualified Evaluation
 import Extra (topoSortWith)
 import qualified Index
 import Monad
 import qualified Name
 import Plicity
+import qualified Query
+import qualified Readback
 import qualified Scope
 import qualified Syntax
 import qualified Syntax.LambdaLifted as LambdaLifted
@@ -56,7 +62,7 @@ data Value = Value !InnerValue Occurrences
 data InnerValue
   = Var !Var
   | Global !Name.Lifted
-  | Con !Name.QualifiedConstructor
+  | Con !Name.QualifiedConstructor [(Plicity, Value)]
   | Let !Binding !Var !Value !Type !Value
   | Pi !Binding !Var !Type !Plicity !Type
   | Fun !Type !Plicity !Type
@@ -84,9 +90,10 @@ makeGlobal :: Name.Lifted -> Value
 makeGlobal global =
   Value (Global global) mempty
 
-makeCon :: Name.QualifiedConstructor -> Value
-makeCon con =
-  Value (Con con) mempty
+makeCon :: Name.QualifiedConstructor -> [(Plicity, Value)] -> Value
+makeCon con args =
+  Value (Con con args) $
+    foldMap (foldMap occurrences) args
 
 makeLet :: Binding -> Var -> Value -> Type -> Value -> Value
 makeLet binding var value type_ body =
@@ -158,41 +165,43 @@ extend env type_ =
 
 -------------------------------------------------------------------------------
 
-evaluate :: Environment v -> Syntax.Term v -> Lift Value
-evaluate env term =
+evaluate :: Environment v -> Syntax.Term v -> [(Plicity, Syntax.Term v)] -> Lift Value
+evaluate env term args =
   case term of
     Syntax.Var index ->
-      pure $ makeVar env $ Environment.lookupIndexVar index env
+      applyArgs $ pure $ makeVar env $ Environment.lookupIndexVar index env
 
     Syntax.Global global ->
-      pure $ makeGlobal $ Name.Lifted global 0
+      applyArgs $ pure $ makeGlobal $ Name.Lifted global 0
 
-    Syntax.Con con ->
-      pure $ makeCon con
+    Syntax.Con con -> do
+      term' <- lift $ saturatedConstructorApp env con args
+      evaluate env term' []
 
     Syntax.Meta _ ->
       panic "LambdaLifting.evaluate meta"
 
-    Syntax.Let name value type_ body -> do
-      type' <- evaluate env type_
-      (env', var) <- extend env type'
-      makeLet name var <$>
-        evaluate env value <*>
-        pure type' <*>
-        evaluate env' body
+    Syntax.Let name value type_ body ->
+      applyArgs $ do
+        type' <- evaluate env type_ []
+        (env', var) <- extend env type'
+        makeLet name var <$>
+          evaluate env value [] <*>
+          pure type' <*>
+          evaluate env' body []
 
     Syntax.Pi name domain plicity target -> do
-      domain' <- evaluate env domain
+      domain' <- evaluate env domain []
       (env', var) <- extend env domain'
       makePi name var domain' <$>
         pure plicity <*>
-        evaluate env' target
+        evaluate env' target []
 
     Syntax.Fun domain plicity target ->
       makeFun <$>
-        evaluate env domain <*>
+        evaluate env domain [] <*>
         pure plicity <*>
-        evaluate env target
+        evaluate env target []
 
     Syntax.Lam {} -> do
       (argVars, def) <- liftLambda env term
@@ -213,18 +222,95 @@ evaluate env term =
 
     Syntax.App function plicity argument ->
       makeApp <$>
-        evaluate env function <*>
+        evaluate env function args <*>
         pure plicity <*>
-        evaluate env argument
+        evaluate env argument []
 
     Syntax.Case scrutinee branches defaultBranch ->
-      makeCase <$>
-        evaluate env scrutinee <*>
-        mapM (evaluateBranch env . snd) branches <*>
-        mapM (evaluate env) defaultBranch
+      applyArgs $
+        makeCase <$>
+          evaluate env scrutinee [] <*>
+          mapM (evaluateBranch env . snd) branches <*>
+          mapM (\branch -> evaluate env branch []) defaultBranch
 
     Syntax.Spanned _ term' ->
-      evaluate env term'
+      evaluate env term' args
+  where
+    applyArgs mresult = do
+      args' <- mapM (mapM (\term' -> evaluate env term' [])) args
+      result <- mresult
+      pure $ makeApps result args'
+
+saturatedConstructorApp
+  :: Environment v
+  -> Name.QualifiedConstructor
+  -> [(Plicity, Syntax.Term v)]
+  -> M (Syntax.Term v)
+saturatedConstructorApp outerEnv con outerArgs = do
+  constructorTele <- fetch $ Query.ConstructorType con
+  let
+    constructorType =
+      Telescope.fold Syntax.Pi constructorTele
+
+    env =
+      outerEnv { Environment.values = mempty }
+
+  argValues <- mapM (mapM $ Evaluation.evaluate env) outerArgs
+  constructorTypeValue <-
+    Evaluation.evaluate (Environment.empty $ Environment.scopeKey env) constructorType
+
+  matchArguments env constructorTypeValue argValues Tsil.Empty
+  where
+    matchArguments
+      :: Domain.Environment v
+      -> Domain.Type
+      -> [(Plicity, Domain.Value)]
+      -> Domain.Spine
+      -> M (Syntax.Term v)
+    matchArguments env constructorType args resultSpine = do
+      constructorType' <- Evaluation.forceHead env constructorType
+      case (constructorType', args) of
+        (Domain.Pi _ _ plicity1 targetClosure, (plicity2, arg):args')
+          | plicity1 == plicity2 -> do
+            target <- Evaluation.evaluateClosure targetClosure arg
+            matchArguments env target args' $ resultSpine Tsil.:> (plicity2, arg)
+
+        (Domain.Fun _ plicity1 target, (plicity2, arg):args')
+          | plicity1 == plicity2 ->
+            matchArguments env target args' $ resultSpine Tsil.:> (plicity2, arg)
+
+        (_, []) ->
+          makeLambdas env constructorType' resultSpine
+
+        _ ->
+          panic "saturatedConstructorApp plicity mismatch"
+
+    makeLambdas
+      :: Domain.Environment v
+      -> Domain.Type
+      -> Domain.Spine
+      -> M (Syntax.Term v)
+    makeLambdas env constructorType resultSpine = do
+      constructorType' <- Evaluation.forceHead env constructorType
+      case constructorType' of
+        Domain.Pi name domain plicity targetClosure -> do
+          (env', var) <- Environment.extend env
+          let
+            arg =
+              Domain.var var
+          target <- Evaluation.evaluateClosure targetClosure arg
+          body <- makeLambdas env' target $ resultSpine Tsil.:> (plicity, arg)
+          domain' <- Readback.readback env domain
+          pure $ Syntax.Lam (Binding.Unspanned name) domain' plicity body
+
+        Domain.Fun domain plicity target -> do
+          (env', var) <- Environment.extend env
+          body <- makeLambdas env' target $ resultSpine Tsil.:> (plicity, Domain.var var)
+          domain' <- Readback.readback env domain
+          pure $ Syntax.Lam "x" domain' plicity body
+
+        _ ->
+          Readback.readback env $ Domain.Neutral (Domain.Con con) resultSpine
 
 evaluateBranch
   :: Environment v
@@ -233,11 +319,11 @@ evaluateBranch
 evaluateBranch env tele =
   case tele of
     Telescope.Empty body -> do
-      body' <- evaluate env body
+      body' <- evaluate env body []
       pure ([], body')
 
     Telescope.Extend name type_ plicity tele' -> do
-      type' <- evaluate env type_
+      type' <- evaluate env type_ []
       (env', var) <- extend env type'
       (bindings, body) <- evaluateBranch env' tele'
       pure ((name, var, type', plicity):bindings, body)
@@ -246,7 +332,7 @@ evaluateLambdaTelescope :: Environment v -> Syntax.Term v -> Lift ([(Binding, Va
 evaluateLambdaTelescope env term =
   case term of
     Syntax.Lam name type_ plicity body -> do
-      type' <- evaluate env type_
+      type' <- evaluate env type_ []
       (env', var) <- extend env type'
       (tele, body') <- evaluateLambdaTelescope env' body
       pure ((name, var, type', plicity):tele, body')
@@ -255,7 +341,7 @@ evaluateLambdaTelescope env term =
       evaluateLambdaTelescope env term'
 
     _ -> do
-      term' <- evaluate env term
+      term' <- evaluate env term []
       pure ([], term')
 
 liftLambda
@@ -301,12 +387,12 @@ liftDataDefinition env tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constrDefs) -> do
       constrDefs' <- forM constrDefs $ \type_ -> do
-        type' <- evaluate env type_
+        type' <- evaluate env type_ []
         pure $ readback env type'
       pure $ Telescope.Empty $ LambdaLifted.ConstructorDefinitions constrDefs'
 
     Telescope.Extend name type_ plicity tele' -> do
-      type' <- evaluate env type_
+      type' <- evaluate env type_ []
       (env', _) <- extend env type'
       tele'' <- liftDataDefinition env' tele'
       pure (Telescope.Extend name (readback env type') plicity tele'')
@@ -324,8 +410,8 @@ readback env (Value value _) =
     Global global ->
       LambdaLifted.Global global
 
-    Con global ->
-      LambdaLifted.Con global
+    Con global args ->
+      LambdaLifted.Con global $ second (readback env) <$> args
 
     Let name var value' type_ body ->
       LambdaLifted.Let
