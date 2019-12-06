@@ -498,7 +498,7 @@ spanned s context =
 -------------------------------------------------------------------------------
 
 -- | Evaluate the head of a value further, if (now) possible due to meta
--- solutions or new value bindings.
+-- solutions or new value bindings. Also evalutes through glued values.
 forceHead
   :: Context v
   -> Domain.Value
