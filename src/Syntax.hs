@@ -1,7 +1,5 @@
 {-# language DeriveAnyClass #-}
 {-# language DeriveGeneric #-}
-{-# language PackageImports #-}
-{-# language RoleAnnotations #-}
 module Syntax where
 
 import Protolude hiding (Type, IntMap)
@@ -9,7 +7,7 @@ import Protolude hiding (Type, IntMap)
 import Data.HashMap.Lazy (HashMap)
 import Unsafe.Coerce
 
-import "this" Data.IntMap (IntMap)
+import Data.IntMap (IntMap)
 import Binding (Binding)
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
