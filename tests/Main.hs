@@ -116,6 +116,7 @@ data ExpectedError
   = Parse
   | DuplicateName
   | ImportNotFound
+  | MultipleFilesWithModuleName
   | NotInScope
   | Ambiguous
   | TypeMismatch
@@ -140,6 +141,9 @@ errorToExpectedError err =
 
     Error.ImportNotFound {} ->
       ImportNotFound
+
+    Error.MultipleFilesWithModuleName {} ->
+      MultipleFilesWithModuleName
 
     Error.Elaboration _ (Error.Spanned _ elaborationError) ->
       case elaborationError of
@@ -193,6 +197,9 @@ expectedErrorsFromSource sourceText =
               [(lineNumber, DuplicateName)]
 
             "import not found error expected" ->
+              [(lineNumber, ImportNotFound)]
+
+            "multiple files with module name error expected" ->
               [(lineNumber, ImportNotFound)]
 
             "not in scope error expected" ->
