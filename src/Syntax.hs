@@ -93,7 +93,7 @@ coerce =
   unsafeCoerce
 
 type MetaSolutions =
-  IntMap Meta.Index (Syntax.Term Void, Syntax.Type Void)
+  IntMap Meta.Index (Term Void, Type Void)
 
 data Definition
   = TypeDeclaration !(Type Void)
