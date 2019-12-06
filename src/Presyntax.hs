@@ -7,6 +7,7 @@ import Protolude hiding (Type)
 
 import Data.HashMap.Lazy (HashMap)
 
+import Boxity
 import qualified Error.Parsing as Error
 import Name (Name)
 import qualified Name
@@ -93,7 +94,7 @@ anno pat@(Pattern span1 _) type_@(Term span2 _) =
 data Definition
   = TypeDeclaration !Span.Relative !Type
   | ConstantDefinition [(Span.Relative, Clause)]
-  | DataDefinition !Span.Relative [(Binding, Type, Plicity)] [ConstructorDefinition]
+  | DataDefinition !Span.Relative !Boxity [(Binding, Type, Plicity)] [ConstructorDefinition]
   deriving (Show, Generic, Hashable)
 
 data Clause = Clause
@@ -116,7 +117,7 @@ spans def =
     ConstantDefinition clauses ->
       fst <$> clauses
 
-    DataDefinition span _ _ ->
+    DataDefinition span _ _ _ ->
       [span]
 
 constructorSpans :: Definition -> [(Span.Relative, Name.Constructor)]
@@ -128,7 +129,7 @@ constructorSpans def =
     ConstantDefinition _ ->
       []
 
-    DataDefinition _ _ constrDefs ->
+    DataDefinition _ _ _ constrDefs ->
       constrDefs >>= \case
         GADTConstructors cs _ ->
           cs

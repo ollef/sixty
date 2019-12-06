@@ -111,12 +111,12 @@ checkDefinition context def expectedType =
       term' <- Clauses.check context clauses' expectedType
       pure $ Syntax.ConstantDefinition term'
 
-    Presyntax.DataDefinition span params constrs -> do
+    Presyntax.DataDefinition span boxity params constrs -> do
       (tele, type_) <- inferDataDefinition context span params constrs mempty
       type' <- evaluate context type_
       success <- Context.try_ context $ Unification.unify context Flexibility.Rigid type' expectedType
       if success then
-        pure $ Syntax.DataDefinition tele
+        pure $ Syntax.DataDefinition boxity tele
 
       else do
         expectedType' <- readback context expectedType
@@ -141,10 +141,10 @@ inferDefinition context def =
       (term', type_) <- Clauses.infer context clauses'
       pure (Syntax.ConstantDefinition term', type_)
 
-    Presyntax.DataDefinition span params constrs -> do
+    Presyntax.DataDefinition span boxity params constrs -> do
       (tele, type_) <- inferDataDefinition context span params constrs mempty
       type' <- evaluate context type_
-      pure (Syntax.DataDefinition tele, type')
+      pure (Syntax.DataDefinition boxity tele, type')
 
 -------------------------------------------------------------------------------
 

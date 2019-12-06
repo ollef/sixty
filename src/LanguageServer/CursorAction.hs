@@ -172,7 +172,7 @@ definitionAction k env key qualifiedName =
       Syntax.ConstantDefinition term ->
         termAction k env' term
 
-      Syntax.DataDefinition tele ->
+      Syntax.DataDefinition _ tele ->
         dataDefinitionAction k env' tele
   where
     definitionNameActions :: MaybeT M a

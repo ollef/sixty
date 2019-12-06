@@ -18,6 +18,7 @@ import qualified Text.Parser.Token.Highlight as Highlight
 import Text.Parsix ((<?>), try, sepBy, sepBy1)
 import qualified Text.Parsix as Parsix
 
+import Boxity
 import qualified Error.Parsing as Error
 import qualified Module
 import Name (Name(Name))
@@ -231,6 +232,10 @@ reserved :: Text -> Parser ()
 reserved =
   indented . Parsix.reserveText idStyle
 
+unindentedReserved :: Text -> Parser ()
+unindentedReserved =
+  Parsix.reserveText idStyle
+
 name :: Parser Name
 name =
   indented $ Parsix.ident idStyle
@@ -397,13 +402,17 @@ clause =
 
 dataDefinition :: Parser (Name, Definition)
 dataDefinition =
-  mkDataDefinition <$ reserved "data" <*> spanned name <*> parameters <*>
+  mkDataDefinition <$> boxity <*> spanned name <*> parameters <*>
     (reserved "where" *> blockOfMany gadtConstructors
     <|> symbol "=" *> sepBy1 adtConstructor (symbol "|")
     )
   where
-    mkDataDefinition (span, name_) params constrs =
-      (name_, DataDefinition span params constrs)
+    boxity =
+      Boxed <$ reserved "boxed" <* unindentedReserved "data"
+      <|> Unboxed <$ reserved "data"
+
+    mkDataDefinition boxity_ (span, name_) params constrs =
+      (name_, DataDefinition span boxity_ params constrs)
     parameters =
       parameters1 <|> pure []
 

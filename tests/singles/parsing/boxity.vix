@@ -1,0 +1,6 @@
+boxed
+data Nat = Z | S Nat
+
+boxed data Nat2 = Z | S Nat2
+
+data Nat3 = Z | S Nat3

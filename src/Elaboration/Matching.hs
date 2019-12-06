@@ -338,7 +338,7 @@ uncoveredScrutineePatterns context coveredConstructors value = do
         Name.QualifiedConstructor typeName _:_ -> do
           maybeDefinition <- fetch $ Query.ElaboratedDefinition typeName
           case maybeDefinition of
-            Just (Syntax.DataDefinition tele, _) ->
+            Just (Syntax.DataDefinition _ tele, _) ->
               pure $ go typeName tele
 
             _ ->
@@ -727,7 +727,7 @@ splitConstructor
 splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.QualifiedConstructor typeName _) outerType = do
   maybeDefinition <- fetch $ Query.ElaboratedDefinition typeName
   case maybeDefinition of
-    Just (Syntax.DataDefinition tele, _) -> do
+    Just (Syntax.DataDefinition _ tele, _) -> do
       tele' <- Evaluation.evaluateConstructorDefinitions (Environment.empty $ Context.scopeKey outerContext) tele
       outerType' <- Context.forceHead outerContext outerType
       case outerType' of
@@ -990,7 +990,7 @@ uninhabitedType context fuel coveredConstructors type_ = do
     Domain.Neutral (Domain.Global global) spine -> do
       maybeDefinitions <- fetch $ Query.ElaboratedDefinition global
       case maybeDefinitions of
-        Just (Syntax.DataDefinition tele, _) -> do
+        Just (Syntax.DataDefinition _ tele, _) -> do
           tele' <- Evaluation.evaluateConstructorDefinitions (Environment.empty $ Context.scopeKey context) tele
           tele'' <- Domain.Telescope.apply tele' $ toList spine
           case tele'' of

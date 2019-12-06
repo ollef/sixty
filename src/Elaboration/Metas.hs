@@ -101,9 +101,9 @@ inlineSolutions scopeKey solutions def type_ = do
           term' <- inlineTermSolutions env term
           pure $ Syntax.ConstantDefinition term'
 
-        Syntax.DataDefinition tele -> do
+        Syntax.DataDefinition boxity tele -> do
           tele' <- inlineTeleSolutions env tele
-          pure $ Syntax.DataDefinition tele'
+          pure $ Syntax.DataDefinition boxity tele'
 
     inlineTeleSolutions
       :: Domain.Environment v

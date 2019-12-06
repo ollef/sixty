@@ -7,8 +7,9 @@ import Protolude hiding (Type, IntMap)
 import Data.HashMap.Lazy (HashMap)
 import Unsafe.Coerce
 
-import Data.IntMap (IntMap)
 import Binding (Binding)
+import Boxity
+import Data.IntMap (IntMap)
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import Index
@@ -96,7 +97,7 @@ type MetaSolutions =
 data Definition
   = TypeDeclaration !(Type Void)
   | ConstantDefinition !(Term Void)
-  | DataDefinition (Telescope Type ConstructorDefinitions Void)
+  | DataDefinition Boxity (Telescope Type ConstructorDefinitions Void)
   deriving (Show, Generic, Hashable)
 
 newtype ConstructorDefinitions v =

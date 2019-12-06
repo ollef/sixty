@@ -32,8 +32,8 @@ inlineDefinition scopeKey def = do
     Syntax.ConstantDefinition term ->
       Syntax.ConstantDefinition <$> inlineTerm env term
 
-    Syntax.DataDefinition tele ->
-      Syntax.DataDefinition <$> inlineDataDefinition env tele
+    Syntax.DataDefinition boxity tele ->
+      Syntax.DataDefinition boxity <$> inlineDataDefinition env tele
 
 inlineDataDefinition
   :: Environment v

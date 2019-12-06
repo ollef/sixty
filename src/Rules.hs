@@ -282,7 +282,7 @@ rules files readFile_ (Writer (Writer query)) =
       noError $ do
         def <- fetch $ ElaboratedDefinition dataTypeName
         case def of
-          Just (Syntax.DataDefinition tele, _) -> do
+          Just (Syntax.DataDefinition _ tele, _) -> do
             let
               go :: Telescope Syntax.Type Syntax.ConstructorDefinitions v -> Telescope Syntax.Type Syntax.Type v
               go tele' =

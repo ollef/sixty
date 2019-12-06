@@ -14,13 +14,14 @@ import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
 import Rock
 
+import Binding (Binding)
+import qualified Binding
+import qualified Boxity
 import Domain.Pattern (Pattern)
 import qualified Domain.Pattern as Pattern
 import Index
 import Name (Name(Name))
 import qualified Name
-import Binding (Binding)
-import qualified Binding
 import Plicity
 import Query (Query)
 import qualified Query
@@ -253,8 +254,8 @@ prettyDefinition env name def =
     Syntax.ConstantDefinition term ->
       prettyGlobal env name <+> "=" <+> prettyTerm 0 env term
 
-    Syntax.DataDefinition tele ->
-      "data" <+> prettyGlobal env name <+> prettyConstructorDefinitions env tele
+    Syntax.DataDefinition boxity tele ->
+      Boxity.prettyAnnotation boxity <+> "data" <+> prettyGlobal env name <+> prettyConstructorDefinitions env tele
 
 prettyConstructorDefinitions
   :: Environment v

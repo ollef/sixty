@@ -63,7 +63,7 @@ definitionOccurrences env key qualifiedName =
       Just (Syntax.ConstantDefinition term, _, _) ->
         termOccurrences env Nothing term
 
-      Just (Syntax.DataDefinition tele, _, _) ->
+      Just (Syntax.DataDefinition _ tele, _, _) ->
         dataDefinitionOccurrences env tele
   where
     definitionNameOccurrences :: M Intervals
