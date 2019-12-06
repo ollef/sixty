@@ -69,7 +69,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [ ] Language server tests
 - [x] File watcher
 - [ ] Backend
-  - [ ] Lambda lifting
+  - [x] Lambda lifting
   - [ ] Closure conversion
   - [ ] Code generation
   - [ ] Reference counting

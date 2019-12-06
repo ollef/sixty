@@ -35,6 +35,9 @@ data Qualified = Qualified !Module !Name
 data QualifiedConstructor = QualifiedConstructor !Qualified !Constructor
   deriving (Eq, Ord, Show, Generic, Hashable)
 
+data Lifted = Lifted !Qualified !Int
+  deriving (Eq, Ord, Show, Generic, Hashable)
+
 -------------------------------------------------------------------------------
 
 instance IsString Qualified where
