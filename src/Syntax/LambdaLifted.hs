@@ -6,13 +6,10 @@ import Protolude hiding (Type, IntMap)
 
 import Data.HashMap.Lazy (HashMap)
 
-import Data.IntMap (IntMap)
 import Binding (Binding)
 import Index
-import qualified Meta
 import qualified Name
 import Plicity
-import qualified Span
 import Syntax.Telescope (Telescope)
 
 data Term v
@@ -24,7 +21,6 @@ data Term v
   | Fun !(Type v) !Plicity !(Type v)
   | App !(Term v) !Plicity !(Term v)
   | Case !(Term v) (Branches v) !(Maybe (Term v))
-  | Spanned !Span.Relative !(Term v)
   deriving (Eq, Show, Generic, Hashable)
 
 type Type = Term
