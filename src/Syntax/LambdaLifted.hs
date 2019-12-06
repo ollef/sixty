@@ -31,9 +31,6 @@ type Type = Term
 
 type Branches v = HashMap Name.QualifiedConstructor (Telescope Type Term v)
 
-type MetaSolutions =
-  IntMap Meta.Index (Term Void, Type Void)
-
 data Definition
   = ConstantDefinition !(Telescope Type Term Void)
   | DataDefinition (Telescope Type ConstructorDefinitions Void)
