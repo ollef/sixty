@@ -133,6 +133,11 @@ inlineSolutions scopeKey solutions def type_ = do
     acyclic (AcyclicSCC x) = x
     acyclic (CyclicSCC _) = panic "Elaboration.Metas.CyclicSCC"
 
+data Value = Value !InnerValue Occurrences
+
+instance Show Value where
+  showsPrec d (Value v _) = showsPrec d v
+
 data InnerValue
   = Var !Var
   | Global !Name.Qualified
@@ -161,11 +166,6 @@ instance Semigroup Occurrences where
 
 instance Monoid Occurrences where
   mempty = Occurrences mempty
-
-data Value = Value !InnerValue Occurrences
-
-instance Show Value where
-  showsPrec d (Value v _) = showsPrec d v
 
 occurrences :: Value -> Occurrences
 occurrences (Value _ occs) = occs
