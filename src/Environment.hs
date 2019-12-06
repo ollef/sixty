@@ -46,13 +46,16 @@ extendVar env v =
 extendValue
   :: Environment value v
   -> value
-  -> M (Environment value (Succ v))
+  -> M (Environment value (Succ v), Var)
 extendValue env value = do
-  v <- freshVar
-  pure env
-    { indices = indices env Index.Map.:> v
-    , values = IntMap.insert v value (values env)
-    }
+  var <- freshVar
+  pure
+    ( env
+      { indices = indices env Index.Map.:> var
+      , values = IntMap.insert var value (values env)
+      }
+    , var
+    )
 
 lookupVarIndex :: Var -> Environment value v -> Maybe (Index v)
 lookupVarIndex var context =

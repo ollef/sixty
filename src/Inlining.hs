@@ -114,7 +114,7 @@ evaluate dup env term =
     Syntax.Let name term' type_ body
       | duplicable term' -> do
         value <- evaluate dup env term'
-        env' <- Environment.extendValue env value
+        (env', _) <- Environment.extendValue env value
         evaluate dup env' body
 
       | otherwise -> do

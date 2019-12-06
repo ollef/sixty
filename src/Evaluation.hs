@@ -34,7 +34,7 @@ evaluateConstructorDefinitions env tele =
     Telescope.Extend name domain plicity target -> do
       domain' <- evaluate env domain
       pure $ Domain.Telescope.Extend (Binding.toName name) domain' plicity $ \param -> do
-        env' <- Environment.extendValue env param
+        (env', _) <- Environment.extendValue env param
         evaluateConstructorDefinitions env' target
 
 evaluate :: Domain.Environment v -> Syntax.Term v -> M Domain.Value
@@ -72,7 +72,7 @@ evaluate env term =
 
     Syntax.Let _ type_ _ body -> do
       type' <- evaluate env type_
-      env' <- Environment.extendValue env type'
+      (env', _) <- Environment.extendValue env type'
       evaluate env' body
 
     Syntax.Pi binding domain plicity target -> do
@@ -155,7 +155,7 @@ chooseBranch outerEnv constr outerArgs branches defaultBranch =
 
         ((plicity1, arg):args', Telescope.Extend _ _ plicity2 target)
           | plicity1 == plicity2 -> do
-            env' <- Environment.extendValue env arg
+            (env', _) <- Environment.extendValue env arg
             go env' args' target
 
           | otherwise ->
@@ -189,5 +189,5 @@ applySpine =
 
 evaluateClosure :: Domain.Closure -> Domain.Value -> M Domain.Value
 evaluateClosure (Domain.Closure env body) argument = do
-  env' <- Environment.extendValue env argument
+  (env', _) <- Environment.extendValue env argument
   evaluate env' body

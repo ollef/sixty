@@ -495,7 +495,7 @@ instantiateConstructorType env tele spine =
 
     (Telescope.Extend _ _ plicity1 tele', (plicity2, arg):spine')
       | plicity1 == plicity2 -> do
-        env' <- Environment.extendValue env arg
+        (env', _) <- Environment.extendValue env arg
         instantiateConstructorType env' tele' spine'
 
     _ ->
