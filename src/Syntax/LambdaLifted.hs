@@ -21,7 +21,7 @@ data Term v
   | Con !Name.QualifiedConstructor
   | Let !Binding !(Term v) !(Type v) !(Scope Term v)
   | Pi !Binding !(Type v) !Plicity !(Scope Type v)
-  | Fun !(Type v) !Plicity !(Type v) -- TODO remove?
+  | Fun !(Type v) !Plicity !(Type v)
   | App !(Term v) !Plicity !(Term v)
   | Case !(Term v) (Branches v) !(Maybe (Term v))
   | Spanned !Span.Relative !(Term v)
