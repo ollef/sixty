@@ -53,7 +53,8 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Pattern lambdas
 - [x] Inductive families
 - [x] Glued evaluation
-- [x] Let definitions by clauses (non-recursive)
+- [x] Let definitions by clauses
+  - [ ] Recursive lets
 - [x] Command-line parser
 - [x] Language server
   - [x] Diagnostics
