@@ -43,3 +43,6 @@ delete key =
 member :: Coercible key Containers.Key => key -> IntSet key -> Bool
 member key (IntSet s) =
   Containers.member (coerce key) s
+
+map :: (Coercible key Containers.Key, Coercible key' Containers.Key) => (key -> key') -> IntSet key -> IntSet key'
+map f (IntSet s) = coerce $ Containers.map (coerce f) s
