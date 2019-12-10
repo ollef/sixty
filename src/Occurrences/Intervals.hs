@@ -99,7 +99,7 @@ bindingSpan var position intervals =
     Just bindingSpans -> do
       let
         sortedBindingSpans =
-          sortBy (comparing spanStart) $ toList bindingSpans
+          sortOn spanStart $ toList bindingSpans
 
         befores =
           List.takeWhile ((<= position) . spanStart) sortedBindingSpans
@@ -118,7 +118,7 @@ varSpans var position intervals = do
     Just bindingSpans -> do
       let
         sortedBindingSpans =
-          sortBy (comparing spanStart) $ toList bindingSpans
+          sortOn spanStart $ toList bindingSpans
 
         (befores, afters) =
           List.span ((<= position) . spanStart) sortedBindingSpans
