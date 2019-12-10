@@ -18,7 +18,7 @@ import qualified Data.IntervalMap.FingerTree as IntervalMap
 import qualified Name
 import qualified Position
 import Binding (Binding)
-import qualified Binding as Binding
+import qualified Binding
 import qualified Span
 import Var (Var)
 import qualified Var

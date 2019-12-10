@@ -14,7 +14,7 @@ import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
 import qualified Data.Tsil as Tsil
 import qualified Domain
-import qualified Environment as Environment
+import qualified Environment
 import qualified Evaluation
 import Extra (topoSortWith)
 import qualified Index
