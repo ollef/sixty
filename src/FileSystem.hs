@@ -163,7 +163,7 @@ fileWatcher :: FilePath -> Watcher () (Maybe Text)
 fileWatcher filePath = Watcher $ \manager onChange -> do
   maybeOriginalText <- readFileText filePath
   onChange () maybeOriginalText
-  stopListening <- FSNotify.watchDir
+  FSNotify.watchDir
     manager
     (FilePath.takeDirectory filePath)
     ((== filePath) . FSNotify.eventPath)
@@ -171,13 +171,12 @@ fileWatcher filePath = Watcher $ \manager onChange -> do
       maybeText <- readFileText filePath
       onChange () maybeText
     )
-  pure stopListening
 
 jsonFileWatcher :: Aeson.FromJSON a => FilePath -> Watcher () (Maybe a)
 jsonFileWatcher filePath = Watcher $ \manager onChange -> do
   maybeOriginalValue <- readFileJSON filePath
   onChange () maybeOriginalValue
-  stopListening <- FSNotify.watchDir
+  FSNotify.watchDir
     manager
     (FilePath.takeDirectory filePath)
     ((== filePath) . FSNotify.eventPath)
@@ -185,7 +184,6 @@ jsonFileWatcher filePath = Watcher $ \manager onChange -> do
       maybeValue <- readFileJSON filePath
       onChange () maybeValue
     )
-  pure stopListening
 
 directoryWatcher
   :: (FilePath -> Bool)
