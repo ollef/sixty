@@ -29,7 +29,7 @@ references filePath (Position.LineColumn line column) = do
         mightUseDefiningModule moduleName header =
           moduleName == definingModule ||
           any ((==) definingModule . Module._module) (Module._imports header)
-      inputFiles <- fetch $ Query.InputFiles
+      inputFiles <- fetch Query.InputFiles
       fmap concat $ forM inputFiles $ \inputFile -> do
         (moduleName, header, _) <- fetch $ Query.ParsedFile inputFile
         if mightUseDefiningModule moduleName header then do
