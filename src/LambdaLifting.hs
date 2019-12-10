@@ -388,7 +388,7 @@ liftLambda env term = do
       telescopeOccurrences tele body
 
     sortedOccs =
-      fmap acyclic $
+      acyclic <$>
         topoSortWith
           identity
           (\var -> IntSet.toList $ foldMap occurrences $ Environment.lookupVarValue var env)
