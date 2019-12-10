@@ -60,10 +60,10 @@ highlights filePath (Position.LineColumn line column) = do
           Intervals.Var var ->
             pure $ toLineColumns . Span.absoluteFrom defPos <$> Intervals.varSpans var relativePos occurrenceIntervals
 
-          Intervals.Global _ -> do
+          Intervals.Global _ ->
             itemSpans item
 
-          Intervals.Con _ -> do
+          Intervals.Con _ ->
             itemSpans item
 
     else

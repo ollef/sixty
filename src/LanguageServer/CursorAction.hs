@@ -284,8 +284,7 @@ constructorBranchAction
   -> (Name.QualifiedConstructor, ([Span.Relative], Telescope Syntax.Type Syntax.Term v))
   -> MaybeT M a
 constructorBranchAction k env scrutinee (constr@(Name.QualifiedConstructor typeName _), (spans, tele)) =
-  (do
-    asum $ foreach spans $ \span -> do
+  (asum $ foreach spans $ \span -> do
       guard $ any (`Span.relativeContains` _actionPosition env) spans
       scrutinee' <- lift $ Elaboration.evaluate (_context env) scrutinee
       scrutineeType <- lift $ TypeOf.typeOf (_context env) scrutinee'
@@ -334,7 +333,7 @@ bindingAction
   -> MaybeT M a
 bindingAction k env binding var =
   case binding of
-    Binding.Spanned spannedNames -> do
+    Binding.Spanned spannedNames ->
       case Context.lookupVarIndex var $ _context env of
         Nothing ->
           empty
