@@ -184,7 +184,7 @@ chooseLiteralBranch outerEnv int branches defaultBranch =
     (Nothing, Just branch) ->
       evaluate outerEnv branch
 
-    (Just (_, branch), _) -> do
+    (Just (_, branch), _) ->
       evaluate outerEnv branch
 
 apply :: Domain.Value -> Plicity -> Domain.Value -> M Domain.Value

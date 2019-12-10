@@ -114,7 +114,7 @@ runIncrementalTask state changedFiles files prettyError prune task =
             putMVar (_startedVar state) mempty
 
           else do
-            changedFiles' <- flip filterM (toList changedFiles) $ \file -> do
+            changedFiles' <- flip filterM (toList changedFiles) $ \file ->
               case DMap.lookup (Query.FileText file) started of
                 Just resultVar -> do
                   text <- readMVar resultVar
@@ -201,7 +201,7 @@ runIncrementalTask state changedFiles files prettyError prune task =
 -------------------------------------------------------------------------------
 
 checkAll :: [FilePath] -> Task Query [(FilePath, [(Name.Qualified, Maybe Syntax.Definition, Syntax.Type Void)])]
-checkAll filePaths = do
+checkAll filePaths =
   forM filePaths $ \filePath -> (filePath, ) <$> do
     (module_, _, defs) <- fetch $ Query.ParsedFile filePath
     let

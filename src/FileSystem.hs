@@ -60,7 +60,7 @@ instance Monoid key => Monad (Watcher key) where
   Watcher watcher1 >>= f =
     Watcher $ \manager onChange -> do
       stopListening2Var <- newMVar mempty
-      stopListening1 <- watcher1 manager $ \key value1 -> do
+      stopListening1 <- watcher1 manager $ \key value1 ->
         modifyMVar_ stopListening2Var $ \stopListening2 -> do
           stopListening2
           runWatcher (f value1) manager $ \key' -> onChange (key <> key')
@@ -155,7 +155,7 @@ watcherFromArguments files =
                 mempty
 
 projectWatcher :: FilePath -> Watcher (HashSet FilePath) (HashMap FilePath Text)
-projectWatcher file = do
+projectWatcher file =
   bindForM (foldMap (HashSet.fromList . Project._domainDirectories) <$> jsonFileWatcher file) $
     directoryWatcher Project.isSourcePath
 

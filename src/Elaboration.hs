@@ -269,7 +269,7 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
       maybeConstrType''
   where
     goTerm :: Context v -> Syntax.Term v -> M (Syntax.Term v)
-    goTerm context' constrType = do
+    goTerm context' constrType =
       case constrType of
         Syntax.Spanned span' constrType' -> do
           constrType'' <- goTerm (Context.spanned span' context') constrType'
@@ -1053,7 +1053,7 @@ checkMetaSolutions
   :: Context Void
   -> Meta.Vars (Syntax.Term Void)
   -> M Syntax.MetaSolutions
-checkMetaSolutions context metaVars = do
+checkMetaSolutions context metaVars =
   flip IntMap.traverseWithKey (Meta.vars metaVars) $ \index var ->
     case var of
       Meta.Unsolved type_ span -> do

@@ -408,7 +408,7 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
 
   branches' <- fmap catMaybes $
     case branches of
-      Syntax.ConstructorBranches constructorBranches -> do
+      Syntax.ConstructorBranches constructorBranches ->
         forM (HashMap.toList constructorBranches) $ \(constr, (_, tele)) -> do
           isMatch <- branchMatches outerContext outerEnv tele
           pure $
@@ -418,7 +418,7 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
             else
               Nothing
 
-      Syntax.LiteralBranches literalBranches -> do
+      Syntax.LiteralBranches literalBranches ->
         forM (HashMap.toList literalBranches) $ \(int, (_, branch)) -> do
           isMatch <- branchMatches outerContext outerEnv $ Telescope.Empty branch
           pure $
@@ -671,7 +671,7 @@ checkInnerSolution outerContext occurs env flexibility value = do
     Domain.Case scrutinee (Domain.Branches env' branches defaultBranch) -> do
       scrutinee' <- checkInnerSolution outerContext occurs env flexibility scrutinee
       branches' <- case branches of
-        Syntax.ConstructorBranches constructorBranches -> do
+        Syntax.ConstructorBranches constructorBranches ->
           fmap Syntax.ConstructorBranches $
             forM constructorBranches $ mapM $
               checkInnerBranch outerContext occurs env env' flexibility

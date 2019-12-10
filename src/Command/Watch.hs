@@ -45,7 +45,7 @@ waitForChanges
   -> Driver.State (Doc ann)
   -> IO (HashSet FilePath, HashMap FilePath Text)
 waitForChanges signalChangeVar fileStateVar driverState = do
-  (changedFiles, files) <- do
+  (changedFiles, files) <-
     modifyMVar fileStateVar $ \(changedFiles, files) ->
       pure ((mempty, files), (changedFiles, files))
 
