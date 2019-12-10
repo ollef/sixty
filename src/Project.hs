@@ -12,7 +12,7 @@ import Data.HashSet (HashSet)
 import qualified System.Directory as Directory
 import qualified System.FilePath as FilePath
 
-data Project = Project
+newtype Project = Project
   { _domainDirectories :: [FilePath]
   }
 
