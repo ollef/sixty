@@ -699,7 +699,7 @@ inlineIndex index targetScope solution@ ~(solutionVar, varArgs, solutionValue, s
               pure (span, (bindings', body'))
 
           LiteralBranches literalBranches ->
-            fmap LiteralBranches $ mapM (mapM recurse) literalBranches
+            LiteralBranches <$> mapM (mapM recurse) literalBranches
         defaultBranch' <- forM defaultBranch recurse
         pure $ makeCase scrutinee' branches' defaultBranch'
 
