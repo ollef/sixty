@@ -71,10 +71,10 @@ references filePath (Position.LineColumn line column) = do
           Intervals.Var var ->
             pure $ (,) filePath . toLineColumns . Span.absoluteFrom defPos <$> Intervals.varSpans var relativePos occurrenceIntervals
 
-          Intervals.Global (Name.Qualified definingModule _) -> do
+          Intervals.Global (Name.Qualified definingModule _) ->
             itemSpans definingModule item
 
-          Intervals.Con (Name.QualifiedConstructor (Name.Qualified definingModule _) _) -> do
+          Intervals.Con (Name.QualifiedConstructor (Name.Qualified definingModule _) _) ->
             itemSpans definingModule item
 
     else
