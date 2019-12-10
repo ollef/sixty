@@ -22,6 +22,9 @@ readback env value =
       hd' <- readbackHead env hd
       readbackSpine hd' spine
 
+    Domain.Int int ->
+      pure $ Syntax.Int int
+
     Domain.Glued hd spine value' -> do
       maybeHead <- readbackMaybeHead env hd
       case maybeHead of
@@ -43,7 +46,15 @@ readback env value =
 
     Domain.Case scrutinee (Domain.Branches env' branches defaultBranch) -> do
       scrutinee' <- readback env scrutinee
-      branches' <- forM branches $ mapM $ readbackBranch env env'
+      branches' <- case branches of
+        Syntax.ConstructorBranches constructorBranches ->
+          Syntax.ConstructorBranches <$> forM constructorBranches (mapM $ readbackConstructorBranch env env')
+
+        Syntax.LiteralBranches literalBranches ->
+          Syntax.LiteralBranches <$> forM literalBranches (mapM $ \branch -> do
+            branchValue <- Evaluation.evaluate env' branch
+            readback env branchValue
+          )
       defaultBranch' <- forM defaultBranch $ \branch -> do
         branch' <- Evaluation.evaluate env' branch
         readback env branch'
@@ -94,12 +105,12 @@ readbackMaybeHead env hd =
     Domain.Meta m ->
       pure $ Just $ Syntax.Meta m
 
-readbackBranch
+readbackConstructorBranch
   :: Domain.Environment v
   -> Domain.Environment v'
   -> Telescope Syntax.Type Syntax.Term v'
   -> M (Telescope Syntax.Type Syntax.Term v)
-readbackBranch outerEnv innerEnv tele =
+readbackConstructorBranch outerEnv innerEnv tele =
   case tele of
     Telescope.Empty term -> do
       value <- Evaluation.evaluate innerEnv term
@@ -113,5 +124,5 @@ readbackBranch outerEnv innerEnv tele =
       let
         innerEnv' =
           Environment.extendVar innerEnv var
-      tele'' <- readbackBranch outerEnv' innerEnv' tele'
+      tele'' <- readbackConstructorBranch outerEnv' innerEnv' tele'
       pure $ Telescope.Extend name domain'' plicity tele''

@@ -116,6 +116,9 @@ termOccurrences env maybeSpan term =
     Syntax.Con con ->
       pure $ foldMap (\span -> Intervals.singleton span $ Intervals.Con con) maybeSpan
 
+    Syntax.Int _ ->
+      mempty
+
     Syntax.Meta _ ->
       mempty
 
@@ -153,7 +156,7 @@ termOccurrences env maybeSpan term =
 
     Syntax.Case scrutinee branches defaultBranch ->
       termOccurrences env Nothing scrutinee <>
-      foldMap (branchOccurrences env) (HashMap.toList branches) <>
+      branchesOccurrences env branches <>
       foldMap (termOccurrences env Nothing) defaultBranch
 
     Syntax.Spanned span term' ->
@@ -174,18 +177,38 @@ dataDefinitionOccurrences env tele =
         termOccurrences env Nothing type_ <>
         dataDefinitionOccurrences env' tele'
 
-branchOccurrences
+branchesOccurrences
+  :: Domain.Environment v
+  -> Syntax.Branches v
+  -> M Intervals
+branchesOccurrences env branches =
+  case branches of
+    Syntax.ConstructorBranches constructorBranches ->
+      foldMap (constructorBranchOccurrences env) $ HashMap.toList constructorBranches
+
+    Syntax.LiteralBranches literalBranches ->
+      foldMap (literalBranchOccurrences env) $ HashMap.toList literalBranches
+
+constructorBranchOccurrences
   :: Domain.Environment v
   -> (Name.QualifiedConstructor, ([Span.Relative], Telescope Syntax.Type Syntax.Term v))
   -> M Intervals
-branchOccurrences env (constr, (spans, tele)) =
-  pure (mconcat [Intervals.singleton span $ Intervals.Con constr | span <- spans]) <> teleOccurrences env tele
+constructorBranchOccurrences env (constr, (spans, tele)) =
+  pure (mconcat [Intervals.singleton span $ Intervals.Con constr | span <- spans]) <> telescopeOccurrences env tele
 
-teleOccurrences
+literalBranchOccurrences
+  :: Domain.Environment v
+  -> (Integer, ([Span.Relative], Syntax.Term v))
+  -> M Intervals
+literalBranchOccurrences env (_, (_, body)) =
+  -- TODO literal spans?
+  termOccurrences env Nothing body
+
+telescopeOccurrences
   :: Domain.Environment v
   -> Telescope Syntax.Type Syntax.Term v
   -> M Intervals
-teleOccurrences env tele =
+telescopeOccurrences env tele =
   case tele of
     Telescope.Empty branch ->
       termOccurrences env Nothing branch
@@ -194,7 +217,7 @@ teleOccurrences env tele =
       (env', var) <- extend env
       bindingOccurrences binding var <>
         termOccurrences env Nothing type_ <>
-        teleOccurrences env' tele'
+        telescopeOccurrences env' tele'
 
 bindingOccurrences
   :: Binding

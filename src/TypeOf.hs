@@ -29,6 +29,9 @@ typeOf context value =
       headType <- typeOfHead context hd
       typeOfApplication context headType spine
 
+    Domain.Int _ ->
+      pure Builtin.Int
+
     Domain.Glued hd spine _ ->
       typeOf context $ Domain.Neutral hd spine
 
@@ -54,12 +57,23 @@ typeOf context value =
           typeOf context value'
 
         Nothing ->
-          case HashMap.toList branches of
-            (_, (_, branchTele)):_ ->
-              typeOfBranch context env branchTele
+          case branches of
+            Syntax.ConstructorBranches constructorBranches ->
+              case HashMap.toList constructorBranches of
+                (_, (_, branchTele)):_ ->
+                  typeOfBranch context env branchTele
 
-            [] ->
-              panic "TODO type of branchless case"
+                [] ->
+                  panic "TODO type of branchless case"
+
+            Syntax.LiteralBranches literalBranches ->
+              case HashMap.toList literalBranches of
+                (_, (_, body)):_ -> do
+                  body' <- Evaluation.evaluate env body
+                  typeOf context body'
+
+                [] ->
+                  panic "TODO type of branchless case"
 
 typeOfHead :: Context v -> Domain.Head -> M Domain.Type
 typeOfHead context hd =

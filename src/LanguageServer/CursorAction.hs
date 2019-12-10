@@ -205,6 +205,9 @@ termAction k env term =
     Syntax.Con _ ->
       empty
 
+    Syntax.Int _ ->
+      empty
+
     Syntax.Meta _ ->
       empty
 
@@ -237,7 +240,7 @@ termAction k env term =
 
     Syntax.Case scrutinee branches defaultBranch ->
       termAction k env scrutinee <|>
-      asum (branchAction k env scrutinee <$> HashMap.toList branches) <|>
+      branchesAction k env scrutinee branches <|>
       asum (termAction k env <$> defaultBranch)
 
     Syntax.Spanned span term' ->
@@ -261,13 +264,27 @@ dataDefinitionAction k env tele =
         termAction k env type_ <|>
         dataDefinitionAction k env' tele'
 
-branchAction
+branchesAction
+  :: RelativeCallback a
+  -> Environment v
+  -> Syntax.Term v
+  -> Syntax.Branches v
+  -> MaybeT M a
+branchesAction k env scrutinee branches =
+  case branches of
+    Syntax.ConstructorBranches constructorBranches ->
+      asum (constructorBranchAction k env scrutinee <$> HashMap.toList constructorBranches)
+
+    Syntax.LiteralBranches literalBranches ->
+      asum (literalBranchAction k env <$> HashMap.toList literalBranches)
+
+constructorBranchAction
   :: RelativeCallback a
   -> Environment v
   -> Syntax.Term v
   -> (Name.QualifiedConstructor, ([Span.Relative], Telescope Syntax.Type Syntax.Term v))
   -> MaybeT M a
-branchAction k env scrutinee (constr@(Name.QualifiedConstructor typeName _), (spans, tele)) =
+constructorBranchAction k env scrutinee (constr@(Name.QualifiedConstructor typeName _), (spans, tele)) =
   (do
     asum $ foreach spans $ \span -> do
       guard $ any (`Span.relativeContains` _actionPosition env) spans
@@ -284,6 +301,15 @@ branchAction k env scrutinee (constr@(Name.QualifiedConstructor typeName _), (sp
           k PatternContext env (Syntax.Con constr) span
   ) <|>
   teleAction k env tele
+
+literalBranchAction
+  :: RelativeCallback a
+  -> Environment v
+  -> (Integer, ([Span.Relative], Syntax.Term v))
+  -> MaybeT M a
+literalBranchAction k env (_, (_, body)) =
+  -- TODO use literal
+  termAction k env body
 
 teleAction
   :: RelativeCallback a

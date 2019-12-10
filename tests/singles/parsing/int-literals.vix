@@ -1,0 +1,10 @@
+
+term : Int
+term = 123
+
+data Bool = False | True
+
+is123or231 : Int -> Bool
+is123or231 123 = True
+is123or231 231 = True
+is123or231 _ = False

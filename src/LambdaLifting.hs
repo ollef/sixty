@@ -63,6 +63,7 @@ data InnerValue
   = Var !Var
   | Global !Name.Lifted
   | Con !Name.QualifiedConstructor [(Plicity, Value)]
+  | Int !Integer
   | Let !Binding !Var !Value !Type !Value
   | Pi !Binding !Var !Type !Plicity !Type
   | Fun !Type !Plicity !Type
@@ -72,7 +73,10 @@ data InnerValue
 
 type Type = Value
 
-type Branches = HashMap Name.QualifiedConstructor ([(Binding, Var, Type, Plicity)], Value)
+data Branches
+  = ConstructorBranches (HashMap Name.QualifiedConstructor ([(Binding, Var, Type, Plicity)], Value))
+  | LiteralBranches (HashMap Integer Value)
+  deriving Show
 
 type Occurrences = IntSet Var
 
@@ -94,6 +98,10 @@ makeCon :: Name.QualifiedConstructor -> [(Plicity, Value)] -> Value
 makeCon con args =
   Value (Con con args) $
     foldMap (foldMap occurrences) args
+
+makeInt :: Integer -> Value
+makeInt int =
+  Value (Int int) mempty
 
 makeLet :: Binding -> Var -> Value -> Type -> Value -> Value
 makeLet binding var value type_ body =
@@ -128,8 +136,17 @@ makeCase :: Value -> Branches -> Maybe Value -> Value
 makeCase scrutinee branches defaultBranch =
   Value (Case scrutinee branches defaultBranch) $
     occurrences scrutinee <>
-    foldMap (uncurry telescopeOccurrences) branches <>
+    branchOccurrences branches <>
     foldMap occurrences defaultBranch
+
+branchOccurrences :: Branches -> Occurrences
+branchOccurrences branches =
+  case branches of
+    ConstructorBranches constructorBranches ->
+      foldMap (uncurry telescopeOccurrences) constructorBranches
+
+    LiteralBranches literalBranches ->
+      foldMap occurrences literalBranches
 
 telescopeOccurrences :: [(Binding, Var, Type, Plicity)] -> Value -> Occurrences
 telescopeOccurrences tele body =
@@ -177,6 +194,9 @@ evaluate env term args =
     Syntax.Con con -> do
       term' <- lift $ saturatedConstructorApp env con args
       evaluate env term' []
+
+    Syntax.Int int ->
+      pure $ makeInt int
 
     Syntax.Meta _ ->
       panic "LambdaLifting.evaluate meta"
@@ -230,7 +250,7 @@ evaluate env term args =
       applyArgs $
         makeCase <$>
           evaluate env scrutinee [] <*>
-          mapM (evaluateBranch env . snd) branches <*>
+          evaluateBranches env branches <*>
           mapM (\branch -> evaluate env branch []) defaultBranch
 
     Syntax.Spanned _ term' ->
@@ -312,11 +332,23 @@ saturatedConstructorApp outerEnv con outerArgs = do
         _ ->
           Readback.readback env $ Domain.Neutral (Domain.Con con) resultSpine
 
-evaluateBranch
+evaluateBranches
+  :: Environment v
+  -> Syntax.Branches v
+  -> Lift Branches
+evaluateBranches env branches =
+  case branches of
+    Syntax.ConstructorBranches constructorBranches ->
+      ConstructorBranches <$> mapM (evaluateTelescope env . snd) constructorBranches
+
+    Syntax.LiteralBranches literalBranches ->
+      LiteralBranches <$> mapM (\(_, branch) -> evaluate env branch []) literalBranches
+
+evaluateTelescope
   :: Environment v
   -> Telescope Syntax.Type Syntax.Term v
   -> Lift ([(Binding, Var, Type, Plicity)], Value)
-evaluateBranch env tele =
+evaluateTelescope env tele =
   case tele of
     Telescope.Empty body -> do
       body' <- evaluate env body []
@@ -325,7 +357,7 @@ evaluateBranch env tele =
     Telescope.Extend name type_ plicity tele' -> do
       type' <- evaluate env type_ []
       (env', var) <- extend env type'
-      (bindings, body) <- evaluateBranch env' tele'
+      (bindings, body) <- evaluateTelescope env' tele'
       pure ((name, var, type', plicity):bindings, body)
 
 evaluateLambdaTelescope :: Environment v -> Syntax.Term v -> Lift ([(Binding, Var, Type, Plicity)], Value)
@@ -413,6 +445,9 @@ readback env (Value value _) =
     Con global args ->
       LambdaLifted.Con global $ second (readback env) <$> args
 
+    Int int ->
+      LambdaLifted.Int int
+
     Let name var value' type_ body ->
       LambdaLifted.Let
         name
@@ -436,8 +471,20 @@ readback env (Value value _) =
     Case scrutinee branches defaultBranch ->
       LambdaLifted.Case
         (readback env scrutinee)
-        (map (uncurry (readbackTelescope env)) branches)
+        (readbackBranches env branches)
         (readback env <$> defaultBranch)
+
+readbackBranches
+  :: Environment v
+  -> Branches
+  -> LambdaLifted.Branches v
+readbackBranches env branches =
+  case branches of
+    ConstructorBranches constructorBranches ->
+      LambdaLifted.ConstructorBranches $ uncurry (readbackTelescope env) <$> constructorBranches
+
+    LiteralBranches literalBranches ->
+      LambdaLifted.LiteralBranches $ map (readback env) literalBranches
 
 readbackTelescope
   :: Environment v

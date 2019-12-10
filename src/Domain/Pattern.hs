@@ -10,4 +10,5 @@ import Plicity
 data Pattern
   = Wildcard
   | Con !Name.QualifiedConstructor [(Plicity, Pattern)]
+  | Int !Integer
   deriving (Eq, Show, Generic, Hashable)

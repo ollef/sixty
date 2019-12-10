@@ -67,6 +67,9 @@ evaluate env term =
     Syntax.Con con ->
       pure $ Domain.con con
 
+    Syntax.Int int ->
+      pure $ Domain.Int int
+
     Syntax.Meta meta ->
       pure $ Domain.meta meta
 
@@ -95,9 +98,12 @@ evaluate env term =
 
     Syntax.Case scrutinee branches defaultBranch -> do
       scrutineeValue <- evaluate env scrutinee
-      case scrutineeValue of
-        Domain.Neutral (Domain.Con constr) spine ->
-          chooseBranch env constr (toList spine) branches defaultBranch
+      case (scrutineeValue, branches) of
+        (Domain.Neutral (Domain.Con constr) spine, Syntax.ConstructorBranches constructorBranches) ->
+          chooseConstructorBranch env constr (toList spine) constructorBranches defaultBranch
+
+        (Domain.Int int, Syntax.LiteralBranches literalBranches) ->
+          chooseLiteralBranch env int literalBranches defaultBranch
 
         _ ->
           pure $
@@ -108,14 +114,14 @@ evaluate env term =
     Syntax.Spanned _ term' ->
       evaluate env term'
 
-chooseBranch
+chooseConstructorBranch
   :: Domain.Environment v
   -> Name.QualifiedConstructor
   -> [(Plicity, Domain.Value)]
-  -> Syntax.Branches v
+  -> Syntax.ConstructorBranches v
   -> Maybe (Syntax.Term v)
   -> M Domain.Value
-chooseBranch outerEnv constr outerArgs branches defaultBranch =
+chooseConstructorBranch outerEnv constr outerArgs branches defaultBranch =
   case (HashMap.lookup constr branches, defaultBranch) of
     (Nothing, Nothing) ->
       panic "chooseBranch no branches"
@@ -159,10 +165,27 @@ chooseBranch outerEnv constr outerArgs branches defaultBranch =
             go env' args' target
 
           | otherwise ->
-            panic $ "chooseBranch mismatch " <> show (plicity1, plicity2)
+            panic $ "chooseConstructorBranch mismatch " <> show (plicity1, plicity2)
 
         _ ->
-          panic "chooseBranch mismatch"
+          panic "chooseConstructorBranch mismatch"
+
+chooseLiteralBranch
+  :: Domain.Environment v
+  -> Integer
+  -> Syntax.LiteralBranches v
+  -> Maybe (Syntax.Term v)
+  -> M Domain.Value
+chooseLiteralBranch outerEnv int branches defaultBranch =
+  case (HashMap.lookup int branches, defaultBranch) of
+    (Nothing, Nothing) ->
+      panic "chooseLiteralBranch no branches"
+
+    (Nothing, Just branch) ->
+      evaluate outerEnv branch
+
+    (Just (_, branch), _) -> do
+      evaluate outerEnv branch
 
 apply :: Domain.Value -> Plicity -> Domain.Value -> M Domain.Value
 apply fun plicity arg =
@@ -211,9 +234,13 @@ forceHead env value =
 
     Domain.Case scrutinee branches@(Domain.Branches branchEnv brs defaultBranch) -> do
       scrutinee' <- forceHead env scrutinee
-      case scrutinee' of
-        Domain.Neutral (Domain.Con constr) spine -> do
-          value' <- Evaluation.chooseBranch branchEnv constr (toList spine) brs defaultBranch
+      case (scrutinee', brs) of
+        (Domain.Neutral (Domain.Con constr) spine, Syntax.ConstructorBranches constructorBranches) -> do
+          value' <- Evaluation.chooseConstructorBranch branchEnv constr (toList spine) constructorBranches defaultBranch
+          forceHead env value'
+
+        (Domain.Int int, Syntax.LiteralBranches literalBranches) -> do
+          value' <- Evaluation.chooseLiteralBranch branchEnv int literalBranches defaultBranch
           forceHead env value'
 
         _ ->

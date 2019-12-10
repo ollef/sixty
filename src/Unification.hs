@@ -5,6 +5,7 @@ module Unification where
 
 import Protolude hiding (force, check, evaluate)
 
+import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Rock
 
@@ -232,10 +233,14 @@ unify context flexibility value1 value2 = do
 
     invertCase scrutinee meta spine matches =
       case matches of
-        [Just constr] -> do
+        [Just (Left constr)] -> do
           metaType <- instantiatedMetaType context meta spine
           appliedConstr <- fullyApplyToMetas context constr metaType
           unify context flexibility scrutinee appliedConstr
+          unify context flexibility value1 value2
+
+        [Just (Right int)] -> do
+          unify context flexibility scrutinee $ Domain.Int int
           unify context flexibility value1 value2
 
         _ ->
@@ -290,33 +295,54 @@ unifyBranches
   flexibility
   (Domain.Branches outerEnv1 branches1 defaultBranch1)
   (Domain.Branches outerEnv2 branches2 defaultBranch2) = do
-    let
-      branches =
-        HashMap.intersectionWith (,) branches1 branches2
+    case (branches1, branches2) of
+      (Syntax.ConstructorBranches conBranches1, Syntax.ConstructorBranches conBranches2) ->
+        unifyMaps conBranches1 conBranches2 $ unifyTele outerContext outerEnv1 outerEnv2
 
-      missing1 =
-        HashMap.difference branches1 branches
-
-      missing2 =
-        HashMap.difference branches2 branches
-    unless (HashMap.null missing1 && HashMap.null missing2)
-      can'tUnify
-
-    forM_ branches $ \((_, tele1), (_, tele2)) ->
-      unifyTele outerContext outerEnv1 outerEnv2 tele1 tele2
-
-    case (defaultBranch1, defaultBranch2) of
-      (Just branch1, Just branch2) -> do
-        branch1' <- Evaluation.evaluate outerEnv1 branch1
-        branch2' <- Evaluation.evaluate outerEnv2 branch2
-        unify outerContext flexibility branch1' branch2'
-
-      (Nothing, Nothing) ->
-        pure ()
+      (Syntax.LiteralBranches litBranches1, Syntax.LiteralBranches litBranches2) ->
+        unifyMaps litBranches1 litBranches2 unifyTerms
 
       _ ->
         can'tUnify
+
   where
+    unifyMaps
+      :: (Eq k, Hashable k)
+      => HashMap k (x, v1)
+      -> HashMap k (x, v2)
+      -> (v1 -> v2 -> M ())
+      -> M ()
+    unifyMaps brs1 brs2 k = do
+      let
+        branches =
+          HashMap.intersectionWith (,) brs1 brs2
+
+        missing1 =
+          HashMap.difference brs1 branches
+
+        missing2 =
+          HashMap.difference brs2 branches
+      unless (HashMap.null missing1 && HashMap.null missing2)
+        can'tUnify
+
+      forM_ branches $ \((_, tele1), (_, tele2)) ->
+        k tele1 tele2
+
+      case (defaultBranch1, defaultBranch2) of
+        (Just branch1, Just branch2) ->
+          unifyTerms branch1 branch2
+
+        (Nothing, Nothing) ->
+          pure ()
+
+        _ ->
+          can'tUnify
+
+    unifyTerms term1 term2 = do
+      term1' <- Evaluation.evaluate outerEnv1 term1
+      term2' <- Evaluation.evaluate outerEnv2 term2
+      unify outerContext flexibility term1' term2'
+
     unifyTele
       :: Context v
       -> Domain.Environment v1
@@ -369,7 +395,7 @@ potentiallyMatchingBranches
   :: Context v
   -> Domain.Value
   -> Domain.Branches
-  -> M [Maybe Name.QualifiedConstructor]
+  -> M [Maybe (Either Name.QualifiedConstructor Integer)]
 potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv branches defaultBranch) = do
   defaultBranch' <- fmap (catMaybes . toList) $ forM defaultBranch $ \branch -> do
     isMatch <- branchMatches outerContext outerEnv $ Telescope.Empty branch
@@ -380,14 +406,27 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
       else
         Nothing
 
-  branches' <- fmap catMaybes $ forM (HashMap.toList branches) $ \(constr, (_, tele)) -> do
-    isMatch <- branchMatches outerContext outerEnv tele
-    pure $
-      if isMatch then
-        Just $ Just constr
+  branches' <- fmap catMaybes $
+    case branches of
+      Syntax.ConstructorBranches constructorBranches -> do
+        forM (HashMap.toList constructorBranches) $ \(constr, (_, tele)) -> do
+          isMatch <- branchMatches outerContext outerEnv tele
+          pure $
+            if isMatch then
+              Just $ Just $ Left constr
 
-      else
-        Nothing
+            else
+              Nothing
+
+      Syntax.LiteralBranches literalBranches -> do
+        forM (HashMap.toList literalBranches) $ \(int, (_, branch)) -> do
+          isMatch <- branchMatches outerContext outerEnv $ Telescope.Empty branch
+          pure $
+            if isMatch then
+              Just $ Just $ Right int
+
+            else
+              Nothing
 
   pure $ defaultBranch' <> branches'
   where
@@ -599,6 +638,9 @@ checkInnerSolution outerContext occurs env flexibility value = do
     Domain.Neutral hd spine ->
       checkInnerNeutral outerContext occurs env flexibility hd spine
 
+    Domain.Int int ->
+      pure $ Syntax.Int int
+
     Domain.Glued hd@(Domain.Global _) spine value'' ->
       checkInnerNeutral outerContext occurs env Flexibility.Flexible hd spine `catchError` \_ -> do
         value''' <- force value''
@@ -628,8 +670,18 @@ checkInnerSolution outerContext occurs env flexibility value = do
 
     Domain.Case scrutinee (Domain.Branches env' branches defaultBranch) -> do
       scrutinee' <- checkInnerSolution outerContext occurs env flexibility scrutinee
-      branches' <- forM branches $ mapM $
-        checkInnerBranch outerContext occurs env env' flexibility
+      branches' <- case branches of
+        Syntax.ConstructorBranches constructorBranches -> do
+          fmap Syntax.ConstructorBranches $
+            forM constructorBranches $ mapM $
+              checkInnerBranch outerContext occurs env env' flexibility
+
+        Syntax.LiteralBranches literalBranches ->
+          fmap Syntax.LiteralBranches $
+            forM literalBranches $ mapM $ \branch -> do
+              branch' <- Evaluation.evaluate env' branch
+              checkInnerSolution outerContext occurs env flexibility branch'
+
       defaultBranch' <- forM defaultBranch $ \branch -> do
         branch' <- Evaluation.evaluate env' branch
         checkInnerSolution outerContext occurs env flexibility branch'

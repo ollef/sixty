@@ -1,9 +1,12 @@
 {-# language FlexibleContexts #-}
 {-# language OverloadedStrings #-}
+{-# language RankNTypes #-}
+{-# language ScopedTypeVariables #-}
 module Unification.Indices where
 
 import Protolude hiding (force, IntSet)
 
+import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 
 import Context (Context)
@@ -174,7 +177,8 @@ unify context flexibility untouchables value1 value2 = do
         lift $ Context.define context var value
 
 unifyBranches
-  :: Context v
+  :: forall v
+  . Context v
   -> Flexibility
   -> IntSet Var
   -> Domain.Branches
@@ -185,43 +189,66 @@ unifyBranches
   flexibility
   outerUntouchables
   (Domain.Branches outerEnv1 branches1 defaultBranch1)
-  (Domain.Branches outerEnv2 branches2 defaultBranch2) = do
-    let
-      branches =
-        HashMap.intersectionWith (,) branches1 branches2
+  (Domain.Branches outerEnv2 branches2 defaultBranch2) =
+    case (branches1, branches2) of
+      (Syntax.ConstructorBranches conBranches1, Syntax.ConstructorBranches conBranches2) ->
+        unifyMaps conBranches1 conBranches2 $ unifyTele outerEnv1 outerEnv2 outerUntouchables
 
-      missing1 =
-        HashMap.difference branches1 branches
-
-      missing2 =
-        HashMap.difference branches2 branches
-    unless (HashMap.null missing1 && HashMap.null missing2) $
-      throwError Dunno
-    outerContext' <- foldM
-      (\context ((_, tele1), (_, tele2)) -> unifyTele context outerEnv1 outerEnv2 outerUntouchables tele1 tele2)
-      outerContext
-      branches
-    case (defaultBranch1, defaultBranch2) of
-      (Just branch1, Just branch2) -> do
-        branch1' <- lift $ Evaluation.evaluate outerEnv1 branch1
-        branch2' <- lift $ Evaluation.evaluate outerEnv2 branch2
-        unify outerContext' flexibility outerUntouchables branch1' branch2'
-
-      (Nothing, Nothing) ->
-        pure outerContext'
+      (Syntax.LiteralBranches litBranches1, Syntax.LiteralBranches litBranches2) ->
+        unifyMaps litBranches1 litBranches2 unifyTerms
 
       _ ->
         throwError Dunno
   where
+    unifyMaps
+      :: (Eq k, Hashable k)
+      => HashMap k (x, v1)
+      -> HashMap k (x, v2)
+      -> (Context v -> v1 -> v2 -> E M (Context v))
+      -> E M (Context v)
+    unifyMaps brs1 brs2 k = do
+      let
+        branches =
+          HashMap.intersectionWith (,) brs1 brs2
+
+        missing1 =
+          HashMap.difference brs1 branches
+
+        missing2 =
+          HashMap.difference brs2 branches
+      unless (HashMap.null missing1 && HashMap.null missing2) $
+        throwError Dunno
+
+      context' <-
+        foldM
+          (\context ((_, tele1), (_, tele2)) -> k context tele1 tele2)
+          outerContext
+          branches
+
+      case (defaultBranch1, defaultBranch2) of
+        (Just branch1, Just branch2) ->
+          unifyTerms context' branch1 branch2
+
+        (Nothing, Nothing) ->
+          pure context'
+
+        _ ->
+          throwError Dunno
+
+    unifyTerms context term1 term2 = do
+      term1' <- lift $ Evaluation.evaluate outerEnv1 term1
+      term2' <- lift $ Evaluation.evaluate outerEnv2 term2
+      unify context flexibility outerUntouchables term1' term2'
+
     unifyTele
-      :: Context v
-      -> Domain.Environment v1
+      :: Domain.Environment v1
       -> Domain.Environment v2
       -> IntSet Var
+      -> Context v'
       -> Telescope Syntax.Type Syntax.Term v1
       -> Telescope Syntax.Type Syntax.Term v2
-      -> E M (Context v)
-    unifyTele context env1 env2 untouchables tele1 tele2 =
+      -> E M (Context v')
+    unifyTele env1 env2 untouchables context tele1 tele2 =
       case (tele1, tele2) of
         (Telescope.Extend binding1 type1 plicity1 tele1', Telescope.Extend _binding2 type2 plicity2 tele2')
           | plicity1 == plicity2 -> do
@@ -231,10 +258,10 @@ unifyBranches
             (context'', var) <- lift $ Context.extendUnnamed context' (Binding.toName binding1) type1'
             context''' <-
               unifyTele
-                context''
                 (Environment.extendVar env1 var)
                 (Environment.extendVar env2 var)
                 (IntSet.insert var untouchables)
+                context''
                 tele1'
                 tele2'
             pure $ unextend context'''
@@ -269,6 +296,9 @@ occurs context flexibility untouchables value = do
 
             Flexibility.Flexible ->
               Dunno
+
+    Domain.Int _ ->
+      pure ()
 
     Domain.Glued (Domain.Var _) _ value'' ->
       occursForce value''
@@ -316,7 +346,13 @@ occursBranches
   -> Domain.Branches
   -> E M ()
 occursBranches outerContext flexibility outerUntouchables (Domain.Branches outerEnv branches defaultBranch) = do
-  forM_ branches $ mapM_ $ occursTele outerContext outerUntouchables outerEnv
+  case branches of
+    Syntax.ConstructorBranches constructorBranches ->
+      forM_ constructorBranches $ mapM_ $ occursTele outerContext outerUntouchables outerEnv
+
+    Syntax.LiteralBranches literalBranches ->
+      forM_ literalBranches $ mapM_ $ \branch ->
+        occursTele outerContext outerUntouchables outerEnv $ Telescope.Empty branch
   forM_ defaultBranch $ \branch ->
     occursTele outerContext outerUntouchables outerEnv $ Telescope.Empty branch
   where

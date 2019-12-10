@@ -60,10 +60,13 @@ data Config = Config
   , _clauses :: [Clause]
   , _usedClauses :: !(IORef (Set Span.Relative))
   , _coveredConstructors :: CoveredConstructors
+  , _coveredLiterals :: CoveredLiterals
   , _matchKind :: !Error.MatchKind
   }
 
 type CoveredConstructors = IntMap Var (HashSet Name.QualifiedConstructor)
+
+type CoveredLiterals = IntMap Var (HashSet Integer)
 
 data Clause = Clause
   { _span :: !Span.Relative
@@ -109,6 +112,7 @@ elaborateCase context scrutinee scrutineeType branches expectedType = do
       ]
     , _usedClauses = usedClauses
     , _coveredConstructors = mempty
+    , _coveredLiterals = mempty
     , _matchKind = Error.Branch
     }
   scrutineeType' <- Readback.readback (Context.toEnvironment context) scrutineeType
@@ -137,6 +141,9 @@ isPatternValue context value = do
 
     Domain.Neutral (Domain.Meta _) _ ->
       pure False
+
+    Domain.Int _ ->
+      pure True
 
     Domain.Glued _ _ value'' -> do
       value''' <- force value''
@@ -192,6 +199,7 @@ elaborateClauses context clauses expectedType = do
     , _clauses = clauses
     , _usedClauses = usedClauses
     , _coveredConstructors = mempty
+    , _coveredLiterals = mempty
     , _matchKind = Error.Clause
     }
 
@@ -225,6 +233,7 @@ elaborateSingle context scrutinee plicity pat@(Presyntax.Pattern patSpan _) rhs@
         ]
       , _usedClauses = usedClauses
       , _coveredConstructors = mempty
+      , _coveredLiterals = mempty
       , _matchKind = Error.Lambda
       }
 
@@ -246,7 +255,7 @@ elaborateWithCoverage context config = do
 
 elaborate :: Context v -> Config -> M (Syntax.Term v)
 elaborate context config = do
-  clauses <- catMaybes <$> mapM (simplifyClause context $ _coveredConstructors config) (_clauses config)
+  clauses <- catMaybes <$> mapM (simplifyClause context (_coveredConstructors config) (_coveredLiterals config)) (_clauses config)
   let
     config' = config { _clauses = clauses }
   case clauses of
@@ -350,6 +359,9 @@ uncoveredScrutineePatterns context coveredConstructors value = do
     Domain.Neutral (Domain.Global _) _ ->
       pure []
 
+    Domain.Int int ->
+      pure [Pattern.Int int]
+
     Domain.Neutral (Domain.Con constr) spine -> do
       constrTypeTele <- fetch $ Query.ConstructorType constr
       let
@@ -398,10 +410,10 @@ uncoveredScrutineePatterns context coveredConstructors value = do
 
 -------------------------------------------------------------------------------
 
-simplifyClause :: Context v -> CoveredConstructors -> Clause -> M (Maybe Clause)
-simplifyClause context coveredConstructors clause = do
+simplifyClause :: Context v -> CoveredConstructors -> CoveredLiterals -> Clause -> M (Maybe Clause)
+simplifyClause context coveredConstructors coveredLiterals clause = do
   maybeMatches <- runMaybeT $
-    concat <$> mapM (simplifyMatch context coveredConstructors) (_matches clause)
+    concat <$> mapM (simplifyMatch context coveredConstructors coveredLiterals) (_matches clause)
   case maybeMatches of
     Nothing ->
       pure Nothing
@@ -413,14 +425,15 @@ simplifyClause context coveredConstructors clause = do
           pure $ Just clause { _matches = matches' }
 
         Just expandedMatches ->
-          simplifyClause context coveredConstructors clause { _matches = expandedMatches }
+          simplifyClause context coveredConstructors coveredLiterals clause { _matches = expandedMatches }
 
 simplifyMatch
   :: Context v
   -> CoveredConstructors
+  -> CoveredLiterals
   -> Match
   -> MaybeT M [Match]
-simplifyMatch context coveredConstructors (Match value forcedValue plicity pat@(Presyntax.Pattern span unspannedPattern) type_) = do
+simplifyMatch context coveredConstructors coveredLiterals (Match value forcedValue plicity pat@(Presyntax.Pattern span unspannedPattern) type_) = do
   forcedValue' <- lift $ Context.forceHead context forcedValue
   let
     match' =
@@ -445,13 +458,20 @@ simplifyMatch context coveredConstructors (Match value forcedValue plicity pat@(
                   Context.spanned span context
               _ <- Context.try_ context' $ Unification.unify context' Flexibility.Rigid type_ type'
               pure matches'
-            concat <$> mapM (simplifyMatch context coveredConstructors) matches'
+            concat <$> mapM (simplifyMatch context coveredConstructors coveredLiterals) matches'
 
           | otherwise ->
             fail "Constructor mismatch"
 
         _ ->
           pure [match']
+
+    (Domain.Int int, Presyntax.IntPattern int')
+      | int == int' ->
+        pure []
+
+      | otherwise ->
+        fail "Literal mismatch"
 
     (Domain.Neutral (Domain.Var var) Tsil.Empty, Presyntax.ConOrVar _ name _)
       | Just coveredConstrs <- IntMap.lookup var coveredConstructors -> do
@@ -478,6 +498,11 @@ simplifyMatch context coveredConstructors (Match value forcedValue plicity pat@(
 
           _ ->
             pure [match']
+
+    (Domain.Neutral (Domain.Var var) Tsil.Empty, Presyntax.IntPattern int)
+      | Just coveredLits <- IntMap.lookup var coveredLiterals
+      , HashSet.member int coveredLits ->
+        fail "Literal already covered"
 
     _ ->
       pure [match']
@@ -712,6 +737,14 @@ splitConstructorOr context config matches k =
               _ ->
                 splitConstructorOr context config matches' k
 
+        Match
+          scrutinee
+          (Domain.Neutral (Domain.Var var) Tsil.Empty)
+          _
+          (Presyntax.Pattern span (Presyntax.IntPattern _))
+          type_ ->
+            splitLiteral context config scrutinee var span type_
+
         _ ->
           splitConstructorOr context config matches' k
 
@@ -797,7 +830,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
 
           scrutinee <- Elaboration.readback context scrutineeValue
 
-          pure $ Syntax.Case scrutinee branches defaultBranch
+          pure $ Syntax.Case scrutinee (Syntax.ConstructorBranches branches) defaultBranch
 
         ((plicity1, param):params', Domain.Telescope.Extend _ _ plicity2 targetClosure)
           | plicity1 == plicity2 -> do
@@ -905,6 +938,58 @@ findVarConstructorMatches context var matches =
 
       _:matches' ->
         findVarConstructorMatches context var matches'
+
+splitLiteral
+  :: Context v
+  -> Config
+  -> Domain.Value
+  -> Var
+  -> Span.Relative
+  -> Domain.Type
+  -> M (Syntax.Term v)
+splitLiteral context config scrutineeValue scrutineeVar span outerType = do
+  matchedLiterals <-
+    HashMap.fromListWith (<>) . concat . takeWhile (not . null) <$>
+      mapM
+        (findVarLiteralMatches context scrutineeVar . _matches)
+        (_clauses config)
+
+  f <- Unification.tryUnify (Context.spanned span context) Builtin.Int outerType
+
+  branches <- flip HashMap.traverseWithKey matchedLiterals $ \int spans -> do
+    let
+      context' =
+        Context.defineWellOrdered context scrutineeVar $ Domain.Int int
+    result <- elaborate context' config
+    pure (spans, f result)
+
+  defaultBranch <-
+    Just <$> elaborate context config
+      { _coveredLiterals =
+        IntMap.insertWith (<>) scrutineeVar (HashSet.fromMap $ void matchedLiterals) $
+        _coveredLiterals config
+      }
+
+  scrutinee <- Elaboration.readback context scrutineeValue
+
+  pure $ f $ Syntax.Case scrutinee (Syntax.LiteralBranches branches) defaultBranch
+
+findVarLiteralMatches
+  :: Context v
+  -> Var
+  -> [Match]
+  -> M [(Integer, [Span.Relative])]
+findVarLiteralMatches context var matches =
+    case matches of
+      [] ->
+        pure []
+
+      Match _ (Domain.Neutral (Domain.Var var') Tsil.Empty) _ (Presyntax.Pattern span (Presyntax.IntPattern int)) _:matches'
+        | var == var' ->
+          ((int, [span]) :) <$> findVarLiteralMatches context var matches'
+
+      _:matches' ->
+        findVarLiteralMatches context var matches'
 
 -------------------------------------------------------------------------------
 

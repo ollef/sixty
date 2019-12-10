@@ -17,6 +17,7 @@ import qualified Syntax
 
 data Value
   = Neutral !Domain.Head Spine
+  | Int !Integer
   | Glued !Domain.Head Spine !Value
   | Lam !Name !Type !Plicity !Closure
   | Pi !Name !Type !Plicity !Closure
@@ -45,6 +46,9 @@ to value =
   case value of
     Domain.Neutral hd spine ->
       Neutral hd <$> mapM (mapM to) spine
+
+    Domain.Int int ->
+      pure $ Int int
 
     Domain.Glued hd spine value' ->
       Glued hd <$> mapM (mapM to) spine <*> lazyTo value'

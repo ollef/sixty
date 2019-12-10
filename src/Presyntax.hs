@@ -26,6 +26,7 @@ unspanned (Term _ term) =
 
 data UnspannedTerm
   = Var !Name.Pre
+  | Int !Integer
   | Let !Name !(Maybe (Span.Relative, Type)) [(Span.Relative, Clause)] !Term
   | Pi !Binding !Plicity !Type !Type
   | Fun !Type !Type
@@ -49,6 +50,7 @@ data Pattern
 data UnspannedPattern
   = ConOrVar !Span.Relative !Name.Pre [PlicitPattern]
   | WildcardPattern
+  | IntPattern !Integer
   | Anno !Pattern !Type
   | Forced !Term
   deriving (Show, Generic, Hashable)

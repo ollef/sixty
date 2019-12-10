@@ -16,6 +16,7 @@ data Term v
   = Var !(Index v)
   | Global !Name.Lifted
   | Con !Name.QualifiedConstructor [(Plicity, Term v)]
+  | Int !Integer
   | Let !Binding !(Term v) !(Type v) !(Scope Term v)
   | Pi !Binding !(Type v) !Plicity !(Scope Type v)
   | Fun !(Type v) !Plicity !(Type v)
@@ -25,7 +26,10 @@ data Term v
 
 type Type = Term
 
-type Branches v = HashMap Name.QualifiedConstructor (Telescope Type Term v)
+data Branches v
+  = ConstructorBranches (HashMap Name.QualifiedConstructor (Telescope Type Term v))
+  | LiteralBranches (HashMap Integer (Term v))
+  deriving (Eq, Show, Generic, Hashable)
 
 data Definition
   = ConstantDefinition !(Telescope Type Term Void)

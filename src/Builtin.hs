@@ -64,3 +64,15 @@ pattern Refl k a b =
   Domain.Neutral
     (Domain.Con ReflName)
     (Tsil.Empty Tsil.:> (Implicit, k) Tsil.:> (Explicit, a) Tsil.:> (Explicit, b))
+
+pattern IntName :: Name.Qualified
+pattern IntName =
+  "Sixten.Builtin.Int"
+
+pattern Int :: Domain.Value
+pattern Int =
+  Domain.Neutral (Domain.Global IntName) Tsil.Empty
+
+int :: Syntax.Term v
+int =
+  Syntax.Global IntName

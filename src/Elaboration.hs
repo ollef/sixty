@@ -553,6 +553,9 @@ inferUnspanned context term expectedTypeName =
     Presyntax.Var name ->
       inferName context name expectedTypeName
 
+    Presyntax.Int int ->
+      pure (Syntax.Int int, Builtin.Int)
+
     Presyntax.Let name maybeType clauses body -> do
       (context', binding, boundTerm, typeTerm) <- elaborateLet context name maybeType clauses
       (body', type_) <- infer context' body expectedTypeName
@@ -882,6 +885,9 @@ getExpectedTypeName context type_ = do
       pure $ Just name
 
     Domain.Neutral {} ->
+      pure Nothing
+
+    Domain.Int {} ->
       pure Nothing
 
     Domain.Glued _ _ value -> do

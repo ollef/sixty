@@ -20,6 +20,7 @@ import Var (Var)
 
 data Value
   = Neutral !Head Spine
+  | Int !Integer
   | Glued !Head Spine !(Lazy Value)
   | Lam !Name !Type !Plicity !Closure
   | Pi !Name !Type !Plicity !Closure

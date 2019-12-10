@@ -228,6 +228,9 @@ symbol :: String -> Parser String
 symbol =
   indented . Parsix.symbol
 
+integer :: Parser Integer
+integer = indented $ Parsix.try Parsix.integer
+
 reserved :: Text -> Parser ()
 reserved =
   indented . Parsix.reserveText idStyle
@@ -270,6 +273,7 @@ atomicPattern =
     ((\(span, name_) -> ConOrVar span name_ mempty) <$> spanned prename
     <|> WildcardPattern <$ reserved "_"
     <|> (\(span, _) -> ConOrVar span "?" mempty) <$> spanned (reserved "?")
+    <|> IntPattern <$> integer
     <|> Forced <$ symbol "~" <*> atomicTerm
     )
   <?> "pattern"
@@ -316,6 +320,7 @@ atomicTerm =
   <|> spannedTerm
     ( Wildcard <$ (reserved "_" <|> reserved "?")
       <|> Var <$> prename
+      <|> Int <$> integer
       <|> Case <$ reserved "case" <*> term <* reserved "of" <*> blockOfMany branch
       <|> unspanned <$>
         ( lams <$ symbol "\\" <*> some (positioned plicitPattern) <* symbol "." <*> term

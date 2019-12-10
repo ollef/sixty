@@ -96,6 +96,9 @@ prettyTerm prec env term =
     Syntax.Con constr ->
       prettyConstr env constr
 
+    Syntax.Int int ->
+      pretty int
+
     Syntax.Meta index ->
       pretty index
 
@@ -133,9 +136,16 @@ prettyTerm prec env term =
         "case" <+> prettyTerm 0 env scrutinee <+> "of" <> line <>
           indent 2
             (vcat $
-              [ prettyConstr env constr <+> prettyBranch env tele
-              | (constr, (_, tele)) <- HashMap.toList branches
-              ]
+              case branches of
+                Syntax.ConstructorBranches constructorBranches ->
+                  [ prettyConstr env constr <+> prettyBranch env tele
+                  | (constr, (_, tele)) <- HashMap.toList constructorBranches
+                  ]
+
+                Syntax.LiteralBranches literalBranches ->
+                  [ pretty lit <+> "->" <+> prettyTerm 0 env body
+                  | (lit, (_, body)) <- HashMap.toList literalBranches
+                  ]
               <>
               [ "_" <+> "->" <> line <>
                 indent 2 (prettyTerm casePrec env branch)
@@ -296,6 +306,9 @@ prettyPattern prec env pattern =
           [ Plicity.prettyAnnotation plicity <> prettyPattern (appPrec + 1) env pattern'
           | (plicity, pattern') <- patterns
           ]
+
+    Pattern.Int int ->
+      pretty int
 
 -------------------------------------------------------------------------------
 

@@ -142,6 +142,7 @@ data InnerValue
   = Var !Var
   | Global !Name.Qualified
   | Con !Name.QualifiedConstructor
+  | Int !Integer
   | Meta !Meta.Index (Tsil Value)
   | Let !Binding !Var !Value !Type !Value
   | Pi !Binding !Var !Type !Plicity !Type
@@ -152,7 +153,10 @@ data InnerValue
   | Spanned !Span.Relative !InnerValue
   deriving Show
 
-type Branches = HashMap Name.QualifiedConstructor ([Span.Relative], ([(Binding, Var, Type, Plicity)], Value))
+data Branches
+  = ConstructorBranches (HashMap Name.QualifiedConstructor ([Span.Relative], ([(Binding, Var, Type, Plicity)], Value)))
+  | LiteralBranches (HashMap Integer ([Span.Relative], Value))
+  deriving Show
 
 newtype Occurrences = Occurrences { unoccurrences :: IntMap Meta.Index (Tsil (Maybe Var)) }
 
@@ -186,6 +190,10 @@ makeGlobal n =
 makeCon :: Name.QualifiedConstructor -> Value
 makeCon c =
   Value (Con c) mempty
+
+makeInt :: Integer -> Value
+makeInt int =
+  Value (Int int) mempty
 
 makeMeta :: Meta.Index -> Tsil Value -> Value
 makeMeta index arguments =
@@ -246,13 +254,22 @@ makeCase :: Value -> Branches -> Maybe Value -> Value
 makeCase scrutinee branches defaultBranch =
   Value (Case scrutinee branches defaultBranch) $
     occurrences scrutinee <>
-    foldMap
-      (\(_, (bindings, body)) ->
-        foldMap (\(_, _, type_, _) -> occurrences type_) bindings <>
-          occurrences body
-      )
-      branches <>
+    branchOccurrences branches <>
     foldMap occurrences defaultBranch
+
+branchOccurrences :: Branches -> Occurrences
+branchOccurrences branches =
+  case branches of
+    ConstructorBranches constructorBranches ->
+      foldMap
+        (\(_, (bindings, body)) ->
+          foldMap (\(_, _, type_, _) -> occurrences type_) bindings <>
+            occurrences body
+        )
+        constructorBranches
+
+    LiteralBranches literalBranches ->
+      foldMap (occurrences . snd) literalBranches
 
 makeSpanned :: Span.Relative -> Value -> Value
 makeSpanned span (Value innerValue occs) =
@@ -269,6 +286,9 @@ evaluate env term =
 
     Syntax.Con con ->
       pure $ makeCon con
+
+    Syntax.Int int ->
+      pure $ makeInt int
 
     Syntax.Meta index ->
       pure $ makeMeta index mempty
@@ -309,17 +329,29 @@ evaluate env term =
     Syntax.Case scrutinee branches defaultBranch ->
       makeCase <$>
         evaluate env scrutinee <*>
-        mapM (mapM $ evaluateBranch env) branches <*>
+        evaluateBranches env branches <*>
         mapM (evaluate env) defaultBranch
 
     Syntax.Spanned span term' ->
       makeSpanned span <$> evaluate env term'
 
-evaluateBranch
+evaluateBranches
+  :: Domain.Environment v
+  -> Syntax.Branches v
+  -> M Branches
+evaluateBranches env branches =
+  case branches of
+    Syntax.ConstructorBranches constructorBranches ->
+      ConstructorBranches <$> mapM (mapM $ evaluateTelescope env) constructorBranches
+
+    Syntax.LiteralBranches literalBranches ->
+      LiteralBranches <$> mapM (mapM $ evaluate env) literalBranches
+
+evaluateTelescope
   :: Domain.Environment v
   -> Telescope Syntax.Type Syntax.Term v
   -> M ([(Binding, Var, Type, Plicity)], Value)
-evaluateBranch env tele =
+evaluateTelescope env tele =
   case tele of
     Telescope.Empty body -> do
       body' <- evaluate env body
@@ -328,7 +360,7 @@ evaluateBranch env tele =
     Telescope.Extend name type_ plicity tele' -> do
       type' <- evaluate env type_
       (env', var) <- Environment.extend env
-      (bindings, body) <- evaluateBranch env' tele'
+      (bindings, body) <- evaluateTelescope env' tele'
       pure ((name, var, type', plicity):bindings, body)
 
 readback :: Domain.Environment v -> (Meta.Index -> (Var, [Maybe var])) -> Value -> Syntax.Term v
@@ -344,6 +376,9 @@ readback env metas (Value value occs) =
 
     Con con ->
       Syntax.Con con
+
+    Int int ->
+      Syntax.Int int
 
     Meta index arguments ->
       let
@@ -389,19 +424,34 @@ readback env metas (Value value occs) =
     Case scrutinee branches defaultBranch ->
       Syntax.Case
         (readback env metas scrutinee)
-        (map (map $ uncurry $ readbackBranch env metas) branches)
+        (readbackBranches env metas branches)
         (readback env metas <$> defaultBranch)
 
     Spanned span value' ->
       Syntax.Spanned span (readback env metas (Value value' occs))
 
-readbackBranch
+readbackBranches
+  :: Domain.Environment v
+  -> (Meta.Index -> (Var, [Maybe var]))
+  -> Branches
+  -> Syntax.Branches v
+readbackBranches env metas branches =
+  case branches of
+    ConstructorBranches constructorBranches ->
+      Syntax.ConstructorBranches $
+        fmap (uncurry $ readbackTelescope env metas) <$> constructorBranches
+
+    LiteralBranches literalBranches ->
+      Syntax.LiteralBranches $
+        fmap (readback env metas) <$> literalBranches
+
+readbackTelescope
   :: Domain.Environment v
   -> (Meta.Index -> (Var, [Maybe var]))
   -> [(Binding, Var, Type, Plicity)]
   -> Value
   -> Telescope Syntax.Type Syntax.Term v
-readbackBranch env metas bindings body =
+readbackTelescope env metas bindings body =
   case bindings of
     [] ->
       Telescope.Empty $ readback env metas body
@@ -410,7 +460,7 @@ readbackBranch env metas bindings body =
       let
         env' =
           Environment.extendVar env var
-      Telescope.Extend name (readback env metas type_) plicity (readbackBranch env' metas bindings' body)
+      Telescope.Extend name (readback env metas type_) plicity (readbackTelescope env' metas bindings' body)
 
 inlineArguments
   :: Value
@@ -475,6 +525,9 @@ substitute subst
         Con _ ->
           value
 
+        Int _ ->
+          value
+
         Meta index args ->
           makeMeta index $ go <$> args
 
@@ -496,14 +549,20 @@ substitute subst
         Case scrutinee branches defaultBranch ->
           makeCase
             (go scrutinee)
-            (foreach branches $ \(span, (bindings, body)) ->
-              ( span
-              , ( [ (name, var, go type_, plicity)
-                  | (name, var, type_, plicity) <- bindings
-                  ]
-                , go body
-                )
-              )
+            (case branches of
+              ConstructorBranches constructorBranches ->
+                ConstructorBranches $
+                  foreach constructorBranches $ \(span, (bindings, body)) ->
+                    ( span
+                    , ( [ (name, var, go type_, plicity)
+                        | (name, var, type_, plicity) <- bindings
+                        ]
+                      , go body
+                      )
+                    )
+              LiteralBranches literalBranches ->
+                LiteralBranches $
+                  foreach literalBranches $ second go
             )
             (go <$> defaultBranch)
 
@@ -575,6 +634,9 @@ inlineIndex index targetScope solution@ ~(solutionVar, varArgs, solutionValue, s
       Con _ ->
         pure value
 
+      Int _ ->
+        pure value
+
       Meta index' args
         | index == index' -> do
           modified
@@ -618,21 +680,26 @@ inlineIndex index targetScope solution@ ~(solutionVar, varArgs, solutionValue, s
 
       Case scrutinee branches defaultBranch -> do
         scrutinee' <- recurse scrutinee
-        branches' <- forM branches $ \(span, (bindings, body)) -> do
-          let
-            go targetScope' bindings' =
-              case bindings' of
-                [] -> do
-                  body' <- sharing body $ inlineIndex index targetScope' solution body
-                  pure ([], body')
+        branches' <- case branches of
+          ConstructorBranches constructorBranches ->
+            fmap ConstructorBranches $ forM constructorBranches $ \(span, (bindings, body)) -> do
+              let
+                go targetScope' bindings' =
+                  case bindings' of
+                    [] -> do
+                      body' <- sharing body $ inlineIndex index targetScope' solution body
+                      pure ([], body')
 
-                (name, var, type_, plicity):bindings'' -> do
-                  type' <- sharing type_ $ inlineIndex index targetScope' solution type_
-                  (bindings''', body') <- go (IntSet.delete var targetScope') bindings''
-                  pure ((name, var, type', plicity):bindings''', body')
+                    (name, var, type_, plicity):bindings'' -> do
+                      type' <- sharing type_ $ inlineIndex index targetScope' solution type_
+                      (bindings''', body') <- go (IntSet.delete var targetScope') bindings''
+                      pure ((name, var, type', plicity):bindings''', body')
 
-          (bindings', body') <- go targetScope bindings
-          pure (span, (bindings', body'))
+              (bindings', body') <- go targetScope bindings
+              pure (span, (bindings', body'))
+
+          LiteralBranches literalBranches ->
+            fmap LiteralBranches $ mapM (mapM recurse) literalBranches
         defaultBranch' <- forM defaultBranch recurse
         pure $ makeCase scrutinee' branches' defaultBranch'
 

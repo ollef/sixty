@@ -68,6 +68,7 @@ data Value
   = Var !Var
   | Global !Name.Qualified
   | Con !Name.QualifiedConstructor
+  | Int !Integer
   | Meta !Meta.Index
   | Let !Binding !Var !Value !Type !Value
   | Pi !Binding !Var !Type !Plicity !Type
@@ -80,7 +81,10 @@ data Value
 
 type Environment = Environment.Environment Value
 
-type Branches = HashMap Name.QualifiedConstructor ([Span.Relative], ([(Binding, Var, Type, Plicity)], Value))
+data Branches
+  = ConstructorBranches (HashMap Name.QualifiedConstructor ([Span.Relative], ([(Binding, Var, Type, Plicity)], Value)))
+  | LiteralBranches (HashMap Integer ([Span.Relative], Value))
+  deriving Show
 
 type Type = Value
 
@@ -107,6 +111,9 @@ evaluate dup env term =
 
     Syntax.Con con ->
       pure $ Con con
+
+    Syntax.Int int ->
+      pure $ Int int
 
     Syntax.Meta meta ->
       pure $ Meta meta
@@ -148,18 +155,31 @@ evaluate dup env term =
       scrutinee' <- evaluate dup env scrutinee
       -- TODO choose branch if variable is inlined to constructor
       Case scrutinee' <$>
-        mapM (mapM $ evaluateBranch dup env) branches <*>
+        evaluateBranches dup env branches <*>
         mapM (evaluate dup env) defaultBranch
 
     Syntax.Spanned span term' ->
       Spanned span <$> evaluate dup env term'
 
-evaluateBranch
+evaluateBranches
+  :: Duplicable
+  -> Environment v
+  -> Syntax.Branches v
+  -> M Branches
+evaluateBranches dup env branches =
+  case branches of
+    Syntax.ConstructorBranches constructorBranches ->
+      ConstructorBranches <$> mapM (mapM $ evaluateTelescope dup env) constructorBranches
+
+    Syntax.LiteralBranches literalBranches ->
+      LiteralBranches <$> mapM (mapM $ evaluate dup env) literalBranches
+
+evaluateTelescope
   :: Duplicable
   -> Environment v
   -> Telescope Syntax.Type Syntax.Term v
   -> M ([(Binding, Var, Type, Plicity)], Value)
-evaluateBranch dup env tele =
+evaluateTelescope dup env tele =
   case tele of
     Telescope.Empty body -> do
       body' <- evaluate dup env body
@@ -168,7 +188,7 @@ evaluateBranch dup env tele =
     Telescope.Extend name type_ plicity tele' -> do
       type' <- evaluate dup env type_
       (env', var) <- Environment.extend env
-      (bindings, body) <- evaluateBranch dup env' tele'
+      (bindings, body) <- evaluateTelescope dup env' tele'
       pure ((name, var, type', plicity):bindings, body)
 
 readback :: Environment v -> Value -> Syntax.Term v
@@ -187,6 +207,9 @@ readback env value =
 
     Con con ->
       Syntax.Con con
+
+    Int int ->
+      Syntax.Int int
 
     Meta meta ->
       Syntax.Meta meta
@@ -218,18 +241,32 @@ readback env value =
     Case scrutinee branches defaultBranch ->
       Syntax.Case
         (readback env scrutinee)
-        (map (map $ uncurry $ readbackBranch env) branches)
+        (readbackBranches env branches)
         (map (readback env) defaultBranch)
 
     Spanned span value' ->
       Syntax.Spanned span (readback env value')
 
-readbackBranch
+readbackBranches
+  :: Environment v
+  -> Branches
+  -> Syntax.Branches v
+readbackBranches env branches =
+  case branches of
+    ConstructorBranches constructorBranches ->
+      Syntax.ConstructorBranches $
+        map (uncurry $ readbackTelescope env) <$> constructorBranches
+
+    LiteralBranches literalBranches ->
+      Syntax.LiteralBranches $
+        map (readback env) <$> literalBranches
+
+readbackTelescope
   :: Environment v
   -> [(Binding, Var, Type, Plicity)]
   -> Value
   -> Telescope Syntax.Type Syntax.Term v
-readbackBranch env bindings body =
+readbackTelescope env bindings body =
   case bindings of
     [] ->
       Telescope.Empty $ readback env body
@@ -238,7 +275,7 @@ readbackBranch env bindings body =
       let
         env' =
           Environment.extendVar env var
-      Telescope.Extend name (readback env type_) plicity (readbackBranch env' bindings' body)
+      Telescope.Extend name (readback env type_) plicity (readbackTelescope env' bindings' body)
 
 duplicable :: Syntax.Term v -> Bool
 duplicable term =
@@ -250,6 +287,9 @@ duplicable term =
       True
 
     Syntax.Con {} ->
+      True
+
+    Syntax.Int {} ->
       True
 
     Syntax.Meta {} ->

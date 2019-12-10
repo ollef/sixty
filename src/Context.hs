@@ -309,6 +309,9 @@ dependencies context value = do
       hdVars <- headVars hd
       pure $ hdVars <> fold spineVars
 
+    Domain.Int _ ->
+      pure mempty
+
     Domain.Glued (Domain.Global _) spine _ -> do
       spineVars <- mapM (dependencies context . snd) spine
       pure $ fold spineVars
@@ -331,8 +334,8 @@ dependencies context value = do
     Domain.Case scrutinee (Domain.Branches env branches defaultBranch) -> do
       scrutineeVars <- dependencies context scrutinee
       defaultBranchVars <- mapM (dependencies context <=< lift . Evaluation.evaluate env) defaultBranch
-      brVars <- mapM (branchVars context env . snd) (HashMap.elems branches)
-      pure $ scrutineeVars <> fold defaultBranchVars <> fold brVars
+      brVars <- branchVars context env branches
+      pure $ scrutineeVars <> fold defaultBranchVars <> brVars
 
   where
     abstractionDependencies binding type' closure = do
@@ -373,9 +376,25 @@ dependencies context value = do
     branchVars
       :: Context v
       -> Domain.Environment v'
+      -> Syntax.Branches v'
+      -> StateT (IntMap Var (IntSet Var)) M (IntSet Var)
+    branchVars context' env branches =
+      fold <$>
+        case branches of
+          Syntax.ConstructorBranches constructorBranches ->
+            mapM (telescopeVars context' env . snd) $ toList constructorBranches
+
+          Syntax.LiteralBranches literalBranches ->
+            forM (toList literalBranches) $ \(_, branch) -> do
+              branch' <- lift $ Evaluation.evaluate env branch
+              dependencies context' branch'
+
+    telescopeVars
+      :: Context v
+      -> Domain.Environment v'
       -> Telescope Syntax.Type Syntax.Term v'
       -> StateT (IntMap Var (IntSet Var)) M (IntSet Var)
-    branchVars context' env tele =
+    telescopeVars context' env tele =
       case tele of
         Telescope.Empty body -> do
           body' <- lift $ Evaluation.evaluate env body
@@ -389,7 +408,7 @@ dependencies context value = do
             env' =
               Environment.extendVar env var
 
-          rest <- branchVars context'' env' tele'
+          rest <- telescopeVars context'' env' tele'
           pure $ domainVars <> IntSet.delete var rest
 
 lookupNameVar :: Name.Pre -> Context v -> Maybe Var
@@ -528,9 +547,13 @@ forceHead context value =
 
     Domain.Case scrutinee branches@(Domain.Branches branchEnv brs defaultBranch) -> do
       scrutinee' <- forceHead context scrutinee
-      case scrutinee' of
-        Domain.Neutral (Domain.Con constr) spine -> do
-          value' <- Evaluation.chooseBranch branchEnv constr (toList spine) brs defaultBranch
+      case (scrutinee', brs) of
+        (Domain.Neutral (Domain.Con constr) spine, Syntax.ConstructorBranches constructorBranches) -> do
+          value' <- Evaluation.chooseConstructorBranch branchEnv constr (toList spine) constructorBranches defaultBranch
+          forceHead context value'
+
+        (Domain.Int int, Syntax.LiteralBranches literalBranches) -> do
+          value' <- Evaluation.chooseLiteralBranch branchEnv int literalBranches defaultBranch
           forceHead context value'
 
         _ ->
@@ -570,9 +593,13 @@ forceHeadGlue context value =
 
     Domain.Case scrutinee branches@(Domain.Branches branchEnv brs defaultBranch) -> do
       scrutinee' <- forceHead context scrutinee
-      case scrutinee' of
-        Domain.Neutral (Domain.Con constr) spine -> do
-          value' <- Evaluation.chooseBranch branchEnv constr (toList spine) brs defaultBranch
+      case (scrutinee', brs) of
+        (Domain.Neutral (Domain.Con constr) spine, Syntax.ConstructorBranches constructorBranches) -> do
+          value' <- Evaluation.chooseConstructorBranch branchEnv constr (toList spine) constructorBranches defaultBranch
+          forceHeadGlue context value'
+
+        (Domain.Int int, Syntax.LiteralBranches literalBranches) -> do
+          value' <- Evaluation.chooseLiteralBranch branchEnv int literalBranches defaultBranch
           forceHeadGlue context value'
 
         _ ->

@@ -23,6 +23,7 @@ data Term v
   = Var !(Index v)
   | Global !Name.Qualified
   | Con !Name.QualifiedConstructor
+  | Int !Integer
   | Meta !Meta.Index
   | Let !Binding !(Term v) !(Type v) !(Scope Term v)
   | Pi !Binding !(Type v) !Plicity !(Scope Type v)
@@ -35,7 +36,15 @@ data Term v
 
 type Type = Term
 
-type Branches v = HashMap Name.QualifiedConstructor ([Span.Relative], Telescope Type Term v)
+data Branches v
+  = ConstructorBranches (ConstructorBranches v)
+  | LiteralBranches (LiteralBranches v)
+  deriving (Eq, Show, Generic, Hashable)
+
+type ConstructorBranches v =
+  HashMap Name.QualifiedConstructor ([Span.Relative], Telescope Type Term v)
+
+type LiteralBranches v = HashMap Integer ([Span.Relative], Term v)
 
 implicitPi :: Binding -> Type v -> Plicity -> Scope Type v -> Type v
 implicitPi name type_ plicity =

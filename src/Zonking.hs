@@ -57,6 +57,9 @@ zonk env metas term =
     Syntax.Con _ ->
       pure $ Right term
 
+    Syntax.Int _ ->
+      pure $ Right term
+
     Syntax.Meta i -> do
       maybeTerm <- metas i
       case maybeTerm of
@@ -113,7 +116,7 @@ zonk env metas term =
     Syntax.Case scrutinee branches defaultBranch -> do
       result <- Syntax.Case <$>
         zonkTerm env metas scrutinee <*>
-        forM branches (mapM $ zonkBranch env metas ) <*>
+        zonkBranches env metas branches <*>
         forM defaultBranch (zonkTerm env metas)
       pure $ Right result
 
@@ -121,12 +124,25 @@ zonk env metas term =
       result <- zonk env metas term'
       pure $ Syntax.Spanned span <$> result
 
-zonkBranch
+zonkBranches
+  :: Domain.Environment v
+  -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> Syntax.Branches v
+  -> M (Syntax.Branches v)
+zonkBranches env metas branches =
+  case branches of
+    Syntax.ConstructorBranches constructorBranches ->
+      Syntax.ConstructorBranches <$> mapM (mapM $ zonkTelescope env metas) constructorBranches
+
+    Syntax.LiteralBranches literalBranches ->
+      Syntax.LiteralBranches <$> mapM (mapM $ zonkTerm env metas) literalBranches
+
+zonkTelescope
   :: Domain.Environment v
   -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
   -> Telescope Syntax.Type Syntax.Term v
   -> M (Telescope Syntax.Type Syntax.Term v)
-zonkBranch env metas tele =
+zonkTelescope env metas tele =
   case tele of
     Telescope.Empty branch ->
       Telescope.Empty <$> zonkTerm env metas branch
@@ -136,4 +152,4 @@ zonkBranch env metas tele =
       Telescope.Extend binding <$>
         zonkTerm env metas type_ <*>
         pure plicity <*>
-        zonkBranch env' metas tele'
+        zonkTelescope env' metas tele'
