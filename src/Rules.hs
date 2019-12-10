@@ -212,7 +212,7 @@ rules files readFile_ (Writer (Writer query)) =
 
                 Scope.Definition -> do
                   mtype <- fetch $ ParsedDefinition module_ $ Mapped.Query (Scope.Type, name)
-                  forM mtype $ \_ -> do
+                  forM mtype $ \_ ->
                     fetch $ ElaboratedType qualifiedName
 
             case mtype of
@@ -274,7 +274,7 @@ rules files readFile_ (Writer (Writer query)) =
           Nothing ->
             pure (Nothing, mempty)
 
-          Just (def, type_, metaVars) -> do
+          Just (def, type_, metaVars) ->
             runElaborator defKey $
               Elaboration.checkDefinitionMetaSolutions defKey def type_ metaVars
 

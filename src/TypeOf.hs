@@ -106,7 +106,7 @@ typeOfHead context hd =
       Evaluation.evaluate (Environment.empty $ Context.scopeKey context) type_
 
 typeOfApplication :: Context v -> Domain.Type -> Domain.Spine -> M Domain.Type
-typeOfApplication context type_ spine = do
+typeOfApplication context type_ spine =
   case spine of
     Tsil.Empty ->
       pure type_

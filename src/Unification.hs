@@ -294,7 +294,7 @@ unifyBranches
   outerContext
   flexibility
   (Domain.Branches outerEnv1 branches1 defaultBranch1)
-  (Domain.Branches outerEnv2 branches2 defaultBranch2) = do
+  (Domain.Branches outerEnv2 branches2 defaultBranch2) =
     case (branches1, branches2) of
       (Syntax.ConstructorBranches conBranches1, Syntax.ConstructorBranches conBranches2) ->
         unifyMaps conBranches1 conBranches2 $ unifyTele outerContext outerEnv1 outerEnv2
