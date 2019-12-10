@@ -17,7 +17,7 @@ import qualified Span
 import qualified TypeOf
 
 hover :: FilePath -> Position.LineColumn -> Task Query (Maybe (Span.LineColumn, Doc ann))
-hover filePath pos = do
+hover filePath pos =
   CursorAction.cursorAction filePath pos $ \item lineColumn ->
     case item of
       CursorAction.Term _ context _ term -> do
