@@ -104,7 +104,7 @@ bindingSpan var position intervals =
         befores =
           List.takeWhile ((<= position) . spanStart) sortedBindingSpans
 
-      head $ reverse befores
+      lastMay befores
 
 varSpans :: Var -> Position.Relative -> Intervals -> [Span.Relative]
 varSpans var position intervals = do
