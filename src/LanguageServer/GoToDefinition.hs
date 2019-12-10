@@ -1,4 +1,5 @@
 {-# language FlexibleContexts #-}
+{-# language LambdaCase #-}
 {-# language OverloadedStrings #-}
 module LanguageServer.GoToDefinition where
 
@@ -61,41 +62,40 @@ goToDefinition filePath (Position.LineColumn line column) = do
         items =
           Intervals.intersect relativePos occurrenceIntervals
 
-      asum $ foreach items $ \item ->
-        case item of
-          Intervals.Var var -> do
-            toLineColumns <- LineColumns.fromKeyedName $ Scope.KeyedName key $ Name.Qualified moduleName name
-            MaybeT $ pure $ (,) filePath . toLineColumns <$> Intervals.bindingSpan var relativePos occurrenceIntervals
+      asum $ foreach items $ \case
+        Intervals.Var var -> do
+          toLineColumns <- LineColumns.fromKeyedName $ Scope.KeyedName key $ Name.Qualified moduleName name
+          MaybeT $ pure $ (,) filePath . toLineColumns <$> Intervals.bindingSpan var relativePos occurrenceIntervals
 
-          Intervals.Global qualifiedName@(Name.Qualified definingModule _)  ->
-            asum $ foreach [Scope.Type, Scope.Definition] $ \definingKey -> do
-              relativeSpans <- Occurrences.definitionNameSpans definingKey qualifiedName
+        Intervals.Global qualifiedName@(Name.Qualified definingModule _)  ->
+          asum $ foreach [Scope.Type, Scope.Definition] $ \definingKey -> do
+            relativeSpans <- Occurrences.definitionNameSpans definingKey qualifiedName
 
-              maybeDefiningFile <- fetch $ Query.ModuleFile $ Mapped.Query definingModule
-              case maybeDefiningFile of
-                Nothing ->
-                  empty
-
-                Just definingFile -> do
-                  toLineColumns <- LineColumns.fromKeyedName $ Scope.KeyedName definingKey qualifiedName
-                  asum $ pure . (,) definingFile . toLineColumns <$> relativeSpans
-
-          Intervals.Con constr@(Name.QualifiedConstructor qualifiedName@(Name.Qualified definingModule _) _) -> do
-            relativeSpans <- Occurrences.definitionConstructorSpans Scope.Definition qualifiedName
             maybeDefiningFile <- fetch $ Query.ModuleFile $ Mapped.Query definingModule
             case maybeDefiningFile of
               Nothing ->
                 empty
 
               Just definingFile -> do
-                toLineColumns <- LineColumns.fromKeyedName $ Scope.KeyedName key qualifiedName
-                asum $ pure <$>
-                  mapMaybe
-                    (\(constrSpan, constr') ->
-                      if constr == constr' then
-                        Just (definingFile, toLineColumns constrSpan)
-                      else
-                        Nothing
-                    )
-                    relativeSpans
+                toLineColumns <- LineColumns.fromKeyedName $ Scope.KeyedName definingKey qualifiedName
+                asum $ pure . (,) definingFile . toLineColumns <$> relativeSpans
+
+        Intervals.Con constr@(Name.QualifiedConstructor qualifiedName@(Name.Qualified definingModule _) _) -> do
+          relativeSpans <- Occurrences.definitionConstructorSpans Scope.Definition qualifiedName
+          maybeDefiningFile <- fetch $ Query.ModuleFile $ Mapped.Query definingModule
+          case maybeDefiningFile of
+            Nothing ->
+              empty
+
+            Just definingFile -> do
+              toLineColumns <- LineColumns.fromKeyedName $ Scope.KeyedName key qualifiedName
+              asum $ pure <$>
+                mapMaybe
+                  (\(constrSpan, constr') ->
+                    if constr == constr' then
+                      Just (definingFile, toLineColumns constrSpan)
+                    else
+                      Nothing
+                  )
+                  relativeSpans
     )
