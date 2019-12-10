@@ -78,7 +78,7 @@ goToDefinition filePath (Position.LineColumn line column) = do
 
                 Just definingFile -> do
                   toLineColumns <- LineColumns.fromKeyedName $ Scope.KeyedName definingKey qualifiedName
-                  asum $ pure <$> (,) definingFile . toLineColumns <$> relativeSpans
+                  asum $ pure . (,) definingFile . toLineColumns <$> relativeSpans
 
           Intervals.Con constr@(Name.QualifiedConstructor qualifiedName@(Name.Qualified definingModule _) _) -> do
             relativeSpans <- Occurrences.definitionConstructorSpans Scope.Definition qualifiedName
