@@ -79,7 +79,7 @@ cursorAction filePath (Position.LineColumn line column) k = do
 
     toLineColumns <- LineColumns.fromAbsolute moduleName
     asum $
-      (foreach (HashMap.toList spans) $ \((key, name), span@(Span.Absolute defPos _)) -> do
+      foreach (HashMap.toList spans) (\((key, name), span@(Span.Absolute defPos _)) -> do
         guard $ span `Span.contains` pos
         let
           qualifiedName =
@@ -101,7 +101,7 @@ cursorAction filePath (Position.LineColumn line column) k = do
           key
           qualifiedName
       ) <>
-      (foreach (Module._imports moduleHeader) $ \import_ -> do
+      foreach (Module._imports moduleHeader) (\import_ -> do
         let
           span =
             Module._span import_
@@ -179,11 +179,11 @@ definitionAction k env key qualifiedName =
       constructorSpans <- Occurrences.definitionConstructorSpans key qualifiedName
       spans <- Occurrences.definitionNameSpans key qualifiedName
       asum $
-        (foreach constructorSpans $ \(span, constr) -> do
+        foreach constructorSpans (\(span, constr) -> do
           guard $ span `Span.relativeContains` _actionPosition env
           k DefinitionContext env (Syntax.Con constr) span
         ) <>
-        (foreach spans $ \span -> do
+        foreach spans (\span -> do
           guard $ span `Span.relativeContains` _actionPosition env
           k DefinitionContext env (Syntax.Global qualifiedName) span
         )
@@ -284,7 +284,7 @@ constructorBranchAction
   -> (Name.QualifiedConstructor, ([Span.Relative], Telescope Syntax.Type Syntax.Term v))
   -> MaybeT M a
 constructorBranchAction k env scrutinee (constr@(Name.QualifiedConstructor typeName _), (spans, tele)) =
-  (asum $ foreach spans $ \span -> do
+  asum (foreach spans $ \span -> do
       guard $ any (`Span.relativeContains` _actionPosition env) spans
       scrutinee' <- lift $ Elaboration.evaluate (_context env) scrutinee
       scrutineeType <- lift $ TypeOf.typeOf (_context env) scrutinee'
