@@ -16,27 +16,12 @@ import qualified Span
 import Span (LineColumn(LineColumns))
 
 fromKeyedName :: MonadFetch Query m => Scope.KeyedName -> m (Span.Relative -> Span.LineColumn)
-fromKeyedName keyedName = do
-  (filePath, Span.Absolute absolutePosition _) <-
+fromKeyedName keyedName@(Scope.KeyedName _ (Name.Qualified moduleName _)) = do
+  (_, Span.Absolute absolutePosition _) <-
     fetch $ Query.KeyedNameSpan keyedName
 
-  contents <- fetch $ Query.FileText filePath
-  let
-    -- TODO use the rope that we get from the LSP library instead
-    rope =
-      Rope.fromText contents
-
-    toLineColumn (Position.Absolute i) =
-      let
-        rope' =
-          Rope.take i rope
-      in
-      Position.LineColumn (Rope.rows rope') (Rope.columns rope')
-
-    toLineColumns (Span.Absolute start end) =
-      Span.LineColumns (toLineColumn start) (toLineColumn end)
-
-  return $ toLineColumns . Span.absoluteFrom absolutePosition
+  toLineColumns <- fromAbsolute moduleName
+  pure $ toLineColumns . Span.absoluteFrom absolutePosition
 
 fromAbsolute :: MonadFetch Query m => Name.Module -> m (Span.Absolute -> Span.LineColumn)
 fromAbsolute moduleName = do
