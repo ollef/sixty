@@ -35,7 +35,7 @@ references filePath (Position.LineColumn line column) = do
         if mightUseDefiningModule moduleName header then do
           spans <- fetch $ Query.ModuleSpanMap moduleName
           toLineColumns <- LineColumns.fromAbsolute moduleName
-          fmap concat $ forM (HashMap.toList spans) $ \((key, name), (Span.Absolute defPos _)) -> do
+          fmap concat $ forM (HashMap.toList spans) $ \((key, name), Span.Absolute defPos _) -> do
             occurrenceIntervals <- fetch $
               Query.Occurrences $
               Scope.KeyedName key $
