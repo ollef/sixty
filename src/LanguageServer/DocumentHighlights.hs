@@ -35,7 +35,7 @@ highlights filePath (Position.LineColumn line column) = do
 
   let
     itemSpans item =
-      fmap concat $ forM (HashMap.toList spans) $ \((key, name), (Span.Absolute defPos _)) -> do
+      fmap concat $ forM (HashMap.toList spans) $ \((key, name), Span.Absolute defPos _) -> do
         occurrenceIntervals <- fetch $
           Query.Occurrences $
           Scope.KeyedName key $
