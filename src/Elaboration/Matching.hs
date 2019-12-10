@@ -589,31 +589,21 @@ matchPrepatterns context values patterns type_ =
 
     (_, (Constraint, value):values') -> do
       type' <- Context.forceHead context type_
-      case type' of
-        Domain.Pi _ domain Constraint targetClosure -> do
-          target <- Evaluation.evaluateClosure targetClosure value
-          (matches, type'') <-
-            matchPrepatterns
-              context
-              values'
-              patterns
-              target
+      let
+        go domain target = do
+          (matches, type'') <- matchPrepatterns context values' patterns target
           let
             pattern_ =
               Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern
           pure (Match value value Constraint pattern_ domain : matches, type'')
 
-        Domain.Fun domain Constraint target -> do
-          (matches, type'') <-
-            matchPrepatterns
-              context
-              values'
-              patterns
-              target
-          let
-            pattern_ =
-              Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern
-          pure (Match value value Constraint pattern_ domain : matches, type'')
+      case type' of
+        Domain.Pi _ domain Constraint targetClosure -> do
+          target <- Evaluation.evaluateClosure targetClosure value
+          go domain target
+
+        Domain.Fun domain Constraint target ->
+          go domain target
 
         _ ->
           panic "matchPrepatterns constraint non-pi"
