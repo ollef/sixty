@@ -101,7 +101,7 @@ questionMark filePath (Position.LineColumn line column) =
 
 
           pure $ case maybeArgs of
-            Nothing -> do
+            Nothing ->
               -- typeUnderCursor' <- Elaboration.readback context typeUnderCursor
               -- type' <- Elaboration.readback context type_
               -- prettyType <- Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context type'
