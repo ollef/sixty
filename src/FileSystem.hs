@@ -1,8 +1,6 @@
-{-# language DeriveFoldable #-}
 {-# language DeriveFunctor #-}
 {-# language DeriveTraversable #-}
 {-# language GeneralizedNewtypeDeriving #-}
-{-# language OverloadedStrings #-}
 {-# language ScopedTypeVariables #-}
 module FileSystem where
 

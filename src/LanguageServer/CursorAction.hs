@@ -1,6 +1,5 @@
 {-# language FlexibleContexts #-}
 {-# language GADTs #-}
-{-# language OverloadedStrings #-}
 {-# language RankNTypes #-}
 {-# language ScopedTypeVariables #-}
 module LanguageServer.CursorAction where

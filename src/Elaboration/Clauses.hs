@@ -1,6 +1,5 @@
 {-# language DuplicateRecordFields #-}
 {-# language ViewPatterns #-}
-{-# language OverloadedStrings #-}
 module Elaboration.Clauses where
 
 import Protolude hiding (check, force)

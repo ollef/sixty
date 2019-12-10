@@ -1,6 +1,5 @@
 {-# language DuplicateRecordFields #-}
 {-# language GADTs #-}
-{-# language PackageImports #-}
 {-# language StandaloneDeriving #-}
 module Domain.Showable where
 

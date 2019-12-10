@@ -1,4 +1,3 @@
-{-# language LambdaCase #-}
 {-# language OverloadedStrings #-}
 {-# language PackageImports #-}
 {-# language RankNTypes #-}

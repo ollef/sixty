@@ -1,6 +1,5 @@
 {-# language FlexibleContexts #-}
 {-# language LambdaCase #-}
-{-# language OverloadedStrings #-}
 module LanguageServer.GoToDefinition where
 
 import Protolude hiding (IntMap, evaluate, moduleName)
