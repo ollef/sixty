@@ -21,11 +21,11 @@ instance Pretty Boxity where
       Boxed ->
         "boxed"
 
-prettyAnnotation :: Boxity -> Doc ann
+prettyAnnotation :: Boxity -> Doc ann -> Doc ann
 prettyAnnotation boxity =
   case boxity of
     Unboxed ->
-      ""
+      identity
 
     Boxed ->
-      "boxed"
+      ("boxed" <+>)

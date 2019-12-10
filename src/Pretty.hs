@@ -255,7 +255,7 @@ prettyDefinition env name def =
       prettyGlobal env name <+> "=" <+> prettyTerm 0 env term
 
     Syntax.DataDefinition boxity tele ->
-      Boxity.prettyAnnotation boxity <+> "data" <+> prettyGlobal env name <+> prettyConstructorDefinitions env tele
+      Boxity.prettyAnnotation boxity "data" <+> prettyGlobal env name <+> prettyConstructorDefinitions env tele
 
 prettyConstructorDefinitions
   :: Environment v
