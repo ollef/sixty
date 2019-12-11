@@ -9,6 +9,7 @@ import Data.Tsil (Tsil)
 import qualified Domain
 import qualified Environment
 import Index
+import Literal (Literal)
 import Monad
 import Name (Name)
 import Plicity
@@ -16,7 +17,7 @@ import qualified Syntax
 
 data Value
   = Neutral !Domain.Head Spine
-  | Int !Integer
+  | Lit !Literal
   | Glued !Domain.Head Spine !Value
   | Lam !Name !Type !Plicity !Closure
   | Pi !Name !Type !Plicity !Closure
@@ -46,8 +47,8 @@ to value =
     Domain.Neutral hd spine ->
       Neutral hd <$> mapM (mapM to) spine
 
-    Domain.Int int ->
-      pure $ Int int
+    Domain.Lit lit ->
+      pure $ Lit lit
 
     Domain.Glued hd spine value' ->
       Glued hd <$> mapM (mapM to) spine <*> lazyTo value'

@@ -22,8 +22,8 @@ readback env value =
       hd' <- readbackHead env hd
       readbackSpine hd' spine
 
-    Domain.Int int ->
-      pure $ Syntax.Int int
+    Domain.Lit lit ->
+      pure $ Syntax.Lit lit
 
     Domain.Glued hd spine value' -> do
       maybeHead <- readbackMaybeHead env hd

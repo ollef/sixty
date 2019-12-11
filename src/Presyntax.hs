@@ -9,6 +9,7 @@ import Data.HashMap.Lazy (HashMap)
 
 import Boxity
 import qualified Error.Parsing as Error
+import Literal (Literal)
 import Name (Name)
 import qualified Name
 import Plicity
@@ -26,7 +27,7 @@ unspanned (Term _ term) =
 
 data UnspannedTerm
   = Var !Name.Pre
-  | Int !Integer
+  | Lit !Literal
   | Let !Name !(Maybe (Span.Relative, Type)) [(Span.Relative, Clause)] !Term
   | Pi !Binding !Plicity !Type !Type
   | Fun !Type !Type
@@ -50,7 +51,7 @@ data Pattern
 data UnspannedPattern
   = ConOrVar !Span.Relative !Name.Pre [PlicitPattern]
   | WildcardPattern
-  | IntPattern !Integer
+  | LitPattern !Literal
   | Anno !Pattern !Type
   | Forced !Term
   deriving (Show, Generic, Hashable)

@@ -10,6 +10,7 @@ import qualified Environment
 import Flexibility (Flexibility)
 import qualified Flexibility
 import Index
+import Literal (Literal)
 import qualified Meta
 import Monad
 import Name (Name)
@@ -20,7 +21,7 @@ import Var (Var)
 
 data Value
   = Neutral !Head Spine
-  | Int !Integer
+  | Lit !Literal
   | Glued !Head Spine !(Lazy Value)
   | Lam !Name !Type !Plicity !Closure
   | Pi !Name !Type !Plicity !Closure

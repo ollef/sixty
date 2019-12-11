@@ -18,6 +18,7 @@ import qualified Environment
 import qualified Evaluation
 import Extra (topoSortWith)
 import qualified Index
+import Literal (Literal)
 import Monad
 import qualified Name
 import Plicity
@@ -63,7 +64,7 @@ data InnerValue
   = Var !Var
   | Global !Name.Lifted
   | Con !Name.QualifiedConstructor [(Plicity, Value)]
-  | Int !Integer
+  | Lit !Literal
   | Let !Binding !Var !Value !Type !Value
   | Pi !Binding !Var !Type !Plicity !Type
   | Fun !Type !Plicity !Type
@@ -75,7 +76,7 @@ type Type = Value
 
 data Branches
   = ConstructorBranches (HashMap Name.QualifiedConstructor ([(Binding, Var, Type, Plicity)], Value))
-  | LiteralBranches (HashMap Integer Value)
+  | LiteralBranches (HashMap Literal Value)
   deriving Show
 
 type Occurrences = IntSet Var
@@ -99,9 +100,9 @@ makeCon con args =
   Value (Con con args) $
     foldMap (foldMap occurrences) args
 
-makeInt :: Integer -> Value
-makeInt int =
-  Value (Int int) mempty
+makeLit :: Literal -> Value
+makeLit lit =
+  Value (Lit lit) mempty
 
 makeLet :: Binding -> Var -> Value -> Type -> Value -> Value
 makeLet binding var value type_ body =
@@ -195,8 +196,8 @@ evaluate env term args =
       term' <- lift $ saturatedConstructorApp env con args
       evaluate env term' []
 
-    Syntax.Int int ->
-      pure $ makeInt int
+    Syntax.Lit lit ->
+      pure $ makeLit lit
 
     Syntax.Meta _ ->
       panic "LambdaLifting.evaluate meta"
@@ -445,8 +446,8 @@ readback env (Value value _) =
     Con global args ->
       LambdaLifted.Con global $ second (readback env) <$> args
 
-    Int int ->
-      LambdaLifted.Int int
+    Lit lit ->
+      LambdaLifted.Lit lit
 
     Let name var value' type_ body ->
       LambdaLifted.Let

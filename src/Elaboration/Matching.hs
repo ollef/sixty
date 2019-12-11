@@ -36,6 +36,7 @@ import qualified Environment
 import qualified Error
 import qualified Evaluation
 import qualified Flexibility
+import Literal (Literal)
 import Monad
 import Name (Name(Name))
 import qualified Name
@@ -65,7 +66,7 @@ data Config = Config
 
 type CoveredConstructors = IntMap Var (HashSet Name.QualifiedConstructor)
 
-type CoveredLiterals = IntMap Var (HashSet Integer)
+type CoveredLiterals = IntMap Var (HashSet Literal)
 
 data Clause = Clause
   { _span :: !Span.Relative
@@ -141,7 +142,7 @@ isPatternValue context value = do
     Domain.Neutral (Domain.Meta _) _ ->
       pure False
 
-    Domain.Int _ ->
+    Domain.Lit _ ->
       pure True
 
     Domain.Glued _ _ value'' -> do
@@ -358,8 +359,8 @@ uncoveredScrutineePatterns context coveredConstructors value = do
     Domain.Neutral (Domain.Global _) _ ->
       pure []
 
-    Domain.Int int ->
-      pure [Pattern.Int int]
+    Domain.Lit lit ->
+      pure [Pattern.Lit lit]
 
     Domain.Neutral (Domain.Con constr) spine -> do
       constrTypeTele <- fetch $ Query.ConstructorType constr
@@ -465,8 +466,8 @@ simplifyMatch context coveredConstructors coveredLiterals (Match value forcedVal
         _ ->
           pure [match']
 
-    (Domain.Int int, Presyntax.IntPattern int')
-      | int == int' ->
+    (Domain.Lit lit, Presyntax.LitPattern lit')
+      | lit == lit' ->
         pure []
 
       | otherwise ->
@@ -498,9 +499,9 @@ simplifyMatch context coveredConstructors coveredLiterals (Match value forcedVal
           _ ->
             pure [match']
 
-    (Domain.Neutral (Domain.Var var) Tsil.Empty, Presyntax.IntPattern int)
+    (Domain.Neutral (Domain.Var var) Tsil.Empty, Presyntax.LitPattern lit)
       | Just coveredLits <- IntMap.lookup var coveredLiterals
-      , HashSet.member int coveredLits ->
+      , HashSet.member lit coveredLits ->
         fail "Literal already covered"
 
     _ ->
@@ -730,9 +731,9 @@ splitConstructorOr context config matches k =
           scrutinee
           (Domain.Neutral (Domain.Var var) Tsil.Empty)
           _
-          (Presyntax.Pattern span (Presyntax.IntPattern _))
+          (Presyntax.Pattern span (Presyntax.LitPattern lit))
           type_ ->
-            splitLiteral context config scrutinee var span type_
+            splitLiteral context config scrutinee var span lit type_
 
         _ ->
           splitConstructorOr context config matches' k
@@ -934,21 +935,22 @@ splitLiteral
   -> Domain.Value
   -> Var
   -> Span.Relative
+  -> Literal
   -> Domain.Type
   -> M (Syntax.Term v)
-splitLiteral context config scrutineeValue scrutineeVar span outerType = do
+splitLiteral context config scrutineeValue scrutineeVar span lit outerType = do
   matchedLiterals <-
     HashMap.fromListWith (<>) . concat . takeWhile (not . null) <$>
       mapM
         (findVarLiteralMatches context scrutineeVar . _matches)
         (_clauses config)
 
-  f <- Unification.tryUnify (Context.spanned span context) Builtin.Int outerType
+  f <- Unification.tryUnify (Context.spanned span context) (Elaboration.inferLiteral lit) outerType
 
   branches <- flip HashMap.traverseWithKey matchedLiterals $ \int spans -> do
     let
       context' =
-        Context.defineWellOrdered context scrutineeVar $ Domain.Int int
+        Context.defineWellOrdered context scrutineeVar $ Domain.Lit int
     result <- elaborate context' config
     pure (spans, f result)
 
@@ -967,15 +969,15 @@ findVarLiteralMatches
   :: Context v
   -> Var
   -> [Match]
-  -> M [(Integer, [Span.Relative])]
+  -> M [(Literal, [Span.Relative])]
 findVarLiteralMatches context var matches =
     case matches of
       [] ->
         pure []
 
-      Match _ (Domain.Neutral (Domain.Var var') Tsil.Empty) _ (Presyntax.Pattern span (Presyntax.IntPattern int)) _:matches'
+      Match _ (Domain.Neutral (Domain.Var var') Tsil.Empty) _ (Presyntax.Pattern span (Presyntax.LitPattern lit)) _:matches'
         | var == var' ->
-          ((int, [span]) :) <$> findVarLiteralMatches context var matches'
+          ((lit, [span]) :) <$> findVarLiteralMatches context var matches'
 
       _:matches' ->
         findVarLiteralMatches context var matches'

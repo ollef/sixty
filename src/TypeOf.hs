@@ -29,8 +29,8 @@ typeOf context value =
       headType <- typeOfHead context hd
       typeOfApplication context headType spine
 
-    Domain.Int _ ->
-      pure Builtin.Int
+    Domain.Lit lit ->
+      pure $ Elaboration.inferLiteral lit
 
     Domain.Glued hd spine _ ->
       typeOf context $ Domain.Neutral hd spine

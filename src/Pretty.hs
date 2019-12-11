@@ -96,8 +96,8 @@ prettyTerm prec env term =
     Syntax.Con constr ->
       prettyConstr env constr
 
-    Syntax.Int int ->
-      pretty int
+    Syntax.Lit lit ->
+      pretty lit
 
     Syntax.Meta index ->
       pretty index
@@ -307,8 +307,8 @@ prettyPattern prec env pattern =
           | (plicity, pattern') <- patterns
           ]
 
-    Pattern.Int int ->
-      pretty int
+    Pattern.Lit lit ->
+      pretty lit
 
 -------------------------------------------------------------------------------
 

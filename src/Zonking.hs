@@ -57,7 +57,7 @@ zonk env metas term =
     Syntax.Con _ ->
       pure $ Right term
 
-    Syntax.Int _ ->
+    Syntax.Lit _ ->
       pure $ Right term
 
     Syntax.Meta i -> do

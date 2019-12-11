@@ -17,7 +17,6 @@ import Binding (Binding)
 import qualified Binding
 import qualified Builtin
 import Context (Context)
-import qualified Substitution
 import qualified Context
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
@@ -34,6 +33,8 @@ import qualified Evaluation
 import qualified Flexibility
 import Index
 import qualified Inlining
+import Literal (Literal)
+import qualified Literal
 import qualified Meta
 import Monad
 import Name (Name)
@@ -45,6 +46,7 @@ import qualified Query
 import qualified Readback
 import qualified Scope
 import qualified Span
+import qualified Substitution
 import qualified Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
@@ -553,8 +555,8 @@ inferUnspanned context term expectedTypeName =
     Presyntax.Var name ->
       inferName context name expectedTypeName
 
-    Presyntax.Int int ->
-      pure (Syntax.Int int, Builtin.Int)
+    Presyntax.Lit lit ->
+      pure (Syntax.Lit lit, inferLiteral lit)
 
     Presyntax.Let name maybeType clauses body -> do
       (context', binding, boundTerm, typeTerm) <- elaborateLet context name maybeType clauses
@@ -752,6 +754,12 @@ inferName context name expectedTypeName =
           Context.report context $ Error.Ambiguous name constrCandidates nameCandidates
           inferenceFailed context
 
+inferLiteral :: Literal -> Domain.Type
+inferLiteral literal =
+  case literal of
+    Literal.Integer _ ->
+      Builtin.Int
+
 inferenceFailed :: Context v -> M (Syntax.Term v, Domain.Type)
 inferenceFailed context = do
   type_ <- Context.newMetaType context
@@ -887,7 +895,7 @@ getExpectedTypeName context type_ = do
     Domain.Neutral {} ->
       pure Nothing
 
-    Domain.Int {} ->
+    Domain.Lit {} ->
       pure Nothing
 
     Domain.Glued _ _ value -> do

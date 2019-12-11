@@ -309,7 +309,7 @@ dependencies context value = do
       hdVars <- headVars hd
       pure $ hdVars <> fold spineVars
 
-    Domain.Int _ ->
+    Domain.Lit _ ->
       pure mempty
 
     Domain.Glued (Domain.Global _) spine _ -> do
@@ -552,8 +552,8 @@ forceHead context value =
           value' <- Evaluation.chooseConstructorBranch branchEnv constr (toList spine) constructorBranches defaultBranch
           forceHead context value'
 
-        (Domain.Int int, Syntax.LiteralBranches literalBranches) -> do
-          value' <- Evaluation.chooseLiteralBranch branchEnv int literalBranches defaultBranch
+        (Domain.Lit lit, Syntax.LiteralBranches literalBranches) -> do
+          value' <- Evaluation.chooseLiteralBranch branchEnv lit literalBranches defaultBranch
           forceHead context value'
 
         _ ->
@@ -598,8 +598,8 @@ forceHeadGlue context value =
           value' <- Evaluation.chooseConstructorBranch branchEnv constr (toList spine) constructorBranches defaultBranch
           forceHeadGlue context value'
 
-        (Domain.Int int, Syntax.LiteralBranches literalBranches) -> do
-          value' <- Evaluation.chooseLiteralBranch branchEnv int literalBranches defaultBranch
+        (Domain.Lit lit, Syntax.LiteralBranches literalBranches) -> do
+          value' <- Evaluation.chooseLiteralBranch branchEnv lit literalBranches defaultBranch
           forceHeadGlue context value'
 
         _ ->

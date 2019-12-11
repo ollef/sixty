@@ -11,7 +11,8 @@ import Protolude hiding (Type, IntMap, IntSet, evaluate)
 import Data.Graph
 import Data.HashMap.Lazy (HashMap)
 
-import "this" Data.IntMap (IntMap)
+import Binding (Binding)
+import Data.IntMap (IntMap)
 import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
 import Data.Tsil (Tsil)
@@ -19,10 +20,10 @@ import qualified Data.Tsil as Tsil
 import qualified Domain
 import qualified Environment
 import Extra
+import Literal (Literal)
 import qualified Meta
 import Monad
 import qualified Name
-import Binding (Binding)
 import Plicity
 import qualified "this" Data.IntMap as IntMap
 import qualified Scope
@@ -142,7 +143,7 @@ data InnerValue
   = Var !Var
   | Global !Name.Qualified
   | Con !Name.QualifiedConstructor
-  | Int !Integer
+  | Lit !Literal
   | Meta !Meta.Index (Tsil Value)
   | Let !Binding !Var !Value !Type !Value
   | Pi !Binding !Var !Type !Plicity !Type
@@ -155,7 +156,7 @@ data InnerValue
 
 data Branches
   = ConstructorBranches (HashMap Name.QualifiedConstructor ([Span.Relative], ([(Binding, Var, Type, Plicity)], Value)))
-  | LiteralBranches (HashMap Integer ([Span.Relative], Value))
+  | LiteralBranches (HashMap Literal ([Span.Relative], Value))
   deriving Show
 
 newtype Occurrences = Occurrences { unoccurrences :: IntMap Meta.Index (Tsil (Maybe Var)) }
@@ -191,9 +192,9 @@ makeCon :: Name.QualifiedConstructor -> Value
 makeCon c =
   Value (Con c) mempty
 
-makeInt :: Integer -> Value
-makeInt int =
-  Value (Int int) mempty
+makeLit :: Literal -> Value
+makeLit lit =
+  Value (Lit lit) mempty
 
 makeMeta :: Meta.Index -> Tsil Value -> Value
 makeMeta index arguments =
@@ -287,8 +288,8 @@ evaluate env term =
     Syntax.Con con ->
       pure $ makeCon con
 
-    Syntax.Int int ->
-      pure $ makeInt int
+    Syntax.Lit lit ->
+      pure $ makeLit lit
 
     Syntax.Meta index ->
       pure $ makeMeta index mempty
@@ -377,8 +378,8 @@ readback env metas (Value value occs) =
     Con con ->
       Syntax.Con con
 
-    Int int ->
-      Syntax.Int int
+    Lit lit ->
+      Syntax.Lit lit
 
     Meta index arguments ->
       let
@@ -525,7 +526,7 @@ substitute subst
         Con _ ->
           value
 
-        Int _ ->
+        Lit _ ->
           value
 
         Meta index args ->
@@ -634,7 +635,7 @@ inlineIndex index targetScope solution@ ~(solutionVar, varArgs, solutionValue, s
       Con _ ->
         pure value
 
-      Int _ ->
+      Lit _ ->
         pure value
 
       Meta index' args

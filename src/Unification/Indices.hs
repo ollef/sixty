@@ -9,6 +9,7 @@ import Protolude hiding (force, IntSet)
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 
+import qualified Binding
 import Context (Context)
 import qualified Context
 import Data.IntSet (IntSet)
@@ -22,7 +23,6 @@ import qualified Flexibility
 import Index
 import qualified Index.Map
 import Monad
-import qualified Binding
 import qualified Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
@@ -297,7 +297,7 @@ occurs context flexibility untouchables value = do
             Flexibility.Flexible ->
               Dunno
 
-    Domain.Int _ ->
+    Domain.Lit _ ->
       pure ()
 
     Domain.Glued (Domain.Var _) _ value'' ->

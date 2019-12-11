@@ -8,6 +8,7 @@ import Data.HashMap.Lazy (HashMap)
 
 import Binding (Binding)
 import Index
+import Literal (Literal)
 import qualified Name
 import Plicity
 import Syntax.Telescope (Telescope)
@@ -16,7 +17,7 @@ data Term v
   = Var !(Index v)
   | Global !Name.Lifted
   | Con !Name.QualifiedConstructor [(Plicity, Term v)]
-  | Int !Integer
+  | Lit !Literal
   | Let !Binding !(Term v) !(Type v) !(Scope Term v)
   | Pi !Binding !(Type v) !Plicity !(Scope Type v)
   | Fun !(Type v) !Plicity !(Type v)
@@ -28,7 +29,7 @@ type Type = Term
 
 data Branches v
   = ConstructorBranches (HashMap Name.QualifiedConstructor (Telescope Type Term v))
-  | LiteralBranches (HashMap Integer (Term v))
+  | LiteralBranches (HashMap Literal (Term v))
   deriving (Eq, Show, Generic, Hashable)
 
 data Definition

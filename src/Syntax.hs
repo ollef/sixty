@@ -11,6 +11,7 @@ import Binding (Binding)
 import Boxity
 import Data.IntMap (IntMap)
 import Data.Tsil (Tsil)
+import Literal (Literal)
 import qualified Data.Tsil as Tsil
 import Index
 import qualified Meta
@@ -23,7 +24,7 @@ data Term v
   = Var !(Index v)
   | Global !Name.Qualified
   | Con !Name.QualifiedConstructor
-  | Int !Integer
+  | Lit !Literal
   | Meta !Meta.Index
   | Let !Binding !(Term v) !(Type v) !(Scope Term v)
   | Pi !Binding !(Type v) !Plicity !(Scope Type v)
@@ -44,7 +45,7 @@ data Branches v
 type ConstructorBranches v =
   HashMap Name.QualifiedConstructor ([Span.Relative], Telescope Type Term v)
 
-type LiteralBranches v = HashMap Integer ([Span.Relative], Term v)
+type LiteralBranches v = HashMap Literal ([Span.Relative], Term v)
 
 implicitPi :: Binding -> Type v -> Plicity -> Scope Type v -> Type v
 implicitPi name type_ plicity =

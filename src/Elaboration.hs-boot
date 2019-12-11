@@ -7,6 +7,7 @@ import Data.Text.Prettyprint.Doc (Doc)
 
 import Context (Context)
 import qualified Domain
+import Literal (Literal)
 import Monad
 import Name (Name)
 import qualified Name
@@ -19,6 +20,8 @@ check
   -> Presyntax.Term
   -> Domain.Type
   -> M (Syntax.Term v)
+
+inferLiteral :: Literal -> Domain.Type
 
 evaluate
   :: Context v

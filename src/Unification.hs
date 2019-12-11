@@ -10,6 +10,7 @@ import qualified Data.HashMap.Lazy as HashMap
 import Rock
 
 import {-# source #-} qualified Elaboration
+import qualified Binding
 import qualified Builtin
 import Context (Context)
 import qualified Context
@@ -27,10 +28,10 @@ import Flexibility (Flexibility)
 import qualified Flexibility
 import Index
 import qualified Index.Map as Index
+import Literal (Literal)
 import qualified Meta
 import Monad
 import qualified Name
-import qualified Binding
 import Plicity
 import qualified Query
 import Readback (readback)
@@ -239,8 +240,8 @@ unify context flexibility value1 value2 = do
           unify context flexibility scrutinee appliedConstr
           unify context flexibility value1 value2
 
-        [Just (Right int)] -> do
-          unify context flexibility scrutinee $ Domain.Int int
+        [Just (Right lit)] -> do
+          unify context flexibility scrutinee $ Domain.Lit lit
           unify context flexibility value1 value2
 
         _ ->
@@ -395,7 +396,7 @@ potentiallyMatchingBranches
   :: Context v
   -> Domain.Value
   -> Domain.Branches
-  -> M [Maybe (Either Name.QualifiedConstructor Integer)]
+  -> M [Maybe (Either Name.QualifiedConstructor Literal)]
 potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv branches defaultBranch) = do
   defaultBranch' <- fmap (catMaybes . toList) $ forM defaultBranch $ \branch -> do
     isMatch <- branchMatches outerContext outerEnv $ Telescope.Empty branch
@@ -638,8 +639,8 @@ checkInnerSolution outerContext occurs env flexibility value = do
     Domain.Neutral hd spine ->
       checkInnerNeutral outerContext occurs env flexibility hd spine
 
-    Domain.Int int ->
-      pure $ Syntax.Int int
+    Domain.Lit lit ->
+      pure $ Syntax.Lit lit
 
     Domain.Glued hd@(Domain.Global _) spine value'' ->
       checkInnerNeutral outerContext occurs env Flexibility.Flexible hd spine `catchError` \_ -> do

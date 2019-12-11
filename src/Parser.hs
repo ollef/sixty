@@ -20,6 +20,8 @@ import qualified Text.Parsix as Parsix
 
 import Boxity
 import qualified Error.Parsing as Error
+import Literal (Literal)
+import qualified Literal
 import qualified Module
 import Name (Name(Name))
 import qualified Name
@@ -273,7 +275,7 @@ atomicPattern =
     ((\(span, name_) -> ConOrVar span name_ mempty) <$> spanned prename
     <|> WildcardPattern <$ reserved "_"
     <|> (\(span, _) -> ConOrVar span "?" mempty) <$> spanned (reserved "?")
-    <|> IntPattern <$> integer
+    <|> LitPattern <$> literal
     <|> Forced <$ symbol "~" <*> atomicTerm
     )
   <?> "pattern"
@@ -301,6 +303,13 @@ plicitPattern =
         )
 
 -------------------------------------------------------------------------------
+-- Literals
+
+literal :: Parser Literal
+literal =
+  Literal.Integer <$> integer
+
+-------------------------------------------------------------------------------
 -- Terms
 
 spannedTerm :: Parser UnspannedTerm -> Parser Term
@@ -320,7 +329,7 @@ atomicTerm =
   <|> spannedTerm
     ( Wildcard <$ (reserved "_" <|> reserved "?")
       <|> Var <$> prename
-      <|> Int <$> integer
+      <|> Lit <$> literal
       <|> Case <$ reserved "case" <*> term <* reserved "of" <*> blockOfMany branch
       <|> unspanned <$>
         ( lams <$ symbol "\\" <*> some (positioned plicitPattern) <* symbol "." <*> term

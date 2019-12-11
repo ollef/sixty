@@ -22,6 +22,8 @@ import qualified Data.IntMap as IntMap
 import qualified Domain
 import qualified Elaboration
 import qualified Index
+import qualified LanguageServer.LineColumns as LineColumns
+import Literal (Literal)
 import qualified Module
 import Monad
 import qualified Name
@@ -38,7 +40,6 @@ import qualified Syntax.Telescope as Telescope
 import qualified TypeOf
 import qualified Var
 import Var (Var)
-import qualified LanguageServer.LineColumns as LineColumns
 
 type Callback a = ItemUnderCursor -> Span.LineColumn -> MaybeT M a
 
@@ -204,7 +205,7 @@ termAction k env term =
     Syntax.Con _ ->
       empty
 
-    Syntax.Int _ ->
+    Syntax.Lit _ ->
       empty
 
     Syntax.Meta _ ->
@@ -303,7 +304,7 @@ constructorBranchAction k env scrutinee (constr@(Name.QualifiedConstructor typeN
 literalBranchAction
   :: RelativeCallback a
   -> Environment v
-  -> (Integer, ([Span.Relative], Syntax.Term v))
+  -> (Literal, ([Span.Relative], Syntax.Term v))
   -> MaybeT M a
 literalBranchAction k env (_, (_, body)) =
   -- TODO use literal

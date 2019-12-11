@@ -7,11 +7,12 @@ import Protolude hiding (Type, IntMap, evaluate, empty)
 
 import Data.HashMap.Lazy (HashMap)
 
+import Binding (Binding)
 import qualified Environment
+import Literal (Literal)
 import qualified Meta
 import Monad
 import qualified Name
-import Binding (Binding)
 import Plicity
 import qualified Scope
 import qualified Span
@@ -68,7 +69,7 @@ data Value
   = Var !Var
   | Global !Name.Qualified
   | Con !Name.QualifiedConstructor
-  | Int !Integer
+  | Lit !Literal
   | Meta !Meta.Index
   | Let !Binding !Var !Value !Type !Value
   | Pi !Binding !Var !Type !Plicity !Type
@@ -83,7 +84,7 @@ type Environment = Environment.Environment Value
 
 data Branches
   = ConstructorBranches (HashMap Name.QualifiedConstructor ([Span.Relative], ([(Binding, Var, Type, Plicity)], Value)))
-  | LiteralBranches (HashMap Integer ([Span.Relative], Value))
+  | LiteralBranches (HashMap Literal ([Span.Relative], Value))
   deriving Show
 
 type Type = Value
@@ -112,8 +113,8 @@ evaluate dup env term =
     Syntax.Con con ->
       pure $ Con con
 
-    Syntax.Int int ->
-      pure $ Int int
+    Syntax.Lit lit ->
+      pure $ Lit lit
 
     Syntax.Meta meta ->
       pure $ Meta meta
@@ -208,8 +209,8 @@ readback env value =
     Con con ->
       Syntax.Con con
 
-    Int int ->
-      Syntax.Int int
+    Lit lit ->
+      Syntax.Lit lit
 
     Meta meta ->
       Syntax.Meta meta
@@ -289,7 +290,7 @@ duplicable term =
     Syntax.Con {} ->
       True
 
-    Syntax.Int {} ->
+    Syntax.Lit {} ->
       True
 
     Syntax.Meta {} ->

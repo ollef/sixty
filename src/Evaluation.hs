@@ -7,14 +7,15 @@ import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Rock
 
+import qualified Binding
 import qualified Data.Tsil as Tsil
 import qualified Domain
 import qualified Domain.Telescope as Domain (Telescope)
 import qualified Domain.Telescope
 import qualified Environment
+import Literal (Literal)
 import Monad
 import qualified Name
-import qualified Binding
 import Plicity
 import qualified Query
 import qualified Syntax
@@ -67,8 +68,8 @@ evaluate env term =
     Syntax.Con con ->
       pure $ Domain.con con
 
-    Syntax.Int int ->
-      pure $ Domain.Int int
+    Syntax.Lit lit ->
+      pure $ Domain.Lit lit
 
     Syntax.Meta meta ->
       pure $ Domain.meta meta
@@ -102,8 +103,8 @@ evaluate env term =
         (Domain.Neutral (Domain.Con constr) spine, Syntax.ConstructorBranches constructorBranches) ->
           chooseConstructorBranch env constr (toList spine) constructorBranches defaultBranch
 
-        (Domain.Int int, Syntax.LiteralBranches literalBranches) ->
-          chooseLiteralBranch env int literalBranches defaultBranch
+        (Domain.Lit lit, Syntax.LiteralBranches literalBranches) ->
+          chooseLiteralBranch env lit literalBranches defaultBranch
 
         _ ->
           pure $
@@ -172,12 +173,12 @@ chooseConstructorBranch outerEnv constr outerArgs branches defaultBranch =
 
 chooseLiteralBranch
   :: Domain.Environment v
-  -> Integer
+  -> Literal
   -> Syntax.LiteralBranches v
   -> Maybe (Syntax.Term v)
   -> M Domain.Value
-chooseLiteralBranch outerEnv int branches defaultBranch =
-  case (HashMap.lookup int branches, defaultBranch) of
+chooseLiteralBranch outerEnv lit branches defaultBranch =
+  case (HashMap.lookup lit branches, defaultBranch) of
     (Nothing, Nothing) ->
       panic "chooseLiteralBranch no branches"
 
@@ -239,8 +240,8 @@ forceHead env value =
           value' <- Evaluation.chooseConstructorBranch branchEnv constr (toList spine) constructorBranches defaultBranch
           forceHead env value'
 
-        (Domain.Int int, Syntax.LiteralBranches literalBranches) -> do
-          value' <- Evaluation.chooseLiteralBranch branchEnv int literalBranches defaultBranch
+        (Domain.Lit lit, Syntax.LiteralBranches literalBranches) -> do
+          value' <- chooseLiteralBranch branchEnv lit literalBranches defaultBranch
           forceHead env value'
 
         _ ->

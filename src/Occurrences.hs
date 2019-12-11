@@ -16,6 +16,7 @@ import qualified Index
 import qualified Monad
 import qualified Name
 import Occurrences.Intervals (Intervals)
+import Literal (Literal)
 import qualified Occurrences.Intervals as Intervals
 import qualified Presyntax
 import qualified Query
@@ -116,7 +117,7 @@ termOccurrences env maybeSpan term =
     Syntax.Con con ->
       pure $ foldMap (\span -> Intervals.singleton span $ Intervals.Con con) maybeSpan
 
-    Syntax.Int _ ->
+    Syntax.Lit _ ->
       mempty
 
     Syntax.Meta _ ->
@@ -198,7 +199,7 @@ constructorBranchOccurrences env (constr, (spans, tele)) =
 
 literalBranchOccurrences
   :: Domain.Environment v
-  -> (Integer, ([Span.Relative], Syntax.Term v))
+  -> (Literal, ([Span.Relative], Syntax.Term v))
   -> M Intervals
 literalBranchOccurrences env (_, (_, body)) =
   -- TODO literal spans?
