@@ -117,8 +117,8 @@ termOccurrences env maybeSpan term =
     Syntax.Con con ->
       pure $ foldMap (\span -> Intervals.singleton span $ Intervals.Con con) maybeSpan
 
-    Syntax.Lit _ ->
-      mempty
+    Syntax.Lit lit ->
+      pure $ foldMap (\span -> Intervals.singleton span $ Intervals.Lit lit) maybeSpan
 
     Syntax.Meta _ ->
       mempty
@@ -195,15 +195,16 @@ constructorBranchOccurrences
   -> (Name.QualifiedConstructor, ([Span.Relative], Telescope Syntax.Type Syntax.Term v))
   -> M Intervals
 constructorBranchOccurrences env (constr, (spans, tele)) =
-  pure (mconcat [Intervals.singleton span $ Intervals.Con constr | span <- spans]) <> telescopeOccurrences env tele
+  pure (mconcat [Intervals.singleton span $ Intervals.Con constr | span <- spans]) <>
+    telescopeOccurrences env tele
 
 literalBranchOccurrences
   :: Domain.Environment v
   -> (Literal, ([Span.Relative], Syntax.Term v))
   -> M Intervals
-literalBranchOccurrences env (_, (_, body)) =
-  -- TODO literal spans?
-  termOccurrences env Nothing body
+literalBranchOccurrences env (lit, (spans, body)) =
+  pure (mconcat [Intervals.singleton span $ Intervals.Lit lit | span <- spans]) <> 
+    termOccurrences env Nothing body
 
 telescopeOccurrences
   :: Domain.Environment v

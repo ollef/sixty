@@ -97,4 +97,6 @@ goToDefinition filePath (Position.LineColumn line column) = do
                       Nothing
                   )
                   relativeSpans
+        Intervals.Lit _ ->
+          empty
     )

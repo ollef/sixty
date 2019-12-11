@@ -7,13 +7,14 @@ import Data.HashMap.Lazy as HashMap
 import qualified Data.Rope.UTF16 as Rope
 import Rock
 
+import qualified Builtin
+import qualified LanguageServer.LineColumns as LineColumns
 import qualified Module
 import qualified Name
 import qualified Occurrences.Intervals as Intervals
 import qualified Position
 import Query (Query)
 import qualified Query
-import qualified LanguageServer.LineColumns as LineColumns
 import qualified Scope
 import qualified Span
 
@@ -77,5 +78,7 @@ references filePath (Position.LineColumn line column) = do
           Intervals.Con (Name.QualifiedConstructor (Name.Qualified definingModule _) _) ->
             itemSpans definingModule item
 
+          Intervals.Lit _ ->
+            itemSpans Builtin.Module item
     else
       pure []

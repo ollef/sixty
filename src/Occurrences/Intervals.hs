@@ -8,17 +8,18 @@ import Protolude hiding (IntMap)
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
-import Data.IntMap (IntMap)
-import qualified Data.IntMap as IntMap
 import qualified Data.HashSet as HashSet
 import Data.IntervalMap.FingerTree (IntervalMap)
-import qualified Data.List as List
 import qualified Data.IntervalMap.FingerTree as IntervalMap
+import Data.IntMap (IntMap)
+import qualified Data.IntMap as IntMap
+import qualified Data.List as List
 
-import qualified Name
-import qualified Position
 import Binding (Binding)
 import qualified Binding
+import Literal (Literal)
+import qualified Name
+import qualified Position
 import qualified Span
 import Var (Var)
 import qualified Var
@@ -26,6 +27,7 @@ import qualified Var
 data Item
   = Global Name.Qualified
   | Con Name.QualifiedConstructor
+  | Lit Literal
   | Var Var
   deriving (Show, Eq, Generic, Hashable)
 

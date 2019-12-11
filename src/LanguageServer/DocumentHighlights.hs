@@ -66,5 +66,8 @@ highlights filePath (Position.LineColumn line column) = do
           Intervals.Con _ ->
             itemSpans item
 
+          Intervals.Lit _ ->
+            itemSpans item
+
     else
       pure []
