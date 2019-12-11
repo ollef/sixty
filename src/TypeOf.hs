@@ -61,7 +61,7 @@ typeOf context value =
             Syntax.ConstructorBranches constructorBranches ->
               case HashMap.toList constructorBranches of
                 (_, (_, branchTele)):_ ->
-                  typeOfBranch context env branchTele
+                  typeOfTelescope context env branchTele
 
                 [] ->
                   panic "TODO type of branchless case"
@@ -126,12 +126,12 @@ typeOfApplication context type_ spine =
         _ ->
           panic "typeOfApplication: type or plicity mismatch"
 
-typeOfBranch
+typeOfTelescope
   :: Context v'
   -> Domain.Environment v
   -> Telescope Syntax.Type Syntax.Term v
   -> M Domain.Type
-typeOfBranch context env tele =
+typeOfTelescope context env tele =
   case tele of
     Telescope.Empty branch -> do
       branch' <- Evaluation.evaluate env branch
@@ -140,4 +140,4 @@ typeOfBranch context env tele =
     Telescope.Extend binding type_ _ tele' -> do
       type' <- Evaluation.evaluate env type_
       (context', var) <- Context.extendUnnamed context (Binding.toName binding) type'
-      typeOfBranch context' (Environment.extendVar env var) tele'
+      typeOfTelescope context' (Environment.extendVar env var) tele'
