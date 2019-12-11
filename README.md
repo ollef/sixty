@@ -76,7 +76,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [ ] Extern code
 - [ ] Prevent CBV-incompatible circular values
 - [ ] Literals
-  - [ ] Numbers
+  - [x] Numbers
   - [ ] Strings
 - [ ] Records
 - [ ] Binary/mixfix operators
