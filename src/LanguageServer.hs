@@ -36,10 +36,11 @@ import qualified Error.Hydrated as Error (Hydrated)
 import qualified Error.Hydrated
 import qualified FileSystem
 import qualified LanguageServer.Completion as Completion
-import qualified LanguageServer.GoToDefinition as GoToDefinition
-import qualified LanguageServer.References as References
 import qualified LanguageServer.DocumentHighlights as DocumentHighlights
+import qualified LanguageServer.GoToDefinition as GoToDefinition
 import qualified LanguageServer.Hover as Hover
+import qualified LanguageServer.References as References
+import qualified Occurrences.Intervals
 import qualified Position
 import qualified Project
 import Query (Query)
@@ -109,6 +110,7 @@ handlers sendMessage =
     , LSP.completionHandler = Just $ sendMessage . LSP.ReqCompletion
     , LSP.documentHighlightHandler = Just $ sendMessage . LSP.ReqDocumentHighlights
     , LSP.referencesHandler = Just $ sendMessage . LSP.ReqFindReferences
+    , LSP.renameHandler = Just $ sendMessage . LSP.ReqRename
     }
 
 options :: LSP.Options
@@ -331,11 +333,45 @@ messagePump state = do
                   { _uri = LSP.filePathToUri filePath
                   , _range = spanToRange span
                   }
-                | (filePath, span) <- references
+                | (_item, references') <- references
+                , (filePath, span) <- references'
                 ]
 
-          sendNotification state $ "messagePump: references response: " <> show references
+          sendNotification state $ "messagePump: references response: " <> show response
           LSP.sendFunc (_lspFuncs state) $ LSP.RspFindReferences $ LSP.makeResponseMessage req response
+          messagePump state
+
+        LSP.ReqRename req -> do
+          sendNotification state $ "messagePump: rename request: " <> show req
+          let
+            LSP.RenameParams (LSP.TextDocumentIdentifier uri) position newName =
+              req ^. LSP.params
+
+          (references, _) <- runTask state Driver.Don'tPrune $
+            References.references (uriToFilePath uri) (positionFromPosition position)
+
+          let
+            response =
+              LSP.WorkspaceEdit
+                { _changes = Just $
+                  HashMap.fromListWith (<>)
+                  [ ( LSP.filePathToUri filePath
+                    , LSP.List
+                      [LSP.TextEdit
+                        { _range = spanToRange $ Occurrences.Intervals.nameSpan item span
+                        , _newText  = newName
+                        }
+                      ]
+                    )
+                  | (item, references') <- references
+                  , (filePath, span) <- references'
+                  ]
+                , _documentChanges = Nothing
+                }
+
+
+          sendNotification state $ "messagePump: rename response: " <> show references
+          LSP.sendFunc (_lspFuncs state) $ LSP.RspRename $ LSP.makeResponseMessage req response
           messagePump state
 
         _ ->

@@ -66,6 +66,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Completion
   - [x] Type-based refinement completion snippets
   - [x] Find references
+  - [x] Renaming
   - [ ] Language server tests
 - [x] File watcher
 - [ ] Backend

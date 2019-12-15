@@ -21,7 +21,7 @@ import qualified Span
 references
   :: FilePath
   -> Position.LineColumn
-  -> Task Query [(FilePath, Span.LineColumn)]
+  -> Task Query [(Intervals.Item, [(FilePath, Span.LineColumn)])]
 references filePath (Position.LineColumn line column) = do
   (originalModuleName, _, _) <- fetch $ Query.ParsedFile filePath
   let
@@ -67,18 +67,19 @@ references filePath (Position.LineColumn line column) = do
         items =
           Intervals.intersect relativePos occurrenceIntervals
 
-      fmap concat $ forM items $ \item ->
-        case item of
-          Intervals.Var var ->
-            pure $ (,) filePath . toLineColumns . Span.absoluteFrom defPos <$> Intervals.varSpans var relativePos occurrenceIntervals
+      forM items $ \item ->
+        (,) item <$>
+          case item of
+            Intervals.Var var ->
+              pure $ (,) filePath . toLineColumns . Span.absoluteFrom defPos <$> Intervals.varSpans var relativePos occurrenceIntervals
 
-          Intervals.Global (Name.Qualified definingModule _) ->
-            itemSpans definingModule item
+            Intervals.Global (Name.Qualified definingModule _) ->
+              itemSpans definingModule item
 
-          Intervals.Con (Name.QualifiedConstructor (Name.Qualified definingModule _) _) ->
-            itemSpans definingModule item
+            Intervals.Con (Name.QualifiedConstructor (Name.Qualified definingModule _) _) ->
+              itemSpans definingModule item
 
-          Intervals.Lit _ ->
-            itemSpans Builtin.Module item
+            Intervals.Lit _ ->
+              itemSpans Builtin.Module item
     else
       pure []

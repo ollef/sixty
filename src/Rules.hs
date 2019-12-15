@@ -11,7 +11,7 @@ import Protolude hiding (force)
 
 import qualified Data.HashMap.Lazy as HashMap
 import Data.String
-import Data.Text.Unsafe as Text
+import qualified Data.Text.Unsafe as Text
 import Rock
 
 import qualified Builtin

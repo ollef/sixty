@@ -14,6 +14,7 @@ import qualified Data.IntervalMap.FingerTree as IntervalMap
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import qualified Data.List as List
+import qualified Data.Text.Unsafe as Text
 
 import Binding (Binding)
 import qualified Binding
@@ -144,3 +145,24 @@ varSpans var position intervals = do
 spanStart :: Span.Relative -> Position.Relative
 spanStart (Span.Relative s _) =
   s
+
+nameSpan :: Item -> Span.LineColumn -> Span.LineColumn
+nameSpan
+  item
+  span@(Span.LineColumns _ (Position.LineColumn endLine endColumn)) =
+  case item of
+    Global (Name.Qualified _ (Name.Name name)) ->
+      Span.LineColumns
+        (Position.LineColumn endLine (endColumn - Text.lengthWord16 name))
+        (Position.LineColumn endLine endColumn)
+
+    Con (Name.QualifiedConstructor _ (Name.Constructor name)) ->
+      Span.LineColumns
+        (Position.LineColumn endLine (endColumn - Text.lengthWord16 name))
+        (Position.LineColumn endLine endColumn)
+
+    Lit _ ->
+      span
+
+    Var _ ->
+      span
