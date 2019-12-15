@@ -231,7 +231,19 @@ symbol =
   indented . Parsix.symbol
 
 integer :: Parser Integer
-integer = indented $ Parsix.try Parsix.integer
+integer =
+  indented $ Parsix.try integer'
+
+-- | The parsers 'integer' is wrapped in 'token' twice, so we use this for the
+-- time being.
+integer' :: Parsix.TokenParsing m => m Integer
+integer' =
+  Parsix.highlight Highlight.Operator sign <*> Parsix.natural <?> "integer"
+  where
+    sign =
+      negate <$ Parsix.char '-'
+      <|> identity <$ Parsix.char '+'
+      <|> pure identity
 
 reserved :: Text -> Parser ()
 reserved =
