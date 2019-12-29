@@ -18,6 +18,7 @@ import qualified Environment
 import qualified Evaluation
 import Extra (topoSortWith)
 import qualified Index
+import qualified LambdaLifted.Syntax as LambdaLifted
 import Literal (Literal)
 import Monad
 import qualified Name
@@ -26,7 +27,6 @@ import qualified Query
 import qualified Readback
 import qualified Scope
 import qualified Syntax
-import qualified Syntax.LambdaLifted as LambdaLifted
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
 import Var (Var)

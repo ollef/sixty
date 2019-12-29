@@ -1,6 +1,6 @@
 {-# language DeriveAnyClass #-}
 {-# language DeriveGeneric #-}
-module Syntax.LambdaLifted where
+module LambdaLifted.Syntax where
 
 import Protolude hiding (Type, IntMap)
 
