@@ -20,7 +20,6 @@ data Term v
   | Lit !Literal
   | Let !Binding !(Term v) !(Type v) !(Scope Term v)
   | Pi !Binding !(Type v) !Plicity !(Scope Type v)
-  | Fun !(Type v) !Plicity !(Type v)
   | App !(Term v) !Plicity !(Term v)
   | Case !(Term v) (Branches v) !(Maybe (Term v))
   deriving (Eq, Show, Generic, Hashable)

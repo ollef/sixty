@@ -67,7 +67,6 @@ data InnerValue
   | Lit !Literal
   | Let !Binding !Var !Value !Type !Value
   | Pi !Binding !Var !Type !Plicity !Type
-  | Fun !Type !Plicity !Type
   | App !Value !Plicity !Value
   | Case !Value !Branches !(Maybe Value)
   deriving Show
@@ -116,12 +115,6 @@ makePi name var domain plicity target =
   Value (Pi name var domain plicity target) $
     occurrences domain <>
     IntSet.delete var (occurrences target)
-
-makeFun :: Value -> Plicity -> Value -> Value
-makeFun domain plicity target =
-  Value (Fun domain plicity target) $
-    occurrences domain <>
-    occurrences target
 
 makeApp :: Value -> Plicity -> Value -> Value
 makeApp fun plicity arg =
@@ -218,8 +211,9 @@ evaluate env term args =
         pure plicity <*>
         evaluate env' target []
 
-    Syntax.Fun domain plicity target ->
-      makeFun <$>
+    Syntax.Fun domain plicity target -> do
+      var <- lift freshVar
+      makePi "x" var <$>
         evaluate env domain [] <*>
         pure plicity <*>
         evaluate env target []
@@ -462,9 +456,6 @@ readback env (Value value _) =
         (readback env domain)
         plicity
         (readback (Environment.extendVar env var) target)
-
-    Fun domain plicity target ->
-      LambdaLifted.Fun (readback env domain) plicity (readback env target)
 
     App function plicity argument ->
       LambdaLifted.App (readback env function) plicity (readback env argument)
