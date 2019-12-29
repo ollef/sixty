@@ -33,7 +33,7 @@ data Branches v
 
 data Definition
   = ConstantDefinition !(Telescope Type Term Void)
-  | DataDefinition (Telescope Type ConstructorDefinitions Void)
+  | DataDefinition !(Telescope Type ConstructorDefinitions Void)
   deriving (Show, Generic, Hashable)
 
 newtype ConstructorDefinitions v =
