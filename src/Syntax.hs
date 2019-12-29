@@ -107,7 +107,7 @@ type MetaSolutions =
 data Definition
   = TypeDeclaration !(Type Void)
   | ConstantDefinition !(Term Void)
-  | DataDefinition Boxity (Telescope Type ConstructorDefinitions Void)
+  | DataDefinition !Boxity !(Telescope Type ConstructorDefinitions Void)
   deriving (Show, Generic, Hashable)
 
 newtype ConstructorDefinitions v =
