@@ -2,7 +2,7 @@
 
 module LambdaLifting where
 
-import Protolude hiding (Type, IntSet, evaluate, state)
+import Protolude hiding (Type, IntSet, IntMap, evaluate, state)
 
 import Data.Graph (SCC(AcyclicSCC))
 import Data.HashMap.Lazy (HashMap)
@@ -10,6 +10,8 @@ import Rock
 
 import Binding (Binding)
 import qualified Binding
+import Data.IntMap (IntMap)
+import qualified Data.IntMap as IntMap
 import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
 import qualified Data.Tsil as Tsil
@@ -35,7 +37,7 @@ import qualified Var
 liftDefinition
   :: Name.Qualified
   -> Syntax.Definition
-  -> M (LambdaLifted.Definition, [(Name.Lifted, Telescope LambdaLifted.Type LambdaLifted.Term Void)])
+  -> M (LambdaLifted.Definition, IntMap Int (Telescope LambdaLifted.Type LambdaLifted.Term Void))
 liftDefinition name def = do
   let
     env =
@@ -155,7 +157,7 @@ telescopeOccurrences tele body =
 
 data LiftState = LiftState
   { _nextIndex :: !Int
-  , _liftedDefinitions :: [(Name.Lifted, Telescope LambdaLifted.Type LambdaLifted.Term Void)]
+  , _liftedDefinitions :: IntMap Int (Telescope LambdaLifted.Type LambdaLifted.Term Void)
   } deriving Show
 
 emptyState :: LiftState
@@ -228,9 +230,9 @@ evaluate env term args =
 
       modify $ \s -> s
         { _nextIndex = i + 1
-        , _liftedDefinitions = (liftedName, def) : _liftedDefinitions s
+        , _liftedDefinitions = IntMap.insert i def $ _liftedDefinitions s
         }
-      pure $ makeApps (makeGlobal $ Name.Lifted name i) $ makeVar env <$> argVars
+      pure $ makeApps (makeGlobal liftedName) $ makeVar env <$> argVars
 
     Syntax.App function _plicity argument ->
       makeApp <$>
