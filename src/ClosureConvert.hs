@@ -18,14 +18,14 @@ convertDefinition
 convertDefinition def =
   case def of
     LambdaLifted.ConstantDefinition (Telescope.Empty term) ->
-      ClosureConverted.ConstantDefinition <$> convertTerm term []
+      ClosureConverted.ConstantDefinition <$> convertTerm term
 
     LambdaLifted.ConstantDefinition tele ->
       ClosureConverted.FunctionDefinition <$> convertTelescope tele
 
     LambdaLifted.DataDefinition (Telescope.Empty (LambdaLifted.ConstructorDefinitions constrDefs)) ->
       ClosureConverted.DataDefinition . ClosureConverted.ConstructorDefinitions <$>
-        mapM (\type_ -> convertTerm type_ []) constrDefs
+        mapM convertTerm constrDefs
 
     LambdaLifted.DataDefinition tele ->
       ClosureConverted.ParameterisedDataDefinition <$> convertParameterisedDataDefinition tele
@@ -37,20 +37,27 @@ convertParameterisedDataDefinition
 convertParameterisedDataDefinition tele =
   case tele of
     Telescope.Empty (LambdaLifted.ConstructorDefinitions constrDefs) ->
-      Telescope.Empty . ClosureConverted.ConstructorDefinitions <$> mapM (\type_ -> convertTerm type_ []) constrDefs
+      Telescope.Empty . ClosureConverted.ConstructorDefinitions <$> mapM convertTerm constrDefs
 
     Telescope.Extend binding type_ plicity tele' ->
       Telescope.Extend binding <$>
-        convertTerm type_ [] <*>
+        convertTerm type_ <*>
         pure plicity <*>
         convertParameterisedDataDefinition tele'
 
 convertTerm
   :: MonadFetch Query m
   => LambdaLifted.Term v
+  -> m (ClosureConverted.Term v)
+convertTerm term =
+  convertAppliedTerm term []
+
+convertAppliedTerm
+  :: MonadFetch Query m
+  => LambdaLifted.Term v
   -> [ClosureConverted.Term v]
   -> m (ClosureConverted.Term v)
-convertTerm term args =
+convertAppliedTerm term args =
   case term of
     LambdaLifted.Var var ->
       applyArgs $
@@ -98,8 +105,7 @@ convertTerm term args =
           nonFunctionCase
 
     LambdaLifted.Con con conArgs ->
-      ClosureConverted.Con con <$>
-        mapM (\arg -> convertTerm arg []) conArgs
+      ClosureConverted.Con con <$> mapM convertTerm conArgs
 
     LambdaLifted.Lit lit ->
       pure $ ClosureConverted.Lit lit
@@ -107,25 +113,25 @@ convertTerm term args =
     LambdaLifted.Let binding term' type_ body ->
       applyArgs $
         ClosureConverted.Let binding <$>
-          convertTerm term' [] <*>
-          convertTerm type_ [] <*>
-          convertTerm body []
+          convertTerm term' <*>
+          convertTerm type_ <*>
+          convertTerm body
 
     LambdaLifted.Pi binding domain target ->
       ClosureConverted.Pi binding <$>
-        convertTerm domain [] <*>
-        convertTerm target []
+        convertTerm domain <*>
+        convertTerm target
 
     LambdaLifted.App fun arg -> do
-      arg' <- convertTerm arg []
-      convertTerm fun $ arg' : args
+      arg' <- convertTerm arg
+      convertAppliedTerm fun $ arg' : args
 
     LambdaLifted.Case scrutinee branches defaultBranch ->
       applyArgs $
         ClosureConverted.Case <$>
-          convertTerm scrutinee [] <*>
+          convertTerm scrutinee <*>
           convertBranches branches <*>
-          mapM (\branch -> convertTerm branch []) defaultBranch
+          mapM convertTerm defaultBranch
 
   where
     applyArgs mresult =
@@ -149,7 +155,7 @@ convertBranches branches =
 
     LambdaLifted.LiteralBranches literalBranches ->
       ClosureConverted.LiteralBranches <$>
-        mapM (\branch -> convertTerm branch []) literalBranches
+        mapM convertTerm literalBranches
 
 convertTelescope
   :: MonadFetch Query m
@@ -158,10 +164,10 @@ convertTelescope
 convertTelescope tele =
   case tele of
     Telescope.Empty term ->
-      Telescope.Empty <$> convertTerm term []
+      Telescope.Empty <$> convertTerm term
 
     Telescope.Extend binding type_ plicity tele' ->
       Telescope.Extend binding <$>
-        convertTerm type_ [] <*>
+        convertTerm type_ <*>
         pure plicity <*>
         convertTelescope tele'
