@@ -10,17 +10,16 @@ import Binding (Binding)
 import Index
 import Literal (Literal)
 import qualified Name
-import Plicity
 import Syntax.Telescope (Telescope)
 
 data Term v
   = Var !(Index v)
   | Global !Name.Lifted
-  | Con !Name.QualifiedConstructor [(Plicity, Term v)]
+  | Con !Name.QualifiedConstructor [Term v]
   | Lit !Literal
   | Let !Binding !(Term v) !(Type v) !(Scope Term v)
-  | Pi !Binding !(Type v) !Plicity !(Scope Type v)
-  | App !(Term v) !Plicity !(Term v)
+  | Pi !Binding !(Type v) !(Scope Type v)
+  | App !(Term v) !(Term v)
   | Case !(Term v) (Branches v) !(Maybe (Term v))
   deriving (Eq, Show, Generic, Hashable)
 

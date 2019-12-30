@@ -63,18 +63,18 @@ data Value = Value !InnerValue Occurrences
 data InnerValue
   = Var !Var
   | Global !Name.Lifted
-  | Con !Name.QualifiedConstructor [(Plicity, Value)]
+  | Con !Name.QualifiedConstructor [Value]
   | Lit !Literal
   | Let !Binding !Var !Value !Type !Value
-  | Pi !Binding !Var !Type !Plicity !Type
-  | App !Value !Plicity !Value
+  | Pi !Binding !Var !Type !Type
+  | App !Value !Value
   | Case !Value !Branches !(Maybe Value)
   deriving Show
 
 type Type = Value
 
 data Branches
-  = ConstructorBranches (HashMap Name.QualifiedConstructor ([(Binding, Var, Type, Plicity)], Value))
+  = ConstructorBranches (HashMap Name.QualifiedConstructor ([(Binding, Var, Type)], Value))
   | LiteralBranches (HashMap Literal Value)
   deriving Show
 
@@ -94,10 +94,9 @@ makeGlobal :: Name.Lifted -> Value
 makeGlobal global =
   Value (Global global) mempty
 
-makeCon :: Name.QualifiedConstructor -> [(Plicity, Value)] -> Value
+makeCon :: Name.QualifiedConstructor -> [Value] -> Value
 makeCon con args =
-  Value (Con con args) $
-    foldMap (foldMap occurrences) args
+  Value (Con con args) $ foldMap occurrences args
 
 makeLit :: Literal -> Value
 makeLit lit =
@@ -110,21 +109,21 @@ makeLet binding var value type_ body =
     occurrences type_ <>
     IntSet.delete var (occurrences body)
 
-makePi :: Binding -> Var -> Type -> Plicity -> Value -> Value
-makePi name var domain plicity target =
-  Value (Pi name var domain plicity target) $
+makePi :: Binding -> Var -> Type -> Value -> Value
+makePi name var domain target =
+  Value (Pi name var domain target) $
     occurrences domain <>
     IntSet.delete var (occurrences target)
 
-makeApp :: Value -> Plicity -> Value -> Value
-makeApp fun plicity arg =
-  Value (App fun plicity arg) $
+makeApp :: Value -> Value -> Value
+makeApp fun arg =
+  Value (App fun arg) $
     occurrences fun <>
     occurrences arg
 
-makeApps :: Foldable f => Value -> f (Plicity, Value) -> Value
+makeApps :: Foldable f => Value -> f Value -> Value
 makeApps =
-  foldl (\fun (plicity, arg) -> makeApp fun plicity arg)
+  foldl makeApp
 
 makeCase :: Value -> Branches -> Maybe Value -> Value
 makeCase scrutinee branches defaultBranch =
@@ -142,13 +141,13 @@ branchOccurrences branches =
     LiteralBranches literalBranches ->
       foldMap occurrences literalBranches
 
-telescopeOccurrences :: [(Binding, Var, Type, Plicity)] -> Value -> Occurrences
+telescopeOccurrences :: [(Binding, Var, Type)] -> Value -> Occurrences
 telescopeOccurrences tele body =
   case tele of
     [] ->
       occurrences body
 
-    (_, var, type_, _):tele' ->
+    (_, var, type_):tele' ->
       occurrences type_ <>
       IntSet.delete var (telescopeOccurrences tele' body)
 
@@ -204,18 +203,16 @@ evaluate env term args =
           pure type' <*>
           evaluate env' body []
 
-    Syntax.Pi name domain plicity target -> do
+    Syntax.Pi name domain _plicity target -> do
       domain' <- evaluate env domain []
       (env', var) <- extend env domain'
       makePi name var domain' <$>
-        pure plicity <*>
         evaluate env' target []
 
-    Syntax.Fun domain plicity target -> do
+    Syntax.Fun domain _plicity target -> do
       var <- lift freshVar
       makePi "x" var <$>
         evaluate env domain [] <*>
-        pure plicity <*>
         evaluate env target []
 
     Syntax.Lam {} -> do
@@ -233,12 +230,11 @@ evaluate env term args =
         { _nextIndex = i + 1
         , _liftedDefinitions = (liftedName, def) : _liftedDefinitions s
         }
-      pure $ makeApps (makeGlobal $ Name.Lifted name i) $ (,) Explicit . makeVar env <$> argVars
+      pure $ makeApps (makeGlobal $ Name.Lifted name i) $ makeVar env <$> argVars
 
-    Syntax.App function plicity argument ->
+    Syntax.App function _plicity argument ->
       makeApp <$>
         evaluate env function args <*>
-        pure plicity <*>
         evaluate env argument []
 
     Syntax.Case scrutinee branches defaultBranch ->
@@ -252,7 +248,7 @@ evaluate env term args =
       evaluate env term' args
   where
     applyArgs mresult = do
-      args' <- mapM (mapM (\term' -> evaluate env term' [])) args
+      args' <- mapM (\(_, term') -> evaluate env term' []) args
       result <- mresult
       pure $ makeApps result args'
 
@@ -342,27 +338,27 @@ evaluateBranches env branches =
 evaluateTelescope
   :: Environment v
   -> Telescope Syntax.Type Syntax.Term v
-  -> Lift ([(Binding, Var, Type, Plicity)], Value)
+  -> Lift ([(Binding, Var, Type)], Value)
 evaluateTelescope env tele =
   case tele of
     Telescope.Empty body -> do
       body' <- evaluate env body []
       pure ([], body')
 
-    Telescope.Extend name type_ plicity tele' -> do
+    Telescope.Extend name type_ _plicity tele' -> do
       type' <- evaluate env type_ []
       (env', var) <- extend env type'
       (bindings, body) <- evaluateTelescope env' tele'
-      pure ((name, var, type', plicity):bindings, body)
+      pure ((name, var, type'):bindings, body)
 
-evaluateLambdaTelescope :: Environment v -> Syntax.Term v -> Lift ([(Binding, Var, Type, Plicity)], Value)
+evaluateLambdaTelescope :: Environment v -> Syntax.Term v -> Lift ([(Binding, Var, Type)], Value)
 evaluateLambdaTelescope env term =
   case term of
-    Syntax.Lam name type_ plicity body -> do
+    Syntax.Lam name type_ _plicity body -> do
       type' <- evaluate env type_ []
       (env', var) <- extend env type'
       (tele, body') <- evaluateLambdaTelescope env' body
-      pure ((name, var, type', plicity):tele, body')
+      pure ((name, var, type'):tele, body')
 
     Syntax.Spanned _ term' ->
       evaluateLambdaTelescope env term'
@@ -390,7 +386,7 @@ liftLambda env term = do
           (IntSet.toList occs)
 
     occurrenceTele =
-      [ (Binding.Unspanned "x", var, type_, Explicit)
+      [ (Binding.Unspanned "x", var, type_)
       | var <- sortedOccs
       , let
           type_ =
@@ -438,7 +434,7 @@ readback env (Value value _) =
       LambdaLifted.Global global
 
     Con global args ->
-      LambdaLifted.Con global $ second (readback env) <$> args
+      LambdaLifted.Con global $ readback env <$> args
 
     Lit lit ->
       LambdaLifted.Lit lit
@@ -450,15 +446,14 @@ readback env (Value value _) =
         (readback env type_)
         (readback (Environment.extendVar env var) body)
 
-    Pi name var domain plicity target ->
+    Pi name var domain target ->
       LambdaLifted.Pi
         name
         (readback env domain)
-        plicity
         (readback (Environment.extendVar env var) target)
 
-    App function plicity argument ->
-      LambdaLifted.App (readback env function) plicity (readback env argument)
+    App function argument ->
+      LambdaLifted.App (readback env function) (readback env argument)
 
     Case scrutinee branches defaultBranch ->
       LambdaLifted.Case
@@ -480,7 +475,7 @@ readbackBranches env branches =
 
 readbackTelescope
   :: Environment v
-  -> [(Binding, Var, Type, Plicity)]
+  -> [(Binding, Var, Type)]
   -> Value
   -> Telescope LambdaLifted.Type LambdaLifted.Term v
 readbackTelescope env bindings body =
@@ -488,8 +483,8 @@ readbackTelescope env bindings body =
     [] ->
       Telescope.Empty $ readback env body
 
-    (name, var, type_, plicity):bindings' -> do
+    (name, var, type_):bindings' -> do
       let
         env' =
           Environment.extendVar env var
-      Telescope.Extend name (readback env type_) plicity (readbackTelescope env' bindings' body)
+      Telescope.Extend name (readback env type_) Explicit (readbackTelescope env' bindings' body)
