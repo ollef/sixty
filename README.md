@@ -71,7 +71,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [x] File watcher
 - [ ] Backend
   - [x] Lambda lifting
-  - [ ] Closure conversion
+  - [x] Closure conversion
   - [ ] Code generation
   - [ ] Reference counting
   - [ ] Extern code
