@@ -16,6 +16,7 @@ import qualified Meta
 import qualified Module
 import Name (Name)
 import qualified Name
+import qualified LambdaLifted.Syntax as LambdaLifted
 import qualified Occurrences.Intervals as Occurrences
 import qualified Position
 import qualified Presyntax
@@ -46,6 +47,7 @@ data Query a where
   ConstructorType :: Name.QualifiedConstructor -> Query (Telescope Syntax.Type Syntax.Type Void)
   KeyedNameSpan :: Scope.KeyedName -> Query (FilePath, Span.Absolute)
   Occurrences :: Scope.KeyedName -> Query Occurrences.Intervals
+  LambdaLifted :: Name.Lifted -> Query (Maybe (LambdaLifted.Definition))
 
 fetchImportedName
   :: MonadFetch Query m
@@ -82,3 +84,4 @@ instance HashTag Query where
       ConstructorType {} -> hash
       KeyedNameSpan {} -> hash
       Occurrences {} -> hash
+      LambdaLifted {} -> hash

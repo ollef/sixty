@@ -10,6 +10,7 @@ module Rules where
 import Protolude hiding (force)
 
 import qualified Data.HashMap.Lazy as HashMap
+import qualified Data.IntMap as IntMap
 import Data.String
 import qualified Data.Text.Unsafe as Text
 import Rock
@@ -20,6 +21,8 @@ import qualified Environment
 import Error (Error)
 import qualified Error
 import qualified Evaluation
+import qualified LambdaLifted.Syntax as LambdaLifted
+import qualified LambdaLifting
 import qualified Module
 import Monad
 import Name (Name(Name))
@@ -334,6 +337,28 @@ rules files readFile_ (Writer (Writer query)) =
             key
             name
         pure (intervals, mempty)
+
+    LambdaLifted (Name.Lifted qualifiedName index) ->
+      nonInput $ do
+        maybeDef <- fetch $ ElaboratedDefinition qualifiedName
+        case maybeDef of
+          Nothing ->
+            pure (Nothing, mempty)
+
+          Just (def, _) ->
+            runElaborator (Scope.KeyedName Scope.Definition qualifiedName) $ do
+              (def', liftedDefs) <- LambdaLifting.liftDefinition qualifiedName def
+              pure
+                ( case index of
+                  0 ->
+                    def'
+
+                  _ ->
+                    LambdaLifted.ConstantDefinition $
+                    fromMaybe (panic "LambdaLifted: no def") $
+                      IntMap.lookup index liftedDefs
+                , mempty
+                )
 
   where
     input :: Functor m => m a -> m ((a, TaskKind), [Error])
