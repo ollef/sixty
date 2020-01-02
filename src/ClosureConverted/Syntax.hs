@@ -5,6 +5,7 @@ module ClosureConverted.Syntax where
 import Protolude hiding (Type, IntMap)
 
 import Data.HashMap.Lazy (HashMap)
+import Unsafe.Coerce
 
 import Index
 import Literal (Literal)
@@ -38,7 +39,7 @@ ApplyClosure cl ts : ys[ts/xs] -> T[ts/xs]
 data Term v
   = Var !(Index v)
   | Global !Name.Lifted
-  | Con !Name.QualifiedConstructor [Term v]
+  | Con !Name.QualifiedConstructor [Term v] -- ^ Saturated constructor application
   | Lit !Literal
   | Let !Name !(Term v) !(Type v) !(Scope Term v)
   | Function !(Telescope Type Type Void) -- ^ The type of a top-level function definition
@@ -63,7 +64,8 @@ type LiteralBranches v =
   HashMap Literal (Term v)
 
 data Definition
-  = ConstantDefinition !(Term Void)
+  = TypeDeclaration !(Type Void)
+  | ConstantDefinition !(Term Void)
   | FunctionDefinition !(Telescope Type Term Void)
   | DataDefinition (ConstructorDefinitions Void)
   | ParameterisedDataDefinition !(Telescope Type ConstructorDefinitions Void)
@@ -72,3 +74,7 @@ data Definition
 newtype ConstructorDefinitions v =
   ConstructorDefinitions (HashMap Name.Constructor (Type v))
   deriving (Show, Generic, Hashable)
+
+fromVoid :: Term Void -> Term v
+fromVoid =
+  unsafeCoerce

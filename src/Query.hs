@@ -5,18 +5,20 @@
 {-# language TemplateHaskell #-}
 module Query where
 
-import Protolude
+import Protolude hiding (IntMap)
 
 import Data.GADT.Compare.TH
 import Data.HashMap.Lazy (HashMap)
 import Data.HashSet (HashSet)
+import Data.IntMap (IntMap)
 import Rock
 
+import qualified ClosureConverted.Syntax as ClosureConverted
+import qualified LambdaLifted.Syntax as LambdaLifted
 import qualified Meta
 import qualified Module
 import Name (Name)
 import qualified Name
-import qualified LambdaLifted.Syntax as LambdaLifted
 import qualified Occurrences.Intervals as Occurrences
 import qualified Position
 import qualified Presyntax
@@ -47,7 +49,12 @@ data Query a where
   ConstructorType :: Name.QualifiedConstructor -> Query (Telescope Syntax.Type Syntax.Type Void)
   KeyedNameSpan :: Scope.KeyedName -> Query (FilePath, Span.Absolute)
   Occurrences :: Scope.KeyedName -> Query Occurrences.Intervals
-  LambdaLifted :: Name.Lifted -> Query (Maybe (LambdaLifted.Definition))
+
+  LambdaLifted :: Name.Qualified -> Query (Maybe (LambdaLifted.Definition, IntMap Int (Telescope LambdaLifted.Type LambdaLifted.Term Void)))
+  LambdaLiftedDefinition :: Name.Lifted -> Query (Maybe LambdaLifted.Definition)
+  ClosureConverted :: Name.Lifted -> Query (Maybe ClosureConverted.Definition)
+  ClosureConvertedType :: Name.Lifted -> Query (ClosureConverted.Type Void)
+  ClosureConvertedConstructorType :: Name.QualifiedConstructor -> Query (Telescope ClosureConverted.Type ClosureConverted.Type Void)
 
 fetchImportedName
   :: MonadFetch Query m
@@ -85,3 +92,7 @@ instance HashTag Query where
       KeyedNameSpan {} -> hash
       Occurrences {} -> hash
       LambdaLifted {} -> hash
+      LambdaLiftedDefinition {} -> hash
+      ClosureConverted {} -> hash
+      ClosureConvertedType {} -> hash
+      ClosureConvertedConstructorType {} -> hash

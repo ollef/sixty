@@ -31,7 +31,8 @@ data Branches v
   deriving (Eq, Show, Generic, Hashable)
 
 data Definition
-  = ConstantDefinition !(Telescope Type Term Void)
+  = TypeDeclaration !(Type Void)
+  | ConstantDefinition !(Telescope Type Term Void)
   | DataDefinition !(Telescope Type ConstructorDefinitions Void)
   deriving (Show, Generic, Hashable)
 

@@ -16,6 +16,10 @@ import qualified Data.Text.Unsafe as Text
 import Rock
 
 import qualified Builtin
+import qualified ClosureConversion
+import qualified ClosureConverted.Context
+import qualified ClosureConverted.Syntax
+import qualified ClosureConverted.TypeOf as ClosureConverted
 import qualified Elaboration
 import qualified Environment
 import Error (Error)
@@ -338,28 +342,79 @@ rules files readFile_ (Writer (Writer query)) =
             name
         pure (intervals, mempty)
 
-    LambdaLifted (Name.Lifted qualifiedName index) ->
+    LambdaLifted qualifiedName ->
       nonInput $ do
         maybeDef <- fetch $ ElaboratedDefinition qualifiedName
         case maybeDef of
-          Nothing ->
-            pure (Nothing, mempty)
+          Nothing -> do
+            type_ <- fetch $ ElaboratedType qualifiedName
+            runElaborator (Scope.KeyedName Scope.Type qualifiedName) $
+              (, []) <$> LambdaLifting.liftDefinition qualifiedName (Syntax.TypeDeclaration type_)
 
           Just (def, _) ->
-            runElaborator (Scope.KeyedName Scope.Definition qualifiedName) $ do
-              (def', liftedDefs) <- LambdaLifting.liftDefinition qualifiedName def
-              pure
-                ( case index of
-                  0 ->
-                    def'
+            runElaborator (Scope.KeyedName Scope.Definition qualifiedName) $
+              (, []) <$> LambdaLifting.liftDefinition qualifiedName def
 
-                  _ ->
-                    LambdaLifted.ConstantDefinition $
-                    fromMaybe (panic "LambdaLifted: no def") $
-                      IntMap.lookup index liftedDefs
-                , mempty
-                )
+    LambdaLiftedDefinition (Name.Lifted qualifiedName index) ->
+      noError $ do
+        maybeDef <- fetch $ LambdaLifted qualifiedName
+        pure $ do
+          (def, liftedDefs) <- maybeDef
+          case index of
+            0 ->
+              pure def
 
+            _ ->
+              LambdaLifted.ConstantDefinition <$>
+                IntMap.lookup index liftedDefs
+
+    ClosureConverted name ->
+      noError $ do
+        maybeDef <- fetch $ LambdaLiftedDefinition name
+        mapM ClosureConversion.convertDefinition maybeDef
+
+    ClosureConvertedType name@(Name.Lifted qualifiedName _) -> do
+      nonInput $ do
+        maybeDef <- fetch $ ClosureConverted name
+        case maybeDef of
+          Nothing ->
+            panic "ClosureConvertedType: no type"
+
+          Just def ->
+            fmap (first $ fromMaybe $ panic "ClosureConvertedType error") $ runElaborator (Scope.KeyedName Scope.Definition qualifiedName) $
+              (, []) <$> ClosureConverted.typeOfDefinition (ClosureConverted.Context.empty $ Scope.KeyedName Scope.Definition qualifiedName) def
+
+    ClosureConvertedConstructorType (Name.QualifiedConstructor dataTypeName constr) ->
+      noError $ do
+        def <- fetch $ ClosureConverted $ Name.Lifted dataTypeName 0
+        case def of
+          Just (ClosureConverted.Syntax.DataDefinition (ClosureConverted.Syntax.ConstructorDefinitions constrs)) -> do
+            pure $
+              Telescope.Empty $
+              HashMap.lookupDefault
+                (panic "ClosureConvertedConstructorType: no such constructor")
+                constr
+                constrs
+
+          Just (ClosureConverted.Syntax.ParameterisedDataDefinition tele) -> do
+            let
+              go :: Telescope ClosureConverted.Syntax.Type ClosureConverted.Syntax.ConstructorDefinitions v -> Telescope ClosureConverted.Syntax.Type ClosureConverted.Syntax.Type v
+              go tele' =
+                case tele' of
+                  Telescope.Empty (ClosureConverted.Syntax.ConstructorDefinitions constrs) ->
+                    Telescope.Empty $
+                      HashMap.lookupDefault
+                        (panic "ClosureConvertedConstructorType: no such constructor")
+                        constr
+                        constrs
+
+                  Telescope.Extend paramName paramType plicity tele'' ->
+                    Telescope.Extend paramName paramType (implicitise plicity) $ go tele''
+
+            pure $ go tele
+
+          _ ->
+            panic "ClosureConvertedConstructorType: none-datatype"
   where
     input :: Functor m => m a -> m ((a, TaskKind), [Error])
     input = fmap ((, mempty) . (, Input))

@@ -43,8 +43,19 @@ liftDefinition name def = do
     env =
       Environment.empty $ Scope.KeyedName Scope.Definition name
   case def of
-    Syntax.TypeDeclaration {} ->
-      panic "lifting type declaration"
+    Syntax.TypeDeclaration type_ -> do
+      let
+        typeEnv =
+          Environment.empty $ Scope.KeyedName Scope.Type name
+      (type', state) <-
+        runStateT
+          (do
+            type' <- evaluate typeEnv type_ []
+            pure $ readback typeEnv type'
+          )
+          emptyState
+
+      pure (LambdaLifted.TypeDeclaration type', _liftedDefinitions state)
 
     Syntax.ConstantDefinition term -> do
       ((vars, def'), state) <- runStateT (liftLambda env term) emptyState
