@@ -1,4 +1,4 @@
-# sixty ![](https://github.com/ollef/sixty/workflows/Tests/badge.svg)
+# sixty ![](https://github.com/ollef/sixty/workflows/Tests/badge.svg) [![Gitter chat](https://badges.gitter.im/ollef/sixten.png)](https://gitter.im/sixten-lang)
 
 A type checker for a dependent type theory using normalisation by evaluation,
 with an eye on performance.
