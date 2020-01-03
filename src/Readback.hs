@@ -1,7 +1,7 @@
 {-# language OverloadedStrings #-}
 module Readback where
 
-import Protolude hiding (IntMap, Seq, force, evaluate)
+import Protolude hiding (IntMap, Seq, head, force, evaluate)
 
 import qualified Domain
 import qualified Environment
@@ -18,22 +18,22 @@ import qualified Syntax.Telescope as Telescope
 readback :: Domain.Environment v -> Domain.Value -> M (Syntax.Term v)
 readback env value =
   case value of
-    Domain.Neutral hd spine -> do
-      hd' <- readbackHead env hd
-      readbackSpine hd' spine
+    Domain.Neutral head spine -> do
+      head' <- readbackHead env head
+      readbackSpine head' spine
 
     Domain.Lit lit ->
       pure $ Syntax.Lit lit
 
-    Domain.Glued hd spine value' -> do
-      maybeHead <- readbackMaybeHead env hd
+    Domain.Glued head spine value' -> do
+      maybeHead <- readbackMaybeHead env head
       case maybeHead of
         Nothing -> do
           value'' <- force value'
           readback env value''
 
-        Just hd' ->
-          readbackSpine hd' spine
+        Just head' ->
+          readbackSpine head' spine
 
     Domain.Lam name type_ plicity closure ->
       Syntax.Lam (Binding.Unspanned name) <$> readback env type_ <*> pure plicity <*> readbackClosure env closure
@@ -56,8 +56,8 @@ readbackClosure env closure = do
   readback env' closure'
 
 readbackHead :: Domain.Environment v -> Domain.Head -> M (Syntax.Term v)
-readbackHead env hd = do
-  maybeTerm <- readbackMaybeHead env hd
+readbackHead env head = do
+  maybeTerm <- readbackMaybeHead env head
   case maybeTerm of
     Nothing ->
       panic "readbackHead: Nothing"
@@ -66,8 +66,8 @@ readbackHead env hd = do
       pure term
 
 readbackMaybeHead :: Domain.Environment v -> Domain.Head -> M (Maybe (Syntax.Term v))
-readbackMaybeHead env hd =
-  case hd of
+readbackMaybeHead env head =
+  case head of
     Domain.Var v ->
       case (Environment.lookupVarIndex v env, Environment.lookupVarValue v env) of
         (Just i, _) ->
