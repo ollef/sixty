@@ -17,17 +17,17 @@ General idea:
 
 xs |- t : T
 -------------------------
-|- \xs. t : Fun xs T
+|- \xs. t : Function xs T
 
-f : Fun xs T
+f : Function xs T
 ts : xs[ts/xs]
 -----------------
 f ts : T[ts/xs]
 
-f : Fun (xs ++ ys) T
-ts : xs[ts / xs]
+f : Function (xs ++ ys) T
+ts : xs[ts/xs]
 --------------------------------------
-Closure f ts : ys[ts/xs] -> T[ts / xs]
+Closure f ts : ys[ts/xs] -> T[ts/xs]
 
 cl : (xs ++ ys) -> T
 ts : xs[ts/xs]
