@@ -441,16 +441,16 @@ readback env (Value value _) =
     Lit lit ->
       LambdaLifted.Lit lit
 
-    Let name var value' type_ body ->
+    Let binding var value' type_ body ->
       LambdaLifted.Let
-        name
+        (Binding.toName binding)
         (readback env value')
         (readback env type_)
         (readback (Environment.extendVar env var) body)
 
-    Pi name var domain target ->
+    Pi binding var domain target ->
       LambdaLifted.Pi
-        name
+        (Binding.toName binding)
         (readback env domain)
         (readback (Environment.extendVar env var) target)
 

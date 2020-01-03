@@ -6,9 +6,9 @@ import Protolude hiding (Type, IntMap)
 
 import Data.HashMap.Lazy (HashMap)
 
-import Binding (Binding)
 import Index
 import Literal (Literal)
+import Name (Name)
 import qualified Name
 import Syntax.Telescope (Telescope)
 
@@ -17,8 +17,8 @@ data Term v
   | Global !Name.Lifted
   | Con !Name.QualifiedConstructor [Term v]
   | Lit !Literal
-  | Let !Binding !(Term v) !(Type v) !(Scope Term v)
-  | Pi !Binding !(Type v) !(Scope Type v)
+  | Let !Name !(Term v) !(Type v) !(Scope Term v)
+  | Pi !Name !(Type v) !(Scope Type v)
   | App !(Term v) !(Term v)
   | Case !(Term v) (Branches v) !(Maybe (Term v))
   deriving (Eq, Show, Generic, Hashable)
