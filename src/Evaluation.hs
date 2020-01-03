@@ -74,9 +74,9 @@ evaluate env term =
     Syntax.Meta meta ->
       pure $ Domain.meta meta
 
-    Syntax.Let _ type_ _ body -> do
-      type' <- evaluate env type_
-      (env', _) <- Environment.extendValue env type'
+    Syntax.Let _ term' _ body -> do
+      term'' <- evaluate env term'
+      (env', _) <- Environment.extendValue env term''
       evaluate env' body
 
     Syntax.Pi binding domain plicity target -> do
