@@ -99,7 +99,7 @@ unify context flexibility value1 value2 = do
 
     -- Same heads
     (Domain.Neutral head1 spine1, Domain.Neutral head2 spine2)
-      | head1 == head2 -> do
+      | sameHeads head1 head2 -> do
         let
           flexibility' =
             max (Domain.headFlexibility head1) flexibility
@@ -180,23 +180,24 @@ unify context flexibility value1 value2 = do
             can'tUnify
 
     -- Case expressions
-    (Domain.Case scrutinee1 branches1, Domain.Case scrutinee2 branches2) -> do
+    (Domain.Neutral (Domain.Case scrutinee1 branches1) spine1, Domain.Neutral (Domain.Case scrutinee2 branches2) spine2) -> do
+      unifySpines Flexibility.Flexible spine1 spine2
       unify context Flexibility.Flexible scrutinee1 scrutinee2
       unifyBranches context flexibility branches1 branches2
 
-    (Domain.Case scrutinee@(Domain.Neutral (Domain.Meta meta) spine) branches, _)
+    (Domain.Neutral (Domain.Case scrutinee@(Domain.Neutral (Domain.Meta meta) spine) branches) Tsil.Empty, _)
       | Flexibility.Rigid <- flexibility -> do
         matches <- potentiallyMatchingBranches context value2' branches
         invertCase scrutinee meta spine matches
 
-    (_, Domain.Case scrutinee@(Domain.Neutral (Domain.Meta meta) spine) branches)
+    (_, Domain.Neutral (Domain.Case scrutinee@(Domain.Neutral (Domain.Meta meta) spine) branches) Tsil.Empty)
       | Flexibility.Rigid <- flexibility -> do
         matches <- potentiallyMatchingBranches context value1' branches
         invertCase scrutinee meta spine matches
 
     -- Glued values
     (Domain.Glued head1 spine1 value1'', Domain.Glued head2 spine2 value2'')
-      | head1 == head2 ->
+      | sameHeads head1 head2 ->
         unifySpines Flexibility.Flexible spine1 spine2 `catchError` \_ ->
           unifyForce flexibility value1'' value2''
 
@@ -445,9 +446,12 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
             (Domain.Neutral (Domain.Meta _) _, _) ->
               pure True
 
-            (Domain.Neutral hd1 _, Domain.Neutral hd2 _)
-              | hd1 == hd2 ->
-                pure True
+            (Domain.Neutral (Domain.Case _ branches') _, _) -> do
+              matches <- potentiallyMatchingBranches context resultValue branches'
+              pure $ not $ null matches
+
+            (Domain.Neutral head1 _, Domain.Neutral head2 _) ->
+              pure $ sameHeads head1 head2
 
             (Domain.Lam {}, Domain.Lam {}) ->
               pure True
@@ -464,10 +468,6 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
             (Domain.Fun {}, Domain.Fun {}) ->
               pure True
 
-            (Domain.Case _ branches', _) -> do
-              matches <- potentiallyMatchingBranches context resultValue branches'
-              pure $ not $ null matches
-
             _ ->
               pure False
 
@@ -475,6 +475,24 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
           type' <- Evaluation.evaluate env type_
           (context', var) <- Context.extendUnnamed context (Binding.toName binding) type'
           branchMatches context' (Environment.extendVar env var) tele'
+
+sameHeads :: Domain.Head -> Domain.Head -> Bool
+sameHeads head1 head2 =
+  case (head1, head2) of
+    (Domain.Var var1, Domain.Var var2) ->
+      var1 == var2
+
+    (Domain.Global global1, Domain.Global global2) ->
+      global1 == global2
+
+    (Domain.Con con1, Domain.Con con2) ->
+      con1 == con2
+
+    (Domain.Meta meta1, Domain.Meta meta2) ->
+      meta1 == meta2
+
+    _ ->
+      False
 
 instantiatedMetaType
   :: Context v
@@ -669,25 +687,6 @@ checkInnerSolution outerContext occurs env flexibility value = do
         <*> pure plicity
         <*> checkInnerSolution outerContext occurs env flexibility target
 
-    Domain.Case scrutinee (Domain.Branches env' branches defaultBranch) -> do
-      scrutinee' <- checkInnerSolution outerContext occurs env flexibility scrutinee
-      branches' <- case branches of
-        Syntax.ConstructorBranches constructorBranches ->
-          fmap Syntax.ConstructorBranches $
-            forM constructorBranches $ mapM $
-              checkInnerBranch outerContext occurs env env' flexibility
-
-        Syntax.LiteralBranches literalBranches ->
-          fmap Syntax.LiteralBranches $
-            forM literalBranches $ mapM $ \branch -> do
-              branch' <- Evaluation.evaluate env' branch
-              checkInnerSolution outerContext occurs env flexibility branch'
-
-      defaultBranch' <- forM defaultBranch $ \branch -> do
-        branch' <- Evaluation.evaluate env' branch
-        checkInnerSolution outerContext occurs env flexibility branch'
-      pure $ Syntax.Case scrutinee' branches' defaultBranch'
-
 checkInnerBranch
   :: Context outer
   -> Meta.Index
@@ -736,7 +735,7 @@ checkInnerNeutral
 checkInnerNeutral outerContext occurs env flexibility hd spine =
   case spine of
     Tsil.Empty ->
-      checkInnerHead occurs env hd
+      checkInnerHead outerContext occurs env flexibility hd
 
     spine' Tsil.:> (plicity, arg) ->
       Syntax.App
@@ -745,11 +744,13 @@ checkInnerNeutral outerContext occurs env flexibility hd spine =
         <*> checkInnerSolution outerContext occurs env flexibility arg
 
 checkInnerHead
-  :: Meta.Index
-  -> Domain.Environment v
+  :: Context v
+  -> Meta.Index
+  -> Domain.Environment v'
+  -> Flexibility
   -> Domain.Head
-  -> M (Syntax.Term v)
-checkInnerHead occurs env hd =
+  -> M (Syntax.Term v')
+checkInnerHead outerContext occurs env flexibility hd =
   case hd of
     Domain.Var v ->
       case Environment.lookupVarIndex v env of
@@ -771,6 +772,25 @@ checkInnerHead occurs env hd =
 
       | otherwise ->
         pure $ Syntax.Meta m
+
+    Domain.Case scrutinee (Domain.Branches env' branches defaultBranch) -> do
+      scrutinee' <- checkInnerSolution outerContext occurs env flexibility scrutinee
+      branches' <- case branches of
+        Syntax.ConstructorBranches constructorBranches ->
+          fmap Syntax.ConstructorBranches $
+            forM constructorBranches $ mapM $
+              checkInnerBranch outerContext occurs env env' flexibility
+
+        Syntax.LiteralBranches literalBranches ->
+          fmap Syntax.LiteralBranches $
+            forM literalBranches $ mapM $ \branch -> do
+              branch' <- Evaluation.evaluate env' branch
+              checkInnerSolution outerContext occurs env flexibility branch'
+
+      defaultBranch' <- forM defaultBranch $ \branch -> do
+        branch' <- Evaluation.evaluate env' branch
+        checkInnerSolution outerContext occurs env flexibility branch'
+      pure $ Syntax.Case scrutinee' branches' defaultBranch'
 
 pruneMeta
   :: Context v

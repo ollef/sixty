@@ -10,18 +10,28 @@ import qualified Domain
 import qualified Environment
 import Index
 import Literal (Literal)
+import qualified Meta
 import Monad
+import qualified Name
 import Name (Name)
 import Plicity
 import qualified Syntax
+import Var (Var)
 
 data Value
-  = Neutral !Domain.Head Spine
+  = Neutral !Head Spine
   | Lit !Literal
-  | Glued !Domain.Head Spine !Value
+  | Glued !Head Spine !Value
   | Lam !Name !Type !Plicity !Closure
   | Pi !Name !Type !Plicity !Closure
   | Fun !Type !Plicity !Type
+  deriving Show
+
+data Head
+  = Var !Var
+  | Global !Name.Qualified
+  | Con !Name.QualifiedConstructor
+  | Meta !Meta.Index
   | Case !Value !Branches
   deriving Show
 
@@ -45,13 +55,13 @@ to :: Domain.Value -> M Value
 to value =
   case value of
     Domain.Neutral hd spine ->
-      Neutral hd <$> mapM (mapM to) spine
+      Neutral <$> headTo hd <*> mapM (mapM to) spine
 
     Domain.Lit lit ->
       pure $ Lit lit
 
     Domain.Glued hd spine value' ->
-      Glued hd <$> mapM (mapM to) spine <*> lazyTo value'
+      Glued <$> headTo hd <*> mapM (mapM to) spine <*> lazyTo value'
 
     Domain.Lam name type_ plicity closure ->
       Lam name <$> to type_ <*> pure plicity <*> closureTo closure
@@ -61,6 +71,21 @@ to value =
 
     Domain.Fun domain plicity target ->
       Fun <$> to domain <*> pure plicity <*> to target
+
+headTo :: Domain.Head -> M Head
+headTo hd =
+  case hd of
+    Domain.Var var ->
+      pure $ Var var
+
+    Domain.Global global ->
+      pure $ Global global
+
+    Domain.Con con ->
+      pure $ Con con
+
+    Domain.Meta meta ->
+      pure $ Meta meta
 
     Domain.Case scrutinee branches ->
       Case <$> to scrutinee <*> branchesTo branches

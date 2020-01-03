@@ -43,22 +43,6 @@ readback env value =
 
     Domain.Fun domain plicity target ->
       Syntax.Fun <$> readback env domain <*> pure plicity <*> readback env target
-
-    Domain.Case scrutinee (Domain.Branches env' branches defaultBranch) -> do
-      scrutinee' <- readback env scrutinee
-      branches' <- case branches of
-        Syntax.ConstructorBranches constructorBranches ->
-          Syntax.ConstructorBranches <$> forM constructorBranches (mapM $ readbackConstructorBranch env env')
-
-        Syntax.LiteralBranches literalBranches ->
-          Syntax.LiteralBranches <$> forM literalBranches (mapM $ \branch -> do
-            branchValue <- Evaluation.evaluate env' branch
-            readback env branchValue
-          )
-      defaultBranch' <- forM defaultBranch $ \branch -> do
-        branch' <- Evaluation.evaluate env' branch
-        readback env branch'
-      pure $ Syntax.Case scrutinee' branches' defaultBranch'
   where
     readbackSpine =
       foldM $ \fun (plicity, arg) -> do
@@ -76,7 +60,7 @@ readbackHead env hd = do
   maybeTerm <- readbackMaybeHead env hd
   case maybeTerm of
     Nothing ->
-      panic $ "readbackHead: Nothing " <> show hd
+      panic "readbackHead: Nothing"
 
     Just term ->
       pure term
@@ -104,6 +88,22 @@ readbackMaybeHead env hd =
 
     Domain.Meta m ->
       pure $ Just $ Syntax.Meta m
+
+    Domain.Case scrutinee (Domain.Branches env' branches defaultBranch) -> do
+      scrutinee' <- readback env scrutinee
+      branches' <- case branches of
+        Syntax.ConstructorBranches constructorBranches ->
+          Syntax.ConstructorBranches <$> forM constructorBranches (mapM $ readbackConstructorBranch env env')
+
+        Syntax.LiteralBranches literalBranches ->
+          Syntax.LiteralBranches <$> forM literalBranches (mapM $ \branch -> do
+            branchValue <- Evaluation.evaluate env' branch
+            readback env branchValue
+          )
+      defaultBranch' <- forM defaultBranch $ \branch -> do
+        branch' <- Evaluation.evaluate env' branch
+        readback env branch'
+      pure $ Just $ Syntax.Case scrutinee' branches' defaultBranch'
 
 readbackConstructorBranch
   :: Domain.Environment v

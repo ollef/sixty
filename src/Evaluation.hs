@@ -1,7 +1,7 @@
 {-# language OverloadedStrings #-}
 module Evaluation where
 
-import Protolude hiding (Seq, force, evaluate)
+import Protolude hiding (Seq, head, force, evaluate)
 
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
@@ -108,9 +108,9 @@ evaluate env term =
 
         _ ->
           pure $
-            Domain.Case
-              scrutineeValue
-              (Domain.Branches env branches defaultBranch)
+            Domain.Neutral
+            (Domain.Case scrutineeValue $ Domain.Branches env branches defaultBranch)
+            mempty
 
     Syntax.Spanned _ term' ->
       evaluate env term'
@@ -226,26 +226,28 @@ forceHead env value =
   case value of
     Domain.Neutral (Domain.Var var) spine
       | Just headValue <- Environment.lookupVarValue var env -> do
-        value' <- Evaluation.applySpine headValue spine
+        value' <- applySpine headValue spine
         forceHead env value'
+
+    Domain.Neutral (Domain.Case scrutinee branches@(Domain.Branches branchEnv brs defaultBranch)) spine -> do
+      scrutinee' <- forceHead env scrutinee
+      case (scrutinee', brs) of
+        (Domain.Neutral (Domain.Con constr) constructorArgs, Syntax.ConstructorBranches constructorBranches) -> do
+          value' <- chooseConstructorBranch branchEnv constr (toList constructorArgs) constructorBranches defaultBranch
+          value'' <- forceHead env value'
+          applySpine value'' spine
+
+        (Domain.Lit lit, Syntax.LiteralBranches literalBranches) -> do
+          value' <- chooseLiteralBranch branchEnv lit literalBranches defaultBranch
+          value'' <- forceHead env value'
+          applySpine value'' spine
+
+        _ ->
+          pure $ Domain.Neutral (Domain.Case scrutinee' branches) spine
 
     Domain.Glued _ _ value' -> do
       value'' <- force value'
       forceHead env value''
-
-    Domain.Case scrutinee branches@(Domain.Branches branchEnv brs defaultBranch) -> do
-      scrutinee' <- forceHead env scrutinee
-      case (scrutinee', brs) of
-        (Domain.Neutral (Domain.Con constr) spine, Syntax.ConstructorBranches constructorBranches) -> do
-          value' <- Evaluation.chooseConstructorBranch branchEnv constr (toList spine) constructorBranches defaultBranch
-          forceHead env value'
-
-        (Domain.Lit lit, Syntax.LiteralBranches literalBranches) -> do
-          value' <- chooseLiteralBranch branchEnv lit literalBranches defaultBranch
-          forceHead env value'
-
-        _ ->
-          pure $ Domain.Case scrutinee' branches
 
     _ ->
       pure value

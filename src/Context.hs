@@ -331,12 +331,6 @@ dependencies context value = do
       targetVars <- dependencies context target
       pure $ domainVars <> targetVars
 
-    Domain.Case scrutinee (Domain.Branches env branches defaultBranch) -> do
-      scrutineeVars <- dependencies context scrutinee
-      defaultBranchVars <- mapM (dependencies context <=< lift . Evaluation.evaluate env) defaultBranch
-      brVars <- branchVars context env branches
-      pure $ scrutineeVars <> fold defaultBranchVars <> brVars
-
   where
     abstractionDependencies binding type' closure = do
       typeVars <- dependencies context type'
@@ -372,6 +366,12 @@ dependencies context value = do
 
         Domain.Meta _ ->
           pure mempty
+
+        Domain.Case scrutinee (Domain.Branches env branches defaultBranch) -> do
+          scrutineeVars <- dependencies context scrutinee
+          defaultBranchVars <- mapM (dependencies context <=< lift . Evaluation.evaluate env) defaultBranch
+          brVars <- branchVars context env branches
+          pure $ scrutineeVars <> fold defaultBranchVars <> brVars
 
     branchVars
       :: Context v
@@ -541,23 +541,25 @@ forceHead context value =
         Meta.Unsolved {} ->
           pure value
 
-    Domain.Glued _ _ value' -> do
-      value'' <- force value'
-      forceHead context value''
-
-    Domain.Case scrutinee branches@(Domain.Branches branchEnv brs defaultBranch) -> do
+    Domain.Neutral (Domain.Case scrutinee branches@(Domain.Branches branchEnv brs defaultBranch)) spine -> do
       scrutinee' <- forceHead context scrutinee
       case (scrutinee', brs) of
-        (Domain.Neutral (Domain.Con constr) spine, Syntax.ConstructorBranches constructorBranches) -> do
-          value' <- Evaluation.chooseConstructorBranch branchEnv constr (toList spine) constructorBranches defaultBranch
-          forceHead context value'
+        (Domain.Neutral (Domain.Con constr) constructorArgs, Syntax.ConstructorBranches constructorBranches) -> do
+          value' <- Evaluation.chooseConstructorBranch branchEnv constr (toList constructorArgs) constructorBranches defaultBranch
+          value'' <- forceHead context value'
+          Evaluation.applySpine value'' spine
 
         (Domain.Lit lit, Syntax.LiteralBranches literalBranches) -> do
           value' <- Evaluation.chooseLiteralBranch branchEnv lit literalBranches defaultBranch
-          forceHead context value'
+          value'' <- forceHead context value'
+          Evaluation.applySpine value'' spine
 
         _ ->
-          pure $ Domain.Case scrutinee' branches
+          pure $ Domain.Neutral (Domain.Case scrutinee' branches) spine
+
+    Domain.Glued _ _ value' -> do
+      value'' <- force value'
+      forceHead context value''
 
     _ ->
       pure value
@@ -591,19 +593,21 @@ forceHeadGlue context value =
         Meta.Unsolved {} ->
           pure value
 
-    Domain.Case scrutinee branches@(Domain.Branches branchEnv brs defaultBranch) -> do
+    Domain.Neutral (Domain.Case scrutinee branches@(Domain.Branches branchEnv brs defaultBranch)) spine -> do
       scrutinee' <- forceHead context scrutinee
       case (scrutinee', brs) of
-        (Domain.Neutral (Domain.Con constr) spine, Syntax.ConstructorBranches constructorBranches) -> do
-          value' <- Evaluation.chooseConstructorBranch branchEnv constr (toList spine) constructorBranches defaultBranch
-          forceHeadGlue context value'
+        (Domain.Neutral (Domain.Con constr) constructorArgs, Syntax.ConstructorBranches constructorBranches) -> do
+          value' <- Evaluation.chooseConstructorBranch branchEnv constr (toList constructorArgs) constructorBranches defaultBranch
+          value'' <- forceHeadGlue context value'
+          Evaluation.applySpine value'' spine
 
         (Domain.Lit lit, Syntax.LiteralBranches literalBranches) -> do
           value' <- Evaluation.chooseLiteralBranch branchEnv lit literalBranches defaultBranch
-          forceHeadGlue context value'
+          value'' <- forceHeadGlue context value'
+          Evaluation.applySpine value'' spine
 
         _ ->
-          pure $ Domain.Case scrutinee' branches
+          pure $ Domain.Neutral (Domain.Case scrutinee' branches) spine
 
     _ ->
       pure value

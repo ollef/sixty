@@ -139,6 +139,9 @@ isPatternValue context value = do
 
       and <$> mapM (isPatternValue context . snd) spine'
 
+    Domain.Neutral (Domain.Case {}) _ ->
+      pure False
+
     Domain.Neutral (Domain.Meta _) _ ->
       pure False
 
@@ -156,9 +159,6 @@ isPatternValue context value = do
       pure False
 
     Domain.Fun {} ->
-      pure False
-
-    Domain.Case {} ->
       pure False
 
   where
@@ -376,6 +376,9 @@ uncoveredScrutineePatterns context coveredConstructors value = do
     Domain.Neutral (Domain.Meta _) _ ->
       pure []
 
+    Domain.Neutral (Domain.Case {}) _ ->
+      pure []
+
     Domain.Glued _ _ value'' -> do
       value''' <- force value''
       uncoveredScrutineePatterns context coveredConstructors value'''
@@ -387,9 +390,6 @@ uncoveredScrutineePatterns context coveredConstructors value = do
       pure []
 
     Domain.Fun {} ->
-      pure []
-
-    Domain.Case {} ->
       pure []
   where
     dropTypeArgs

@@ -1,0 +1,13 @@
+data Bool = False | True
+
+data List a = Nil | Cons a (List a)
+
+data Maybe a = Nothing | Just a
+
+myType : Bool -> Type -> Type
+myType b = case b of
+  False -> List
+  True -> Maybe
+
+test : myType True Type -> Maybe Type
+test x = x

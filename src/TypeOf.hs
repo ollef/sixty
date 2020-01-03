@@ -50,31 +50,6 @@ typeOf context value =
     Domain.Fun {} ->
       pure Builtin.Type
 
-    Domain.Case _ (Domain.Branches env branches defaultBranch) ->
-      case defaultBranch of
-        Just term -> do
-          value' <- Evaluation.evaluate env term
-          typeOf context value'
-
-        Nothing ->
-          case branches of
-            Syntax.ConstructorBranches constructorBranches ->
-              case HashMap.toList constructorBranches of
-                (_, (_, branchTele)):_ ->
-                  typeOfTelescope context env branchTele
-
-                [] ->
-                  panic "TODO type of branchless case"
-
-            Syntax.LiteralBranches literalBranches ->
-              case HashMap.toList literalBranches of
-                (_, (_, body)):_ -> do
-                  body' <- Evaluation.evaluate env body
-                  typeOf context body'
-
-                [] ->
-                  panic "TODO type of branchless case"
-
 typeOfHead :: Context v -> Domain.Head -> M Domain.Type
 typeOfHead context hd =
   case hd of
@@ -104,6 +79,31 @@ typeOfHead context hd =
               type'
 
       Evaluation.evaluate (Environment.empty $ Context.scopeKey context) type_
+
+    Domain.Case _ (Domain.Branches env branches defaultBranch) ->
+      case defaultBranch of
+        Just term -> do
+          value' <- Evaluation.evaluate env term
+          typeOf context value'
+
+        Nothing ->
+          case branches of
+            Syntax.ConstructorBranches constructorBranches ->
+              case HashMap.toList constructorBranches of
+                (_, (_, branchTele)):_ ->
+                  typeOfTelescope context env branchTele
+
+                [] ->
+                  panic "TODO type of branchless case"
+
+            Syntax.LiteralBranches literalBranches ->
+              case HashMap.toList literalBranches of
+                (_, (_, body)):_ -> do
+                  body' <- Evaluation.evaluate env body
+                  typeOf context body'
+
+                [] ->
+                  panic "TODO type of branchless case"
 
 typeOfApplication :: Context v -> Domain.Type -> Domain.Spine -> M Domain.Type
 typeOfApplication context type_ spine =

@@ -26,6 +26,7 @@ import Monad
 import qualified Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
+import qualified Unification
 import Var
 
 data Error
@@ -48,7 +49,7 @@ unify context flexibility untouchables value1 value2 = do
   case (value1', value2') of
     -- Same heads
     (Domain.Neutral head1 spine1, Domain.Neutral head2 spine2)
-      | head1 == head2 -> do
+      | Unification.sameHeads head1 head2 -> do
         let
           flexibility' =
             max (Domain.headFlexibility head1) flexibility
@@ -60,7 +61,7 @@ unify context flexibility untouchables value1 value2 = do
         throwError Nope
 
     (Domain.Glued head1 spine1 value1'', Domain.Glued head2 spine2 value2'')
-      | head1 == head2 ->
+      | Unification.sameHeads head1 head2 ->
         unifySpines Flexibility.Flexible spine1 spine2 `catchError` \_ ->
           unifyForce context flexibility value1'' value2''
 
@@ -136,9 +137,10 @@ unify context flexibility untouchables value1 value2 = do
         solve var2 value1'
 
     -- Case expressions
-    (Domain.Case scrutinee1 branches1, Domain.Case scrutinee2 branches2) -> do
-      context' <- unify context Flexibility.Flexible untouchables scrutinee1 scrutinee2
-      unifyBranches context' flexibility untouchables branches1 branches2
+    (Domain.Neutral (Domain.Case scrutinee1 branches1) spine1, Domain.Neutral (Domain.Case scrutinee2 branches2) spine2) -> do
+      context' <- unifySpines Flexibility.Flexible spine1 spine2
+      context'' <- unify context' Flexibility.Flexible untouchables scrutinee1 scrutinee2
+      unifyBranches context'' flexibility untouchables branches1 branches2
 
     _ ->
       throwError Dunno
@@ -287,15 +289,9 @@ occurs :: Context v -> Flexibility -> IntSet Var -> Domain.Value -> E M ()
 occurs context flexibility untouchables value = do
   value' <- lift $ Context.forceHeadGlue context value
   case value' of
-    Domain.Neutral (Domain.Var var) _
-      | IntSet.member var untouchables ->
-        throwError $
-          case flexibility of
-            Flexibility.Rigid ->
-              Nope
-
-            Flexibility.Flexible ->
-              Dunno
+    Domain.Neutral hd spine -> do
+      occursHead context flexibility untouchables hd
+      mapM_ (occurs context (max (Domain.headFlexibility hd) flexibility) untouchables . snd) spine
 
     Domain.Lit _ ->
       pure ()
@@ -307,9 +303,6 @@ occurs context flexibility untouchables value = do
       occurs context Flexibility.Flexible untouchables (Domain.Neutral hd spine) `catchError` \_ ->
         occursForce value''
 
-    Domain.Neutral hd spine ->
-      mapM_ (occurs context (max (Domain.headFlexibility hd) flexibility) untouchables . snd) spine
-
     Domain.Lam name type_ _ closure ->
       occursAbstraction name type_ closure
 
@@ -319,10 +312,6 @@ occurs context flexibility untouchables value = do
     Domain.Fun domain _ target -> do
       occurs context flexibility untouchables domain
       occurs context flexibility untouchables target
-
-    Domain.Case scrutinee branches -> do
-      occurs context flexibility untouchables scrutinee
-      occursBranches context flexibility untouchables branches
 
   where
     occursForce lazyValue = do
@@ -338,6 +327,40 @@ occurs context flexibility untouchables value = do
 
       body <- lift $ Evaluation.evaluateClosure closure varValue
       occurs context' flexibility untouchables body
+
+occursHead
+  :: Context v
+  -> Flexibility
+  -> IntSet Var
+  -> Domain.Head
+  -> E M ()
+occursHead context flexibility untouchables hd =
+  case hd of
+    Domain.Var var
+      | IntSet.member var untouchables ->
+        throwError $
+          case flexibility of
+            Flexibility.Rigid ->
+              Nope
+
+            Flexibility.Flexible ->
+              Dunno
+
+      | otherwise ->
+        pure ()
+
+    Domain.Global _ ->
+      pure ()
+
+    Domain.Con _ ->
+      pure ()
+
+    Domain.Meta _ ->
+      pure ()
+
+    Domain.Case scrutinee branches -> do
+      occurs context flexibility untouchables scrutinee
+      occursBranches context flexibility untouchables branches
 
 occursBranches
   :: Context v

@@ -26,7 +26,6 @@ data Value
   | Lam !Name !Type !Plicity !Closure
   | Pi !Name !Type !Plicity !Closure
   | Fun !Type !Plicity !Type
-  | Case !Value !Branches
 
 type Type = Value
 
@@ -35,7 +34,7 @@ data Head
   | Global !Name.Qualified
   | Con !Name.QualifiedConstructor
   | Meta !Meta.Index
-  deriving (Eq, Show)
+  | Case !Value !Branches
 
 type Spine = Tsil (Plicity, Value)
 
@@ -75,4 +74,7 @@ headFlexibility = \case
     Flexibility.Rigid
 
   Meta _ ->
+    Flexibility.Flexible
+
+  Case {} ->
     Flexibility.Flexible

@@ -913,9 +913,6 @@ getExpectedTypeName context type_ = do
     Domain.Lam {} ->
       pure Nothing
 
-    Domain.Case {} ->
-      pure Nothing
-
 -------------------------------------------------------------------------------
 -- Implicits
 
