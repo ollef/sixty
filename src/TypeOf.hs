@@ -89,16 +89,16 @@ typeOfHead context hd =
         Nothing ->
           case branches of
             Syntax.ConstructorBranches constructorBranches ->
-              case HashMap.toList constructorBranches of
-                (_, (_, branchTele)):_ ->
+              case HashMap.elems constructorBranches of
+                (_, branchTele):_ ->
                   typeOfTelescope context env branchTele
 
                 [] ->
                   panic "TODO type of branchless case"
 
             Syntax.LiteralBranches literalBranches ->
-              case HashMap.toList literalBranches of
-                (_, (_, body)):_ -> do
+              case HashMap.elems literalBranches of
+                (_, body):_ -> do
                   body' <- Evaluation.evaluate env body
                   typeOf context body'
 
