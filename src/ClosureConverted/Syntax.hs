@@ -52,9 +52,15 @@ data Term v
 type Type = Term
 
 data Branches v
-  = ConstructorBranches (HashMap Name.QualifiedConstructor (Telescope Type Term v))
-  | LiteralBranches (HashMap Literal (Term v))
+  = ConstructorBranches (ConstructorBranches v)
+  | LiteralBranches (LiteralBranches v)
   deriving (Eq, Show, Generic, Hashable)
+
+type ConstructorBranches v =
+  HashMap Name.QualifiedConstructor (Telescope Type Term v)
+
+type LiteralBranches v =
+  HashMap Literal (Term v)
 
 data Definition
   = ConstantDefinition !(Term Void)
