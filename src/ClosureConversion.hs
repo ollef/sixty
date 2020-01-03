@@ -1,5 +1,5 @@
 {-# language FlexibleContexts #-}
-module ClosureConvert where
+module ClosureConversion where
 
 import Protolude
 import Rock
