@@ -70,8 +70,8 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [ ] Language server tests
 - [x] File watcher
 - [ ] Backend
-  - [x] Lambda lifting
-  - [x] Closure conversion
+  - [x] Typed lambda lifting
+  - [x] Typed closure conversion
   - [ ] Code generation
   - [ ] Reference counting
   - [ ] Extern code
