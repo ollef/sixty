@@ -6,14 +6,13 @@
 {-# language DerivingStrategies #-}
 {-# language GeneralizedNewtypeDeriving #-}
 {-# language OverloadedStrings #-}
-{-# language PackageImports #-}
 module Meta where
 
 import Protolude hiding (IntMap)
 
-import "this" Data.IntMap (IntMap)
+import Data.IntMap (IntMap)
+import qualified Data.IntMap as IntMap
 import Data.Text.Prettyprint.Doc
-import qualified "this" Data.IntMap as IntMap
 import qualified Span
 
 data Var term

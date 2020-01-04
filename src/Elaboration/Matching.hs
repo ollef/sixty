@@ -1,5 +1,4 @@
 {-# language OverloadedStrings #-}
-{-# language PackageImports #-}
 {-# language RankNTypes #-}
 module Elaboration.Matching where
 
@@ -18,12 +17,13 @@ import qualified Data.Set as Set
 import Rock
 
 import {-# source #-} qualified Elaboration
-import "this" Data.IntMap (IntMap)
 import Binding (Binding)
 import qualified Binding
 import qualified Builtin
 import Context (Context)
 import qualified Context
+import Data.IntMap (IntMap)
+import qualified Data.IntMap as IntMap
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Domain
@@ -42,7 +42,6 @@ import Name (Name(Name))
 import qualified Name
 import Plicity
 import qualified Presyntax
-import qualified "this" Data.IntMap as IntMap
 import qualified Query
 import qualified Readback
 import qualified Scope

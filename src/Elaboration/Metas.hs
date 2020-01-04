@@ -2,7 +2,6 @@
 {-# language DeriveFunctor #-}
 {-# language DeriveTraversable #-}
 {-# language OverloadedStrings #-}
-{-# language PackageImports #-}
 module Elaboration.Metas where
 
 import Prelude (Show (showsPrec))
@@ -13,6 +12,7 @@ import Data.HashMap.Lazy (HashMap)
 
 import Binding (Binding)
 import Data.IntMap (IntMap)
+import qualified Data.IntMap as IntMap
 import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
 import Data.Tsil (Tsil)
@@ -25,7 +25,6 @@ import qualified Meta
 import Monad
 import qualified Name
 import Plicity
-import qualified "this" Data.IntMap as IntMap
 import qualified Scope
 import qualified Span
 import qualified Syntax

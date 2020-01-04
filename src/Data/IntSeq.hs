@@ -16,8 +16,8 @@ import Data.FingerTree (FingerTree)
 import qualified Data.FingerTree as FingerTree
 import qualified "containers" Data.IntMap
 
-import "this" Data.IntMap (IntMap)
-import qualified "this" Data.IntMap as IntMap
+import Data.IntMap (IntMap)
+import qualified Data.IntMap as IntMap
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 

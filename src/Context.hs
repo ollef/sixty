@@ -1,6 +1,5 @@
 {-# language DuplicateRecordFields #-}
 {-# language OverloadedStrings #-}
-{-# language PackageImports #-}
 {-# language RankNTypes #-}
 {-# language TupleSections #-}
 module Context where
@@ -12,10 +11,11 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef
 import Rock
 
-import "this" Data.IntMap (IntMap)
 import qualified Binding
 import Binding (Binding)
 import qualified Builtin
+import Data.IntMap (IntMap)
+import qualified Data.IntMap as IntMap
 import Data.IntSeq (IntSeq)
 import qualified Data.IntSeq as IntSeq
 import Data.IntSet (IntSet)
@@ -38,7 +38,6 @@ import Monad
 import Name (Name(Name))
 import qualified Name
 import Plicity
-import qualified "this" Data.IntMap as IntMap
 import qualified Query
 import qualified Query.Mapped as Mapped
 import qualified Readback

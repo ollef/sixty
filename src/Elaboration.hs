@@ -1,6 +1,5 @@
 {-# language LambdaCase #-}
 {-# language OverloadedStrings #-}
-{-# language PackageImports #-}
 {-# language ViewPatterns #-}
 module Elaboration where
 
@@ -18,6 +17,7 @@ import qualified Binding
 import qualified Builtin
 import Context (Context)
 import qualified Context
+import qualified Data.IntMap as IntMap
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Domain
@@ -41,7 +41,6 @@ import Name (Name)
 import qualified Name
 import Plicity
 import qualified Presyntax
-import qualified "this" Data.IntMap as IntMap
 import qualified Query
 import qualified Readback
 import qualified Scope

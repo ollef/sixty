@@ -1,14 +1,13 @@
-{-# language PackageImports #-}
 module Environment where
 
 import Protolude hiding (IntMap)
 
-import "this" Data.IntMap (IntMap)
+import Data.IntMap (IntMap)
 import Index
 import qualified Index.Map
 import qualified Index.Map as Index
 import Monad
-import qualified "this" Data.IntMap as IntMap
+import qualified Data.IntMap as IntMap
 import qualified Scope
 import Var (Var)
 import qualified Var
