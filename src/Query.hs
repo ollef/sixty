@@ -1,12 +1,16 @@
 {-# language FlexibleContexts #-}
+{-# language FlexibleInstances #-}
 {-# language GADTs #-}
+{-# language MultiParamTypeClasses #-}
 {-# language OverloadedStrings #-}
+{-# language QuantifiedConstraints #-}
 {-# language StandaloneDeriving #-}
 {-# language TemplateHaskell #-}
 module Query where
 
 import Protolude hiding (IntMap)
 
+import Data.Dependent.Sum
 import Data.GADT.Compare.TH
 import Data.HashMap.Lazy (HashMap)
 import Data.HashSet (HashSet)
@@ -69,30 +73,30 @@ deriving instance Show (Query a)
 deriveGEq ''Query
 deriveGCompare ''Query
 
-instance HashTag Query where
-  hashTagged query =
+instance (forall a. Eq a => Eq (f a)) => EqTag Query f where
+  eqTagged query _ =
     case query of
-      InputFiles {} -> hash
-      FileText {} -> hash
-      ModuleFile q -> hashTagged q
-      ParsedFile {} -> hash
-      ModuleHeader {} -> hash
-      ImportedNames _ q -> hashTagged q
-      NameAliases {} -> hash
-      ParsedDefinition _ q -> hashTagged q
-      ModulePositionMap {} -> hash
-      ModuleSpanMap {} -> hash
-      Scopes {} -> hash
-      ResolvedName {} -> hash
-      IsDefinitionVisible {} -> hash
-      ElaboratedType {} -> hash
-      ElaboratedDefinition {} -> hash
-      ElaboratingDefinition {} -> hash
-      ConstructorType {} -> hash
-      KeyedNameSpan {} -> hash
-      Occurrences {} -> hash
-      LambdaLifted {} -> hash
-      LambdaLiftedDefinition {} -> hash
-      ClosureConverted {} -> hash
-      ClosureConvertedType {} -> hash
-      ClosureConvertedConstructorType {} -> hash
+      InputFiles {} -> (==)
+      FileText {} -> (==)
+      ModuleFile q -> eqTagged q q
+      ParsedFile {} -> (==)
+      ModuleHeader {} -> (==)
+      ImportedNames _ q -> eqTagged q q
+      NameAliases {} -> (==)
+      ParsedDefinition _ q -> eqTagged q q
+      ModulePositionMap {} -> (==)
+      ModuleSpanMap {} -> (==)
+      Scopes {} -> (==)
+      ResolvedName {} -> (==)
+      IsDefinitionVisible {} -> (==)
+      ElaboratedType {} -> (==)
+      ElaboratedDefinition {} -> (==)
+      ElaboratingDefinition {} -> (==)
+      ConstructorType {} -> (==)
+      KeyedNameSpan {} -> (==)
+      Occurrences {} -> (==)
+      LambdaLifted {} -> (==)
+      LambdaLiftedDefinition {} -> (==)
+      ClosureConverted {} -> (==)
+      ClosureConvertedType {} -> (==)
+      ClosureConvertedConstructorType {} -> (==)

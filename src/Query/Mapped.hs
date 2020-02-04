@@ -1,10 +1,14 @@
+{-# language FlexibleInstances #-}
 {-# language GADTs #-}
+{-# language MultiParamTypeClasses #-}
+{-# language QuantifiedConstraints #-}
 {-# language RankNTypes #-}
 {-# language StandaloneDeriving #-}
 module Query.Mapped where
 
 import Protolude
 
+import Data.Dependent.Sum
 import Data.GADT.Compare
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
@@ -62,8 +66,10 @@ instance (Eq key, Ord key) => GCompare (Query key result) where
       EQ -> GEQ
       GT -> GGT
 
-instance (Hashable key, Hashable result) => HashTag (Query key result) where
-  hashTagged query =
-    case query of
-      Map {} -> hash
-      Query {} -> hash
+instance (Eq key, Eq result, forall a. Eq a => Eq (f a)) => EqTag (Query key result) f where
+  eqTagged query query' =
+    case (query, query') of
+      (Map, Map) -> (==)
+      (Query q, Query q')
+        | q == q' -> (==)
+        | otherwise -> const $ const False

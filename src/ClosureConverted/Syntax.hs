@@ -1,5 +1,3 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
 module ClosureConverted.Syntax where
 
 import Protolude hiding (Type, IntMap)
@@ -48,14 +46,14 @@ data Term v
   | Closure !Name.Lifted [Term v]
   | ApplyClosure !(Term v) [Term v]
   | Case !(Term v) (Branches v) !(Maybe (Term v))
-  deriving (Eq, Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 type Type = Term
 
 data Branches v
   = ConstructorBranches (ConstructorBranches v)
   | LiteralBranches (LiteralBranches v)
-  deriving (Eq, Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 type ConstructorBranches v =
   HashMap Name.QualifiedConstructor (Telescope Type Term v)
@@ -69,11 +67,11 @@ data Definition
   | FunctionDefinition !(Telescope Type Term Void)
   | DataDefinition (ConstructorDefinitions Void)
   | ParameterisedDataDefinition !(Telescope Type ConstructorDefinitions Void)
-  deriving (Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 newtype ConstructorDefinitions v =
   ConstructorDefinitions (HashMap Name.Constructor (Type v))
-  deriving (Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 fromVoid :: Term Void -> Term v
 fromVoid =

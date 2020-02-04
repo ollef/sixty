@@ -1,7 +1,5 @@
-{-# language DeriveAnyClass #-}
 {-# language DeriveFoldable #-}
 {-# language DeriveFunctor #-}
-{-# language DeriveGeneric #-}
 {-# language DeriveTraversable #-}
 {-# language DerivingStrategies #-}
 {-# language GeneralizedNewtypeDeriving #-}
@@ -18,11 +16,10 @@ import qualified Span
 data Var term
   = Unsolved term Span.Relative
   | Solved term term
-  deriving (Functor, Foldable, Traversable, Generic, Hashable)
+  deriving (Eq, Functor, Foldable, Traversable)
 
 newtype Index = Index Int
-  deriving (Eq, Ord, Show, Generic)
-  deriving newtype (Hashable)
+  deriving (Eq, Ord, Show)
 
 instance Pretty Index where
   pretty (Index i) =
@@ -31,7 +28,7 @@ instance Pretty Index where
 data Vars term = Vars
   { vars :: !(IntMap Index (Var term))
   , nextIndex :: !Index
-  } deriving (Generic, Hashable)
+  } deriving (Eq)
 
 empty :: Vars term
 empty = Vars mempty (Index 0)

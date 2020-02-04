@@ -1,5 +1,3 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
 {-# language TupleSections #-}
 module Binding where
 
@@ -15,7 +13,7 @@ import qualified Presyntax
 data Binding
   = Spanned !(NonEmpty (Span.Relative, Name))
   | Unspanned !Name
-  deriving (Eq, Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 fromName :: [Span.Relative] -> Name -> Binding
 fromName spans_ name =

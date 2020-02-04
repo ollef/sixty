@@ -8,7 +8,7 @@ import Protolude
 -- Indices
 
 newtype Index v = Index Int
-  deriving (Eq, Show, Hashable)
+  deriving (Eq, Show)
 
 -------------------------------------------------------------------------------
 -- Phantom types

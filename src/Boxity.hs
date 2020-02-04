@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric  #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Boxity where
 
@@ -10,7 +8,7 @@ import Data.Text.Prettyprint.Doc
 data Boxity
   = Unboxed
   | Boxed
-  deriving (Eq, Ord, Show, Generic, Hashable)
+  deriving (Eq, Ord, Show)
 
 instance Pretty Boxity where
   pretty boxity =

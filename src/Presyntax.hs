@@ -1,5 +1,3 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
 {-# language LambdaCase #-}
 module Presyntax where
 
@@ -19,7 +17,7 @@ import qualified Span
 
 data Term
   = Term !Span.Relative !UnspannedTerm
-  deriving (Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 unspanned :: Term -> UnspannedTerm
 unspanned (Term _ term) =
@@ -37,16 +35,16 @@ data UnspannedTerm
   | Case !Term [(Pattern, Term)]
   | Wildcard
   | ParseError !Error.Parsing
-  deriving (Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 type Type = Term
 
 data Binding = Binding !Span.Relative !Name
-  deriving (Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 data Pattern
   = Pattern !Span.Relative !UnspannedPattern
-  deriving (Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 data UnspannedPattern
   = ConOrVar !Span.Relative !Name.Pre [PlicitPattern]
@@ -54,12 +52,12 @@ data UnspannedPattern
   | LitPattern !Literal
   | Anno !Pattern !Type
   | Forced !Term
-  deriving (Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 data PlicitPattern
   = ExplicitPattern !Pattern
   | ImplicitPattern !Span.Relative (HashMap Name Pattern)
-  deriving (Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 plicitPatternSpan :: PlicitPattern -> Span.Relative
 plicitPatternSpan pat =
@@ -98,18 +96,18 @@ data Definition
   = TypeDeclaration !Span.Relative !Type
   | ConstantDefinition [(Span.Relative, Clause)]
   | DataDefinition !Span.Relative !Boxity [(Binding, Type, Plicity)] [ConstructorDefinition]
-  deriving (Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 data Clause = Clause
   { _span :: !Span.Relative
   , _patterns :: [PlicitPattern]
   , _rhs :: !Term
-  } deriving (Show, Generic, Hashable)
+  } deriving (Eq, Show)
 
 data ConstructorDefinition
   = GADTConstructors [(Span.Relative, Name.Constructor)] Type
   | ADTConstructor !Span.Relative Name.Constructor [Type]
-  deriving (Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 spans :: Definition -> [Span.Relative]
 spans def =

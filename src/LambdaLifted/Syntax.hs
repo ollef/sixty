@@ -1,5 +1,3 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
 module LambdaLifted.Syntax where
 
 import Protolude hiding (Type, IntMap)
@@ -21,21 +19,21 @@ data Term v
   | Pi !Name !(Type v) !(Scope Type v)
   | App !(Term v) !(Term v)
   | Case !(Term v) (Branches v) !(Maybe (Term v))
-  deriving (Eq, Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 type Type = Term
 
 data Branches v
   = ConstructorBranches (HashMap Name.QualifiedConstructor (Telescope Type Term v))
   | LiteralBranches (HashMap Literal (Term v))
-  deriving (Eq, Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 data Definition
   = TypeDeclaration !(Type Void)
   | ConstantDefinition !(Telescope Type Term Void)
   | DataDefinition !(Telescope Type ConstructorDefinitions Void)
-  deriving (Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 newtype ConstructorDefinitions v =
   ConstructorDefinitions (HashMap Name.Constructor (Type v))
-  deriving (Show, Generic, Hashable)
+  deriving (Eq, Show)

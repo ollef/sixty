@@ -36,19 +36,7 @@ data Intervals = Intervals
   { _intervals :: IntervalMap Position.Relative Item
   , _items :: HashMap Item (HashSet Span.Relative)
   , _varBindingSpans :: IntMap Var (NonEmpty Span.Relative)
-  } deriving (Show, Generic)
-
-instance Hashable Intervals where
-  hashWithSalt salt (Intervals a b c) =
-    salt `hashWithSalt`
-      [ (i, j, k)
-      | (IntervalMap.Interval i j, k) <-
-        IntervalMap.intersections
-        (fromMaybe (IntervalMap.Interval 0 0) $ IntervalMap.bounds a)
-        a
-      ]
-      `hashWithSalt` b
-      `hashWithSalt` c
+  } deriving (Eq, Show)
 
 instance Semigroup Intervals where
   Intervals a1 b1 c1 <> Intervals a2 b2 c2 =

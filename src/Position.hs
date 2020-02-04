@@ -1,5 +1,3 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
 {-# language DerivingStrategies #-}
 {-# language GeneralizedNewtypeDeriving #-}
 {-# language OverloadedStrings #-}
@@ -11,12 +9,12 @@ import qualified Data.Text.Unsafe as Text
 import qualified Data.Text as Text
 
 newtype Absolute = Absolute Int
-  deriving stock (Eq, Ord, Show, Generic)
-  deriving newtype (Hashable, Num)
+  deriving stock (Eq, Ord, Show)
+  deriving newtype (Num, Hashable)
 
 newtype Relative = Relative Int
-  deriving stock (Eq, Ord, Show, Generic)
-  deriving newtype (Hashable, Num)
+  deriving stock (Eq, Ord, Show)
+  deriving newtype (Num, Hashable)
 
 relativeTo :: Absolute -> Absolute -> Relative
 relativeTo (Absolute base) (Absolute pos) =
@@ -26,7 +24,7 @@ add :: Absolute -> Relative -> Absolute
 add (Absolute base) (Relative rel) = Absolute $ base + rel
 
 data LineColumn = LineColumn !Int !Int
-  deriving (Eq, Ord, Show, Generic, Hashable)
+  deriving (Eq, Ord, Show)
 
 lineColumn :: Absolute -> Text -> (LineColumn, Text)
 lineColumn (Absolute index) text =

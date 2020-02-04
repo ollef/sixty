@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric  #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Plicity where
 
@@ -11,7 +9,7 @@ data Plicity
   = Implicit
   | Explicit
   | Constraint
-  deriving (Eq, Ord, Show, Generic, Hashable)
+  deriving (Eq, Ord, Show)
 
 instance Pretty Plicity where
   pretty plicity =

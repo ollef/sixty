@@ -18,13 +18,13 @@ data Key
   deriving (Eq, Ord, Show, Generic, Hashable)
 
 data KeyedName = KeyedName !Key !Name.Qualified
-  deriving (Eq, Ord, Show, Generic, Hashable)
+  deriving (Eq, Ord, Show)
 
 data Entry
   = Name !Name.Qualified
   | Constructors (HashSet Name.QualifiedConstructor)
   | Ambiguous (HashSet Name.QualifiedConstructor) (HashSet Name.Qualified)
-  deriving (Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 entryConstructors :: Entry -> HashSet Name.QualifiedConstructor
 entryConstructors entry =

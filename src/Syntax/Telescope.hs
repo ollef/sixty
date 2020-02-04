@@ -1,5 +1,3 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
 {-# language QuantifiedConstraints #-}
 {-# language RankNTypes #-}
 {-# language StandaloneDeriving #-}
@@ -16,7 +14,6 @@ import Plicity
 data Telescope t k v
   = Empty !(k v)
   | Extend !Binding !(t v) !Plicity !(Scope (Telescope t k) v)
-  deriving (Generic)
 
 deriving instance
   (forall v'. Eq (t v'), forall v'. Eq (k v'))
@@ -25,10 +22,6 @@ deriving instance
 deriving instance
   ((forall v'. Show (t v')), (forall v'. Show (k v')))
     => Show (Telescope t k v)
-
-deriving instance
-  ((forall v'. Hashable (t v')), (forall v'. Hashable (k v')))
-    => Hashable (Telescope t k v)
 
 hoist :: (forall v'. k v' -> k' v') -> Telescope t k v -> Telescope t k' v
 hoist f tele =

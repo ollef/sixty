@@ -1,5 +1,3 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
 {-# language OverloadedStrings #-}
 module Error where
 
@@ -26,7 +24,7 @@ data Error
   | ImportNotFound !Name.Module !Module.Import
   | MultipleFilesWithModuleName !Name.Module FilePath FilePath
   | Elaboration !Scope.KeyedName !Error.Spanned
-  deriving (Eq, Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 data Elaboration
   = NotInScope !Name.Pre
@@ -40,18 +38,18 @@ data Elaboration
   | PlicityMismatch !FieldOrArgument !PlicityMismatch
   | UnableToInferImplicitLambda
   | ImplicitApplicationMismatch (HashSet Name) !PrettyableTerm !PrettyableTerm
-  deriving (Eq, Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 data PlicityMismatch
   = Mismatch !Plicity !Plicity
   | Missing !Plicity
   | Extra
-  deriving (Eq, Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 data FieldOrArgument
   = Field
   | Argument
-  deriving (Eq, Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 instance Pretty FieldOrArgument where
   pretty fieldOrArg =
@@ -66,7 +64,7 @@ data MatchKind
   = Clause
   | Branch
   | Lambda
-  deriving (Eq, Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 instance Pretty MatchKind where
   pretty clauseOrPat =
@@ -82,12 +80,12 @@ instance Pretty MatchKind where
 
 data Spanned
   = Spanned !Span.Relative !Error.Elaboration
-  deriving (Eq, Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 data V
 
 data PrettyableTerm = PrettyableTerm Name.Module [Name] (Syntax.Term V)
-  deriving (Eq, Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 data PrettyablePattern = PrettyablePattern Name.Module [Name] Pattern
-  deriving (Eq, Show, Generic, Hashable)
+  deriving (Eq, Show)

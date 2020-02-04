@@ -11,23 +11,21 @@ import Data.String
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
 
-import Orphans ()
-
 newtype Pre = Pre Text
-  deriving stock (Eq, Ord, Show, Generic)
-  deriving newtype (Hashable, IsString, Semigroup)
+  deriving stock (Eq, Ord, Show)
+  deriving newtype (IsString, Semigroup, Hashable)
 
 newtype Name = Name Text
-  deriving stock (Eq, Ord, Show, Generic)
-  deriving newtype (Hashable, IsString)
+  deriving stock (Eq, Ord, Show)
+  deriving newtype (IsString, Hashable)
 
 newtype Constructor = Constructor Text
-  deriving stock (Eq, Ord, Show, Generic)
-  deriving newtype (Hashable, IsString)
+  deriving stock (Eq, Ord, Show)
+  deriving newtype (IsString, Hashable)
 
 newtype Module = Module Text
-  deriving stock (Eq, Ord, Show, Generic)
-  deriving newtype (Hashable, IsString)
+  deriving stock (Eq, Ord, Show)
+  deriving newtype (IsString, Hashable)
 
 data Qualified = Qualified !Module !Name
   deriving (Eq, Ord, Show, Generic, Hashable)
@@ -36,7 +34,7 @@ data QualifiedConstructor = QualifiedConstructor !Qualified !Constructor
   deriving (Eq, Ord, Show, Generic, Hashable)
 
 data Lifted = Lifted !Qualified !Int
-  deriving (Eq, Ord, Show, Generic, Hashable)
+  deriving (Eq, Ord, Show)
 
 -------------------------------------------------------------------------------
 

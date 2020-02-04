@@ -1,5 +1,3 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
 module Syntax where
 
 import Protolude hiding (Type, IntMap)
@@ -33,14 +31,14 @@ data Term v
   | App !(Term v) !Plicity !(Term v)
   | Case !(Term v) (Branches v) !(Maybe (Term v))
   | Spanned !Span.Relative !(Term v)
-  deriving (Eq, Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 type Type = Term
 
 data Branches v
   = ConstructorBranches (ConstructorBranches v)
   | LiteralBranches (LiteralBranches v)
-  deriving (Eq, Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 type ConstructorBranches v =
   HashMap Name.QualifiedConstructor ([Span.Relative], Telescope Type Term v)
@@ -109,11 +107,11 @@ data Definition
   = TypeDeclaration !(Type Void)
   | ConstantDefinition !(Term Void)
   | DataDefinition !Boxity !(Telescope Type ConstructorDefinitions Void)
-  deriving (Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 newtype ConstructorDefinitions v =
   ConstructorDefinitions (HashMap Name.Constructor (Type v))
-  deriving (Show, Generic, Hashable)
+  deriving (Eq, Show)
 
 constructorFieldPlicities :: Type v -> [Plicity]
 constructorFieldPlicities type_ =

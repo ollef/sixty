@@ -8,7 +8,7 @@ import Data.Text.Prettyprint.Doc
 
 newtype Literal
   = Integer Integer
-  deriving (Eq, Generic, Hashable, Show)
+  deriving (Eq, Generic, Show, Hashable)
 
 instance Pretty Literal where
   pretty literal =
