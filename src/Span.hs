@@ -6,15 +6,16 @@ module Span where
 
 import Protolude
 
+import Data.Persist
 import Data.Text.Prettyprint.Doc
 
 import qualified Position
 
 data Absolute = Absolute !Position.Absolute !Position.Absolute
-  deriving (Eq, Ord, Show, Generic, Hashable)
+  deriving (Eq, Ord, Show, Generic, Hashable, Persist)
 
 data Relative = Relative !Position.Relative !Position.Relative
-  deriving (Eq, Ord, Show, Generic, Hashable)
+  deriving (Eq, Ord, Show, Generic, Hashable, Persist)
 
 relativeTo :: Position.Absolute -> Span.Absolute -> Span.Relative
 relativeTo base (Span.Absolute start end) =
@@ -37,7 +38,7 @@ relativeContains (Relative start end) pos =
   start <= pos && pos < end
 
 data LineColumn = LineColumns !Position.LineColumn !Position.LineColumn
-  deriving Show
+  deriving (Show, Generic, Persist)
 
 lineColumn :: Absolute -> Text -> (LineColumn, Text)
 lineColumn (Absolute start end) text =

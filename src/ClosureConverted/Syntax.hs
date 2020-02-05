@@ -1,9 +1,12 @@
+{-# language DeriveGeneric #-}
+{-# language DeriveAnyClass #-}
 module ClosureConverted.Syntax where
 
 import Protolude hiding (Type, IntMap)
 
 import Data.HashMap.Lazy (HashMap)
 import Unsafe.Coerce
+import Data.Persist
 
 import Index
 import Literal (Literal)
@@ -46,14 +49,14 @@ data Term v
   | Closure !Name.Lifted [Term v]
   | ApplyClosure !(Term v) [Term v]
   | Case !(Term v) (Branches v) !(Maybe (Term v))
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Persist)
 
 type Type = Term
 
 data Branches v
   = ConstructorBranches (ConstructorBranches v)
   | LiteralBranches (LiteralBranches v)
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Persist)
 
 type ConstructorBranches v =
   HashMap Name.QualifiedConstructor (Telescope Type Term v)
@@ -67,11 +70,11 @@ data Definition
   | FunctionDefinition !(Telescope Type Term Void)
   | DataDefinition (ConstructorDefinitions Void)
   | ParameterisedDataDefinition !(Telescope Type ConstructorDefinitions Void)
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Persist)
 
 newtype ConstructorDefinitions v =
   ConstructorDefinitions (HashMap Name.Constructor (Type v))
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Persist)
 
 fromVoid :: Term Void -> Term v
 fromVoid =

@@ -5,10 +5,11 @@ module Literal where
 import Protolude
 
 import Data.Text.Prettyprint.Doc
+import Data.Persist
 
 newtype Literal
   = Integer Integer
-  deriving (Eq, Generic, Show, Hashable)
+  deriving (Eq, Generic, Show, Hashable, Persist)
 
 instance Pretty Literal where
   pretty literal =

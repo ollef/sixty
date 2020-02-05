@@ -15,6 +15,7 @@ import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import qualified Data.List as List
 import qualified Data.Text.Unsafe as Text
+import Data.Persist
 
 import Binding (Binding)
 import qualified Binding
@@ -30,13 +31,13 @@ data Item
   | Con Name.QualifiedConstructor
   | Lit Literal
   | Var Var
-  deriving (Show, Eq, Generic, Hashable)
+  deriving (Show, Eq, Generic, Hashable, Persist)
 
 data Intervals = Intervals
   { _intervals :: IntervalMap Position.Relative Item
   , _items :: HashMap Item (HashSet Span.Relative)
   , _varBindingSpans :: IntMap Var (NonEmpty Span.Relative)
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic, Persist)
 
 instance Semigroup Intervals where
   Intervals a1 b1 c1 <> Intervals a2 b2 c2 =

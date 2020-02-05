@@ -10,31 +10,32 @@ import Protolude hiding (Constructor)
 import Data.String
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
+import Data.Persist
 
 newtype Pre = Pre Text
   deriving stock (Eq, Ord, Show)
-  deriving newtype (IsString, Semigroup, Hashable)
+  deriving newtype (IsString, Semigroup, Hashable, Persist)
 
 newtype Name = Name Text
   deriving stock (Eq, Ord, Show)
-  deriving newtype (IsString, Hashable)
+  deriving newtype (IsString, Hashable, Persist)
 
 newtype Constructor = Constructor Text
   deriving stock (Eq, Ord, Show)
-  deriving newtype (IsString, Hashable)
+  deriving newtype (IsString, Hashable, Persist)
 
 newtype Module = Module Text
   deriving stock (Eq, Ord, Show)
-  deriving newtype (IsString, Hashable)
+  deriving newtype (IsString, Hashable, Persist)
 
 data Qualified = Qualified !Module !Name
-  deriving (Eq, Ord, Show, Generic, Hashable)
+  deriving (Eq, Ord, Show, Generic, Hashable, Persist)
 
 data QualifiedConstructor = QualifiedConstructor !Qualified !Constructor
-  deriving (Eq, Ord, Show, Generic, Hashable)
+  deriving (Eq, Ord, Show, Generic, Hashable, Persist)
 
 data Lifted = Lifted !Qualified !Int
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic, Persist)
 
 -------------------------------------------------------------------------------
 

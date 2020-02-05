@@ -1,5 +1,7 @@
+{-# language DeriveAnyClass #-}
 {-# language DeriveFoldable #-}
 {-# language DeriveFunctor #-}
+{-# language DeriveGeneric #-}
 {-# language DeriveTraversable #-}
 {-# language DerivingStrategies #-}
 {-# language GeneralizedNewtypeDeriving #-}
@@ -11,15 +13,19 @@ import Protolude hiding (IntMap)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.Text.Prettyprint.Doc
+import Data.Persist
+
+import Orphans ()
 import qualified Span
 
 data Var term
   = Unsolved term Span.Relative
   | Solved term term
-  deriving (Eq, Functor, Foldable, Traversable)
+  deriving (Eq, Functor, Foldable, Traversable, Generic, Persist)
 
 newtype Index = Index Int
   deriving (Eq, Ord, Show)
+  deriving newtype (Persist)
 
 instance Pretty Index where
   pretty (Index i) =
@@ -28,7 +34,7 @@ instance Pretty Index where
 data Vars term = Vars
   { vars :: !(IntMap Index (Var term))
   , nextIndex :: !Index
-  } deriving (Eq)
+  } deriving (Eq, Generic, Persist)
 
 empty :: Vars term
 empty = Vars mempty (Index 0)

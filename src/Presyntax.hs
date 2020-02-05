@@ -1,15 +1,19 @@
+{-# language DeriveAnyClass #-}
+{-# language DeriveGeneric #-}
 {-# language LambdaCase #-}
 module Presyntax where
 
 import Protolude hiding (Type)
 
 import Data.HashMap.Lazy (HashMap)
+import Data.Persist
 
 import Boxity
 import qualified Error.Parsing as Error
 import Literal (Literal)
 import Name (Name)
 import qualified Name
+import Orphans ()
 import Plicity
 import qualified Position
 import qualified Scope
@@ -17,7 +21,7 @@ import qualified Span
 
 data Term
   = Term !Span.Relative !UnspannedTerm
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Persist)
 
 unspanned :: Term -> UnspannedTerm
 unspanned (Term _ term) =
@@ -35,16 +39,16 @@ data UnspannedTerm
   | Case !Term [(Pattern, Term)]
   | Wildcard
   | ParseError !Error.Parsing
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Persist)
 
 type Type = Term
 
 data Binding = Binding !Span.Relative !Name
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Persist)
 
 data Pattern
   = Pattern !Span.Relative !UnspannedPattern
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Persist)
 
 data UnspannedPattern
   = ConOrVar !Span.Relative !Name.Pre [PlicitPattern]
@@ -52,12 +56,12 @@ data UnspannedPattern
   | LitPattern !Literal
   | Anno !Pattern !Type
   | Forced !Term
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Persist)
 
 data PlicitPattern
   = ExplicitPattern !Pattern
   | ImplicitPattern !Span.Relative (HashMap Name Pattern)
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Persist)
 
 plicitPatternSpan :: PlicitPattern -> Span.Relative
 plicitPatternSpan pat =
@@ -96,18 +100,18 @@ data Definition
   = TypeDeclaration !Span.Relative !Type
   | ConstantDefinition [(Span.Relative, Clause)]
   | DataDefinition !Span.Relative !Boxity [(Binding, Type, Plicity)] [ConstructorDefinition]
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Persist)
 
 data Clause = Clause
   { _span :: !Span.Relative
   , _patterns :: [PlicitPattern]
   , _rhs :: !Term
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic, Persist)
 
 data ConstructorDefinition
   = GADTConstructors [(Span.Relative, Name.Constructor)] Type
   | ADTConstructor !Span.Relative Name.Constructor [Type]
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Persist)
 
 spans :: Definition -> [Span.Relative]
 spans def =

@@ -1,15 +1,18 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# language DeriveAnyClass #-}
+{-# language DeriveGeneric #-}
+{-# language OverloadedStrings #-}
 module Plicity where
 
 import Protolude
 
 import Data.Text.Prettyprint.Doc
+import Data.Persist
 
 data Plicity
   = Implicit
   | Explicit
   | Constraint
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic, Persist)
 
 instance Pretty Plicity where
   pretty plicity =

@@ -1,9 +1,12 @@
+{-# language DeriveAnyClass #-}
+{-# language DeriveGeneric #-}
 module Syntax where
 
 import Protolude hiding (Type, IntMap)
 
 import Data.HashMap.Lazy (HashMap)
 import Unsafe.Coerce
+import Data.Persist
 
 import Binding (Binding)
 import Boxity
@@ -31,14 +34,14 @@ data Term v
   | App !(Term v) !Plicity !(Term v)
   | Case !(Term v) (Branches v) !(Maybe (Term v))
   | Spanned !Span.Relative !(Term v)
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Persist)
 
 type Type = Term
 
 data Branches v
   = ConstructorBranches (ConstructorBranches v)
   | LiteralBranches (LiteralBranches v)
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Persist)
 
 type ConstructorBranches v =
   HashMap Name.QualifiedConstructor ([Span.Relative], Telescope Type Term v)
@@ -107,11 +110,11 @@ data Definition
   = TypeDeclaration !(Type Void)
   | ConstantDefinition !(Term Void)
   | DataDefinition !Boxity !(Telescope Type ConstructorDefinitions Void)
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Persist)
 
 newtype ConstructorDefinitions v =
   ConstructorDefinitions (HashMap Name.Constructor (Type v))
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Persist)
 
 constructorFieldPlicities :: Type v -> [Plicity]
 constructorFieldPlicities type_ =

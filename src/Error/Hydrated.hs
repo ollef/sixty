@@ -1,3 +1,5 @@
+{-# language DeriveAnyClass #-}
+{-# language DeriveGeneric #-}
 {-# language FlexibleContexts #-}
 {-# language OverloadedStrings #-}
 module Error.Hydrated where
@@ -5,6 +7,7 @@ module Error.Hydrated where
 import Protolude hiding (moduleName)
 
 import Data.Coerce
+import Data.Persist
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc as Doc
 import qualified Data.Text.Unsafe as Text
@@ -31,7 +34,7 @@ data Hydrated = Hydrated
   , _lineColumn :: !Span.LineColumn
   , _lineText :: !Text
   , _error :: !Error
-  } deriving Show
+  } deriving (Show, Generic, Persist)
 
 headingAndBody :: (MonadFetch Query m, MonadIO m) => Error -> m (Doc ann, Doc ann)
 headingAndBody error =

@@ -8,23 +8,25 @@ import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
+import Data.Persist
 
 import Name (Name)
 import qualified Name
+import Orphans ()
 
 data Key
   = Type
   | Definition
-  deriving (Eq, Ord, Show, Generic, Hashable)
+  deriving (Eq, Ord, Show, Generic, Hashable, Persist)
 
 data KeyedName = KeyedName !Key !Name.Qualified
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic, Persist)
 
 data Entry
   = Name !Name.Qualified
   | Constructors (HashSet Name.QualifiedConstructor)
   | Ambiguous (HashSet Name.QualifiedConstructor) (HashSet Name.Qualified)
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Persist)
 
 entryConstructors :: Entry -> HashSet Name.QualifiedConstructor
 entryConstructors entry =

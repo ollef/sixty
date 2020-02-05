@@ -1,14 +1,17 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# language DeriveAnyClass #-}
+{-# language DeriveGeneric #-}
+{-# language OverloadedStrings #-}
 module Boxity where
 
 import Protolude
 
+import Data.Persist
 import Data.Text.Prettyprint.Doc
 
 data Boxity
   = Unboxed
   | Boxed
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic, Persist)
 
 instance Pretty Boxity where
   pretty boxity =

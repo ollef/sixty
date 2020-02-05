@@ -14,6 +14,8 @@ import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.HashSet (HashSet)
+import Data.Persist (Persist)
+import qualified Data.Persist as Persist
 import qualified Data.Text.IO as Text
 import Rock
 
@@ -27,7 +29,11 @@ import qualified Query
 import qualified Rules
 import qualified Syntax
 
-runTask :: [FilePath] -> (Error.Hydrated -> Task Query err) -> Task Query a -> IO (a, [err])
+runTask
+  :: [FilePath]
+  -> (Error.Hydrated -> Task Query err)
+  -> Task Query a
+  -> IO (a, [err])
 runTask files prettyError task = do
   startedVar <- newMVar mempty
   errorsVar <- newMVar (mempty :: DMap Query (Const [Error]))
@@ -81,6 +87,24 @@ initialState = do
     , _tracesVar = tracesVar
     , _errorsVar = errorsVar
     }
+
+encodeState :: Persist err => State (err, doc) -> IO ByteString
+encodeState state = do
+  traces <- readMVar $ _tracesVar state
+  errors <- readMVar $ _errorsVar state
+  pure $
+    Persist.encode (traces, DMap.map (\(Const errDocs) -> Const $ fst <$> errDocs) errors)
+
+decodeState :: Persist err => ByteString -> IO (State err)
+decodeState bs = do
+  s <- initialState
+  case Persist.decode bs of
+    Right (traces, errors) -> do
+      void $ swapMVar (_tracesVar s) traces
+      void $ swapMVar (_errorsVar s) errors
+    Left _ ->
+      pure ()
+  pure s
 
 data Prune
   = Don'tPrune

@@ -4,15 +4,22 @@
 {-# language QuantifiedConstraints #-}
 {-# language RankNTypes #-}
 {-# language StandaloneDeriving #-}
+{-# language TypeApplications #-}
 module Query.Mapped where
 
 import Protolude
 
+import Control.Monad.Fail
+import qualified Data.Dependent.Map as DMap
 import Data.Dependent.Sum
 import Data.GADT.Compare
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
+import Data.Persist as Persist
 import Rock
+
+import Orphans ()
+import PersistTag
 
 data Query key result a where
   Map :: Query key result (HashMap key result)
@@ -73,3 +80,42 @@ instance (Eq key, Eq result, forall a. Eq a => Eq (f a)) => EqTag (Query key res
       (Query q, Query q')
         | q == q' -> (==)
         | otherwise -> const $ const False
+
+instance (Eq key, Hashable key, Persist key, Persist result, forall a. Persist a => Persist (f a)) => PersistTag (Query key result) f where
+  putTagged query =
+    case query of
+      Map ->
+        Persist.put
+
+      Query _ ->
+        Persist.put
+
+  getTagged query =
+    case query of
+      Map ->
+        Persist.get
+
+      Query _ ->
+        Persist.get
+
+instance Persist key => Persist (DMap.Some (Query key result)) where
+  put (DMap.This query) =
+    case query of
+      Map ->
+        Persist.put @Word8 0
+
+      Query q -> do
+        Persist.put @Word8 1
+        Persist.put q
+
+  get = do
+    tag <- Persist.get @Word8
+    case tag of
+      0 ->
+        pure $ DMap.This Map
+
+      1 ->
+        DMap.This . Query <$> Persist.get
+
+      _ ->
+        fail "getSome Query"

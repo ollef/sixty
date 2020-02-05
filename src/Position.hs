@@ -1,3 +1,5 @@
+{-# language DeriveAnyClass #-}
+{-# language DeriveGeneric #-}
 {-# language DerivingStrategies #-}
 {-# language GeneralizedNewtypeDeriving #-}
 {-# language OverloadedStrings #-}
@@ -5,16 +7,18 @@ module Position where
 
 import Protolude
 
+import Data.Persist
+
 import qualified Data.Text.Unsafe as Text
 import qualified Data.Text as Text
 
 newtype Absolute = Absolute Int
   deriving stock (Eq, Ord, Show)
-  deriving newtype (Num, Hashable)
+  deriving newtype (Num, Hashable, Persist)
 
 newtype Relative = Relative Int
   deriving stock (Eq, Ord, Show)
-  deriving newtype (Num, Hashable)
+  deriving newtype (Num, Hashable, Persist)
 
 relativeTo :: Absolute -> Absolute -> Relative
 relativeTo (Absolute base) (Absolute pos) =
@@ -24,7 +28,7 @@ add :: Absolute -> Relative -> Absolute
 add (Absolute base) (Relative rel) = Absolute $ base + rel
 
 data LineColumn = LineColumn !Int !Int
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic, Persist)
 
 lineColumn :: Absolute -> Text -> (LineColumn, Text)
 lineColumn (Absolute index) text =

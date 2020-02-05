@@ -1,18 +1,21 @@
 {-# language DeriveAnyClass #-}
+{-# language DeriveGeneric #-}
 {-# language DuplicateRecordFields #-}
 module Module where
 
 import Protolude
 
 import Data.HashSet (HashSet)
+import Data.Persist
 
+import Orphans ()
 import qualified Name
 import qualified Span
 
 data Header = Header
   { _exposedNames :: !ExposedNames
   , _imports :: [Import]
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic, Persist)
 
 instance Semigroup Header where
   Header exposed1 imports1 <> Header exposed2 imports2 =
@@ -28,7 +31,7 @@ instance Monoid Header where
 data ExposedNames
   = Exposed (HashSet Name.Pre)
   | AllExposed
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Persist)
 
 instance Semigroup ExposedNames where
   Exposed names1 <> Exposed names2 =
@@ -49,4 +52,4 @@ data Import = Import
   , _module :: !Name.Module
   , _alias :: !Name.Pre
   , _importedNames :: !ExposedNames
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic, Persist)

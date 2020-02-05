@@ -1,3 +1,5 @@
+{-# language DeriveAnyClass #-}
+{-# language DeriveGeneric #-}
 {-# language TupleSections #-}
 module Binding where
 
@@ -5,6 +7,7 @@ import Protolude
 
 import Data.String
 import qualified Data.List.NonEmpty as NonEmpty
+import Data.Persist
 
 import Name (Name)
 import qualified Span
@@ -13,7 +16,7 @@ import qualified Presyntax
 data Binding
   = Spanned !(NonEmpty (Span.Relative, Name))
   | Unspanned !Name
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, Persist)
 
 fromName :: [Span.Relative] -> Name -> Binding
 fromName spans_ name =
