@@ -69,6 +69,8 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Renaming
   - [ ] Language server tests
 - [x] File watcher
+- [ ] Cached builds
+  - [ ] Per-module caches
 - [ ] Backend
   - [x] Typed lambda lifting
   - [x] Typed closure conversion
