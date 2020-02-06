@@ -21,7 +21,7 @@ import qualified Span
 
 data Term
   = Term !Span.Relative !UnspannedTerm
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic, Persist, Hashable)
 
 unspanned :: Term -> UnspannedTerm
 unspanned (Term _ term) =
@@ -39,16 +39,16 @@ data UnspannedTerm
   | Case !Term [(Pattern, Term)]
   | Wildcard
   | ParseError !Error.Parsing
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic, Persist, Hashable)
 
 type Type = Term
 
 data Binding = Binding !Span.Relative !Name
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic, Persist, Hashable)
 
 data Pattern
   = Pattern !Span.Relative !UnspannedPattern
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic, Persist, Hashable)
 
 data UnspannedPattern
   = ConOrVar !Span.Relative !Name.Pre [PlicitPattern]
@@ -56,12 +56,12 @@ data UnspannedPattern
   | LitPattern !Literal
   | Anno !Pattern !Type
   | Forced !Term
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic, Persist, Hashable)
 
 data PlicitPattern
   = ExplicitPattern !Pattern
   | ImplicitPattern !Span.Relative (HashMap Name Pattern)
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic, Persist, Hashable)
 
 plicitPatternSpan :: PlicitPattern -> Span.Relative
 plicitPatternSpan pat =
@@ -100,18 +100,18 @@ data Definition
   = TypeDeclaration !Span.Relative !Type
   | ConstantDefinition [(Span.Relative, Clause)]
   | DataDefinition !Span.Relative !Boxity [(Binding, Type, Plicity)] [ConstructorDefinition]
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic, Persist, Hashable)
 
 data Clause = Clause
   { _span :: !Span.Relative
   , _patterns :: [PlicitPattern]
   , _rhs :: !Term
-  } deriving (Eq, Show, Generic, Persist)
+  } deriving (Eq, Show, Generic, Persist, Hashable)
 
 data ConstructorDefinition
   = GADTConstructors [(Span.Relative, Name.Constructor)] Type
   | ADTConstructor !Span.Relative Name.Constructor [Type]
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic, Persist, Hashable)
 
 spans :: Definition -> [Span.Relative]
 spans def =

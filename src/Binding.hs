@@ -16,7 +16,7 @@ import qualified Presyntax
 data Binding
   = Spanned !(NonEmpty (Span.Relative, Name))
   | Unspanned !Name
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic, Persist, Hashable)
 
 fromName :: [Span.Relative] -> Name -> Binding
 fromName spans_ name =

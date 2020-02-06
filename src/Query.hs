@@ -15,7 +15,6 @@ import Protolude hiding (IntMap, put, get)
 
 import Control.Monad.Fail
 import qualified Data.Dependent.Map as DMap
-import Data.Dependent.Sum
 import Data.GADT.Compare.TH
 import Data.HashMap.Lazy (HashMap)
 import Data.HashSet (HashSet)
@@ -80,33 +79,33 @@ deriving instance Show (Query a)
 deriveGEq ''Query
 deriveGCompare ''Query
 
-instance (forall a. Eq a => Eq (f a)) => EqTag Query f where
-  eqTagged query _ =
+instance HashTag Query where
+  hashTagged query =
     case query of
-      InputFiles {} -> (==)
-      FileText {} -> (==)
-      ModuleFile q -> eqTagged q q
-      ParsedFile {} -> (==)
-      ModuleHeader {} -> (==)
-      ImportedNames _ q -> eqTagged q q
-      NameAliases {} -> (==)
-      ParsedDefinition _ q -> eqTagged q q
-      ModulePositionMap {} -> (==)
-      ModuleSpanMap {} -> (==)
-      Scopes {} -> (==)
-      ResolvedName {} -> (==)
-      IsDefinitionVisible {} -> (==)
-      ElaboratingDefinition {} -> (==)
-      ElaboratedType {} -> (==)
-      ElaboratedDefinition {} -> (==)
-      ConstructorType {} -> (==)
-      KeyedNameSpan {} -> (==)
-      Occurrences {} -> (==)
-      LambdaLifted {} -> (==)
-      LambdaLiftedDefinition {} -> (==)
-      ClosureConverted {} -> (==)
-      ClosureConvertedType {} -> (==)
-      ClosureConvertedConstructorType {} -> (==)
+      InputFiles {} -> hash
+      FileText {} -> hash
+      ModuleFile q -> hashTagged q
+      ParsedFile {} -> hash
+      ModuleHeader {} -> hash
+      ImportedNames _ q -> hashTagged q
+      NameAliases {} -> hash
+      ParsedDefinition _ q -> hashTagged q
+      ModulePositionMap {} -> hash
+      ModuleSpanMap {} -> hash
+      Scopes {} -> hash
+      ResolvedName {} -> hash
+      IsDefinitionVisible {} -> hash
+      ElaboratingDefinition {} -> hash
+      ElaboratedType {} -> hash
+      ElaboratedDefinition {} -> hash
+      ConstructorType {} -> hash
+      KeyedNameSpan {} -> hash
+      Occurrences {} -> hash
+      LambdaLifted {} -> hash
+      LambdaLiftedDefinition {} -> hash
+      ClosureConverted {} -> hash
+      ClosureConvertedType {} -> hash
+      ClosureConvertedConstructorType {} -> hash
 
 instance Persist (DMap.Some Query) where
   get = do

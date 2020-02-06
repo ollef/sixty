@@ -10,7 +10,7 @@ import Data.Persist
 -- Indices
 
 newtype Index v = Index Int
-  deriving (Eq, Show, Persist)
+  deriving (Eq, Show, Persist, Hashable)
 
 -------------------------------------------------------------------------------
 -- Phantom types

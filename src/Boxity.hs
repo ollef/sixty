@@ -11,7 +11,7 @@ import Data.Text.Prettyprint.Doc
 data Boxity
   = Unboxed
   | Boxed
-  deriving (Eq, Ord, Show, Generic, Persist)
+  deriving (Eq, Ord, Show, Generic, Persist, Hashable)
 
 instance Pretty Boxity where
   pretty boxity =

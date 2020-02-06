@@ -22,6 +22,7 @@ import qualified Binding
 import Literal (Literal)
 import qualified Name
 import qualified Position
+import Orphans ()
 import qualified Span
 import Var (Var)
 import qualified Var
@@ -37,7 +38,7 @@ data Intervals = Intervals
   { _intervals :: IntervalMap Position.Relative Item
   , _items :: HashMap Item (HashSet Span.Relative)
   , _varBindingSpans :: IntMap Var (NonEmpty Span.Relative)
-  } deriving (Eq, Show, Generic, Persist)
+  } deriving (Eq, Show, Generic, Persist, Hashable)
 
 instance Semigroup Intervals where
   Intervals a1 b1 c1 <> Intervals a2 b2 c2 =

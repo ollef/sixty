@@ -81,6 +81,12 @@ instance (Eq key, Eq result, forall a. Eq a => Eq (f a)) => EqTag (Query key res
         | q == q' -> (==)
         | otherwise -> const $ const False
 
+instance (Hashable key, Hashable result) => HashTag (Query key result) where
+  hashTagged query =
+    case query of
+      Map {} -> hash
+      Query {} -> hash
+
 instance (Eq key, Hashable key, Persist key, Persist result, forall a. Persist a => Persist (f a)) => PersistTag (Query key result) f where
   putTagged query =
     case query of

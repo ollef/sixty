@@ -15,7 +15,7 @@ import qualified Span
 data Header = Header
   { _exposedNames :: !ExposedNames
   , _imports :: [Import]
-  } deriving (Eq, Show, Generic, Persist)
+  } deriving (Eq, Show, Generic, Persist, Hashable)
 
 instance Semigroup Header where
   Header exposed1 imports1 <> Header exposed2 imports2 =
@@ -31,7 +31,7 @@ instance Monoid Header where
 data ExposedNames
   = Exposed (HashSet Name.Pre)
   | AllExposed
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic, Persist, Hashable)
 
 instance Semigroup ExposedNames where
   Exposed names1 <> Exposed names2 =
@@ -52,4 +52,4 @@ data Import = Import
   , _module :: !Name.Module
   , _alias :: !Name.Pre
   , _importedNames :: !ExposedNames
-  } deriving (Eq, Show, Generic, Persist)
+  } deriving (Eq, Show, Generic, Persist, Hashable)

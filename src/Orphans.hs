@@ -67,7 +67,17 @@ instance (Persist k, Ord k, Persist v) => Persist (IntervalMap k v) where
   get =
     mconcat . map (uncurry IntervalMap.singleton) <$> get
 
-instance (Persist v, GCompare k, Persist (DMap.Some k), PersistTag k Identity) => Persist (ValueDeps k v) where
+instance Hashable k => Hashable (IntervalMap.Interval k) where
+  hashWithSalt s (IntervalMap.Interval a b) =
+    hashWithSalt s (a, b)
+
+instance (Hashable k, Ord k, Hashable v) => Hashable (IntervalMap k v) where
+  hashWithSalt s m =
+    hashWithSalt s $
+      (\b -> IntervalMap.intersections b m)
+      <$> IntervalMap.bounds m
+
+instance (Persist v, GCompare k, Persist (DMap.Some k), PersistTag k (Const Int)) => Persist (ValueDeps k v) where
   put (ValueDeps a b) = do
     put a
     put b

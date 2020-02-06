@@ -31,6 +31,10 @@ deriving instance
   ((forall v'. Persist (t v')), (forall v'. Persist (k v')))
     => Persist (Telescope t k v)
 
+deriving instance
+  ((forall v'. Hashable (t v')), (forall v'. Hashable (k v')))
+    => Hashable (Telescope t k v)
+
 hoist :: (forall v'. k v' -> k' v') -> Telescope t k v -> Telescope t k' v
 hoist f tele =
   case tele of

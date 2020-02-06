@@ -12,4 +12,4 @@ data Parsing = Parsing
   { reason :: !(Maybe Text)
   , expected :: [Text]
   , position :: !Position.Absolute
-  } deriving (Eq, Ord, Show, Generic, Persist)
+  } deriving (Eq, Ord, Show, Generic, Persist, Hashable)

@@ -35,7 +35,7 @@ data QualifiedConstructor = QualifiedConstructor !Qualified !Constructor
   deriving (Eq, Ord, Show, Generic, Hashable, Persist)
 
 data Lifted = Lifted !Qualified !Int
-  deriving (Eq, Ord, Show, Generic, Persist)
+  deriving (Eq, Ord, Show, Generic, Hashable, Persist)
 
 -------------------------------------------------------------------------------
 

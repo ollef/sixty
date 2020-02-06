@@ -22,21 +22,21 @@ data Term v
   | Pi !Name !(Type v) !(Scope Type v)
   | App !(Term v) !(Term v)
   | Case !(Term v) (Branches v) !(Maybe (Term v))
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic, Persist, Hashable)
 
 type Type = Term
 
 data Branches v
   = ConstructorBranches (HashMap Name.QualifiedConstructor (Telescope Type Term v))
   | LiteralBranches (HashMap Literal (Term v))
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic, Persist, Hashable)
 
 data Definition
   = TypeDeclaration !(Type Void)
   | ConstantDefinition !(Telescope Type Term Void)
   | DataDefinition !(Telescope Type ConstructorDefinitions Void)
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic, Persist, Hashable)
 
 newtype ConstructorDefinitions v =
   ConstructorDefinitions (HashMap Name.Constructor (Type v))
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic, Persist, Hashable)

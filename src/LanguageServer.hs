@@ -377,7 +377,6 @@ messagePump state = do
         _ ->
           messagePump state
 
-
 -------------------------------------------------------------------------------
 
 checkAllAndPublishDiagnostics :: State -> IO ()

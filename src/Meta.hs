@@ -21,11 +21,11 @@ import qualified Span
 data Var term
   = Unsolved term Span.Relative
   | Solved term term
-  deriving (Eq, Functor, Foldable, Traversable, Generic, Persist)
+  deriving (Eq, Functor, Foldable, Traversable, Generic, Persist, Hashable)
 
 newtype Index = Index Int
   deriving (Eq, Ord, Show)
-  deriving newtype (Persist)
+  deriving newtype (Persist, Hashable)
 
 instance Pretty Index where
   pretty (Index i) =
@@ -34,7 +34,7 @@ instance Pretty Index where
 data Vars term = Vars
   { vars :: !(IntMap Index (Var term))
   , nextIndex :: !Index
-  } deriving (Eq, Generic, Persist)
+  } deriving (Eq, Generic, Persist, Hashable)
 
 empty :: Vars term
 empty = Vars mempty (Index 0)

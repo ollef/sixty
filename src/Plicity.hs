@@ -12,7 +12,7 @@ data Plicity
   = Implicit
   | Explicit
   | Constraint
-  deriving (Eq, Ord, Show, Generic, Persist)
+  deriving (Eq, Ord, Show, Generic, Persist, Hashable)
 
 instance Pretty Plicity where
   pretty plicity =
