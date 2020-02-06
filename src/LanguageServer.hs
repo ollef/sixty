@@ -20,6 +20,7 @@ import qualified Data.Rope.UTF16 as Rope
 import Data.Text (Text)
 import Data.Text.Prettyprint.Doc (Doc)
 import qualified Data.Text.Prettyprint.Doc as Doc
+import qualified Data.ByteString as ByteString
 import qualified Language.Haskell.LSP.Control as LSP
 import qualified Language.Haskell.LSP.Core
 import qualified Language.Haskell.LSP.Core as LSP
@@ -395,6 +396,9 @@ checkAllAndPublishDiagnostics state = do
 
   forM_ (HashMap.toList errorsByFilePath) $ \(filePath, diagnostics) ->
     publishDiagnostics state (LSP.filePathToUri filePath) diagnostics
+
+  bs <- Driver.encodeState $ _driverState state
+  ByteString.writeFile ".sixten-cache" bs
 
 runTask
   :: forall a
