@@ -80,14 +80,14 @@ typeOf context value =
       headType <- typeOfHead context head
       typeOfApplication context headType spine
 
-    Domain.Con con args -> do
+    Domain.Con con params args -> do
       conType <- fetch $ Query.ClosureConvertedConstructorType con
       conType' <-
         Evaluation.evaluate (Context.toEnvironment context) $
           Telescope.fold
             (\binding domain _ -> Syntax.Pi (Binding.toName binding) domain)
             (Telescope.fromVoid conType)
-      typeOfApplication context conType' args
+      typeOfApplication context conType' $ params <> args
 
     Domain.Lit lit ->
       case lit of

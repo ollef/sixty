@@ -76,7 +76,7 @@ data Value = Value !InnerValue Occurrences
 data InnerValue
   = Var !Var
   | Global !Name.Lifted
-  | Con !Name.QualifiedConstructor [Value]
+  | Con !Name.QualifiedConstructor [Value] [Value]
   | Lit !Literal
   | Let !Binding !Var !Value !Type !Value
   | Pi !Binding !Var !Type !Type
@@ -107,9 +107,11 @@ makeGlobal :: Name.Lifted -> Value
 makeGlobal global =
   Value (Global global) mempty
 
-makeCon :: Name.QualifiedConstructor -> [Value] -> Value
-makeCon con args =
-  Value (Con con args) $ foldMap occurrences args
+makeCon :: Name.QualifiedConstructor -> [Value] -> [Value] -> Value
+makeCon con params args =
+  Value (Con con params args) $
+    foldMap occurrences params <>
+    foldMap occurrences args
 
 makeLit :: Literal -> Value
 makeLit lit =
@@ -197,9 +199,8 @@ evaluate env term args =
     Syntax.Global global ->
       applyArgs $ pure $ makeGlobal $ Name.Lifted global 0
 
-    Syntax.Con con -> do
-      term' <- lift $ saturatedConstructorApp env con args
-      evaluate env term' []
+    Syntax.Con con ->
+      saturatedConstructorApp env con args
 
     Syntax.Lit lit ->
       pure $ makeLit lit
@@ -269,72 +270,81 @@ saturatedConstructorApp
   :: Environment v
   -> Name.QualifiedConstructor
   -> [(Plicity, Syntax.Term v)]
-  -> M (Syntax.Term v)
-saturatedConstructorApp outerEnv con outerArgs = do
+  -> Lift Value
+saturatedConstructorApp env con args = do
   constructorTele <- fetch $ Query.ConstructorType con
   let
     constructorType =
       Telescope.fold Syntax.Pi constructorTele
 
-    env =
-      outerEnv { Environment.values = mempty }
+    paramCount =
+      Telescope.length constructorTele
 
-  argValues <- mapM (mapM $ Evaluation.evaluate env) outerArgs
-  constructorTypeValue <-
-    Evaluation.evaluate (Environment.empty $ Environment.scopeKey env) constructorType
+    emptyEnv =
+      Environment.empty $ Environment.scopeKey env
 
-  matchArguments env constructorTypeValue argValues Tsil.Empty
-  where
-    matchArguments
-      :: Domain.Environment v
-      -> Domain.Type
-      -> [(Plicity, Domain.Value)]
-      -> Domain.Spine
-      -> M (Syntax.Term v)
-    matchArguments env constructorType args resultSpine = do
-      constructorType' <- Evaluation.forceHead env constructorType
-      case (constructorType', args) of
-        (Domain.Pi _ _ plicity1 targetClosure, (plicity2, arg):args')
-          | plicity1 == plicity2 -> do
-            target <- Evaluation.evaluateClosure targetClosure arg
-            matchArguments env target args' $ resultSpine Tsil.:> (plicity2, arg)
+  constructorTypeValue <- lift $ Evaluation.evaluate emptyEnv constructorType
 
-        (Domain.Fun _ plicity1 target, (plicity2, arg):args')
-          | plicity1 == plicity2 ->
-            matchArguments env target args' $ resultSpine Tsil.:> (plicity2, arg)
+  arity <- lift $ typeArity emptyEnv constructorTypeValue
 
-        (_, []) ->
-          makeLambdas env constructorType' resultSpine
+  if length args < arity then do
+    lambdas <- lift $ makeConstructorFunction con emptyEnv constructorTypeValue mempty
+    evaluate env (Syntax.fromVoid lambdas) args
 
-        _ ->
-          panic "saturatedConstructorApp plicity mismatch"
+  else do
+    args' <- mapM (\(_, arg) -> evaluate env arg []) args
+    let
+      (params, args'') =
+        splitAt paramCount args'
+    pure $ makeCon con params args''
 
-    makeLambdas
-      :: Domain.Environment v
-      -> Domain.Type
-      -> Domain.Spine
-      -> M (Syntax.Term v)
-    makeLambdas env constructorType resultSpine = do
-      constructorType' <- Evaluation.forceHead env constructorType
-      case constructorType' of
-        Domain.Pi name domain plicity targetClosure -> do
-          (env', var) <- Environment.extend env
-          let
-            arg =
-              Domain.var var
-          target <- Evaluation.evaluateClosure targetClosure arg
-          body <- makeLambdas env' target $ resultSpine Tsil.:> (plicity, arg)
-          domain' <- Readback.readback env domain
-          pure $ Syntax.Lam (Binding.Unspanned name) domain' plicity body
+makeConstructorFunction
+  :: Name.QualifiedConstructor
+  -> Domain.Environment v
+  -> Domain.Type
+  -> Domain.Spine
+  -> M (Syntax.Term v)
+makeConstructorFunction con env type_ spine = do
+  type' <- Evaluation.forceHead env type_
+  case type' of
+    Domain.Pi name domain plicity targetClosure -> do
+      (env', var) <- Environment.extend env
+      let
+        arg =
+          Domain.var var
+      target <- Evaluation.evaluateClosure targetClosure arg
+      body <- makeConstructorFunction con env' target $ spine Tsil.:> (plicity, arg)
+      domain' <- Readback.readback env domain
+      pure $ Syntax.Lam (Binding.Unspanned name) domain' plicity body
 
-        Domain.Fun domain plicity target -> do
-          (env', var) <- Environment.extend env
-          body <- makeLambdas env' target $ resultSpine Tsil.:> (plicity, Domain.var var)
-          domain' <- Readback.readback env domain
-          pure $ Syntax.Lam "x" domain' plicity body
+    Domain.Fun domain plicity target -> do
+      (env', var) <- Environment.extend env
+      body <- makeConstructorFunction con env' target $ spine Tsil.:> (plicity, Domain.var var)
+      domain' <- Readback.readback env domain
+      pure $ Syntax.Lam "x" domain' plicity body
 
-        _ ->
-          Readback.readback env $ Domain.Neutral (Domain.Con con) resultSpine
+    _ ->
+      Readback.readback env $ Domain.Neutral (Domain.Con con) spine
+
+typeArity
+  :: Domain.Environment v
+  -> Domain.Type
+  -> M Int
+typeArity env type_ = do
+  type' <- Evaluation.forceHead env type_
+  case type' of
+    Domain.Pi _ _ _ targetClosure -> do
+      (env', var) <- Environment.extend env
+      target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
+      targetArity <- typeArity env' target
+      pure $ targetArity + 1
+
+    Domain.Fun _ _ target -> do
+      targetArity <- typeArity env target
+      pure $ targetArity + 1
+
+    _ ->
+      pure 0
 
 evaluateBranches
   :: Environment v
@@ -446,8 +456,8 @@ readback env (Value value _) =
     Global global ->
       LambdaLifted.Global global
 
-    Con global args ->
-      LambdaLifted.Con global $ readback env <$> args
+    Con global params args ->
+      LambdaLifted.Con global (readback env <$> params) (readback env <$> args)
 
     Lit lit ->
       LambdaLifted.Lit lit

@@ -34,8 +34,8 @@ evaluate env term =
         _ ->
           pure $ Domain.global name
 
-    Syntax.Con con args ->
-      Domain.Con con <$> mapM (evaluate env) args
+    Syntax.Con con params args ->
+      Domain.Con con <$> mapM (evaluate env) params <*> mapM (evaluate env) args
 
     Syntax.Lit lit ->
       pure $ Domain.Lit lit
@@ -80,7 +80,7 @@ evaluate env term =
     Syntax.Case scrutinee branches defaultBranch -> do
       scrutineeValue <- evaluate env scrutinee
       case (scrutineeValue, branches) of
-        (Domain.Con constr args, Syntax.ConstructorBranches constructorBranches) ->
+        (Domain.Con constr _params args, Syntax.ConstructorBranches constructorBranches) ->
           chooseConstructorBranch env constr args constructorBranches defaultBranch
 
         (Domain.Lit lit, Syntax.LiteralBranches literalBranches) ->
@@ -107,25 +107,9 @@ chooseConstructorBranch outerEnv constr outerArgs branches defaultBranch =
     (Nothing, Just branch) ->
       evaluate outerEnv branch
 
-    (Just tele, _) -> do
-      constrTypeTele <- fetch $ Query.ConstructorType constr
-      go outerEnv (dropTypeArgs constrTypeTele outerArgs) tele
+    (Just tele, _) ->
+      go outerEnv outerArgs tele
   where
-    dropTypeArgs
-      :: Telescope t t' v
-      -> [value]
-      -> [value]
-    dropTypeArgs tele args =
-      case (tele, args) of
-        (Telescope.Empty _, _) ->
-          args
-
-        (Telescope.Extend _ _ _ tele', _:args') ->
-          dropTypeArgs tele' args'
-
-        _ ->
-          panic "chooseBranch arg mismatch"
-
     go
       :: Domain.Environment v
       -> [Domain.Value]

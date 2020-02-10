@@ -70,8 +70,8 @@ convertAppliedTerm term args =
     LambdaLifted.Global global ->
       convertGlobal global args
 
-    LambdaLifted.Con con conArgs ->
-      ClosureConverted.Con con <$> mapM convertTerm conArgs
+    LambdaLifted.Con con conParams conArgs ->
+      ClosureConverted.Con con <$> mapM convertTerm conParams <*> mapM convertTerm conArgs
 
     LambdaLifted.Lit lit ->
       pure $ ClosureConverted.Lit lit

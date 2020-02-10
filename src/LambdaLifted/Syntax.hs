@@ -16,7 +16,10 @@ import Syntax.Telescope (Telescope)
 data Term v
   = Var !(Index v)
   | Global !Name.Lifted
-  | Con !Name.QualifiedConstructor [Term v]
+  | Con
+    !Name.QualifiedConstructor
+    [Term v] -- ^ Type parameters
+    [Term v] -- ^ Constructor arguments
   | Lit !Literal
   | Let !Name !(Term v) !(Type v) !(Scope Term v)
   | Pi !Name !(Type v) !(Scope Type v)

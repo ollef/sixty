@@ -16,7 +16,7 @@ import Var (Var)
 
 data Value
   = Neutral !Head Spine
-  | Con !Name.QualifiedConstructor [Value]
+  | Con !Name.QualifiedConstructor [Value] [Value]
   | Lit !Literal
   | Pi !Name !Type !Closure
   | Function !(Telescope Syntax.Type Syntax.Type Void)

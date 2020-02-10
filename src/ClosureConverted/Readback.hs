@@ -46,8 +46,8 @@ readback env value =
               readback env branch'
             pure $ Syntax.Case scrutinee' branches' defaultBranch'
 
-    Domain.Con con args ->
-      Syntax.Con con <$> mapM (readback env) args
+    Domain.Con con params args ->
+      Syntax.Con con <$> mapM (readback env) params <*> mapM (readback env) args
 
     Domain.Lit lit ->
       pure $ Syntax.Lit lit

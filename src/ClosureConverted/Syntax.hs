@@ -40,7 +40,10 @@ ApplyClosure cl ts : ys[ts/xs] -> T[ts/xs]
 data Term v
   = Var !(Index v)
   | Global !Name.Lifted
-  | Con !Name.QualifiedConstructor [Term v] -- ^ Saturated constructor application
+  | Con -- ^ Saturated constructor application
+    !Name.QualifiedConstructor
+    [Term v] -- ^ Type parameters
+    [Term v] -- ^ Constructor arguments
   | Lit !Literal
   | Let !Name !(Term v) !(Type v) !(Scope Term v)
   | Function !(Telescope Type Type Void) -- ^ The type of a top-level function definition
