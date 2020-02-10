@@ -1,15 +1,16 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# language FlexibleContexts #-}
+{-# language OverloadedStrings #-}
+{-# language TypeFamilies #-}
 module Main where
 
-import Protolude hiding (check, force)
+import Protolude hiding (check, force, option)
 
 import qualified Data.Text as Text
 import Options.Applicative
 
 import qualified Command.Check as Command
 import qualified Command.Watch as Command
+import qualified Command.BenchmarkProjectGenerator
 import qualified LanguageServer
 
 main :: IO ()
@@ -28,6 +29,7 @@ commands = subparser
   $ command "check" checkCommand
   <> command "watch" watchCommand
   <> command "language-server" languageServerCommand
+  <> command "generate-benchmark-project" generateBenchmarkCommand
 
 languageServerCommand :: ParserInfo (IO ())
 languageServerCommand =
@@ -72,6 +74,41 @@ watchCommand =
           )
         <> action "file"
         )
+      )
+    )
+    $ fullDesc
+    <> progDesc "Type check a Sixten program, watching for changes"
+    <> header "sixten watch"
+
+generateBenchmarkCommand :: ParserInfo (IO ())
+generateBenchmarkCommand =
+  info
+    (helper <*>
+      (fmap Command.BenchmarkProjectGenerator.generate $
+        Command.BenchmarkProjectGenerator.Options
+          <$> strArgument
+            (metavar "FILE"
+            <> help "Output directory"
+            <> action "directory"
+            )
+          <*> option auto
+            (long "modules"
+            <> metavar "COUNT"
+            <> help "Generate COUNT modules (default: 100)"
+            <> value 100
+            )
+          <*> option auto
+            (long "imports"
+            <> metavar "COUNT"
+            <> help "Generate at most COUNT imports per module (default: 10)"
+            <> value 10
+            )
+          <*> option auto
+            (long "functions"
+            <> metavar "COUNT"
+            <> help "Generate COUNT functions per module (default: 30)"
+            <> value 30
+            )
       )
     )
     $ fullDesc

@@ -57,6 +57,7 @@ library:
     - mtl
     - parsers
     - parsix
+    - random
     - rope-utf16-splay
     - stm
     - text
