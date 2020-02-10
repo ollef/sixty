@@ -13,7 +13,7 @@ import qualified System.Directory as Directory
 import qualified System.FilePath as FilePath
 
 newtype Project = Project
-  { _domainDirectories :: [FilePath]
+  { _sourceDirectories :: [FilePath]
   }
 
 Aeson.deriveJSON (Aeson.aesonDrop 1 Aeson.trainCase) ''Project
@@ -87,7 +87,7 @@ listProjectFile file = do
 listProject :: Project -> IO (HashSet FilePath)
 listProject project =
   fmap mconcat $
-    forM (_domainDirectories project) $
+    forM (_sourceDirectories project) $
       listDirectoryRecursive isSourcePath
 
 listDirectoryRecursive :: (FilePath -> Bool) -> FilePath -> IO (HashSet FilePath)
