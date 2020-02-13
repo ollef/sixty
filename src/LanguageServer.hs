@@ -17,7 +17,6 @@ import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Rope.UTF16 (Rope)
 import qualified Data.Rope.UTF16 as Rope
-import Data.Text (Text)
 import Data.Text.Prettyprint.Doc (Doc)
 import qualified Data.Text.Prettyprint.Doc as Doc
 import qualified Language.Haskell.LSP.Control as LSP
