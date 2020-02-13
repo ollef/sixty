@@ -18,6 +18,7 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.Persist as Persist
 import Rock
 
+import HashTag
 import Orphans ()
 import PersistTag
 

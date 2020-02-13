@@ -77,7 +77,7 @@ instance (Hashable k, Ord k, Hashable v) => Hashable (IntervalMap k v) where
       (\b -> IntervalMap.intersections b m)
       <$> IntervalMap.bounds m
 
-instance (Persist v, GCompare k, Persist (DMap.Some k), PersistTag k (Const Int)) => Persist (ValueDeps k v) where
+instance (Persist v, GCompare k, Persist (DMap.Some k), PersistTag k dep) => Persist (ValueDeps k dep v) where
   put (ValueDeps a b) = do
     put a
     put b

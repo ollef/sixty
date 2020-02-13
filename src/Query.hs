@@ -15,6 +15,7 @@ import Protolude hiding (IntMap, put, get)
 
 import Control.Monad.Fail
 import qualified Data.Dependent.Map as DMap
+import Data.Dependent.Sum
 import Data.GADT.Compare.TH
 import Data.HashMap.Lazy (HashMap)
 import Data.HashSet (HashSet)
@@ -23,6 +24,7 @@ import Data.Persist as Persist
 import Rock
 
 import qualified ClosureConverted.Syntax as ClosureConverted
+import HashTag
 import qualified LambdaLifted.Syntax as LambdaLifted
 import qualified Meta
 import qualified Module
@@ -78,6 +80,10 @@ deriving instance Show (Query a)
 
 deriveGEq ''Query
 deriveGCompare ''Query
+
+instance Eq a => EqTag Query (Const a) where
+  eqTagged _ _ (Const a) (Const a') =
+    a == a'
 
 instance HashTag Query where
   hashTagged query =

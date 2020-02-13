@@ -22,6 +22,7 @@ import Rock
 import Error (Error)
 import qualified Error.Hydrated as Error (Hydrated)
 import qualified Error.Hydrated
+import HashTag
 import qualified Name
 import qualified Paths_sixty as Paths
 import Query (Query)
@@ -70,19 +71,22 @@ runTask files prettyError task = do
 -- Incremental execution
 data State err = State
   { _startedVar :: !(MVar (DMap Query MVar))
+  , _hashesVar :: !(MVar (DMap Query (Const Int)))
   , _reverseDependenciesVar :: !(MVar (ReverseDependencies Query))
-  , _tracesVar :: !(MVar (Traces Query))
+  , _tracesVar :: !(MVar (Traces Query (Const Int)))
   , _errorsVar :: !(MVar (DMap Query (Const [err])))
   }
 
 initialState :: IO (State err)
 initialState = do
   startedVar <- newMVar mempty
+  hashesVar <- newMVar mempty
   reverseDependenciesVar <- newMVar mempty
   tracesVar <- newMVar mempty
   errorsVar <- newMVar mempty
   return State
     { _startedVar = startedVar
+    , _hashesVar = hashesVar
     , _reverseDependenciesVar = reverseDependenciesVar
     , _tracesVar = tracesVar
     , _errorsVar = errorsVar
@@ -123,11 +127,13 @@ runIncrementalTask state changedFiles files prettyError prune task =
     do
       reverseDependencies <- takeMVar $ _reverseDependenciesVar state
       started <- takeMVar $ _startedVar state
+      hashes <- takeMVar $ _hashesVar state
 
       case DMap.lookup Query.InputFiles started of
         Nothing -> do
           putMVar (_reverseDependenciesVar state) mempty
           putMVar (_startedVar state) mempty
+          putMVar (_hashesVar state) mempty
 
         Just inputFilesVar -> do
           inputFiles <- readMVar inputFilesVar
@@ -136,6 +142,7 @@ runIncrementalTask state changedFiles files prettyError prune task =
           if HashSet.fromList inputFiles /= HashSet.insert builtinFile (HashSet.fromMap $ void files) then do
             putMVar (_reverseDependenciesVar state) mempty
             putMVar (_startedVar state) mempty
+            putMVar (_hashesVar state) mempty
 
           else do
             changedFiles' <- flip filterM (toList changedFiles) $ \file ->
@@ -148,15 +155,21 @@ runIncrementalTask state changedFiles files prettyError prune task =
                   pure True
             Text.hPutStrLn stderr $ "Driver changed files " <> show changedFiles'
             let
-              (reverseDependencies', started') =
+              (keysToInvalidate, reverseDependencies') =
                 foldl'
-                  (\(reverseDependencies_, started_) file ->
-                    invalidateReverseDependencies (Query.FileText file) reverseDependencies_ started_
+                  (\(keysToInvalidate_, reverseDependencies_) file ->
+                    first (<> keysToInvalidate_) $ reachableReverseDependencies (Query.FileText file) reverseDependencies_
                   )
-                  (reverseDependencies, started)
+                  (mempty, reverseDependencies)
                   changedFiles'
+            let
+              started' =
+                DMap.difference started keysToInvalidate
 
+              hashes' =
+                DMap.difference hashes keysToInvalidate
             putMVar (_startedVar state) started'
+            putMVar (_hashesVar state) hashes'
             putMVar (_reverseDependenciesVar state) reverseDependencies'
 
     -- printVar <- newMVar 0
@@ -189,7 +202,23 @@ runIncrementalTask state changedFiles files prettyError prune task =
       tasks =
         memoise (_startedVar state) $
         trackReverseDependencies (_reverseDependenciesVar state) $
-        verifyTraces (_tracesVar state) $
+        verifyTraces
+          (_tracesVar state)
+          (\query value -> do
+            hashed <- liftIO $ readMVar $ _hashesVar state
+            case DMap.lookup query hashed of
+              Just h ->
+                pure h
+
+              Nothing -> do
+                let
+                  h =
+                    Const $ hashTagged query value
+                liftIO $
+                  modifyMVar_ (_hashesVar state) $
+                    pure . DMap.insert query h
+                pure h
+          ) $
         traceFetch_ $
         writer writeErrors $
         Rules.rules (HashMap.keys files) readSourceFile_
