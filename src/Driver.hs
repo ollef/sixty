@@ -184,7 +184,7 @@ runIncrementalTask state changedFiles files prettyError prune task =
         errs' <- mapM (prettyError <=< Error.Hydrated.fromError) errs
         liftIO $
           modifyMVar_ (_errorsVar state) $
-            pure . DMap.insert key (Const errs')
+            pure . if null errs' then DMap.delete key else DMap.insert key (Const errs')
       tasks :: Rules Query
       tasks =
         memoise (_startedVar state) $
