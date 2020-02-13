@@ -212,15 +212,10 @@ runIncrementalTask state changedFiles files prettyError prune task =
         errs
     return (result, errors)
   where
-    handleEx m = do
-      mres <- try m
-      case mres of
-        Left e -> do
-          Text.hPutStrLn stderr $ "exception! " <> show (e :: SomeException)
-          panic "a"
-
-        Right res ->
-          return res
+    handleEx m =
+      m `catch` \e -> do
+        Text.hPutStrLn stderr $ "exception! " <> show (e :: SomeException)
+        panic $ show e
 
 -------------------------------------------------------------------------------
 
