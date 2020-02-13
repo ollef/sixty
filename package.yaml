@@ -35,6 +35,7 @@ dependencies:
   - prettyprinter
   - protolude
   - rock
+  - time
   - unordered-containers
 
 library:

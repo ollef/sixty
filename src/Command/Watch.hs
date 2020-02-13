@@ -7,9 +7,11 @@ import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
+import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc (Doc)
 import qualified Data.Text.Prettyprint.Doc as Doc
 import Data.Text.Prettyprint.Doc.Render.Text (putDoc)
+import Data.Time.Clock
 import qualified System.Console.ANSI
 import qualified System.FSNotify as FSNotify
 
@@ -58,11 +60,23 @@ waitForChanges signalChangeVar fileStateVar driverState = do
 
 checkAndPrintErrors :: Driver.State (Doc ann) -> HashSet FilePath -> HashMap FilePath Text -> IO ()
 checkAndPrintErrors driverState changedFiles files = do
+  startTime <- getCurrentTime
   (_, errs) <- Driver.runIncrementalTask driverState changedFiles files Error.Hydrated.pretty Driver.Prune $
     Driver.checkAll $ HashMap.keys files
+  endTime <- getCurrentTime
 
   System.Console.ANSI.clearScreen
-  when (null errs) $
-    putText "No errors"
   forM_ errs $ \err ->
     putDoc $ err <> Doc.line
+  let
+    errorCount =
+      length errs
+  putText $ Text.unwords
+    [ "Found"
+    , show errorCount
+    , case errorCount of
+      1 -> "error"
+      _ -> "errors"
+    , "in"
+    , show (diffUTCTime endTime startTime) <> "."
+    ]
