@@ -205,12 +205,12 @@ runIncrementalTask state changedFiles files prettyError prune task =
         modifyMVar (_errorsVar state) $ \errors -> do
           let
             errors' = DMap.intersectionWithKey (\_ _ e -> e) started errors
-          return (errors', errors')
+          pure (errors', errors')
     let
       errors = do
         (_ DMap.:=> Const errs) <- DMap.toList errorsMap
         errs
-    return (result, errors)
+    pure (result, errors)
   where
     handleEx m =
       m `catch` \e -> do
