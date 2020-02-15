@@ -47,8 +47,12 @@ evaluate env term =
           Environment.lookupIndexVar index env
 
       pure $
-        Domain.Glued (Domain.Var var) mempty $
-        eager $ fromMaybe (Domain.var var) $ Environment.lookupVarValue var env
+        case Environment.lookupVarValue var env of
+          Nothing ->
+            Domain.var var
+
+          Just value ->
+            Domain.Glued (Domain.Var var) mempty $ eager value
 
     Syntax.Global name -> do
       definitionVisible <- fetch $ Query.IsDefinitionVisible (Environment.scopeKey env) name
