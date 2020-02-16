@@ -14,25 +14,31 @@ import qualified System.FilePath as FilePath
 
 newtype Project = Project
   { _sourceDirectories :: [FilePath]
-  }
+  } deriving Show
 
 Aeson.deriveJSON (Aeson.aesonDrop 1 Aeson.trainCase) ''Project
 
 filesFromArguments :: [FilePath] -> IO ([FilePath], HashSet FilePath)
-filesFromArguments files =
-  case files of
+filesFromArguments files = do
+  files' <- mapM Directory.canonicalizePath files
+  case files' of
     [] -> do
       workingDirectory <- Directory.getCurrentDirectory
       filesFromProjectInDirectory workingDirectory
 
     _ ->
       fmap mconcat $
-        forM files $ \file -> do
+        forM files' $ \file -> do
           isDir <- Directory.doesDirectoryExist file
           isFile <- Directory.doesFileExist file
           case () of
-            _ | isDir ->
+            _ | isDir -> do
+              projectFiles <- filesFromProjectInDirectory file
+              if projectFiles == mempty then
                 (,) [file] <$> listDirectoryRecursive isSourcePath file
+
+              else
+                pure projectFiles
 
               | isFile, isProjectPath file ->
                 listProjectFile file
@@ -82,13 +88,13 @@ listProjectFile file = do
       pure mempty
 
     Just project ->
-      listProject project
+      listProject file project
 
-listProject :: Project -> IO ([FilePath], HashSet FilePath)
-listProject project = do
-  sourceDirectories <- mapM Directory.canonicalizePath $ _sourceDirectories project
+listProject :: FilePath -> Project -> IO ([FilePath], HashSet FilePath)
+listProject file project = do
+  sourceDirectories <- mapM (Directory.canonicalizePath . (FilePath.takeDirectory file FilePath.</>)) $ _sourceDirectories project
   fmap ((,) sourceDirectories . mconcat) $
-    forM (_sourceDirectories project) $
+    forM sourceDirectories $
       listDirectoryRecursive isSourcePath
 
 listDirectoryRecursive :: (FilePath -> Bool) -> FilePath -> IO (HashSet FilePath)
