@@ -108,29 +108,28 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
 
               errors = Error.Parse filePath <$> parseErrors
 
-              header' =
-                case maybeModuleName of
-                  Just Builtin.Module ->
-                    header
-
-                  _ ->
-                    header
-                      { Module._imports =
-                        Module.Import
-                          { _span = Span.Absolute 0 0
-                          , _module = Builtin.Module
-                          , _alias = "Sixten.Builtin"
-                          , _importedNames = Module.AllExposed
-                          }
-                        : Module._imports header
+              headerImportingBuiltins =
+                header
+                  { Module._imports =
+                    Module.Import
+                      { _span = Span.Absolute 0 0
+                      , _module = Builtin.Module
+                      , _alias = "Sixten.Builtin"
+                      , _importedNames = Module.AllExposed
                       }
+                    : Module._imports header
+                  }
+
             pure $
               case maybeModuleName of
                 Nothing ->
-                  ((fileModuleName, header', definitions), errors)
+                  ((fileModuleName, headerImportingBuiltins, definitions), errors)
+
+                Just Builtin.Module ->
+                  ((Builtin.Module, header, definitions), errors)
 
                 Just moduleName ->
-                  ( (moduleName, header', definitions)
+                  ( (moduleName, headerImportingBuiltins, definitions)
                   , [ Error.ModuleFileNameMismatch fileModuleName moduleName filePath
                     | fileModuleName /= moduleName
                     ] ++
@@ -162,7 +161,6 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
 
               firstCandidate:_ ->
                 firstCandidate
-
 
     ModuleHeader module_ ->
       nonInput $ do
