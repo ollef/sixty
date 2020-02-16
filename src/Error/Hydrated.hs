@@ -78,6 +78,16 @@ headingAndBody error =
           indent 2 (Doc.pretty file2') <> line <>
           "use the same module name."
         )
+
+    Error.ModuleFileNameMismatch givenModuleName expectedModuleName _ ->
+      pure
+        ( "Module name doesn't match file name"
+        , "The module name given in the module header is" <> line <>
+          indent 2 (Doc.pretty givenModuleName) <> line <>
+          "but from the file's location I expected it to be" <> line <>
+          indent 2 (Doc.pretty expectedModuleName) <> "."
+        )
+
     Error.Elaboration _ (Error.Spanned _ err') ->
       case err' of
         Error.NotInScope name ->
@@ -244,6 +254,9 @@ fromError err = do
 
       Error.MultipleFilesWithModuleName _ _ file2 ->
         pure (file2, Span.Absolute 0 0)
+
+      Error.ModuleFileNameMismatch _ _ file ->
+        pure (file, Span.Absolute 0 0)
 
       Error.Elaboration keyedName (Error.Spanned relativeSpan _) -> do
         (file, Span.Absolute absolutePosition _) <- fetch $ Query.KeyedNameSpan keyedName

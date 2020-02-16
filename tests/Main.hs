@@ -117,6 +117,7 @@ data ExpectedError
   | DuplicateName
   | ImportNotFound
   | MultipleFilesWithModuleName
+  | ModuleFileNameMismatch
   | NotInScope
   | Ambiguous
   | TypeMismatch
@@ -144,6 +145,9 @@ errorToExpectedError err =
 
     Error.MultipleFilesWithModuleName {} ->
       MultipleFilesWithModuleName
+
+    Error.ModuleFileNameMismatch {} ->
+      ModuleFileNameMismatch
 
     Error.Elaboration _ (Error.Spanned _ elaborationError) ->
       case elaborationError of
@@ -200,6 +204,9 @@ expectedErrorsFromSource sourceText =
               [(lineNumber, ImportNotFound)]
 
             "multiple files with module name error expected" ->
+              [(lineNumber, ImportNotFound)]
+
+            "module file name mismatch error expected" ->
               [(lineNumber, ImportNotFound)]
 
             "not in scope error expected" ->
