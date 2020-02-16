@@ -39,7 +39,6 @@ import Name (Name(Name))
 import qualified Name
 import Plicity
 import qualified Query
-import qualified Query.Mapped as Mapped
 import qualified Readback
 import qualified Scope
 import qualified Span
@@ -653,7 +652,7 @@ reportParseError context err = do
     Scope.KeyedName _ (Name.Qualified module_ _) =
       Context.scopeKey context
 
-  maybeFilePath <- fetch $ Query.ModuleFile $ Mapped.Query module_
+  maybeFilePath <- fetch $ Query.ModuleFile module_
   forM_ maybeFilePath $ \filePath -> do
     let
       err' =

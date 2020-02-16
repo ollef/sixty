@@ -7,13 +7,16 @@
 {-# language TupleSections #-}
 module Rules where
 
-import Protolude hiding (force)
+import Protolude hiding ((<.>), force, moduleName)
 
 import qualified Data.HashMap.Lazy as HashMap
+import Data.HashSet (HashSet)
+import qualified Data.HashSet as HashSet
 import qualified Data.IntMap as IntMap
-import Data.String
+import qualified Data.Text as Text
 import qualified Data.Text.Unsafe as Text
 import Rock
+import System.FilePath
 
 import qualified Builtin
 import qualified ClosureConversion
@@ -46,73 +49,120 @@ import qualified Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
 
-rules :: [FilePath] -> (FilePath -> IO Text) -> GenRules (Writer [Error] (Writer TaskKind Query)) Query
-rules files readFile_ (Writer (Writer query)) =
+rules :: [FilePath] -> HashSet FilePath -> (FilePath -> IO Text) -> GenRules (Writer [Error] (Writer TaskKind Query)) Query
+rules sourceDirectories files readFile_ (Writer (Writer query)) =
   case query of
+    SourceDirectories ->
+      input $ pure sourceDirectories
+
     InputFiles ->
       input $ do
         builtinFile <- liftIO $ Paths.getDataFileName "builtin/Builtin.vix"
-        pure $ builtinFile : files
+        pure $ HashSet.insert builtinFile files
 
     FileText filePath ->
       input $ liftIO $ readFile_ filePath
 
-    ModuleFile subQuery ->
-      nonInput $ Mapped.errorRule ModuleFile subQuery $ do
-        filePaths <- fetch InputFiles
-        -- TODO check and remove duplicates
-        foldM go mempty filePaths
-      where
-        go (modulesMap, errors) filePath = do
-          (module_, _, _) <- fetch $ ParsedFile filePath
-          pure
-            ( HashMap.insert module_ filePath modulesMap
-            , case HashMap.lookup module_ modulesMap of
-              Nothing ->
-                errors
+    ModuleFile Builtin.Module ->
+      noError $
+        Just <$> liftIO (Paths.getDataFileName "builtin/Builtin.vix")
 
-              Just filePath' ->
-                Error.MultipleFilesWithModuleName module_ filePath' filePath : errors
-            )
+    ModuleFile moduleName@(Name.Module moduleNameText) ->
+      nonInput $ do
+        files_ <- fetch InputFiles
+        sourceDirectories_ <- fetch SourceDirectories
+        let
+          candidates =
+            [ candidate
+            | sourceDirectory <- sourceDirectories_
+            , let
+              candidate =
+                sourceDirectory </> joinPath (map toS $ Text.splitOn "." moduleNameText) <.> "vix"
+            , candidate `HashSet.member` files_
+            ]
+
+        case candidates of
+          [] ->
+            pure (Nothing, mempty)
+
+          [filePath] -> do
+            (fileModuleName, _, _) <- fetch $ ParsedFile filePath
+            pure
+              ( Just filePath
+              , [ Error.ModuleFileNameMismatch fileModuleName moduleName filePath
+                | fileModuleName /= moduleName
+                ]
+              )
+
+          filePath1:filePath2:_ ->
+            pure
+              ( Just filePath1
+              , [Error.MultipleFilesWithModuleName moduleName filePath1 filePath2]
+              )
 
     ParsedFile filePath ->
       nonInput $ do
         text <- fetch $ FileText filePath
-        pure $
-          case Parser.parseText Parser.module_ text filePath of
-            Right ((module_, header), errorsAndDefinitions) -> do
-              let
-                (errors, definitions) =
-                  partitionEithers errorsAndDefinitions
+        case Parser.parseText Parser.module_ text filePath of
+          Right ((maybeModuleName, header), errorsAndDefinitions) -> do
+            let
+              (errors, definitions) =
+                partitionEithers errorsAndDefinitions
 
-                header' =
-                  case module_ of
-                    Builtin.Module ->
-                      header
+              header' =
+                case maybeModuleName of
+                  Just Builtin.Module ->
+                    header
 
-                    _ ->
-                      header
-                        { Module._imports =
-                          Module.Import
-                            { _span = Span.Absolute 0 0
-                            , _module = Builtin.Module
-                            , _alias = "Sixten.Builtin"
-                            , _importedNames = Module.AllExposed
-                            }
-                          : Module._imports header
-                        }
-              ((module_, header', definitions), map (Error.Parse filePath) errors)
+                  _ ->
+                    header
+                      { Module._imports =
+                        Module.Import
+                          { _span = Span.Absolute 0 0
+                          , _module = Builtin.Module
+                          , _alias = "Sixten.Builtin"
+                          , _importedNames = Module.AllExposed
+                          }
+                        : Module._imports header
+                      }
+            moduleName <- maybe moduleNameFromFilePath pure maybeModuleName
+            pure ((moduleName, header', definitions), map (Error.Parse filePath) errors)
 
-            Left err ->
-              ((Name.Module $ fromString filePath, mempty, mempty), pure $ Error.Parse filePath err)
+          Left err -> do
+            moduleName <- moduleNameFromFilePath
+            pure ((moduleName, mempty, mempty), pure $ Error.Parse filePath err)
+      where
+        moduleNameFromFilePath :: Task Query Name.Module
+        moduleNameFromFilePath = do
+          sourceDirectories_ <- fetch SourceDirectories
+          let
+            candidates =
+              [ toS $
+                map (\c -> if isPathSeparator c then '.' else c) $
+                dropWhile isPathSeparator $
+                drop (length sourceDirectory) $
+                dropExtension filePath
+              | sourceDirectory <- sourceDirectories_
+              , sourceDirectory `isPrefixOf` filePath
+              ]
+
+          pure $
+            Name.Module $
+            case candidates of
+              [] ->
+                toS filePath
+
+              firstCandidate:_ ->
+                firstCandidate
+
 
     ModuleHeader module_ ->
       nonInput $ do
-        maybeFilePath <- fetch $ Query.ModuleFile $ Mapped.Query module_
+        maybeFilePath <- fetch $ Query.ModuleFile module_
         fmap fold $ forM maybeFilePath $ \filePath -> do
           (_, header, _) <- fetch $ ParsedFile filePath
           errors <- fmap concat $ forM (Module._imports header) $ \import_ -> do
-            maybeModuleFile <- fetch $ Query.ModuleFile $ Mapped.Query $ Module._module import_
+            maybeModuleFile <- fetch $ Query.ModuleFile $ Module._module import_
             pure [Error.ImportNotFound module_ import_ | isNothing maybeModuleFile]
           pure (header, errors)
 
@@ -136,7 +186,7 @@ rules files readFile_ (Writer (Writer query)) =
 
     ParsedDefinition module_ subQuery ->
       noError $ Mapped.rule (ParsedDefinition module_) subQuery $ do
-        maybeFilePath <- fetch $ Query.ModuleFile $ Mapped.Query module_
+        maybeFilePath <- fetch $ Query.ModuleFile module_
         fmap fold $ forM maybeFilePath $ \filePath -> do
           (_, _, defs) <- fetch $ ParsedFile filePath
           pure $ HashMap.fromList
@@ -151,7 +201,7 @@ rules files readFile_ (Writer (Writer query)) =
 
     ModuleSpanMap module_ ->
       noError $ do
-        maybeFilePath <- fetch $ Query.ModuleFile $ Mapped.Query module_
+        maybeFilePath <- fetch $ Query.ModuleFile module_
         fmap fold $ forM maybeFilePath $ \filePath -> do
           text <- fetch $ FileText filePath
           (_, _, defs) <- fetch $ ParsedFile filePath
@@ -170,7 +220,7 @@ rules files readFile_ (Writer (Writer query)) =
 
     Scopes module_ ->
       nonInput $ do
-        maybeFilePath <- fetch $ Query.ModuleFile $ Mapped.Query module_
+        maybeFilePath <- fetch $ Query.ModuleFile module_
         fmap fold $ forM maybeFilePath $ \filePath -> do
           (_, _, defs) <- fetch $ ParsedFile filePath
           pure $ Resolution.moduleScopes module_ $ snd <$> defs
@@ -312,7 +362,7 @@ rules files readFile_ (Writer (Writer query)) =
     KeyedNameSpan (Scope.KeyedName key (Name.Qualified module_ name@(Name textName))) ->
       noError $ do
         positions <- fetch $ ModulePositionMap module_
-        maybeFilePath <- fetch $ Query.ModuleFile $ Mapped.Query module_
+        maybeFilePath <- fetch $ Query.ModuleFile module_
         pure $ case maybeFilePath of
           Nothing ->
             ( "<no file>"

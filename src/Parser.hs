@@ -467,19 +467,19 @@ dataDefinition =
 -------------------------------------------------------------------------------
 -- Module
 
-module_ :: Parser ((Name.Module, Module.Header), [Either Error.Parsing (Position.Absolute, (Name, Definition))])
+module_ :: Parser ((Maybe Name.Module, Module.Header), [Either Error.Parsing (Position.Absolute, (Name, Definition))])
 module_ =
   (,) <$> moduleHeader <*> many definition
 
-moduleHeader :: Parser (Name.Module, Module.Header)
+moduleHeader :: Parser (Maybe Name.Module, Module.Header)
 moduleHeader =
   mkModuleHeader <$> moduleExposing <*> manySame import_
   where
     mkModuleHeader (mname, exposed) imports =
       (mname, Module.Header exposed imports)
     moduleExposing =
-      (,) <$ reserved "module" <*> moduleName <* reserved "exposing" <*> exposedNames
-      <|> pure ("Main", Module.AllExposed)
+      (,) . Just <$ reserved "module" <*> moduleName <* reserved "exposing" <*> exposedNames
+      <|> pure (Nothing, Module.AllExposed)
 
 import_ :: Parser Module.Import
 import_ =

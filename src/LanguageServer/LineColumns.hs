@@ -10,7 +10,6 @@ import qualified Name
 import qualified Position
 import Query (Query)
 import qualified Query
-import qualified Query.Mapped as Mapped
 import qualified Scope
 import qualified Span
 import Span (LineColumn(LineColumns))
@@ -25,7 +24,7 @@ fromKeyedName keyedName@(Scope.KeyedName _ (Name.Qualified moduleName _)) = do
 
 fromAbsolute :: MonadFetch Query m => Name.Module -> m (Span.Absolute -> Span.LineColumn)
 fromAbsolute moduleName = do
-  maybeFilePath <- fetch $ Query.ModuleFile $ Mapped.Query moduleName
+  maybeFilePath <- fetch $ Query.ModuleFile moduleName
   case maybeFilePath of
     Nothing ->
       pure $ const $ Span.LineColumns (Position.LineColumn 0 0) (Position.LineColumn 0 0)

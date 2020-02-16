@@ -33,8 +33,8 @@ watch argumentFiles = do
     (`finally` stopListening) $ do
       driverState <- Driver.initialState
       forever $ do
-        (changedFiles, _sourceDirectories, files) <- waitForChanges signalChangeVar fileStateVar driverState
-        checkAndPrintErrors driverState changedFiles files
+        (changedFiles, sourceDirectories, files) <- waitForChanges signalChangeVar fileStateVar driverState
+        checkAndPrintErrors driverState changedFiles sourceDirectories files
   where
     config =
       FSNotify.defaultConfig
@@ -61,11 +61,12 @@ waitForChanges signalChangeVar fileStateVar driverState = do
 checkAndPrintErrors
   :: Driver.State (Doc ann)
   -> HashSet FilePath
+  -> [FileSystem.Directory]
   -> HashMap FilePath Text -> IO ()
-checkAndPrintErrors driverState changedFiles files = do
+checkAndPrintErrors driverState changedFiles sourceDirectories files = do
   startTime <- getCurrentTime
   (_, errs) <-
-    Driver.runIncrementalTask driverState changedFiles files Error.Hydrated.pretty Driver.Prune $
+    Driver.runIncrementalTask driverState changedFiles sourceDirectories files Error.Hydrated.pretty Driver.Prune $
     Driver.checkAll $ HashMap.keys files
   endTime <- getCurrentTime
 

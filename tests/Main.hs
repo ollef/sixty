@@ -20,18 +20,16 @@ import Error (Error)
 import qualified Error
 import qualified Error.Hydrated
 import qualified Error.Hydrated as Error (Hydrated)
+import qualified FileSystem
 import qualified Name
 import qualified Query
 
 main :: IO ()
 main = do
+  singlesDirectory <- canonicalizePath "tests/singles"
+  multisDirectory <- canonicalizePath "tests/multis"
+
   let
-    singlesDirectory =
-      "tests/singles/"
-
-    multisDirectory =
-      "tests/multis/"
-
     isSourceFile =
       (== ".vix") . takeExtension
 
@@ -41,21 +39,21 @@ main = do
     Tasty.testGroup "tests"
       [ Tasty.testGroup "singles" $
         foreach singleFiles $ \inputFile ->
-          Tasty.testCase (drop (length singlesDirectory) $ dropExtension inputFile) $
-            checkFiles [inputFile]
+          Tasty.testCase (drop (length singlesDirectory + 1) $ dropExtension inputFile) $ do
+            checkFiles [takeDirectory inputFile] [inputFile]
       , Tasty.testGroup "multis" $
         foreach multiFiles $ \(dir, inputFiles) ->
-          Tasty.testCase (drop (length multisDirectory) dir) $
-            checkFiles inputFiles
+          Tasty.testCase (drop (length multisDirectory + 1) dir) $
+            checkFiles [dir] inputFiles
       ]
 
-checkFiles :: [FilePath] -> IO ()
-checkFiles files = do
+checkFiles :: [FileSystem.Directory] -> [FilePath] -> IO ()
+checkFiles sourceDirectories files = do
   let
     prettyError err = do
       p <- Error.Hydrated.pretty err
       pure (err, p)
-  (moduleSources, errs) <- Driver.runTask files prettyError $
+  (moduleSources, errs) <- Driver.runTask sourceDirectories (HashSet.fromList files) prettyError $
     forM files $ \filePath -> do
       (module_, _, defs) <- fetch $ Query.ParsedFile filePath
       let

@@ -4,6 +4,7 @@ module LanguageServer.References where
 import Protolude hiding (moduleName)
 
 import Data.HashMap.Lazy as HashMap
+import qualified Data.HashSet as HashSet
 import qualified Data.Rope.UTF16 as Rope
 import Rock
 
@@ -31,7 +32,7 @@ references filePath (Position.LineColumn line column) = do
           moduleName == definingModule ||
           any ((==) definingModule . Module._module) (Module._imports header)
       inputFiles <- fetch Query.InputFiles
-      fmap concat $ forM inputFiles $ \inputFile -> do
+      fmap concat $ forM (HashSet.toList inputFiles) $ \inputFile -> do
         (moduleName, header, _) <- fetch $ Query.ParsedFile inputFile
         if mightUseDefiningModule moduleName header then do
           spans <- fetch $ Query.ModuleSpanMap moduleName

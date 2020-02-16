@@ -17,7 +17,6 @@ import qualified Occurrences.Intervals as Intervals
 import qualified Position
 import Query (Query)
 import qualified Query
-import qualified Query.Mapped as Mapped
 import qualified Scope
 import qualified Span
 
@@ -39,7 +38,7 @@ goToDefinition filePath (Position.LineColumn line column) = do
         span =
           Module._span import_
       guard $ span `Span.contains` pos
-      maybeDefiningFile <- fetch $ Query.ModuleFile $ Mapped.Query $ Module._module import_
+      maybeDefiningFile <- fetch $ Query.ModuleFile $ Module._module import_
       case maybeDefiningFile of
         Nothing ->
           empty
@@ -70,7 +69,7 @@ goToDefinition filePath (Position.LineColumn line column) = do
           asum $ foreach [Scope.Type, Scope.Definition] $ \definingKey -> do
             relativeSpans <- Occurrences.definitionNameSpans definingKey qualifiedName
 
-            maybeDefiningFile <- fetch $ Query.ModuleFile $ Mapped.Query definingModule
+            maybeDefiningFile <- fetch $ Query.ModuleFile definingModule
             case maybeDefiningFile of
               Nothing ->
                 empty
@@ -81,7 +80,7 @@ goToDefinition filePath (Position.LineColumn line column) = do
 
         Intervals.Con constr@(Name.QualifiedConstructor qualifiedName@(Name.Qualified definingModule _) _) -> do
           relativeSpans <- Occurrences.definitionConstructorSpans Scope.Definition qualifiedName
-          maybeDefiningFile <- fetch $ Query.ModuleFile $ Mapped.Query definingModule
+          maybeDefiningFile <- fetch $ Query.ModuleFile definingModule
           case maybeDefiningFile of
             Nothing ->
               empty

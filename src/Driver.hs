@@ -32,12 +32,14 @@ import qualified Syntax
 
 runTask
   :: [FilePath]
+  -> HashSet FilePath
   -> (Error.Hydrated -> Task Query err)
   -> Task Query a
   -> IO (a, [err])
-runTask files prettyError task = do
+runTask sourceDirectories files prettyError task = do
   startedVar <- newMVar mempty
   errorsVar <- newMVar (mempty :: DMap Query (Const [Error]))
+  -- printVar <- newMVar 0
   let
     writeErrors :: Writer TaskKind Query a -> [Error] -> Task Query ()
     writeErrors (Writer q) errs =
@@ -48,13 +50,25 @@ runTask files prettyError task = do
     ignoreTaskKind _ _ =
       pure ()
 
+--     traceFetch_
+--       :: GenRules (Writer TaskKind Query) Query
+--       -> GenRules (Writer TaskKind Query) Query
+--     traceFetch_ =
+--       traceFetch
+--         (\(Writer key) -> liftIO $ modifyMVar_ printVar $ \n -> do
+--           putText $ fold (replicate n "| ") <> "fetching " <> show key
+--           return $ n + 1)
+--         (\_ _ -> liftIO $ modifyMVar_ printVar $ \n -> do
+--           putText $ fold (replicate (n - 1) "| ") <> "*"
+--           return $ n - 1)
+
     rules :: Rules Query
     rules =
-      -- traceFetch (\q -> liftIO $ putText $ "fetching " <> show q) (\q _ -> liftIO $ putText $ "fetched " <> show q) $
       memoise startedVar $
       writer ignoreTaskKind $
+      -- traceFetch_ $
       writer writeErrors $
-      Rules.rules files $ \file ->
+      Rules.rules sourceDirectories files $ \file ->
         readFile file `catch` \(_ :: IOException) -> pure mempty
 
   Rock.runTask sequentially rules $ do
@@ -117,12 +131,13 @@ data Prune
 runIncrementalTask
   :: State err
   -> HashSet FilePath
+  -> [FilePath]
   -> HashMap FilePath Text
   -> (Error.Hydrated -> Task Query err)
   -> Prune
   -> Task Query a
   -> IO (a, [err])
-runIncrementalTask state changedFiles files prettyError prune task =
+runIncrementalTask state changedFiles sourceDirectories files prettyError prune task =
   handleEx $ do
     do
       reverseDependencies <- takeMVar $ _reverseDependenciesVar state
@@ -139,7 +154,7 @@ runIncrementalTask state changedFiles files prettyError prune task =
           inputFiles <- readMVar inputFilesVar
           -- TODO find a nicer way to do this
           builtinFile <- Paths.getDataFileName "builtin/Builtin.vix"
-          if HashSet.fromList inputFiles /= HashSet.insert builtinFile (HashSet.fromMap $ void files) then do
+          if inputFiles /= HashSet.insert builtinFile (HashSet.fromMap $ void files) then do
             putMVar (_reverseDependenciesVar state) mempty
             putMVar (_startedVar state) mempty
             putMVar (_hashesVar state) mempty
@@ -153,7 +168,7 @@ runIncrementalTask state changedFiles files prettyError prune task =
 
                 Nothing ->
                   pure True
-            Text.hPutStrLn stderr $ "Driver changed files " <> show changedFiles'
+            -- Text.hPutStrLn stderr $ "Driver changed files " <> show changedFiles'
             let
               (keysToInvalidate, reverseDependencies') =
                 foldl'
@@ -168,6 +183,11 @@ runIncrementalTask state changedFiles files prettyError prune task =
 
               hashes' =
                 DMap.difference hashes keysToInvalidate
+            -- Text.hPutStrLn stderr $ "keysToInvalidate " <> show (DMap.size keysToInvalidate)
+            -- Text.hPutStrLn stderr $ "Started " <> show (DMap.size started) <> " -> " <> show (DMap.size started')
+            -- Text.hPutStrLn stderr $ "Hashes " <> show (DMap.size hashes) <> " -> " <> show (DMap.size hashes')
+            -- Text.hPutStrLn stderr $ "ReverseDependencies " <> show (Map.size reverseDependencies) <> " -> " <> show (Map.size reverseDependencies')
+
             putMVar (_startedVar state) started'
             putMVar (_hashesVar state) hashes'
             putMVar (_reverseDependenciesVar state) reverseDependencies'
@@ -198,6 +218,7 @@ runIncrementalTask state changedFiles files prettyError prune task =
         liftIO $
           modifyMVar_ (_errorsVar state) $
             pure . if null errs' then DMap.delete key else DMap.insert key (Const errs')
+
       tasks :: Rules Query
       tasks =
         memoise (_startedVar state) $
@@ -221,7 +242,7 @@ runIncrementalTask state changedFiles files prettyError prune task =
           ) $
         traceFetch_ $
         writer writeErrors $
-        Rules.rules (HashMap.keys files) readSourceFile_
+        Rules.rules sourceDirectories (HashSet.fromMap $ void files) readSourceFile_
     result <- Rock.runTask sequentially tasks task
     started <- readMVar $ _startedVar state
     errorsMap <- case prune of

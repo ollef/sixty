@@ -417,6 +417,7 @@ runTask state prune task = do
   Driver.runIncrementalTask
     (_driverState state)
     (_changedFiles state)
+    (_sourceDirectories state)
     files
     prettyError
     prune

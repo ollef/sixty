@@ -43,21 +43,6 @@ rule inject query fetchMap =
       m <- fetch $ inject Map
       pure $ HashMap.lookup key m
 
-errorRule
-  :: (Eq key, Hashable key, Monoid error)
-  => (forall a'. Query key result a' -> query a')
-  -> Query key result a
-  -> Task query (HashMap key result, error)
-  -> Task query (a, error)
-errorRule inject query fetchMap =
-  case query of
-    Map ->
-      fetchMap
-
-    Query key -> do
-      m <- fetch $ inject Map
-      pure (HashMap.lookup key m, mempty)
-
 instance Eq key => GEq (Query key result) where
   geq Map Map = Just Refl
   geq (Query k1) (Query k2)

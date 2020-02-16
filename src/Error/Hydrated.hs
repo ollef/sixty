@@ -25,7 +25,6 @@ import qualified Position
 import qualified Pretty
 import Query (Query)
 import qualified Query
-import qualified Query.Mapped as Mapped
 import qualified Scope
 import qualified Span
 
@@ -249,7 +248,7 @@ fromError err = do
         fetch $ Query.KeyedNameSpan keyedName
 
       Error.ImportNotFound module_ import_ -> do
-        maybeModuleFile <- fetch $ Query.ModuleFile $ Mapped.Query module_
+        maybeModuleFile <- fetch $ Query.ModuleFile module_
         pure (fromMaybe "<no file>" maybeModuleFile, Module._span import_)
 
       Error.MultipleFilesWithModuleName _ _ file2 ->

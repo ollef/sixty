@@ -1,0 +1,34 @@
+module QualifiedLocalModule exposing (..)
+
+def = Type
+
+useDefQualified = QualifiedLocalModule.def
+
+decl : Type
+
+useDeclQualified1 = QualifiedLocalModule.decl
+
+decl = Type
+
+useDeclQualified2 = QualifiedLocalModule.decl
+
+declDef : Type
+declDef = Type
+
+useDeclDefQualified = QualifiedLocalModule.declDef
+
+data Data = Constr
+
+useDataQualified = QualifiedLocalModule.Data
+
+useConstrQualified = QualifiedLocalModule.Constr
+
+DeclData : Type
+
+useDeclDataQualified1 = QualifiedLocalModule.DeclData
+
+data DeclData = DeclConstr
+
+useDeclDataQualified2 = QualifiedLocalModule.DeclData
+
+useDeclConstrQualified2 = QualifiedLocalModule.DeclConstr
