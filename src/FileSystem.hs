@@ -17,53 +17,56 @@ import qualified System.FSNotify as FSNotify
 
 import qualified Project
 
-newtype Watcher key value = Watcher
+type Directory = FilePath
+
+newtype Watcher a = Watcher
   { runWatcher
     :: FSNotify.WatchManager
-    -> (key -> value -> IO ())
+    -> (a -> IO ())
     -> IO FSNotify.StopListening
   } deriving (Functor)
 
-instance Bifunctor Watcher where
-  bimap f g (Watcher watcher) =
-    Watcher $ \manager onChange ->
-      watcher manager (\key value -> onChange (f key) (g value))
-
-instance Monoid value => Semigroup (Watcher key value) where
+instance Monoid a => Semigroup (Watcher a) where
   Watcher watcher1 <> Watcher watcher2 =
     Watcher $ \manager onChange -> do
       valuesVar <- newMVar mempty
-      stopListening1 <- watcher1 manager $ \key value1 -> do
+      stopListening1 <- watcher1 manager $ \value1 -> do
         value <- modifyMVar valuesVar $ \(_, value2) ->
           pure ((value1, value2), value1 <> value2)
-        onChange key value
-      stopListening2 <- watcher2 manager $ \key value2 -> do
+        onChange value
+      stopListening2 <- watcher2 manager $ \value2 -> do
         value <- modifyMVar valuesVar $ \(value1, _) ->
           pure ((value1, value2), value1 <> value2)
-        onChange key value
+        onChange value
       pure $ stopListening1 <> stopListening2
 
-instance Monoid value => Monoid (Watcher key value) where
+instance Monoid a => Monoid (Watcher a) where
   mempty =
     Watcher mempty
 
-instance Monoid key => Applicative (Watcher key) where
+instance MonadIO Watcher where
+  liftIO io = Watcher $ \_ onChange -> do
+    res <- io
+    onChange res
+    pure mempty
+
+instance Applicative Watcher where
   pure x =
     Watcher $ \_ onChange -> do
-      onChange mempty x
+      onChange x
       pure mempty
 
   (<*>) =
     ap
 
-instance Monoid key => Monad (Watcher key) where
+instance Monad Watcher where
   Watcher watcher1 >>= f =
     Watcher $ \manager onChange -> do
       stopListening2Var <- newMVar mempty
-      stopListening1 <- watcher1 manager $ \key value1 ->
+      stopListening1 <- watcher1 manager $ \value1 ->
         modifyMVar_ stopListening2Var $ \stopListening2 -> do
           stopListening2
-          runWatcher (f value1) manager $ \key' -> onChange (key <> key')
+          runWatcher (f value1) manager onChange
       pure $ do
         stopListening1
         modifyMVar_ stopListening2Var $ \stopListening2 -> do
@@ -72,15 +75,15 @@ instance Monoid key => Monad (Watcher key) where
 
 bindForM
   :: (Eq key, Hashable key, Monoid value)
-  => Watcher () (HashSet key)
-  -> (key -> Watcher key' value)
-  -> Watcher key' value
+  => Watcher (HashSet key)
+  -> (key -> Watcher value)
+  -> Watcher value
 bindForM (Watcher watchKeys) watchKey =
   Watcher $ \manager onChange -> do
     valuesVar <- newMVar mempty
     stopListeningVar <- newMVar mempty
     let
-      onOuterChange () keys' = do
+      onOuterChange keys' = do
         stopKeys <- modifyMVar stopListeningVar $ \stopListenings -> do
           let
             keys'Map =
@@ -105,19 +108,19 @@ bindForM (Watcher watchKeys) watchKey =
         modifyMVar_ valuesVar $ \values ->
           pure $ HashMap.difference values stopKeys
 
-      onInnerChange key key' value = do
+      onInnerChange key value = do
         keys' <- modifyMVar valuesVar $ \values -> do
           let
             keys' =
               HashMap.insert key value values
           pure (keys', keys')
-        onChange key' $ fold keys'
+        onChange $ fold keys'
 
     watchKeys manager onOuterChange
 
 -------------------------------------------------------------------------------
 
-watcherFromArguments :: [FilePath] -> IO (Watcher (HashSet FilePath) (HashMap FilePath Text))
+watcherFromArguments :: [FilePath] -> IO (Watcher (HashSet FilePath, [Directory], HashMap FilePath Text))
 watcherFromArguments files =
   case files of
     [] -> do
@@ -138,57 +141,67 @@ watcherFromArguments files =
           isDir <- Directory.doesDirectoryExist file'
           case () of
             _ | isDir ->
-                pure $ directoryWatcher Project.isSourcePath file'
+                pure $
+                  (\(changedFiles, files') ->
+                    ( changedFiles
+                    , [file']
+                    , files'
+                    )
+                  )<$> directoryWatcher Project.isSourcePath file'
 
               | Project.isProjectPath file' ->
                 pure $ projectWatcher file'
 
               | Project.isSourcePath file' ->
                 pure $
-                  bimap
-                    (const $ HashSet.singleton file')
-                    (foldMap $ HashMap.singleton file') $
+                  (\maybeText ->
+                    ( HashSet.singleton file'
+                    , [FilePath.takeDirectory file']
+                    , foldMap (HashMap.singleton file') maybeText)
+                  ) <$>
                   fileWatcher file'
 
               | otherwise ->
                 -- TODO report error?
                 mempty
 
-projectWatcher :: FilePath -> Watcher (HashSet FilePath) (HashMap FilePath Text)
+projectWatcher :: FilePath -> Watcher (HashSet FilePath, [Directory], HashMap FilePath Text)
 projectWatcher file =
-  bindForM (foldMap (HashSet.fromList . Project._sourceDirectories) <$> jsonFileWatcher file) $
-    directoryWatcher Project.isSourcePath
+  bindForM (foldMap (HashSet.fromList . Project._sourceDirectories) <$> jsonFileWatcher file) $ \sourceDirectory -> do
+    sourceDirectory' <- liftIO $ Directory.canonicalizePath sourceDirectory
+    (changedFiles, files) <- directoryWatcher Project.isSourcePath sourceDirectory'
+    pure (changedFiles, [sourceDirectory'], files)
 
-fileWatcher :: FilePath -> Watcher () (Maybe Text)
+fileWatcher :: FilePath -> Watcher (Maybe Text)
 fileWatcher filePath = Watcher $ \manager onChange -> do
   maybeOriginalText <- readFileText filePath
-  onChange () maybeOriginalText
+  onChange maybeOriginalText
   FSNotify.watchDir
     manager
     (FilePath.takeDirectory filePath)
     ((== filePath) . FSNotify.eventPath)
     (\_ -> do
       maybeText <- readFileText filePath
-      onChange () maybeText
+      onChange maybeText
     )
 
-jsonFileWatcher :: Aeson.FromJSON a => FilePath -> Watcher () (Maybe a)
+jsonFileWatcher :: Aeson.FromJSON a => FilePath -> Watcher (Maybe a)
 jsonFileWatcher filePath = Watcher $ \manager onChange -> do
   maybeOriginalValue <- readFileJSON filePath
-  onChange () maybeOriginalValue
+  onChange maybeOriginalValue
   FSNotify.watchDir
     manager
     (FilePath.takeDirectory filePath)
     ((== filePath) . FSNotify.eventPath)
     (\_ -> do
       maybeValue <- readFileJSON filePath
-      onChange () maybeValue
+      onChange maybeValue
     )
 
 directoryWatcher
   :: (FilePath -> Bool)
   -> FilePath
-  -> Watcher (HashSet FilePath) (HashMap FilePath Text)
+  -> Watcher (HashSet FilePath, HashMap FilePath Text)
 directoryWatcher predicate directory = Watcher $ \manager onChange -> do
   filesVar <- newEmptyMVar
   stopListening <-
@@ -202,10 +215,10 @@ directoryWatcher predicate directory = Watcher $ \manager onChange -> do
           files' =
             HashMap.alter (const maybeText) filePath files
         pure (files', files')
-      onChange (HashSet.singleton filePath) files
+      onChange (HashSet.singleton filePath, files)
   files <- listDirectoryRecursive predicate directory
   putMVar filesVar files
-  onChange (HashSet.fromMap $ void files) files
+  onChange (HashSet.fromMap $ void files, files)
   pure stopListening
 
 listDirectoryRecursive :: (FilePath -> Bool) -> FilePath -> IO (HashMap FilePath Text)

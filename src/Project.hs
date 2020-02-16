@@ -18,7 +18,7 @@ newtype Project = Project
 
 Aeson.deriveJSON (Aeson.aesonDrop 1 Aeson.trainCase) ''Project
 
-filesFromArguments :: [FilePath] -> IO (HashSet FilePath)
+filesFromArguments :: [FilePath] -> IO ([FilePath], HashSet FilePath)
 filesFromArguments files =
   case files of
     [] -> do
@@ -32,19 +32,19 @@ filesFromArguments files =
           isFile <- Directory.doesFileExist file
           case () of
             _ | isDir ->
-                listDirectoryRecursive isSourcePath file
+                (,) [file] <$> listDirectoryRecursive isSourcePath file
 
               | isFile, isProjectPath file ->
                 listProjectFile file
 
               | isFile, isSourcePath file ->
-                pure $ HashSet.singleton file
+                pure ([FilePath.takeDirectory file], HashSet.singleton file)
 
               | otherwise ->
                 -- TODO report error
                 pure mempty
 
-filesFromProjectInDirectory :: FilePath -> IO (HashSet FilePath)
+filesFromProjectInDirectory :: FilePath -> IO ([FilePath], HashSet FilePath)
 filesFromProjectInDirectory directory = do
   maybeProjectFile <- findProjectFile directory
   case maybeProjectFile of
@@ -73,7 +73,7 @@ findProjectFile directory = do
       guard fileExists
       pure file
 
-listProjectFile :: FilePath -> IO (HashSet FilePath)
+listProjectFile :: FilePath -> IO ([FilePath], HashSet FilePath)
 listProjectFile file = do
   maybeProject <- Aeson.decodeFileStrict file
   case maybeProject of
@@ -84,9 +84,10 @@ listProjectFile file = do
     Just project ->
       listProject project
 
-listProject :: Project -> IO (HashSet FilePath)
-listProject project =
-  fmap mconcat $
+listProject :: Project -> IO ([FilePath], HashSet FilePath)
+listProject project = do
+  sourceDirectories <- mapM Directory.canonicalizePath $ _sourceDirectories project
+  fmap ((,) sourceDirectories . mconcat) $
     forM (_sourceDirectories project) $
       listDirectoryRecursive isSourcePath
 

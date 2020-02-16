@@ -63,9 +63,9 @@ run = do
             forM_ maybeProjectFile $ \projectFile -> do
               projectFile' <- Directory.canonicalizePath projectFile
               FSNotify.withManagerConf config $ \manager -> do
-                stopListening <- FileSystem.runWatcher (FileSystem.projectWatcher projectFile') manager $ \changedFiles diskFiles -> do
-                  modifyMVar_ diskFileStateVar $ \(changedFiles', _) ->
-                    pure (changedFiles <> changedFiles', diskFiles)
+                stopListening <- FileSystem.runWatcher (FileSystem.projectWatcher projectFile') manager $ \(changedFiles, sourceDirectories, diskFiles) -> do
+                  modifyMVar_ diskFileStateVar $ \(changedFiles', _, _) ->
+                    pure (changedFiles <> changedFiles', sourceDirectories, diskFiles)
                   void $ atomically $ tryPutTMVar signalChangeVar ()
 
                 join $ swapMVar stopListeningVar stopListening
@@ -77,6 +77,7 @@ run = do
           , _receiveMessage = readTQueue messageQueue
           , _diskChangeSignalled = takeTMVar signalChangeVar
           , _diskFileStateVar = diskFileStateVar
+          , _sourceDirectories = mempty
           , _diskFiles = mempty
           , _openFiles = mempty
           , _changedFiles = mempty
@@ -132,7 +133,8 @@ data State = State
   , _driverState :: !(Driver.State (Error.Hydrated, Doc Void))
   , _receiveMessage :: !(STM LSP.FromClientMessage)
   , _diskChangeSignalled :: !(STM ())
-  , _diskFileStateVar :: !(MVar (HashSet FilePath, HashMap FilePath Text))
+  , _diskFileStateVar :: !(MVar (HashSet FilePath, [FileSystem.Directory], HashMap FilePath Text))
+  , _sourceDirectories :: [FileSystem.Directory]
   , _diskFiles :: HashMap FilePath Text
   , _openFiles :: HashMap FilePath Rope
   , _changedFiles :: HashSet FilePath
@@ -147,11 +149,12 @@ messagePump state = do
     onOutOfDate <$ guard (not $ HashSet.null $ _changedFiles state)
   where
     onDiskChange = do
-      (changedFiles, diskFiles) <- modifyMVar (_diskFileStateVar state) $ \(changedFiles, diskFiles) ->
-        pure ((mempty, diskFiles), (changedFiles, diskFiles))
+      (changedFiles, sourceDirectories, diskFiles) <- modifyMVar (_diskFileStateVar state) $ \(changedFiles, sourceDirectories, diskFiles) ->
+        pure ((mempty, sourceDirectories, diskFiles), (changedFiles, sourceDirectories, diskFiles))
       messagePump state
-        { _changedFiles = changedFiles <> _changedFiles state
+        { _sourceDirectories = sourceDirectories
         , _diskFiles = diskFiles
+        , _changedFiles = changedFiles <> _changedFiles state
         }
 
     onOutOfDate = do

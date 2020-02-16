@@ -19,8 +19,8 @@ import qualified Syntax
 
 check :: [FilePath] -> IO ()
 check argumentFiles = do
-  filePaths <- Project.filesFromArguments argumentFiles
-  ((), errs) <- Driver.runTask (toList filePaths) Error.Hydrated.pretty $
+  (_sourceDirectories, filePaths) <- Project.filesFromArguments argumentFiles
+  ((), errs) <- Driver.runTask (HashSet.toList filePaths) Error.Hydrated.pretty $
     forM_ filePaths $ \filePath -> do
       (module_, _, defs) <- fetch $ Query.ParsedFile filePath
       let
