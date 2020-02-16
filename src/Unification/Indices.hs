@@ -193,8 +193,9 @@ unifyBranches
   (Domain.Branches outerEnv1 branches1 defaultBranch1)
   (Domain.Branches outerEnv2 branches2 defaultBranch2) =
     case (branches1, branches2) of
-      (Syntax.ConstructorBranches conBranches1, Syntax.ConstructorBranches conBranches2) ->
-        unifyMaps conBranches1 conBranches2 $ unifyTele outerEnv1 outerEnv2 outerUntouchables
+      (Syntax.ConstructorBranches conTypeName1 conBranches1, Syntax.ConstructorBranches conTypeName2 conBranches2)
+        | conTypeName1 == conTypeName2 ->
+          unifyMaps conBranches1 conBranches2 $ unifyTele outerEnv1 outerEnv2 outerUntouchables
 
       (Syntax.LiteralBranches litBranches1, Syntax.LiteralBranches litBranches2) ->
         unifyMaps litBranches1 litBranches2 unifyTerms
@@ -370,7 +371,7 @@ occursBranches
   -> E M ()
 occursBranches outerContext flexibility outerUntouchables (Domain.Branches outerEnv branches defaultBranch) = do
   case branches of
-    Syntax.ConstructorBranches constructorBranches ->
+    Syntax.ConstructorBranches _ constructorBranches ->
       forM_ constructorBranches $ mapM_ $ occursTele outerContext outerUntouchables outerEnv
 
     Syntax.LiteralBranches literalBranches ->

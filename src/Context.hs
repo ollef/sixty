@@ -380,7 +380,7 @@ dependencies context value = do
     branchVars context' env branches =
       fold <$>
         case branches of
-          Syntax.ConstructorBranches constructorBranches ->
+          Syntax.ConstructorBranches _ constructorBranches ->
             mapM (telescopeVars context' env . snd) $ toList constructorBranches
 
           Syntax.LiteralBranches literalBranches ->
@@ -543,7 +543,7 @@ forceHead context value =
     Domain.Neutral (Domain.Case scrutinee branches@(Domain.Branches branchEnv brs defaultBranch)) spine -> do
       scrutinee' <- forceHead context scrutinee
       case (scrutinee', brs) of
-        (Domain.Neutral (Domain.Con constr) constructorArgs, Syntax.ConstructorBranches constructorBranches) -> do
+        (Domain.Neutral (Domain.Con constr) constructorArgs, Syntax.ConstructorBranches _ constructorBranches) -> do
           value' <- Evaluation.chooseConstructorBranch branchEnv constr (toList constructorArgs) constructorBranches defaultBranch
           value'' <- forceHead context value'
           Evaluation.applySpine value'' spine
@@ -595,7 +595,7 @@ forceHeadGlue context value =
     Domain.Neutral (Domain.Case scrutinee branches@(Domain.Branches branchEnv brs defaultBranch)) spine -> do
       scrutinee' <- forceHead context scrutinee
       case (scrutinee', brs) of
-        (Domain.Neutral (Domain.Con constr) constructorArgs, Syntax.ConstructorBranches constructorBranches) -> do
+        (Domain.Neutral (Domain.Con constr) constructorArgs, Syntax.ConstructorBranches _ constructorBranches) -> do
           value' <- Evaluation.chooseConstructorBranch branchEnv constr (toList constructorArgs) constructorBranches defaultBranch
           value'' <- forceHeadGlue context value'
           Evaluation.applySpine value'' spine

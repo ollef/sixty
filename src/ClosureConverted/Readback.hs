@@ -33,8 +33,8 @@ readback env value =
           ClosureConversion.applyArgs args' $ do
             scrutinee' <- readback env scrutinee
             branches' <- case branches of
-              Syntax.ConstructorBranches constructorBranches ->
-                Syntax.ConstructorBranches <$> forM constructorBranches (readbackConstructorBranch env env')
+              Syntax.ConstructorBranches constructorTypeName constructorBranches ->
+                Syntax.ConstructorBranches constructorTypeName <$> forM constructorBranches (readbackConstructorBranch env env')
 
               Syntax.LiteralBranches literalBranches ->
                 Syntax.LiteralBranches <$> forM literalBranches (\branch -> do

@@ -137,8 +137,8 @@ prettyTerm prec env term =
           indent 2
             (vcat $
               case branches of
-                Syntax.ConstructorBranches constructorBranches ->
-                  [ prettyConstr env constr <+> prettyBranch env tele
+                Syntax.ConstructorBranches constructorTypeName constructorBranches ->
+                  [ prettyConstr env (Name.QualifiedConstructor constructorTypeName constr) <+> prettyBranch env tele
                   | (constr, (_, tele)) <- HashMap.toList constructorBranches
                   ]
 

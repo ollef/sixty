@@ -30,7 +30,7 @@ data Term v
 type Type = Term
 
 data Branches v
-  = ConstructorBranches (HashMap Name.QualifiedConstructor (Telescope Type Term v))
+  = ConstructorBranches !Name.Qualified (HashMap Name.Constructor (Telescope Type Term v))
   | LiteralBranches (HashMap Literal (Term v))
   deriving (Eq, Show, Generic, Persist, Hashable)
 

@@ -272,8 +272,8 @@ branchesAction
   -> MaybeT M a
 branchesAction k env scrutinee branches =
   case branches of
-    Syntax.ConstructorBranches constructorBranches ->
-      asum (constructorBranchAction k env scrutinee <$> HashMap.toList constructorBranches)
+    Syntax.ConstructorBranches constructorTypeName constructorBranches ->
+      asum (constructorBranchAction k env constructorTypeName scrutinee <$> HashMap.toList constructorBranches)
 
     Syntax.LiteralBranches literalBranches ->
       asum (literalBranchAction k env <$> HashMap.toList literalBranches)
@@ -281,25 +281,29 @@ branchesAction k env scrutinee branches =
 constructorBranchAction
   :: RelativeCallback a
   -> Environment v
+  -> Name.Qualified
   -> Syntax.Term v
-  -> (Name.QualifiedConstructor, ([Span.Relative], Telescope Syntax.Type Syntax.Term v))
+  -> (Name.Constructor, ([Span.Relative], Telescope Syntax.Type Syntax.Term v))
   -> MaybeT M a
-constructorBranchAction k env scrutinee (constr@(Name.QualifiedConstructor typeName _), (spans, tele)) =
+constructorBranchAction k env typeName scrutinee (constr, (spans, tele)) =
   asum (foreach spans $ \span -> do
-      guard $ any (`Span.relativeContains` _actionPosition env) spans
-      scrutinee' <- lift $ Elaboration.evaluate (_context env) scrutinee
-      scrutineeType <- lift $ TypeOf.typeOf (_context env) scrutinee'
-      scrutineeType' <- lift $ Context.forceHead (_context env) scrutineeType
-      case scrutineeType' of
-        Domain.Neutral (Domain.Global headName) spine
-          | headName == typeName -> do
-            spine' <- lift $ mapM (mapM $ Elaboration.readback $ _context env) spine
-            k PatternContext env (Syntax.Con constr `Syntax.apps` fmap (first implicitise) spine') span
+    guard $ any (`Span.relativeContains` _actionPosition env) spans
+    scrutinee' <- lift $ Elaboration.evaluate (_context env) scrutinee
+    scrutineeType <- lift $ TypeOf.typeOf (_context env) scrutinee'
+    scrutineeType' <- lift $ Context.forceHead (_context env) scrutineeType
+    case scrutineeType' of
+      Domain.Neutral (Domain.Global headName) spine
+        | headName == typeName -> do
+          spine' <- lift $ mapM (mapM $ Elaboration.readback $ _context env) spine
+          k PatternContext env (Syntax.Con qualifiedConstr `Syntax.apps` fmap (first implicitise) spine') span
 
-        _ ->
-          k PatternContext env (Syntax.Con constr) span
+      _ ->
+        k PatternContext env (Syntax.Con qualifiedConstr) span
   ) <|>
   teleAction k env tele
+  where
+    qualifiedConstr =
+      Name.QualifiedConstructor typeName constr
 
 literalBranchAction
   :: RelativeCallback a

@@ -92,8 +92,8 @@ readbackMaybeHead env head =
     Domain.Case scrutinee (Domain.Branches env' branches defaultBranch) -> do
       scrutinee' <- readback env scrutinee
       branches' <- case branches of
-        Syntax.ConstructorBranches constructorBranches ->
-          Syntax.ConstructorBranches <$> forM constructorBranches (mapM $ readbackConstructorBranch env env')
+        Syntax.ConstructorBranches constructorTypeName constructorBranches ->
+          Syntax.ConstructorBranches constructorTypeName <$> forM constructorBranches (mapM $ readbackConstructorBranch env env')
 
         Syntax.LiteralBranches literalBranches ->
           Syntax.LiteralBranches <$> forM literalBranches (mapM $ \branch -> do

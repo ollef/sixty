@@ -80,7 +80,7 @@ evaluate env term =
     Syntax.Case scrutinee branches defaultBranch -> do
       scrutineeValue <- evaluate env scrutinee
       case (scrutineeValue, branches) of
-        (Domain.Con constr _params args, Syntax.ConstructorBranches constructorBranches) ->
+        (Domain.Con constr _params args, Syntax.ConstructorBranches _ constructorBranches) ->
           chooseConstructorBranch env constr args constructorBranches defaultBranch
 
         (Domain.Lit lit, Syntax.LiteralBranches literalBranches) ->
@@ -99,7 +99,7 @@ chooseConstructorBranch
   -> Syntax.ConstructorBranches v
   -> Maybe (Syntax.Term v)
   -> M Domain.Value
-chooseConstructorBranch outerEnv constr outerArgs branches defaultBranch =
+chooseConstructorBranch outerEnv (Name.QualifiedConstructor _ constr) outerArgs branches defaultBranch =
   case (HashMap.lookup constr branches, defaultBranch) of
     (Nothing, Nothing) ->
       panic "chooseBranch no branches"

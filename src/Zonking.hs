@@ -131,8 +131,8 @@ zonkBranches
   -> M (Syntax.Branches v)
 zonkBranches env metas branches =
   case branches of
-    Syntax.ConstructorBranches constructorBranches ->
-      Syntax.ConstructorBranches <$> mapM (mapM $ zonkTelescope env metas) constructorBranches
+    Syntax.ConstructorBranches constructorTypeName constructorBranches ->
+      Syntax.ConstructorBranches constructorTypeName <$> mapM (mapM $ zonkTelescope env metas) constructorBranches
 
     Syntax.LiteralBranches literalBranches ->
       Syntax.LiteralBranches <$> mapM (mapM $ zonkTerm env metas) literalBranches

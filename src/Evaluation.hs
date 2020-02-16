@@ -104,7 +104,7 @@ evaluate env term =
     Syntax.Case scrutinee branches defaultBranch -> do
       scrutineeValue <- evaluate env scrutinee
       case (scrutineeValue, branches) of
-        (Domain.Neutral (Domain.Con constr) spine, Syntax.ConstructorBranches constructorBranches) ->
+        (Domain.Neutral (Domain.Con constr) spine, Syntax.ConstructorBranches _ constructorBranches) ->
           chooseConstructorBranch env constr (toList spine) constructorBranches defaultBranch
 
         (Domain.Lit lit, Syntax.LiteralBranches literalBranches) ->
@@ -126,7 +126,7 @@ chooseConstructorBranch
   -> Syntax.ConstructorBranches v
   -> Maybe (Syntax.Term v)
   -> M Domain.Value
-chooseConstructorBranch outerEnv constr outerArgs branches defaultBranch =
+chooseConstructorBranch outerEnv qualifiedConstr@(Name.QualifiedConstructor _ constr) outerArgs branches defaultBranch =
   case (HashMap.lookup constr branches, defaultBranch) of
     (Nothing, Nothing) ->
       panic "chooseBranch no branches"
@@ -135,7 +135,7 @@ chooseConstructorBranch outerEnv constr outerArgs branches defaultBranch =
       evaluate outerEnv branch
 
     (Just (_, tele), _) -> do
-      constrTypeTele <- fetch $ Query.ConstructorType constr
+      constrTypeTele <- fetch $ Query.ConstructorType qualifiedConstr
       go outerEnv (dropTypeArgs constrTypeTele outerArgs) tele
   where
     dropTypeArgs
@@ -236,7 +236,7 @@ forceHead env value =
     Domain.Neutral (Domain.Case scrutinee branches@(Domain.Branches branchEnv brs defaultBranch)) spine -> do
       scrutinee' <- forceHead env scrutinee
       case (scrutinee', brs) of
-        (Domain.Neutral (Domain.Con constr) constructorArgs, Syntax.ConstructorBranches constructorBranches) -> do
+        (Domain.Neutral (Domain.Con constr) constructorArgs, Syntax.ConstructorBranches _ constructorBranches) -> do
           value' <- chooseConstructorBranch branchEnv constr (toList constructorArgs) constructorBranches defaultBranch
           value'' <- forceHead env value'
           applySpine value'' spine

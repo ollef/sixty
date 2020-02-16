@@ -791,7 +791,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
                 (findVarConstructorMatches context scrutineeVar . _matches)
                 (_clauses config)
 
-          branches <- flip HashMap.traverseWithKey matchedConstructors $ \qualifiedConstr@(Name.QualifiedConstructor _ constr) patterns -> do
+          branches <- forM (HashMap.toList matchedConstructors) $ \(qualifiedConstr@(Name.QualifiedConstructor _ constr), patterns) -> do
             let
               constrType =
                 HashMap.lookupDefault
@@ -803,7 +803,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
                 fst <$> patterns
 
             tele <- goConstrFields context qualifiedConstr conArgs constrType $ snd <$> patterns
-            pure (conSpans, tele)
+            pure (constr, (conSpans, tele))
 
 
           defaultBranch <-
@@ -819,7 +819,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
 
           scrutinee <- Elaboration.readback context scrutineeValue
 
-          pure $ Syntax.Case scrutinee (Syntax.ConstructorBranches branches) defaultBranch
+          pure $ Syntax.Case scrutinee (Syntax.ConstructorBranches typeName $ HashMap.fromList branches) defaultBranch
 
         ((plicity1, param):params', Domain.Telescope.Extend _ _ plicity2 targetClosure)
           | plicity1 == plicity2 -> do

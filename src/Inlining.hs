@@ -83,7 +83,7 @@ data Value
 type Environment = Environment.Environment Value
 
 data Branches
-  = ConstructorBranches (HashMap Name.QualifiedConstructor ([Span.Relative], ([(Binding, Var, Type, Plicity)], Value)))
+  = ConstructorBranches !Name.Qualified (HashMap Name.Constructor ([Span.Relative], ([(Binding, Var, Type, Plicity)], Value)))
   | LiteralBranches (HashMap Literal ([Span.Relative], Value))
   deriving Show
 
@@ -169,8 +169,8 @@ evaluateBranches
   -> M Branches
 evaluateBranches dup env branches =
   case branches of
-    Syntax.ConstructorBranches constructorBranches ->
-      ConstructorBranches <$> mapM (mapM $ evaluateTelescope dup env) constructorBranches
+    Syntax.ConstructorBranches constructorTypeName constructorBranches ->
+      ConstructorBranches constructorTypeName <$> mapM (mapM $ evaluateTelescope dup env) constructorBranches
 
     Syntax.LiteralBranches literalBranches ->
       LiteralBranches <$> mapM (mapM $ evaluate dup env) literalBranches
@@ -254,8 +254,8 @@ readbackBranches
   -> Syntax.Branches v
 readbackBranches env branches =
   case branches of
-    ConstructorBranches constructorBranches ->
-      Syntax.ConstructorBranches $
+    ConstructorBranches constructorTypeName constructorBranches ->
+      Syntax.ConstructorBranches constructorTypeName $
         map (uncurry $ readbackTelescope env) <$> constructorBranches
 
     LiteralBranches literalBranches ->

@@ -184,18 +184,19 @@ branchesOccurrences
   -> M Intervals
 branchesOccurrences env branches =
   case branches of
-    Syntax.ConstructorBranches constructorBranches ->
-      foldMap (constructorBranchOccurrences env) $ HashMap.toList constructorBranches
+    Syntax.ConstructorBranches constructorTypeName constructorBranches ->
+      foldMap (constructorBranchOccurrences env constructorTypeName) $ HashMap.toList constructorBranches
 
     Syntax.LiteralBranches literalBranches ->
       foldMap (literalBranchOccurrences env) $ HashMap.toList literalBranches
 
 constructorBranchOccurrences
   :: Domain.Environment v
-  -> (Name.QualifiedConstructor, ([Span.Relative], Telescope Syntax.Type Syntax.Term v))
+  -> Name.Qualified
+  -> (Name.Constructor, ([Span.Relative], Telescope Syntax.Type Syntax.Term v))
   -> M Intervals
-constructorBranchOccurrences env (constr, (spans, tele)) =
-  pure (mconcat [Intervals.singleton span $ Intervals.Con constr | span <- spans]) <>
+constructorBranchOccurrences env constructorTypeName (constr, (spans, tele)) =
+  pure (mconcat [Intervals.singleton span $ Intervals.Con (Name.QualifiedConstructor constructorTypeName constr) | span <- spans]) <>
     telescopeOccurrences env tele
 
 literalBranchOccurrences

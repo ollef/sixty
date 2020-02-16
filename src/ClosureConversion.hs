@@ -154,8 +154,8 @@ convertBranches
   -> m (ClosureConverted.Branches v)
 convertBranches branches =
   case branches of
-    LambdaLifted.ConstructorBranches constructorBranches ->
-      ClosureConverted.ConstructorBranches <$>
+    LambdaLifted.ConstructorBranches constructorTypeName constructorBranches ->
+      ClosureConverted.ConstructorBranches constructorTypeName <$>
         mapM convertTelescope constructorBranches
 
     LambdaLifted.LiteralBranches literalBranches ->

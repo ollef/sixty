@@ -298,8 +298,9 @@ unifyBranches
   (Domain.Branches outerEnv1 branches1 defaultBranch1)
   (Domain.Branches outerEnv2 branches2 defaultBranch2) =
     case (branches1, branches2) of
-      (Syntax.ConstructorBranches conBranches1, Syntax.ConstructorBranches conBranches2) ->
-        unifyMaps conBranches1 conBranches2 $ unifyTele outerContext outerEnv1 outerEnv2
+      (Syntax.ConstructorBranches conTypeName1 conBranches1, Syntax.ConstructorBranches conTypeName2 conBranches2)
+        | conTypeName1 == conTypeName2 ->
+          unifyMaps conBranches1 conBranches2 $ unifyTele outerContext outerEnv1 outerEnv2
 
       (Syntax.LiteralBranches litBranches1, Syntax.LiteralBranches litBranches2) ->
         unifyMaps litBranches1 litBranches2 unifyTerms
@@ -410,12 +411,12 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
 
   branches' <- fmap catMaybes $
     case branches of
-      Syntax.ConstructorBranches constructorBranches ->
+      Syntax.ConstructorBranches constructorTypeName constructorBranches ->
         forM (HashMap.toList constructorBranches) $ \(constr, (_, tele)) -> do
           isMatch <- branchMatches outerContext outerEnv tele
           pure $
             if isMatch then
-              Just $ Just $ Left constr
+              Just $ Just $ Left $ Name.QualifiedConstructor constructorTypeName constr
 
             else
               Nothing
@@ -776,8 +777,8 @@ checkInnerHead outerContext occurs env flexibility hd =
     Domain.Case scrutinee (Domain.Branches env' branches defaultBranch) -> do
       scrutinee' <- checkInnerSolution outerContext occurs env flexibility scrutinee
       branches' <- case branches of
-        Syntax.ConstructorBranches constructorBranches ->
-          fmap Syntax.ConstructorBranches $
+        Syntax.ConstructorBranches constructorTypeName constructorBranches ->
+          fmap (Syntax.ConstructorBranches constructorTypeName) $
             forM constructorBranches $ mapM $
               checkInnerBranch outerContext occurs env env' flexibility
 

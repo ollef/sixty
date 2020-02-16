@@ -154,7 +154,7 @@ data InnerValue
   deriving Show
 
 data Branches
-  = ConstructorBranches (HashMap Name.QualifiedConstructor ([Span.Relative], ([(Binding, Var, Type, Plicity)], Value)))
+  = ConstructorBranches !Name.Qualified (HashMap Name.Constructor ([Span.Relative], ([(Binding, Var, Type, Plicity)], Value)))
   | LiteralBranches (HashMap Literal ([Span.Relative], Value))
   deriving Show
 
@@ -260,7 +260,7 @@ makeCase scrutinee branches defaultBranch =
 branchOccurrences :: Branches -> Occurrences
 branchOccurrences branches =
   case branches of
-    ConstructorBranches constructorBranches ->
+    ConstructorBranches _ constructorBranches ->
       foldMap
         (\(_, (bindings, body)) ->
           foldMap (\(_, _, type_, _) -> occurrences type_) bindings <>
@@ -341,8 +341,8 @@ evaluateBranches
   -> M Branches
 evaluateBranches env branches =
   case branches of
-    Syntax.ConstructorBranches constructorBranches ->
-      ConstructorBranches <$> mapM (mapM $ evaluateTelescope env) constructorBranches
+    Syntax.ConstructorBranches constructorTypeName constructorBranches ->
+      ConstructorBranches constructorTypeName <$> mapM (mapM $ evaluateTelescope env) constructorBranches
 
     Syntax.LiteralBranches literalBranches ->
       LiteralBranches <$> mapM (mapM $ evaluate env) literalBranches
@@ -437,8 +437,8 @@ readbackBranches
   -> Syntax.Branches v
 readbackBranches env metas branches =
   case branches of
-    ConstructorBranches constructorBranches ->
-      Syntax.ConstructorBranches $
+    ConstructorBranches constructorTypeName constructorBranches ->
+      Syntax.ConstructorBranches constructorTypeName $
         fmap (uncurry $ readbackTelescope env metas) <$> constructorBranches
 
     LiteralBranches literalBranches ->
@@ -550,8 +550,8 @@ substitute subst
           makeCase
             (go scrutinee)
             (case branches of
-              ConstructorBranches constructorBranches ->
-                ConstructorBranches $
+              ConstructorBranches constructorTypeName constructorBranches ->
+                ConstructorBranches constructorTypeName $
                   foreach constructorBranches $ \(span, (bindings, body)) ->
                     ( span
                     , ( [ (name, var, go type_, plicity)
@@ -681,8 +681,8 @@ inlineIndex index targetScope solution@ ~(solutionVar, varArgs, solutionValue, s
       Case scrutinee branches defaultBranch -> do
         scrutinee' <- recurse scrutinee
         branches' <- case branches of
-          ConstructorBranches constructorBranches ->
-            fmap ConstructorBranches $ forM constructorBranches $ \(span, (bindings, body)) -> do
+          ConstructorBranches constructorTypeName constructorBranches ->
+            fmap (ConstructorBranches constructorTypeName) $ forM constructorBranches $ \(span, (bindings, body)) -> do
               let
                 go targetScope' bindings' =
                   case bindings' of

@@ -87,7 +87,7 @@ data InnerValue
 type Type = Value
 
 data Branches
-  = ConstructorBranches (HashMap Name.QualifiedConstructor ([(Binding, Var, Type)], Value))
+  = ConstructorBranches !Name.Qualified (HashMap Name.Constructor ([(Binding, Var, Type)], Value))
   | LiteralBranches (HashMap Literal Value)
   deriving Show
 
@@ -150,7 +150,7 @@ makeCase scrutinee branches defaultBranch =
 branchOccurrences :: Branches -> Occurrences
 branchOccurrences branches =
   case branches of
-    ConstructorBranches constructorBranches ->
+    ConstructorBranches _ constructorBranches ->
       foldMap (uncurry telescopeOccurrences) constructorBranches
 
     LiteralBranches literalBranches ->
@@ -352,8 +352,8 @@ evaluateBranches
   -> Lift Branches
 evaluateBranches env branches =
   case branches of
-    Syntax.ConstructorBranches constructorBranches ->
-      ConstructorBranches <$> mapM (evaluateTelescope env . snd) constructorBranches
+    Syntax.ConstructorBranches constructorTypeName constructorBranches ->
+      ConstructorBranches constructorTypeName <$> mapM (evaluateTelescope env . snd) constructorBranches
 
     Syntax.LiteralBranches literalBranches ->
       LiteralBranches <$> mapM (\(_, branch) -> evaluate env branch []) literalBranches
@@ -490,8 +490,8 @@ readbackBranches
   -> LambdaLifted.Branches v
 readbackBranches env branches =
   case branches of
-    ConstructorBranches constructorBranches ->
-      LambdaLifted.ConstructorBranches $ uncurry (readbackTelescope env) <$> constructorBranches
+    ConstructorBranches constructorTypeName constructorBranches ->
+      LambdaLifted.ConstructorBranches constructorTypeName $ uncurry (readbackTelescope env) <$> constructorBranches
 
     LiteralBranches literalBranches ->
       LambdaLifted.LiteralBranches $ map (readback env) literalBranches

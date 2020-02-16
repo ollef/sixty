@@ -88,7 +88,7 @@ typeOfHead context hd =
 
         Nothing ->
           case branches of
-            Syntax.ConstructorBranches constructorBranches ->
+            Syntax.ConstructorBranches _ constructorBranches ->
               case HashMap.elems constructorBranches of
                 (_, branchTele):_ ->
                   typeOfTelescope context env branchTele
