@@ -81,21 +81,17 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             , candidate `HashSet.member` files_
             ]
 
-        case candidates of
-          [] ->
-            pure (Nothing, mempty)
+        pure $
+          case candidates of
+            [] ->
+              (Nothing, mempty)
 
-          [filePath] -> do
-            (fileModuleName, _, _) <- fetch $ ParsedFile filePath
-            pure
+            [filePath] ->
               ( Just filePath
-              , [ Error.ModuleFileNameMismatch fileModuleName moduleName filePath
-                | fileModuleName /= moduleName
-                ]
+              , mempty
               )
 
-          filePath1:filePath2:_ ->
-            pure
+            filePath1:filePath2:_ ->
               ( Just filePath1
               , [Error.MultipleFilesWithModuleName moduleName filePath1 filePath2]
               )
@@ -103,11 +99,14 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
     ParsedFile filePath ->
       nonInput $ do
         text <- fetch $ FileText filePath
+        fileModuleName <- moduleNameFromFilePath
         case Parser.parseText Parser.module_ text filePath of
           Right ((maybeModuleName, header), errorsAndDefinitions) -> do
             let
-              (errors, definitions) =
+              (parseErrors, definitions) =
                 partitionEithers errorsAndDefinitions
+
+              errors = Error.Parse filePath <$> parseErrors
 
               header' =
                 case maybeModuleName of
@@ -125,12 +124,21 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                           }
                         : Module._imports header
                       }
-            moduleName <- maybe moduleNameFromFilePath pure maybeModuleName
-            pure ((moduleName, header', definitions), map (Error.Parse filePath) errors)
+            pure $
+              case maybeModuleName of
+                Nothing ->
+                  ((fileModuleName, header', definitions), errors)
 
-          Left err -> do
-            moduleName <- moduleNameFromFilePath
-            pure ((moduleName, mempty, mempty), pure $ Error.Parse filePath err)
+                Just moduleName ->
+                  ( (moduleName, header', definitions)
+                  , [ Error.ModuleFileNameMismatch fileModuleName moduleName filePath
+                    | fileModuleName /= moduleName
+                    ] ++
+                    errors
+                  )
+
+          Left err ->
+            pure ((fileModuleName, mempty, mempty), pure $ Error.Parse filePath err)
       where
         moduleNameFromFilePath :: Task Query Name.Module
         moduleNameFromFilePath = do
