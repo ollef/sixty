@@ -205,7 +205,7 @@ expectedErrorsFromSource sourceText =
               [(lineNumber, ImportNotFound)]
 
             "module file name mismatch error expected" ->
-              [(lineNumber, ImportNotFound)]
+              [(lineNumber, ModuleFileNameMismatch)]
 
             "not in scope error expected" ->
               [(lineNumber, NotInScope)]
