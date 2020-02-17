@@ -62,27 +62,33 @@ inlineSolutions scopeKey solutions def type_ = do
     inlineTermSolutions :: Domain.Environment v -> Syntax.Term v -> M (Syntax.Term v)
     inlineTermSolutions env term = do
       let
-        go :: (Meta.Index, (Value, Type)) -> (Value, IntMap Meta.Index (Var, [Maybe Var])) -> M (Value, IntMap Meta.Index (Var, [Maybe Var]))
+        go :: (Meta.Index, (Value, Type)) -> (Value, IntMap Meta.Index (Var, [Maybe DuplicableValue])) -> M (Value, IntMap Meta.Index (Var, [Maybe DuplicableValue]))
         go (index, (solutionValue, solutionType)) (value, metaVars) =
           case IntMap.lookup index $ occurrencesMap value of
             Nothing ->
               pure (value, metaVars)
 
-            Just varArgs -> do
+            Just duplicableArgs -> do
               solutionVar <- freshVar
               let
-                varArgsList =
-                  toList varArgs
+                duplicableArgsList =
+                  toList duplicableArgs
+
+                duplicableVars =
+                  IntSet.fromList
+                    [ var
+                    | Just (DuplicableVar var) <- duplicableArgsList
+                    ]
 
                 (inlinedSolutionValue, inlinedSolutionType) =
-                  inlineArguments solutionValue solutionType varArgsList mempty
+                  inlineArguments solutionValue solutionType duplicableArgsList mempty
 
                 Shared _ value' =
                   sharing value $
-                    inlineIndex index (IntSet.fromList $ catMaybes varArgsList) (solutionVar, varArgsList, inlinedSolutionValue, inlinedSolutionType) value
+                    inlineIndex index duplicableVars (solutionVar, duplicableArgsList, inlinedSolutionValue, inlinedSolutionType) value
 
                 metaVars' =
-                  IntMap.insert index (solutionVar, varArgsList) metaVars
+                  IntMap.insert index (solutionVar, duplicableArgsList) metaVars
 
               pure (value', metaVars')
       value <- evaluate env term
@@ -153,12 +159,52 @@ data InnerValue
   | Spanned !Span.Relative !InnerValue
   deriving Show
 
+data DuplicableValue
+  = DuplicableVar !Var
+  | DuplicableGlobal !Name.Qualified
+  | DuplicableCon !Name.QualifiedConstructor
+  | DuplicableLit !Literal
+  deriving (Eq, Show)
+
+duplicableView :: Value -> Maybe DuplicableValue
+duplicableView (Value value _) =
+  case value of
+    Var var ->
+      Just $ DuplicableVar var
+
+    Global global ->
+      Just $ DuplicableGlobal global
+
+    Con con ->
+      Just $ DuplicableCon con
+
+    Lit lit ->
+      Just $ DuplicableLit lit
+
+    _ ->
+      Nothing
+
+unduplicable :: DuplicableValue -> Value
+unduplicable duplicableValue =
+  case duplicableValue of
+    DuplicableVar var ->
+      makeVar var
+
+    DuplicableGlobal global ->
+      makeGlobal global
+
+    DuplicableCon con ->
+      makeCon con
+
+    DuplicableLit lit ->
+      makeLit lit
+
 data Branches
   = ConstructorBranches !Name.Qualified (HashMap Name.Constructor ([Span.Relative], ([(Binding, Var, Type, Plicity)], Value)))
   | LiteralBranches (HashMap Literal ([Span.Relative], Value))
   deriving Show
 
-newtype Occurrences = Occurrences { unoccurrences :: IntMap Meta.Index (Tsil (Maybe Var)) }
+newtype Occurrences = Occurrences { unoccurrences :: IntMap Meta.Index (Tsil (Maybe DuplicableValue)) }
 
 instance Semigroup Occurrences where
   Occurrences occs1 <> Occurrences occs2 =
@@ -174,7 +220,7 @@ instance Monoid Occurrences where
 occurrences :: Value -> Occurrences
 occurrences (Value _ occs) = occs
 
-occurrencesMap :: Value -> IntMap Meta.Index (Tsil (Maybe Var))
+occurrencesMap :: Value -> IntMap Meta.Index (Tsil (Maybe DuplicableValue))
 occurrencesMap = unoccurrences . occurrences
 
 type Type = Value
@@ -198,16 +244,7 @@ makeLit lit =
 makeMeta :: Meta.Index -> Tsil Value -> Value
 makeMeta index arguments =
   Value (Meta index arguments) $
-    let
-      varView (Value arg _) =
-        case arg of
-          Var v ->
-            Just v
-
-          _ ->
-            Nothing
-    in
-    Occurrences (IntMap.singleton index (varView <$> arguments)) <>
+    Occurrences (IntMap.singleton index (duplicableView <$> arguments)) <>
     foldMap occurrences arguments
 
 makeLet :: Binding -> Var -> Value -> Type -> Value -> Value
@@ -363,7 +400,7 @@ evaluateTelescope env tele =
       (bindings, body) <- evaluateTelescope env' tele'
       pure ((name, var, type', plicity):bindings, body)
 
-readback :: Domain.Environment v -> (Meta.Index -> (Var, [Maybe var])) -> Value -> Syntax.Term v
+readback :: Domain.Environment v -> (Meta.Index -> (Var, [Maybe x])) -> Value -> Syntax.Term v
 readback env metas (Value value occs) =
   case value of
     Var var ->
@@ -382,11 +419,11 @@ readback env metas (Value value occs) =
 
     Meta index arguments ->
       let
-        (var, varArgs) =
+        (var, duplicableArgs) =
           metas index
 
         arguments' =
-          snd <$> filter (isNothing . fst) (zip (varArgs <> repeat Nothing) (toList arguments))
+          snd <$> filter (isNothing . fst) (zip (duplicableArgs <> repeat Nothing) (toList arguments))
       in
       Syntax.apps
         (Syntax.Var $
@@ -465,7 +502,7 @@ readbackTelescope env metas bindings body =
 inlineArguments
   :: Value
   -> Value
-  -> [Maybe Var]
+  -> [Maybe DuplicableValue]
   -> IntMap Var Value
   -> (Value, Value)
 inlineArguments value@(Value innerValue _) type_@(Value innerType _) args subst =
@@ -473,13 +510,13 @@ inlineArguments value@(Value innerValue _) type_@(Value innerType _) args subst 
     [] ->
       (substitute subst value, substitute subst type_)
 
-    Just argVar:args' ->
+    Just arg:args' ->
       case (innerValue, innerType) of
         (Lam _ var _ _ body, Pi _ var' _ _ target) ->
           let
             subst' =
-              IntMap.insert var (makeVar argVar) $
-              IntMap.insert var' (makeVar argVar) subst
+              IntMap.insert var (unduplicable arg) $
+              IntMap.insert var' (unduplicable arg) subst
           in
           inlineArguments body target args' subst'
 
@@ -602,10 +639,10 @@ sharing a (Shared modified_ a') =
 inlineIndex
   :: Meta.Index
   -> IntSet Var
-  -> (Var, [Maybe Var], Value, Value)
+  -> (Var, [Maybe DuplicableValue], Value, Value)
   -> Value
   -> Shared Value
-inlineIndex index targetScope solution@ ~(solutionVar, varArgs, solutionValue, solutionType) value@(Value innerValue occs)
+inlineIndex index targetScope solution@ ~(solutionVar, duplicableArgs, solutionValue, solutionType) value@(Value innerValue occs)
   | IntSet.null targetScope =
     if index `IntMap.member` occurrencesMap value then do
       modified
@@ -645,7 +682,7 @@ inlineIndex index targetScope solution@ ~(solutionVar, varArgs, solutionValue, s
               snd <$>
                 filter
                   (isNothing . fst)
-                  (zip (varArgs <> repeat Nothing) (toList args))
+                  (zip (duplicableArgs <> repeat Nothing) (toList args))
           pure $ foldl' (\v1 v2 -> makeApp v1 Explicit v2) solutionValue remainingArgs
 
         | otherwise -> do
