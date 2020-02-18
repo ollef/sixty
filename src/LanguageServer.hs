@@ -386,7 +386,7 @@ checkAllAndPublishDiagnostics state = do
   let
     allFiles =
       fmap mempty (_openFiles state) <> fmap mempty (_diskFiles state)
-  (_, errors) <- runTask state Driver.Prune $ Driver.checkAll $ HashMap.keys allFiles
+  (_, errors) <- runTask state Driver.Prune Driver.checkAll
   let
     errorsByFilePath =
       HashMap.fromListWith (<>)

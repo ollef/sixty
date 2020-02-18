@@ -71,7 +71,7 @@ runTask sourceDirectories files prettyError task = do
       Rules.rules sourceDirectories files $ \file ->
         readFile file `catch` \(_ :: IOException) -> pure mempty
 
-  Rock.runTask sequentially rules $ do
+  Rock.runTask inParallel rules $ do
     result <- task
     errorsMap <- liftIO $ readMVar errorsVar
     let
@@ -243,7 +243,7 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
         traceFetch_ $
         writer writeErrors $
         Rules.rules sourceDirectories (HashSet.fromMap $ void files) readSourceFile_
-    result <- Rock.runTask sequentially tasks task
+    result <- Rock.runTask inParallel tasks task
     started <- readMVar $ _startedVar state
     errorsMap <- case prune of
       Don'tPrune ->
@@ -269,15 +269,15 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
 
 -------------------------------------------------------------------------------
 
-checkAll :: [FilePath] -> Task Query [(FilePath, [(Name.Qualified, Maybe Syntax.Definition, Syntax.Type Void)])]
-checkAll filePaths =
-  forM filePaths $ \filePath -> (filePath, ) <$> do
-    (module_, _, defs) <- fetch $ Query.ParsedFile filePath
+checkAll :: Task Query ()
+checkAll = do
+  filePaths <- fetch $ Query.InputFiles
+  parsedFiles <- forM (HashSet.toList filePaths) $ fetch . Query.ParsedFile
+  forM_ parsedFiles $ \(module_, _, defs) -> do
     let
       names =
         HashSet.fromList $
           Name.Qualified module_ . fst . snd <$> defs
-    forM (HashSet.toList names) $ \name -> do
-      type_ <- fetch $ Query.ElaboratedType name
-      maybeDef <- fetch $ Query.ElaboratedDefinition name
-      pure (name, fst <$> maybeDef, type_)
+    forM_ (HashSet.toList names) $ \name -> do
+      void $ fetch $ Query.ElaboratedType name
+      fetch $ Query.ElaboratedDefinition name

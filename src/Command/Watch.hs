@@ -4,7 +4,6 @@ module Command.Watch where
 import Protolude hiding (check)
 
 import Data.HashMap.Lazy (HashMap)
-import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.Text as Text
@@ -67,7 +66,7 @@ checkAndPrintErrors driverState changedFiles sourceDirectories files = do
   startTime <- getCurrentTime
   (_, errs) <-
     Driver.runIncrementalTask driverState changedFiles sourceDirectories files Error.Hydrated.pretty Driver.Prune $
-    Driver.checkAll $ HashMap.keys files
+    Driver.checkAll
   endTime <- getCurrentTime
 
   System.Console.ANSI.clearScreen
