@@ -53,6 +53,10 @@ checkCommand =
           )
         <> action "file"
         )
+        <*> switch (
+          long "print-elaborated"
+          <> help "Print elaborated syntax after type checking"
+        )
       )
     )
     $ fullDesc
