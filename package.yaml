@@ -73,6 +73,7 @@ executables:
       - optparse-applicative
       - sixty
       - text
+    ghc-options: -threaded -rtsopts "-with-rtsopts=-N -H -A50m"
 
 tests:
   test-sixty:
