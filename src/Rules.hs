@@ -1,3 +1,4 @@
+{-# language ApplicativeDo #-}
 {-# language DuplicateRecordFields #-}
 {-# language FlexibleContexts #-}
 {-# language GADTs #-}
