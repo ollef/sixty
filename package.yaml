@@ -7,7 +7,7 @@ license:             BSD3
 author:              Olle Fredriksson
 maintainer:          fredriksson.olle@gmail.com
 copyright:           2019 Olle Fredriksson
-category:            Web
+category:            Language, Compiler
 extra-source-files:
 - README.md
 data-files:
