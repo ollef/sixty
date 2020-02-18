@@ -20,9 +20,11 @@ import qualified Syntax
 check :: [FilePath] -> IO ()
 check argumentFiles = do
   (sourceDirectories, filePaths) <- Project.filesFromArguments argumentFiles
-  ((), errs) <- Driver.runTask sourceDirectories filePaths Error.Hydrated.pretty $
-    forM_ filePaths $ \filePath -> do
-      (module_, _, defs) <- fetch $ Query.ParsedFile filePath
+  ((), errs) <- Driver.runTask sourceDirectories filePaths Error.Hydrated.pretty $ do
+    parsedModules <- forM (HashSet.toList filePaths) $ \filePath ->
+      fetch $ Query.ParsedFile filePath
+
+    runSequential $ forM_ parsedModules $ \(module_, _, defs) -> do
       let
         names =
           HashSet.fromList $
