@@ -64,14 +64,15 @@ runTask sourceDirectories files prettyError task = do
 
     rules :: Rules Query
     rules =
+      memoise startedVar $
       writer ignoreTaskKind $
       -- traceFetch_ $
       writer writeErrors $
       Rules.rules sourceDirectories files $ \file ->
         readFile file `catch` \(_ :: IOException) -> pure mempty
 
-  -- Rock.runTask inParallel rules $ do
-  Rock.runMemoisedTask startedVar rules $ do
+  Rock.runTask sequentially rules $ do
+  -- Rock.runMemoisedTask startedVar rules $ do
     result <- task
     errorsMap <- liftIO $ readIORef errorsVar
     let
@@ -221,6 +222,7 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
 
       rules :: Rules Query
       rules =
+        memoise (_startedVar state) $
         trackReverseDependencies (_reverseDependenciesVar state) $
         verifyTraces
           (_tracesVar state)
@@ -242,8 +244,8 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
         traceFetch_ $
         writer writeErrors $
         Rules.rules sourceDirectories (HashSet.fromMap $ void files) readSourceFile_
-    result <- Rock.runMemoisedTask (_startedVar state) rules task
-    -- result <- Rock.runTask inParallel rules task
+    -- result <- Rock.runMemoisedTask (_startedVar state) rules task
+    result <- Rock.runTask sequentially rules task
     started <- readIORef $ _startedVar state
     errorsMap <- case prune of
       Don'tPrune ->
