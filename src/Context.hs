@@ -188,13 +188,13 @@ extendPreDef context name value type_ = do
     , var
     )
 
-extendUnnamedDef
+extendDef
   :: Context v
   -> Name
   -> Domain.Value
   -> Domain.Type
   -> M (Context (Succ v), Var)
-extendUnnamedDef context name value type_ = do
+extendDef context name value type_ = do
   var <- freshVar
   pure
     ( context

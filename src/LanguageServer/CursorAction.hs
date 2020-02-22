@@ -139,7 +139,7 @@ extendDef :: Environment v -> Binding -> Syntax.Term v -> Syntax.Type v -> Maybe
 extendDef env binding term type_ = do
   value <- lift $ Elaboration.evaluate (_context env) term
   type' <- lift $ Elaboration.evaluate (_context env) type_
-  (context', var) <- lift $ Context.extendUnnamedDef (_context env) (Binding.toName binding) value type'
+  (context', var) <- lift $ Context.extendDef (_context env) (Binding.toName binding) value type'
   pure
     ( env
       { _context = context'

@@ -839,7 +839,7 @@ pruneMeta context meta allowedArgs = do
                   Context.extendUnnamed context' "x" domain
                 else do
                   fakeVar <- freshVar
-                  Context.extendUnnamedDef
+                  Context.extendDef
                     context'
                     "x"
                     (Domain.Glued (Domain.Var fakeVar) mempty $ Lazy $ throwError $ Error.TypeMismatch mempty)
@@ -853,7 +853,7 @@ pruneMeta context meta allowedArgs = do
                   Context.extendUnnamed context' name domain
                 else do
                   fakeVar <- freshVar
-                  Context.extendUnnamedDef
+                  Context.extendDef
                     context'
                     name
                     (Domain.Glued (Domain.Var fakeVar) mempty $ Lazy $ throwError $ Error.TypeMismatch mempty)

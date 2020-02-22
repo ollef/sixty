@@ -91,7 +91,7 @@ elaborateCase context scrutinee scrutineeType branches expectedType = do
 
   (context', var) <-
     if isPatternScrutinee then
-      Context.extendUnnamedDef context "scrutinee" scrutineeValue scrutineeType
+      Context.extendDef context "scrutinee" scrutineeValue scrutineeType
     else
       Context.extendUnnamed context "scrutinee" scrutineeType
 
