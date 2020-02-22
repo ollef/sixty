@@ -93,7 +93,7 @@ elaborateCase context scrutinee scrutineeType branches expectedType = do
     if isPatternScrutinee then
       Context.extendDef context "scrutinee" scrutineeValue scrutineeType
     else
-      Context.extendUnnamed context "scrutinee" scrutineeType
+      Context.extend context "scrutinee" scrutineeType
 
   let
     scrutineeVarValue =
@@ -1107,7 +1107,7 @@ uninhabitedConstrType context fuel type_ =
             pure True
 
           else do
-            (context', var) <- Context.extendUnnamed context name domain
+            (context', var) <- Context.extend context name domain
             target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
             uninhabitedConstrType context' fuel target
 

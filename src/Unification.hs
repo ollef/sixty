@@ -117,14 +117,14 @@ unify context flexibility value1 value2 = do
     (Domain.Pi name1 domain1 plicity1 targetClosure1, Domain.Fun domain2 plicity2 target2)
       | plicity1 == plicity2 -> do
         unify context flexibility domain2 domain1
-        (context', var) <- Context.extendUnnamed context name1 domain1
+        (context', var) <- Context.extend context name1 domain1
         target1 <- Evaluation.evaluateClosure targetClosure1 $ Domain.var var
         unify context' flexibility target1 target2
 
     (Domain.Fun domain1 plicity1 target1, Domain.Pi name2 domain2 plicity2 targetClosure2)
       | plicity1 == plicity2 -> do
         unify context flexibility domain2 domain1
-        (context', var) <- Context.extendUnnamed context name2 domain2
+        (context', var) <- Context.extend context name2 domain2
         target2 <- Evaluation.evaluateClosure targetClosure2 $ Domain.var var
         unify context' flexibility target1 target2
 
@@ -135,7 +135,7 @@ unify context flexibility value1 value2 = do
 
     -- Eta expand
     (Domain.Lam name1 type1 plicity1 closure1, v2) -> do
-      (context', var) <- Context.extendUnnamed context name1 type1
+      (context', var) <- Context.extend context name1 type1
       let
         varValue =
           Domain.var var
@@ -146,7 +146,7 @@ unify context flexibility value1 value2 = do
       unify context' flexibility body1 body2
 
     (v1, Domain.Lam name2 type2 plicity2 closure2) -> do
-      (context', var) <- Context.extendUnnamed context name2 type2
+      (context', var) <- Context.extend context name2 type2
       let
         varValue =
           Domain.var var
@@ -224,7 +224,7 @@ unify context flexibility value1 value2 = do
     unifyAbstraction name type1 closure1 type2 closure2 = do
       unify context flexibility type1 type2
 
-      (context', var) <- Context.extendUnnamed context name type1
+      (context', var) <- Context.extend context name type1
       let
         varValue =
           Domain.var var
@@ -360,7 +360,7 @@ unifyBranches
             type1' <- Evaluation.evaluate env1 type1
             type2' <- Evaluation.evaluate env2 type2
             unify context flexibility type1' type2'
-            (context', var) <- Context.extendUnnamed context (Binding.toName binding1) type1'
+            (context', var) <- Context.extend context (Binding.toName binding1) type1'
             unifyTele
               context'
               (Environment.extendVar env1 var)
@@ -474,7 +474,7 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
 
         Telescope.Extend binding type_ _ tele' -> do
           type' <- Evaluation.evaluate env type_
-          (context', var) <- Context.extendUnnamed context (Binding.toName binding) type'
+          (context', var) <- Context.extend context (Binding.toName binding) type'
           branchMatches context' (Environment.extendVar env var) tele'
 
 sameHeads :: Domain.Head -> Domain.Head -> Bool
@@ -836,7 +836,7 @@ pruneMeta context meta allowedArgs = do
                   domain
               (context'', _) <-
                 if allowed then
-                  Context.extendUnnamed context' "x" domain
+                  Context.extend context' "x" domain
                 else do
                   fakeVar <- freshVar
                   Context.extendDef
@@ -850,7 +850,7 @@ pruneMeta context meta allowedArgs = do
             Domain.Pi name domain plicity targetClosure -> do
               (context'', v) <-
                 if allowed then
-                  Context.extendUnnamed context' name domain
+                  Context.extend context' name domain
                 else do
                   fakeVar <- freshVar
                   Context.extendDef

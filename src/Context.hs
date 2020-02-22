@@ -152,12 +152,12 @@ extendPre context (Presyntax.Binding _ name) type_ = do
     , var
     )
 
-extendUnnamed
+extend
   :: Context v
   -> Name
   -> Domain.Type
   -> M (Context (Succ v), Var)
-extendUnnamed context name type_ = do
+extend context name type_ = do
   var <- freshVar
   pure
     ( context
@@ -327,7 +327,7 @@ dependencies context value = do
   where
     abstractionDependencies binding type' closure = do
       typeVars <- dependencies context type'
-      (context', var) <- lift $ Context.extendUnnamed context binding type'
+      (context', var) <- lift $ extend context binding type'
       body <- lift $ Evaluation.evaluateClosure closure $ Domain.var var
       bodyVars <- dependencies context' body
       pure $ typeVars <> IntSet.delete var bodyVars
@@ -396,7 +396,7 @@ dependencies context value = do
         Telescope.Extend binding domain _ tele' -> do
           domain' <- lift $ Evaluation.evaluate env domain
           domainVars <- dependencies context' domain'
-          (context'', var) <- lift $ Context.extendUnnamed context' (Binding.toName binding) domain'
+          (context'', var) <- lift $ extend context' (Binding.toName binding) domain'
           let
             env' =
               Environment.extendVar env var

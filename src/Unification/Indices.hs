@@ -84,7 +84,7 @@ unify context flexibility untouchables value1 value2 = do
     (Domain.Pi name1 domain1 plicity1 targetClosure1, Domain.Fun domain2 plicity2 target2)
       | plicity1 == plicity2 -> do
         context1 <- unify context flexibility untouchables domain2 domain1
-        (context2, var) <- lift $ Context.extendUnnamed context1 name1 domain1
+        (context2, var) <- lift $ Context.extend context1 name1 domain1
         target1 <- lift $ Evaluation.evaluateClosure targetClosure1 $ Domain.var var
         context3 <- unify context2 flexibility (IntSet.insert var untouchables) target1 target2
         pure $ unextend context3
@@ -92,7 +92,7 @@ unify context flexibility untouchables value1 value2 = do
     (Domain.Fun domain1 plicity1 target1, Domain.Pi name2 domain2 plicity2 targetClosure2)
       | plicity1 == plicity2 -> do
         context1 <- unify context flexibility untouchables domain2 domain1
-        (context2, var) <- lift $ Context.extendUnnamed context1 name2 domain2
+        (context2, var) <- lift $ Context.extend context1 name2 domain2
         target2 <- lift $ Evaluation.evaluateClosure targetClosure2 $ Domain.var var
         context3 <- unify context2 flexibility (IntSet.insert var untouchables) target1 target2
         pure $ unextend context3
@@ -104,7 +104,7 @@ unify context flexibility untouchables value1 value2 = do
 
     -- Eta expand
     (Domain.Lam name1 type1 plicity1 closure1, v2) -> do
-      (context1, var) <- lift $ Context.extendUnnamed context name1 type1
+      (context1, var) <- lift $ Context.extend context name1 type1
       let
         varValue =
           Domain.var var
@@ -116,7 +116,7 @@ unify context flexibility untouchables value1 value2 = do
       pure $ unextend context2
 
     (v1, Domain.Lam name2 type2 plicity2 closure2) -> do
-      (context1, var) <- lift $ Context.extendUnnamed context name2 type2
+      (context1, var) <- lift $ Context.extend context name2 type2
       let
         varValue =
           Domain.var var
@@ -160,7 +160,7 @@ unify context flexibility untouchables value1 value2 = do
     unifyAbstraction name type1 closure1 type2 closure2 = do
       context1 <- unify context flexibility untouchables type1 type2
 
-      (context2, var) <- lift $ Context.extendUnnamed context1 name type1
+      (context2, var) <- lift $ Context.extend context1 name type1
       let
         varValue =
           Domain.var var
@@ -258,7 +258,7 @@ unifyBranches
             type1' <- lift $ Evaluation.evaluate env1 type1
             type2' <- lift $ Evaluation.evaluate env2 type2
             context' <- unify context flexibility untouchables type1' type2'
-            (context'', var) <- lift $ Context.extendUnnamed context' (Binding.toName binding1) type1'
+            (context'', var) <- lift $ Context.extend context' (Binding.toName binding1) type1'
             context''' <-
               unifyTele
                 (Environment.extendVar env1 var)
@@ -321,7 +321,7 @@ occurs context flexibility untouchables value = do
 
     occursAbstraction name type_ closure = do
       occurs context flexibility untouchables type_
-      (context', var) <- lift $ Context.extendUnnamed context name type_
+      (context', var) <- lift $ Context.extend context name type_
       let
         varValue =
           Domain.var var
@@ -391,7 +391,7 @@ occursBranches outerContext flexibility outerUntouchables (Domain.Branches outer
         Telescope.Extend binding type_ _plicity tele' -> do
           type' <- lift $ Evaluation.evaluate env type_
           occurs context flexibility untouchables type'
-          (context'', var) <- lift $ Context.extendUnnamed context (Binding.toName binding) type'
+          (context'', var) <- lift $ Context.extend context (Binding.toName binding) type'
           occursTele
             context''
             (IntSet.insert var untouchables)

@@ -36,7 +36,7 @@ typeOf context value =
       typeOf context $ Domain.Neutral hd spine
 
     Domain.Lam name type_ plicity closure -> do
-      (context', var) <- Context.extendUnnamed context name type_
+      (context', var) <- Context.extend context name type_
       body <- Evaluation.evaluateClosure closure (Domain.var var)
       bodyType <- typeOf context' body
       bodyType' <- Elaboration.readback context' bodyType
@@ -139,5 +139,5 @@ typeOfTelescope context env tele =
 
     Telescope.Extend binding type_ _ tele' -> do
       type' <- Evaluation.evaluate env type_
-      (context', var) <- Context.extendUnnamed context (Binding.toName binding) type'
+      (context', var) <- Context.extend context (Binding.toName binding) type'
       typeOfTelescope context' (Environment.extendVar env var) tele'

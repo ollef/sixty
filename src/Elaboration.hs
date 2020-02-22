@@ -274,7 +274,7 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
 
         Syntax.Pi binding domain plicity target -> do
           domain' <- evaluate context' domain
-          (context'', _) <- Context.extendUnnamed context' (Binding.toName binding) domain'
+          (context'', _) <- Context.extend context' (Binding.toName binding) domain'
           target' <- goTerm context'' target
           pure $ Syntax.Pi binding domain plicity target'
 
@@ -296,7 +296,7 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
       case constrType' of
         Domain.Pi name domain plicity targetClosure -> do
           domain' <- readback context' domain
-          (context'', var) <- Context.extendUnnamed context' name domain
+          (context'', var) <- Context.extend context' name domain
           target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
           target' <- goValue context'' target
           pure $ Syntax.Pi (Binding.Unspanned name) domain' plicity target'
@@ -464,7 +464,7 @@ checkUnspanned context term expectedType = do
     (Presyntax.Lam (Presyntax.ExplicitPattern pat) body, Domain.Fun domain Explicit target) -> do
       domain' <- readback context domain
       binding <- SuggestedName.patternBinding context pat "x"
-      (context', var) <- Context.extendUnnamed context (Binding.toName binding) domain
+      (context', var) <- Context.extend context (Binding.toName binding) domain
       body' <- Matching.elaborateSingle context' var Explicit pat body target
       pure $ Syntax.Lam binding domain' Explicit body'
 
@@ -484,7 +484,7 @@ checkUnspanned context term expectedType = do
         checkLambda context name domain Implicit pat targetClosure body'
 
     (_, Domain.Pi name domain Implicit targetClosure) -> do
-      (context', v) <- Context.extendUnnamed context name domain
+      (context', v) <- Context.extend context name domain
       target <- Evaluation.evaluateClosure targetClosure $ Domain.var v
       domain' <- readback context domain
       term' <- checkUnspanned context' term target
@@ -659,7 +659,7 @@ inferUnspanned context term expectedTypeName =
                 | [(name, argument)] <- HashMap.toList arguments' -> do
                   domain <- Context.newMetaType context
                   target <- Context.newMetaType context
-                  (context', _) <- Context.extendUnnamed context name domain
+                  (context', _) <- Context.extend context name domain
                   target' <- readback context' target
                   let
                     metaFunctionType =
@@ -774,7 +774,7 @@ checkLambda
   -> Presyntax.Term
   -> M (Syntax.Term v)
 checkLambda context name domain plicity pat targetClosure body = do
-  (context', var) <- Context.extendUnnamed context name domain
+  (context', var) <- Context.extend context name domain
   domain' <- readback context domain
   target <-
     Evaluation.evaluateClosure
@@ -794,7 +794,7 @@ inferLambda
 inferLambda context name plicity pat body = do
   domain <- Context.newMetaType context
   domain' <- readback context domain
-  (context', var) <- Context.extendUnnamed context name domain
+  (context', var) <- Context.extend context name domain
   target <- Context.newMetaType context'
   body' <- Matching.elaborateSingle context' var plicity pat body target
   target' <- readback context' target
@@ -898,7 +898,7 @@ getExpectedTypeName context type_ = do
       getExpectedTypeName context value'
 
     Domain.Pi name domain _ targetClosure -> do
-      (context', var) <- Context.extendUnnamed context name domain
+      (context', var) <- Context.extend context name domain
       target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
       getExpectedTypeName context' target
 
@@ -1073,13 +1073,13 @@ checkMetaSolutions context metaVars =
       case type' of
         Domain.Fun domain Explicit target -> do
           domain' <- readback context' domain
-          (context'', _) <- Context.extendUnnamed context' "x" domain
+          (context'', _) <- Context.extend context' "x" domain
           body <- addLambdas context'' target
           pure $ Syntax.Lam "x" domain' Explicit body
 
         Domain.Pi name domain Explicit targetClosure -> do
           domain' <- readback context' domain
-          (context'', var) <- Context.extendUnnamed context' name domain
+          (context'', var) <- Context.extend context' name domain
           target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
           body <- addLambdas context'' target
           pure $ Syntax.Lam (Binding.Unspanned name) domain' Explicit body

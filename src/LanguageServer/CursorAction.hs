@@ -126,7 +126,7 @@ data Environment v = Environment
 extend :: Environment v -> Binding -> Syntax.Type v -> MaybeT M (Environment (Index.Succ v), Var)
 extend env binding type_ = do
   type' <- lift $ Elaboration.evaluate (_context env) type_
-  (context', var) <- lift $ Context.extendUnnamed (_context env) (Binding.toName binding) type'
+  (context', var) <- lift $ Context.extend (_context env) (Binding.toName binding) type'
   pure
     ( env
       { _context = context'

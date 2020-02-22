@@ -49,7 +49,7 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
     case expectedType' of
       Domain.Pi name domain Explicit targetClosure
         | HashMap.null implicits -> do
-          (context', var) <- Context.extendUnnamed context name domain
+          (context', var) <- Context.extend context name domain
           target <-
             Evaluation.evaluateClosure
               targetClosure
@@ -59,12 +59,12 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
       Domain.Fun domain Explicit target
         | HashMap.null implicits -> do
           binding <- nextExplicitBinding context clauses
-          (context', var) <- Context.extendUnnamed context (Binding.toName binding) domain
+          (context', var) <- Context.extend context (Binding.toName binding) domain
           explicitFunCase context' binding var domain target
 
       Domain.Pi piName domain Implicit targetClosure -> do
         binding <- nextImplicitBinding context piName clauses
-        (context', var) <- Context.extendUnnamed context (Binding.toName binding) domain
+        (context', var) <- Context.extend context (Binding.toName binding) domain
         let
           value =
             Domain.var var
@@ -115,7 +115,7 @@ infer context (fmap removeEmptyImplicits -> clauses)
         let
           name =
             Binding.toName binding
-        (context', var) <- Context.extendUnnamed context name domain
+        (context', var) <- Context.extend context name domain
         clauses' <- mapM (shiftExplicit context (Domain.var var) domain) clauses
         (body, target) <- infer context' clauses'
         target' <- Elaboration.readback context' target
@@ -133,7 +133,7 @@ infer context (fmap removeEmptyImplicits -> clauses)
             Binding.toName binding
         domain <- Context.newMetaType context
         domain' <- Elaboration.readback context domain
-        (context', var) <- Context.extendUnnamed context name domain
+        (context', var) <- Context.extend context name domain
         let
           value =
             Domain.var var
