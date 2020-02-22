@@ -176,12 +176,8 @@ inferDataDefinition context thisSpan preParams constrs paramVars =
 
       thisType' <- evaluate context thisType
 
-      let
-        thisBinding =
-          Binding.Spanned $ pure (thisSpan, thisName)
-
       (context', var) <-
-        Context.extend context thisBinding thisType'
+        Context.extendPre context (Presyntax.Binding thisSpan thisName) thisType'
 
       lazyReturnType <-
         lazy $
@@ -213,7 +209,7 @@ inferDataDefinition context thisSpan preParams constrs paramVars =
     (binding, type_, plicity):preParams' -> do
       type' <- check context type_ Builtin.Type
       type'' <- evaluate context type'
-      (context', paramVar) <- Context.extend context (Binding.fromPresyntax binding) type''
+      (context', paramVar) <- Context.extendPre context binding type''
       let
         paramVars' =
           paramVars Tsil.:> (plicity, paramVar)
@@ -566,7 +562,7 @@ inferUnspanned context term expectedTypeName =
       domain' <- check context domain Builtin.Type
       domain'' <- evaluate context domain'
 
-      (context', _) <- Context.extend context (Binding.fromPresyntax binding) domain''
+      (context', _) <- Context.extendPre context binding domain''
 
       target' <- check context' target Builtin.Type
       pure

@@ -38,6 +38,7 @@ import Monad
 import Name (Name(Name))
 import qualified Name
 import Plicity
+import qualified Presyntax
 import qualified Query
 import qualified Readback
 import qualified Scope
@@ -133,16 +134,13 @@ emptyFrom context =
     , errors = errors context
     }
 
-extend
+extendPre
   :: Context v
-  -> Binding
+  -> Presyntax.Binding
   -> Domain.Type
   -> M (Context (Succ v), Var)
-extend context binding type_ = do
+extendPre context (Presyntax.Binding _ name) type_ = do
   var <- freshVar
-  let
-    name =
-      Binding.toName binding
   pure
     ( context
       { nameVars = HashMap.insert name var $ nameVars context
