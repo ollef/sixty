@@ -169,17 +169,14 @@ extendUnnamed context name type_ = do
     , var
     )
 
-extendDef
+extendPreDef
   :: Context v
-  -> Binding
+  -> Name
   -> Domain.Value
   -> Domain.Type
   -> M (Context (Succ v), Var)
-extendDef context binding value type_ = do
+extendPreDef context name value type_ = do
   var <- freshVar
-  let
-    name =
-      Binding.toName binding
   pure
     ( context
       { nameVars = HashMap.insert name var $ nameVars context

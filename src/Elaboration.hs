@@ -841,7 +841,7 @@ elaborateLet context name maybeType clauses = do
         pure (Binding.fromName (span : map fst clauses) name, boundTerm, typeTerm, typeValue)
 
   boundTerm' <- evaluate context boundTerm
-  (context', _) <- Context.extendDef context binding boundTerm' typeValue
+  (context', _) <- Context.extendPreDef context name boundTerm' typeValue
   pure (context', binding, boundTerm, typeTerm)
 
 data ResolvedConstructor
