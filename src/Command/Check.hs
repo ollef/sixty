@@ -8,7 +8,9 @@ import Control.Concurrent.Async.Lifted.Safe
 import qualified Data.HashSet as HashSet
 import Data.Text.Prettyprint.Doc
 import Data.Text.Prettyprint.Doc.Render.Text (putDoc)
+import Data.Time.Clock
 import Rock
+import qualified Data.Text as Text
 
 import qualified Driver
 import qualified Error.Hydrated
@@ -20,6 +22,7 @@ import qualified Syntax
 
 check :: [FilePath] -> Bool -> IO ()
 check argumentFiles printElaborated = do
+  startTime <- getCurrentTime
   (sourceDirectories, filePaths) <- Project.filesFromArguments argumentFiles
   ((), errs) <- Driver.runTask sourceDirectories filePaths Error.Hydrated.pretty $ do
     if printElaborated then
@@ -43,7 +46,20 @@ check argumentFiles printElaborated = do
         wait checkedAll
     else
       void Driver.checkAll
+  endTime <- getCurrentTime
   forM_ errs $ \err ->
     putDoc $ err <> line
+  let
+    errorCount =
+      length errs
+  putText $ Text.unwords
+    [ "Found"
+    , show errorCount
+    , case errorCount of
+      1 -> "error"
+      _ -> "errors"
+    , "in"
+    , show (diffUTCTime endTime startTime) <> "."
+    ]
   unless (null errs) $
     exitFailure
