@@ -8,7 +8,7 @@ import Protolude hiding (IntMap, evaluate, moduleName)
 
 import Control.Monad.Trans.Maybe
 import qualified Data.HashMap.Lazy as HashMap
-import Data.IORef
+import Data.IORef.Lifted
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Rope.UTF16 as Rope
 import Rock
@@ -161,7 +161,7 @@ definitionAction
 definitionAction k env key qualifiedName =
   definitionNameActions <|> do
     (def, _, metaVars) <- MaybeT $ fetch $ Query.ElaboratingDefinition $ Scope.KeyedName key qualifiedName
-    metaVarsVar <- liftIO $ newIORef metaVars
+    metaVarsVar <- newIORef metaVars
     let
       env' =
         env { _context = (_context env) { Context.metas = metaVarsVar } }

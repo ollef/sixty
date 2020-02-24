@@ -8,7 +8,7 @@ import Protolude hiding (Seq, force, check, evaluate, until)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
-import Data.IORef
+import Data.IORef.Lifted
 import Data.Text.Prettyprint.Doc (Doc)
 import Rock
 
@@ -60,8 +60,8 @@ inferTopLevelDefinition key def = do
   context <- Context.empty key
   (def', typeValue) <- inferDefinition context def
   type_ <- readback context typeValue
-  metaVars <- liftIO $ readIORef $ Context.metas context
-  errors <- liftIO $ readIORef $ Context.errors context
+  metaVars <- readIORef $ Context.metas context
+  errors <- readIORef $ Context.errors context
   pure ((def', type_, metaVars), toList errors)
 
 checkTopLevelDefinition
@@ -72,8 +72,8 @@ checkTopLevelDefinition
 checkTopLevelDefinition key def type_ = do
   context <- Context.empty key
   def' <- checkDefinition context def type_
-  metaVars <- liftIO $ readIORef $ Context.metas context
-  errors <- liftIO $ readIORef $ Context.errors context
+  metaVars <- readIORef $ Context.metas context
+  errors <- readIORef $ Context.errors context
   pure ((def', metaVars), toList errors)
 
 checkDefinitionMetaSolutions
@@ -84,14 +84,14 @@ checkDefinitionMetaSolutions
   -> M ((Syntax.Definition, Syntax.Type Void), [Error])
 checkDefinitionMetaSolutions key def type_ metas = do
   context <- Context.empty key
-  metasVar <- liftIO $ newIORef metas
+  metasVar <- newIORef metas
   let
     context' = context { Context.metas = metasVar }
   metas' <- checkMetaSolutions context' metas
   (def', type') <- Metas.inlineSolutions key metas' def type_
   def'' <- Inlining.inlineDefinition key def'
   type'' <- Inlining.inlineTerm (Environment.empty key) type'
-  errors <- liftIO $ readIORef $ Context.errors context'
+  errors <- readIORef $ Context.errors context'
   pure ((def'', type''), toList errors)
 
 checkDefinition

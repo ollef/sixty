@@ -1,4 +1,5 @@
 {-# language DuplicateRecordFields #-}
+{-# language FlexibleContexts #-}
 {-# language OverloadedStrings #-}
 {-# language RankNTypes #-}
 {-# language TupleSections #-}
@@ -8,8 +9,9 @@ import Protolude hiding (IntMap, IntSet, force)
 
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
-import Data.IORef
+import Data.IORef.Lifted
 import Rock
+import Control.Monad.Base
 
 import qualified Binding
 import Binding (Binding)
@@ -102,10 +104,10 @@ toPrettyablePattern context pattern = do
     (fmap (flip lookupVarName context) $ toList $ indices context)
     pattern
 
-empty :: MonadIO m => Scope.KeyedName -> m (Context Void)
+empty :: MonadBase IO m => Scope.KeyedName -> m (Context Void)
 empty key = do
-  ms <- liftIO $ newIORef Meta.empty
-  es <- liftIO $ newIORef mempty
+  ms <- newIORef Meta.empty
+  es <- newIORef mempty
   pure Context
     { scopeKey = key
     , span = Span.Relative 0 0
@@ -439,9 +441,8 @@ lookupVarValue var context =
 newMeta :: Domain.Type -> Context v -> M Domain.Value
 newMeta type_ context = do
   closedType <- piBoundVars context type_
-  liftIO $ do
-    i <- atomicModifyIORef (metas context) $ Meta.insert closedType (span context)
-    pure $ Domain.Neutral (Domain.Meta i) ((Explicit,) . Domain.var <$> IntSeq.toTsil (boundVars context))
+  i <- atomicModifyIORef (metas context) $ Meta.insert closedType (span context)
+  pure $ Domain.Neutral (Domain.Meta i) ((Explicit,) . Domain.var <$> IntSeq.toTsil (boundVars context))
 
 newMetaType :: Context v -> M Domain.Value
 newMetaType =
@@ -486,10 +487,9 @@ lookupMeta
   :: Meta.Index
   -> Context v
   -> M (Meta.Var (Syntax.Term void))
-lookupMeta i context =
-  liftIO $ do
-    m <- readIORef (metas context)
-    pure $ Syntax.coerce <$> Meta.lookup i m
+lookupMeta i context = do
+  m <- readIORef (metas context)
+  pure $ Syntax.coerce <$> Meta.lookup i m
 
 solveMeta
   :: Context v
@@ -497,9 +497,8 @@ solveMeta
   -> Syntax.Term Void
   -> M ()
 solveMeta context i term =
-  liftIO $
-    atomicModifyIORef (metas context) $ \m ->
-      (Meta.solve i term m, ())
+  atomicModifyIORef (metas context) $ \m ->
+    (Meta.solve i term m, ())
 
 spanned :: Span.Relative -> Context v -> Context v
 spanned s context =
@@ -638,7 +637,7 @@ report context err =
       Error.Elaboration (scopeKey context) $
       Error.Spanned (span context) err
   in
-  liftIO $ atomicModifyIORef (errors context) $ \errs ->
+  atomicModifyIORef (errors context) $ \errs ->
     (errs Tsil.:> err', ())
 
 reportParseError :: Context v -> Error.Parsing -> M ()
@@ -652,7 +651,7 @@ reportParseError context err = do
     let
       err' =
         Error.Parse filePath err
-    liftIO $ atomicModifyIORef (errors context) $ \errs ->
+    atomicModifyIORef (errors context) $ \errs ->
       (errs Tsil.:> err', ())
 
 try :: Context v -> M a -> M (Maybe a)
@@ -675,23 +674,23 @@ zonk
   -> Syntax.Term v
   -> M (Syntax.Term v)
 zonk context term = do
-  metaVars <- liftIO $ newIORef mempty
+  metaVars <- newIORef mempty
   Zonking.zonkTerm (Context.toEnvironment context) (go metaVars) term
   where
     go metaVars index = do
-      indexMap <- liftIO $ readIORef metaVars
+      indexMap <- readIORef metaVars
       case IntMap.lookup index indexMap of
         Nothing -> do
           solution <- Context.lookupMeta index context
           case solution of
             Meta.Unsolved _ _ -> do
-              liftIO $ atomicModifyIORef metaVars $ \indexMap' ->
+              atomicModifyIORef metaVars $ \indexMap' ->
                 (IntMap.insert index Nothing indexMap', ())
               pure Nothing
 
             Meta.Solved term' _ -> do
               term'' <- Zonking.zonkTerm (Environment.empty $ Context.scopeKey context) (go metaVars) term'
-              liftIO $ atomicModifyIORef metaVars $ \indexMap' ->
+              atomicModifyIORef metaVars $ \indexMap' ->
                 (IntMap.insert index (Just term'') indexMap', ())
               pure $ Just term''
 

@@ -8,7 +8,7 @@ import Protolude hiding (IntMap, evaluate, moduleName)
 import qualified Data.HashMap.Lazy as HashMap
 -- import qualified Data.Text.IO as Text
 import Control.Monad.Trans.Maybe
-import Data.IORef
+import Data.IORef.Lifted
 import Data.Text.Prettyprint.Doc ((<+>))
 import qualified Language.Haskell.LSP.Types as LSP
 import Rock
@@ -83,15 +83,15 @@ questionMark filePath (Position.LineColumn line column) =
         prettyTypeUnderCursor <- lift $ Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context typeUnderCursor'
         names <- lift $ getUsableNames itemContext context varPositions
 
-        metasBefore <- liftIO $ readIORef $ Context.metas context
+        metasBefore <- readIORef $ Context.metas context
         lift $ fmap concat $ forM names $ \(name, term, kind) -> do
-          liftIO $ writeIORef (Context.metas context) metasBefore
+          writeIORef (Context.metas context) metasBefore
           value <- Elaboration.evaluate context term
           type_ <- TypeOf.typeOf context value
           (maxArgs, _) <- Elaboration.insertMetas context Elaboration.UntilTheEnd type_
-          metasBefore' <- liftIO $ readIORef $ Context.metas context
+          metasBefore' <- readIORef $ Context.metas context
           maybeArgs <- runMaybeT $ asum $ foreach (inits maxArgs) $ \args -> do
-            liftIO $ writeIORef (Context.metas context) metasBefore'
+            writeIORef (Context.metas context) metasBefore'
             appliedValue <- lift $ foldM (\fun (plicity, arg) -> Evaluation.apply fun plicity arg) value args
             appliedType <- lift $ TypeOf.typeOf context appliedValue
             _ <- MaybeT $
@@ -106,8 +106,8 @@ questionMark filePath (Position.LineColumn line column) =
               -- type' <- Elaboration.readback context type_
               -- prettyType <- Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context type'
               -- prettyTypeUnderCursor <- Error.prettyPrettyableTerm 0 $ Context.toPrettyableTerm context typeUnderCursor'
-              -- liftIO $ Text.hPutStrLn stderr $ "nothing " <> show prettyType
-              -- liftIO $ Text.hPutStrLn stderr $ "nothing toc " <> show prettyTypeUnderCursor
+              -- Text.hPutStrLn stderr $ "nothing " <> show prettyType
+              -- Text.hPutStrLn stderr $ "nothing toc " <> show prettyTypeUnderCursor
               []
 
             Just args -> do

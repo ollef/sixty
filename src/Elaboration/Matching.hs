@@ -11,7 +11,7 @@ import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.HashSet (HashSet)
 import qualified Data.IntSeq as IntSeq
-import Data.IORef
+import Data.IORef.Lifted
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Rock
@@ -85,7 +85,7 @@ elaborateCase
   -> Domain.Type
   -> M (Syntax.Term v)
 elaborateCase context scrutinee scrutineeType branches expectedType = do
-  usedClauses <- liftIO $ newIORef mempty
+  usedClauses <- newIORef mempty
   scrutineeValue <- Elaboration.evaluate context scrutinee
   isPatternScrutinee <- isPatternValue context scrutineeValue
 
@@ -183,7 +183,7 @@ elaborateClauses
   -> Domain.Type
   -> M (Syntax.Term v)
 elaborateClauses context clauses expectedType = do
-  usedClauses <- liftIO $ newIORef mempty
+  usedClauses <- newIORef mempty
 
   elaborateWithCoverage context Config
     { _expectedType = expectedType
@@ -218,7 +218,7 @@ elaborateSingle context scrutinee plicity pat@(Presyntax.Pattern patSpan _) rhs@
       scrutineeType =
         Context.lookupVarType scrutinee context
 
-    usedClauses <- liftIO $ newIORef mempty
+    usedClauses <- newIORef mempty
 
     elaborateWithCoverage context Config
       { _expectedType = expectedType
@@ -247,7 +247,7 @@ elaborateWithCoverage context config = do
         [ span
         | Clause span _ _ <- _clauses config
         ]
-  usedClauseSpans <- liftIO $ readIORef (_usedClauses config)
+  usedClauseSpans <- readIORef (_usedClauses config)
   forM_ (Set.difference allClauseSpans usedClauseSpans) $ \span ->
     Context.report (Context.spanned span context) $ Error.RedundantMatch $ _matchKind config
   pure result
@@ -285,7 +285,7 @@ elaborate context config = do
               context' <- Context.extendUnindexedDefs context inst
               mapM_ (checkForcedPattern context') matches
               result <- Elaboration.check context' (_rhs firstClause) (_expectedType config)
-              liftIO $ modifyIORef (_usedClauses config) $ Set.insert $ _span firstClause
+              modifyIORef (_usedClauses config) $ Set.insert $ _span firstClause
               pure result
 
 checkForcedPattern :: Context v -> Match -> M ()

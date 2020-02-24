@@ -47,7 +47,7 @@ runTask sourceDirectories files prettyError task = do
     writeErrors :: Writer TaskKind Query a -> [Error] -> Task Query ()
     writeErrors (Writer q) errs =
       unless (null errs) $
-        liftIO $ atomicModifyIORef errorsVar $ (, ()) . DMap.insert q (Const errs)
+        atomicModifyIORef errorsVar $ (, ()) . DMap.insert q (Const errs)
 
     ignoreTaskKind :: Query a -> TaskKind -> Task Query ()
     ignoreTaskKind _ _ =
@@ -58,10 +58,10 @@ runTask sourceDirectories files prettyError task = do
 --       -> GenRules (Writer TaskKind Query) Query
 --     traceFetch_ =
 --       traceFetch
---         (\(Writer key) -> liftIO $ modifyMVar_ printVar $ \n -> do
+--         (\(Writer key) -> modifyMVar_ printVar $ \n -> do
 --           putText $ fold (replicate n "| ") <> "fetching " <> show key
 --           return $ n + 1)
---         (\_ _ -> liftIO $ modifyMVar_ printVar $ \n -> do
+--         (\_ _ -> modifyMVar_ printVar $ \n -> do
 --           putText $ fold (replicate (n - 1) "| ") <> "*"
 --           return $ n - 1)
 
@@ -77,7 +77,7 @@ runTask sourceDirectories files prettyError task = do
   Rock.runTask rules $ do
   -- Rock.runMemoisedTask startedVar rules $ do
     result <- task
-    errorsMap <- liftIO $ readIORef errorsVar
+    errorsMap <- readIORef errorsVar
     let
       errors =
         flip foldMap (DMap.toList errorsMap) $ \(_ DMap.:=> Const errs) ->
@@ -210,18 +210,17 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
       traceFetch_ = identity
       -- traceFetch_ =
       --   traceFetch
-      --     (\(Writer key) -> liftIO $ modifyMVar_ printVar $ \n -> do
+      --     (\(Writer key) -> modifyMVar_ printVar $ \n -> do
       --       putText $ fold (replicate n "| ") <> "fetching " <> show key
       --       return $ n + 1)
-      --     (\_ _ -> liftIO $ modifyMVar_ printVar $ \n -> do
+      --     (\_ _ -> modifyMVar_ printVar $ \n -> do
       --       putText $ fold (replicate (n - 1) "| ") <> "*"
       --       return $ n - 1)
       writeErrors :: Writer TaskKind Query a -> [Error] -> Task Query ()
       writeErrors (Writer key) errs = do
         errs' <- mapM (prettyError <=< Error.Hydrated.fromError) errs
-        liftIO $
-          atomicModifyIORef (_errorsVar state) $
-            (, ()) . if null errs' then DMap.delete key else DMap.insert key (Const errs')
+        atomicModifyIORef (_errorsVar state) $
+          (, ()) . if null errs' then DMap.delete key else DMap.insert key (Const errs')
 
       rules :: Rules Query
       rules =
@@ -230,7 +229,7 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
         verifyTraces
           (_tracesVar state)
           (\query value -> do
-            hashed <- liftIO $ readIORef $ _hashesVar state
+            hashed <- readIORef $ _hashesVar state
             case DMap.lookup query hashed of
               Just h ->
                 pure h
@@ -239,9 +238,8 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
                 let
                   h =
                     Const $ hashTagged query value
-                liftIO $
-                  atomicModifyIORef (_hashesVar state) $
-                    (, ()) . DMap.insert query h
+                atomicModifyIORef (_hashesVar state) $
+                  (, ()) . DMap.insert query h
                 pure h
           ) $
         traceFetch_ $

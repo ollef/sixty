@@ -1,10 +1,12 @@
+{-# language FlexibleContexts #-}
 {-# language OverloadedStrings #-}
 module Monad where
 
 import Protolude hiding (State)
 
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
-import Data.IORef
+import Control.Monad.Base
+import Data.IORef.Lifted
 import Rock
 
 import qualified Error
@@ -19,14 +21,14 @@ newtype State = State
 
 newtype Lazy a = Lazy { force :: M a }
 
-lazy :: MonadIO m => M a -> m (Lazy a)
-lazy m = liftIO $ do
+lazy :: MonadBase IO m => M a -> m (Lazy a)
+lazy m = do
   ref <- newIORef $ panic "Can't happen, I promise!"
   writeIORef ref $ do
     result <- m
-    liftIO $ writeIORef ref $ pure result
+    writeIORef ref $ pure result
     pure result
-  pure $ Lazy $ join $ liftIO $ readIORef ref
+  pure $ Lazy $ join $ readIORef ref
 
 eager :: a -> Lazy a
 eager = Lazy . pure
@@ -34,13 +36,12 @@ eager = Lazy . pure
 freshVar :: M Var
 freshVar = do
   ref <- asks nextVar
-  liftIO $
-    atomicModifyIORef ref $ \var@(Var i) ->
-      (Var $ i + 1, var)
+  atomicModifyIORef ref $ \var@(Var i) ->
+    (Var $ i + 1, var)
 
 runM :: M a -> Task Query (Either Error.Elaboration a)
 runM r = do
-  nextVarVar <- liftIO $ newIORef $ Var 0
+  nextVarVar <- newIORef $ Var 0
   runReaderT (runExceptT r) State
     { nextVar = nextVarVar
     }
