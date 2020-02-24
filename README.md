@@ -24,6 +24,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Case expression inversion
 - [x] Basic type checking
 - [x] Query architecture
+  - [x] Parallel type checking
 - [x] Simple modules
   - [x] Top-level definitions
   - [x] Name resolution
