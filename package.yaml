@@ -55,6 +55,9 @@ library:
     - fsnotify
     - haskell-lsp
     - lens
+    - lifted-async
+    - lifted-base
+    - monad-control
     - mtl
     - parsers
     - parsix
@@ -63,6 +66,7 @@ library:
     - stm
     - text
     - transformers
+    - transformers-base
     - vector
 
 executables:

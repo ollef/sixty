@@ -6,15 +6,18 @@
 {-# language TypeFamilies #-}
 module Driver where
 
-import Protolude hiding (force, State, state)
+import Protolude hiding (force, State, state, readMVar, getNumCapabilities)
 
+import Control.Concurrent.Async.Lifted.Safe
+import Control.Concurrent.Lifted
+import Control.Monad.Trans.Control
 import Data.Dependent.Map (DMap)
 import qualified Data.Dependent.Map as DMap
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.HashSet (HashSet)
-import Data.IORef
+import Data.IORef.Lifted
 import Data.Persist (Persist)
 import qualified Data.Persist as Persist
 import qualified Data.Text.IO as Text
@@ -71,7 +74,7 @@ runTask sourceDirectories files prettyError task = do
       Rules.rules sourceDirectories files $ \file ->
         readFile file `catch` \(_ :: IOException) -> pure mempty
 
-  Rock.runTask sequentially rules $ do
+  Rock.runTask rules $ do
   -- Rock.runMemoisedTask startedVar rules $ do
     result <- task
     errorsMap <- liftIO $ readIORef errorsVar
@@ -245,7 +248,7 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
         writer writeErrors $
         Rules.rules sourceDirectories (HashSet.fromMap $ void files) readSourceFile_
     -- result <- Rock.runMemoisedTask (_startedVar state) rules task
-    result <- Rock.runTask sequentially rules task
+    result <- Rock.runTask rules task
     started <- readIORef $ _startedVar state
     errorsMap <- case prune of
       Don'tPrune ->
@@ -274,8 +277,8 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
 checkAll :: Task Query ()
 checkAll = do
   filePaths <- fetch $ Query.InputFiles
-  parsedFiles <- forM (HashSet.toList filePaths) $ fetch . Query.ParsedFile
-  forM_ parsedFiles $ \(module_, _, defs) -> do
+  pooledForConcurrently_ filePaths $ \filePath -> do
+    (module_, _, defs) <- fetch $ Query.ParsedFile filePath
     let
       names =
         HashSet.fromList $
@@ -283,3 +286,73 @@ checkAll = do
     forM_ (HashSet.toList names) $ \name -> do
       void $ fetch $ Query.ElaboratedType name
       fetch $ Query.ElaboratedDefinition name
+
+pooledForConcurrently_
+  :: (Foldable t, MonadBaseControl IO m)
+  => t a
+  -> (a -> m b)
+  -> m ()
+pooledForConcurrently_ as f =
+  liftBaseWith $ \runInIO ->
+    pooledForConcurrentlyIO_ as (runInIO . f)
+
+pooledForConcurrentlyIO_
+  :: Foldable t
+  => t a
+  -> (a -> IO b)
+  -> IO ()
+pooledForConcurrentlyIO_ as f = do
+  todoRef <- newIORef $ toList as
+  processCount <- getNumCapabilities
+  let
+    go =
+      join $ atomicModifyIORef todoRef $ \todo ->
+        case todo of
+          [] ->
+            (todo, pure ())
+
+          (a:todo') ->
+            ( todo'
+            , do
+              _ <- f a
+              go
+            )
+  replicateConcurrently_ processCount go
+
+pooledForConcurrentlyIO
+  :: Traversable t
+  => t a
+  -> (a -> IO b)
+  -> IO (t b)
+pooledForConcurrentlyIO as f = do
+  jobs <- forM as $ \a -> do
+    ref <- newIORef $ panic "pooledForConcurrently not done"
+    pure (a, ref)
+  todoRef <- newIORef $ toList jobs
+  processCount <- getNumCapabilities
+  let
+    go =
+      join $ atomicModifyIORef todoRef $ \todo ->
+        case todo of
+          [] ->
+            (todo, pure ())
+
+          ((a, ref):todo') ->
+            ( todo'
+            , do
+              result <- f a
+              atomicWriteIORef ref result
+              go
+            )
+  replicateConcurrently_ processCount go
+  forM jobs $ \(_, ref) ->
+    readIORef ref
+
+pooledForConcurrently
+  :: (Traversable t, MonadBaseControl IO m, StM m b ~ b)
+  => t a
+  -> (a -> m b)
+  -> m (t b)
+pooledForConcurrently as f =
+  liftBaseWith $ \runInIO ->
+    pooledForConcurrentlyIO as (runInIO . f)
