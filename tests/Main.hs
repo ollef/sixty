@@ -21,7 +21,6 @@ import qualified Error
 import qualified Error.Hydrated
 import qualified Error.Hydrated as Error (Hydrated)
 import qualified FileSystem
-import qualified Name
 import qualified Query
 
 main :: IO ()
@@ -53,17 +52,9 @@ checkFiles sourceDirectories files = do
     prettyError err = do
       p <- Error.Hydrated.pretty err
       pure (err, p)
-  (moduleSources, errs) <- Driver.runTask sourceDirectories (HashSet.fromList files) prettyError $
+  (moduleSources, errs) <- Driver.runTask sourceDirectories (HashSet.fromList files) prettyError $ do
+    Driver.checkAll
     forM files $ \filePath -> do
-      (module_, _, defs) <- fetch $ Query.ParsedFile filePath
-      let
-        names =
-          HashSet.fromList $
-            Name.Qualified module_ . fst . snd <$> defs
-      forM_ names $ \name -> do
-        _type <- fetch $ Query.ElaboratedType name
-        _maybeDef <- fetch $ Query.ElaboratedDefinition name
-        pure ()
       moduleSource <- fetch $ Query.FileText filePath
       pure (filePath, moduleSource)
 
