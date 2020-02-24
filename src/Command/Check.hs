@@ -45,3 +45,5 @@ check argumentFiles printElaborated = do
       void Driver.checkAll
   forM_ errs $ \err ->
     putDoc $ err <> line
+  unless (null errs) $
+    exitFailure
