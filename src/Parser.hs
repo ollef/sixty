@@ -232,12 +232,13 @@ symbol =
 
 integer :: Parser Integer
 integer =
-  indented $ Parsix.try integer'
+  indented integer'
 
 -- | The parsers 'integer' is wrapped in 'token' twice, so we use this for the
 -- time being.
 integer' :: Parsix.TokenParsing m => m Integer
 integer' =
+  Parsix.try $
   Parsix.highlight Highlight.Operator sign <*> Parsix.natural <?> "integer"
   where
     sign =
