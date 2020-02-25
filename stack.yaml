@@ -2,7 +2,7 @@ resolver: lts-14.12
 packages:
 - .
 extra-deps:
-- parsix-0.2.1.0
+- parsix-0.2.2.0
 - git: https://github.com/ollef/rock.git
   commit: d3e75d07f9676765cf96f26a797bae1d74329804
 - git: https://github.com/fpco/ghc-prof-flamegraph.git
