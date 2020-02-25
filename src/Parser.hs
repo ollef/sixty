@@ -228,7 +228,11 @@ multilineComment =
 
 symbol :: String -> Parser String
 symbol =
-  indented . Parsix.symbol
+  indented . symbol'
+
+symbol' :: String -> Parser String
+symbol' =
+  Parsix.symbol
 
 integer :: Parser Integer
 integer =
@@ -248,7 +252,11 @@ integer' =
 
 reserved :: Text -> Parser ()
 reserved =
-  indented . Parsix.reserveText idStyle
+  indented . reserved'
+
+reserved' :: Text -> Parser ()
+reserved' =
+  Parsix.reserveText idStyle
 
 unindentedReserved :: Text -> Parser ()
 unindentedReserved =
@@ -264,7 +272,11 @@ constructor =
 
 prename :: Parser Name.Pre
 prename =
-  indented $ Parsix.ident qidStyle
+  indented prename'
+
+prename' :: Parser Name.Pre
+prename' =
+  Parsix.ident qidStyle
 
 moduleName :: Parser Name.Module
 moduleName =
@@ -320,7 +332,11 @@ plicitPattern =
 
 literal :: Parser Literal
 literal =
-  Literal.Integer <$> integer
+  indented literal'
+
+literal' :: Parser Literal
+literal' =
+  Literal.Integer <$> integer'
 
 -------------------------------------------------------------------------------
 -- Terms
@@ -336,51 +352,52 @@ recoveringIndentedTerm =
     (indented term)
 
 atomicTerm :: Parser Term
-atomicTerm = do
-  char <- LookAhead.lookAhead Parsix.anyChar
-  case char of
-    '(' ->
-      symbol "(" *> term <* symbol ")"
+atomicTerm =
+  (<?> "term") $
+  indented $ do
+    char <- LookAhead.lookAhead Parsix.anyChar
+    case char of
+      '(' ->
+        symbol' "(" *> term <* symbol ")"
 
-    _ ->
-      spannedTerm $
-      case char of
-        'l' ->
-          unspanned <$> lets
-          <|> var
+      _ ->
+        spannedTerm $
+        case char of
+          'l' ->
+            unspanned <$> lets
+            <|> var
 
-        '_' ->
-          Wildcard <$ reserved "_"
-          <|> var
+          '_' ->
+            Wildcard <$ reserved' "_"
+            <|> var
 
-        '?' ->
-          Wildcard <$ reserved "?"
+          '?' ->
+            Wildcard <$ reserved' "?"
 
-        'c' ->
-          Case <$ reserved "case" <*> term <* reserved "of" <*> blockOfMany branch
-          <|> var
+          'c' ->
+            Case <$ reserved' "case" <*> term <* reserved "of" <*> blockOfMany branch
+            <|> var
 
-        '\\' ->
-          unspanned <$>
-          (lams <$ symbol "\\" <*> some (positioned plicitPattern) <* symbol "." <*> term)
+          '\\' ->
+            unspanned <$>
+            (lams <$ symbol' "\\" <*> some (positioned plicitPattern) <* symbol "." <*> term)
 
-        'f' ->
-          unspanned <$>
-          (implicitPis <$ reserved "forall" <*>
-            some
-              ( (,) <$ symbol "(" <*> some binding <* symbol ":" <*> term <* symbol ")"
-              <|> (\binding_@(Binding span _) -> ([binding_], Term span Wildcard)) <$> binding
-              ) <* symbol "." <*> term
-          )
-          <|> var
+          'f' ->
+            unspanned <$>
+            (implicitPis <$ reserved' "forall" <*>
+              some
+                ( (,) <$ symbol "(" <*> some binding <* symbol ":" <*> term <* symbol ")"
+                <|> (\binding_@(Binding span _) -> ([binding_], Term span Wildcard)) <$> binding
+                ) <* symbol "." <*> term
+            )
+            <|> var
 
-        _ ->
-          var
-          <|> Lit <$> literal
-  <?> "term"
+          _ ->
+            var
+            <|> Lit <$> literal'
   where
     var =
-      Var <$> prename
+      Var <$> prename'
 
     implicitPis vss target =
       foldr (\(vs, domain) target' -> pis Implicit vs domain target') target vss
@@ -390,7 +407,7 @@ atomicTerm = do
       (,) <$> pattern_ <* symbol "->" <*> term
 
     lets =
-      flip (foldr $ \(span, binding_) rhs -> Term span $ binding_ rhs) <$ reserved "let" <*> blockOfMany letBinding <* reserved "in" <*> term
+      flip (foldr $ \(span, binding_) rhs -> Term span $ binding_ rhs) <$ reserved' "let" <*> blockOfMany letBinding <* reserved "in" <*> term
 
     letBinding = spanned $ do
       Binding span name_@(Name nameText) <- binding
