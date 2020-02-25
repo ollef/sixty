@@ -335,25 +335,52 @@ recoveringIndentedTerm =
     (indented term)
 
 atomicTerm :: Parser Term
-atomicTerm =
-  symbol "(" *> term <* symbol ")"
-  <|> lets
-  <|> spannedTerm
-    ( Wildcard <$ (reserved "_" <|> reserved "?")
-      <|> Var <$> prename
-      <|> Lit <$> literal
-      <|> Case <$ reserved "case" <*> term <* reserved "of" <*> blockOfMany branch
-      <|> unspanned <$>
-        ( lams <$ symbol "\\" <*> some (positioned plicitPattern) <* symbol "." <*> term
-        <|> implicitPis <$ reserved "forall" <*>
-          some
-            ( (,) <$ symbol "(" <*> some binding <* symbol ":" <*> term <* symbol ")"
-            <|> (\binding_@(Binding span _) -> ([binding_], Term span Wildcard)) <$> binding
-            ) <* symbol "." <*> term
-        )
-    )
+atomicTerm = do
+  char <- LookAhead.lookAhead Parsix.anyChar
+  case char of
+    '(' ->
+      symbol "(" *> term <* symbol ")"
+
+    _ ->
+      spannedTerm $
+      case char of
+        'l' ->
+          unspanned <$> lets
+          <|> var
+
+        '_' ->
+          Wildcard <$ reserved "_"
+          <|> var
+
+        '?' ->
+          Wildcard <$ reserved "?"
+
+        'c' ->
+          Case <$ reserved "case" <*> term <* reserved "of" <*> blockOfMany branch
+          <|> var
+
+        '\\' ->
+          unspanned <$>
+          (lams <$ symbol "\\" <*> some (positioned plicitPattern) <* symbol "." <*> term)
+
+        'f' ->
+          unspanned <$>
+          (implicitPis <$ reserved "forall" <*>
+            some
+              ( (,) <$ symbol "(" <*> some binding <* symbol ":" <*> term <* symbol ")"
+              <|> (\binding_@(Binding span _) -> ([binding_], Term span Wildcard)) <$> binding
+              ) <* symbol "." <*> term
+          )
+          <|> var
+
+        _ ->
+          var
+          <|> Lit <$> literal
   <?> "term"
   where
+    var =
+      Var <$> prename
+
     implicitPis vss target =
       foldr (\(vs, domain) target' -> pis Implicit vs domain target') target vss
 
@@ -371,7 +398,6 @@ atomicTerm =
           (span', _) <- spanned $ reserved nameText
           clauses span' nameText)
         <|> Let name_ Nothing <$> clauses span nameText
-      <?> "let binding"
 
 plicitAtomicTerm :: Parser (Either (HashMap Name Term) Term)
 plicitAtomicTerm =
