@@ -295,15 +295,33 @@ spannedPattern =
 
 atomicPattern :: Parser Pattern
 atomicPattern =
-  symbol "(" *> pattern_ <* symbol ")"
-  <|> spannedPattern
-    ((\(span, name_) -> ConOrVar span name_ mempty) <$> spanned prename
-    <|> WildcardPattern <$ reserved "_"
-    <|> (\(span, _) -> ConOrVar span "?" mempty) <$> spanned (reserved "?")
-    <|> LitPattern <$> literal
-    <|> Forced <$ symbol "~" <*> atomicTerm
-    )
-  <?> "pattern"
+  (<?> "pattern") $
+  indented $ do
+    char <- LookAhead.lookAhead Parsix.anyChar
+    case char of
+      '(' ->
+        symbol' "(" *> pattern_ <* symbol ")"
+
+      _ ->
+        spannedPattern $
+        case char of
+          '_' ->
+            WildcardPattern <$ reserved' "_"
+            <|> conOrVar
+
+          '?' ->
+            (\(span, _) -> ConOrVar span "?" mempty) <$> spanned (reserved' "?")
+            <|> conOrVar
+
+          '~' ->
+            Forced <$ symbol' "~" <*> atomicTerm
+
+          _ ->
+            conOrVar
+            <|> LitPattern <$> literal'
+  where
+    conOrVar =
+      (\(span, name_) -> ConOrVar span name_ mempty) <$> spanned prename'
 
 pattern_ :: Parser Pattern
 pattern_ =
