@@ -566,4 +566,3 @@ exposedNames =
     inner =
       Module.AllExposed <$ symbol ".."
       <|> Module.Exposed . HashSet.fromList <$> sepBy prename (symbol ",")
-      <|> pure (Module.Exposed mempty)
