@@ -1,0 +1,2 @@
+-- Test that a module header doesn't have to be on the first line
+module ModuleHeader exposing (..)

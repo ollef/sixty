@@ -540,7 +540,7 @@ moduleHeader =
     mkModuleHeader (mname, exposed) imports =
       (mname, Module.Header exposed imports)
     moduleExposing =
-      (,) . Just <$ reserved "module" <*> moduleName <* reserved "exposing" <*> exposedNames
+      withIndentationBlock ((,) . Just <$ reserved "module" <*> moduleName <* reserved "exposing" <*> exposedNames)
       <|> pure (Nothing, Module.AllExposed)
 
 import_ :: Parser Module.Import
