@@ -11,8 +11,9 @@ import Protolude hiding (force, State, state, readMVar, getNumCapabilities)
 import Control.Concurrent.Async.Lifted.Safe
 import Control.Concurrent.Lifted
 import Control.Monad.Trans.Control
-import Data.Dependent.Map (DMap)
-import qualified Data.Dependent.Map as DMap
+import Data.Dependent.HashMap (DHashMap)
+import Data.Dependent.Sum (DSum ((:=>)))
+import qualified Data.Dependent.HashMap as DHashMap
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
@@ -41,13 +42,13 @@ runTask
   -> IO (a, [err])
 runTask sourceDirectories files prettyError task = do
   startedVar <- newIORef mempty
-  errorsVar <- newIORef (mempty :: DMap Query (Const [Error]))
+  errorsVar <- newIORef (mempty :: DHashMap Query (Const [Error]))
   -- printVar <- newMVar 0
   let
     writeErrors :: Writer TaskKind Query a -> [Error] -> Task Query ()
     writeErrors (Writer q) errs =
       unless (null errs) $
-        atomicModifyIORef errorsVar $ (, ()) . DMap.insert q (Const errs)
+        atomicModifyIORef errorsVar $ (, ()) . DHashMap.insert q (Const errs)
 
     ignoreTaskKind :: Query a -> TaskKind -> Task Query ()
     ignoreTaskKind _ _ =
@@ -80,7 +81,7 @@ runTask sourceDirectories files prettyError task = do
     errorsMap <- readIORef errorsVar
     let
       errors =
-        flip foldMap (DMap.toList errorsMap) $ \(_ DMap.:=> Const errs) ->
+        flip foldMap (DHashMap.toList errorsMap) $ \(_ :=> Const errs) ->
           errs
     prettyErrors <- forM errors (prettyError <=< Error.Hydrated.fromError)
     pure (result, prettyErrors)
@@ -88,11 +89,11 @@ runTask sourceDirectories files prettyError task = do
 -------------------------------------------------------------------------------
 -- Incremental execution
 data State err = State
-  { _startedVar :: !(IORef (DMap Query MVar))
-  , _hashesVar :: !(IORef (DMap Query (Const Int)))
+  { _startedVar :: !(IORef (DHashMap Query MVar))
+  , _hashesVar :: !(IORef (DHashMap Query (Const Int)))
   , _reverseDependenciesVar :: !(IORef (ReverseDependencies Query))
   , _tracesVar :: !(IORef (Traces Query (Const Int)))
-  , _errorsVar :: !(IORef (DMap Query (Const [err])))
+  , _errorsVar :: !(IORef (DHashMap Query (Const [err])))
   }
 
 initialState :: IO (State err)
@@ -115,7 +116,7 @@ encodeState state = do
   traces <- readIORef $ _tracesVar state
   errors <- readIORef $ _errorsVar state
   pure $
-    Persist.encode (traces, DMap.map (\(Const errDocs) -> Const $ fst <$> errDocs) errors)
+    Persist.encode (traces, DHashMap.map (\(Const errDocs) -> Const $ fst <$> errDocs) errors)
 
 decodeState :: Persist err => ByteString -> IO (State err)
 decodeState bs = do
@@ -148,7 +149,7 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
       started <- readIORef $ _startedVar state
       hashes <- readIORef $ _hashesVar state
 
-      case DMap.lookup Query.InputFiles started of
+      case DHashMap.lookup Query.InputFiles started of
         Nothing -> do
           atomicWriteIORef (_reverseDependenciesVar state) mempty
           atomicWriteIORef (_startedVar state) mempty
@@ -165,7 +166,7 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
 
           else do
             changedFiles' <- flip filterM (toList changedFiles) $ \file ->
-              case DMap.lookup (Query.FileText file) started of
+              case DHashMap.lookup (Query.FileText file) started of
                 Just resultVar -> do
                   text <- readMVar resultVar
                   pure $ Just text /= HashMap.lookup file files
@@ -183,13 +184,13 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
                   changedFiles'
             let
               started' =
-                DMap.difference started keysToInvalidate
+                DHashMap.difference started keysToInvalidate
 
               hashes' =
-                DMap.difference hashes keysToInvalidate
-            -- Text.hPutStrLn stderr $ "keysToInvalidate " <> show (DMap.size keysToInvalidate)
-            -- Text.hPutStrLn stderr $ "Started " <> show (DMap.size started) <> " -> " <> show (DMap.size started')
-            -- Text.hPutStrLn stderr $ "Hashes " <> show (DMap.size hashes) <> " -> " <> show (DMap.size hashes')
+                DHashMap.difference hashes keysToInvalidate
+            -- Text.hPutStrLn stderr $ "keysToInvalidate " <> show (DHashMap.size keysToInvalidate)
+            -- Text.hPutStrLn stderr $ "Started " <> show (DHashMap.size started) <> " -> " <> show (DHashMap.size started')
+            -- Text.hPutStrLn stderr $ "Hashes " <> show (DHashMap.size hashes) <> " -> " <> show (DHashMap.size hashes')
             -- Text.hPutStrLn stderr $ "ReverseDependencies " <> show (Map.size reverseDependencies) <> " -> " <> show (Map.size reverseDependencies')
 
             atomicWriteIORef (_startedVar state) started'
@@ -220,7 +221,7 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
       writeErrors (Writer key) errs = do
         errs' <- mapM (prettyError <=< Error.Hydrated.fromError) errs
         atomicModifyIORef (_errorsVar state) $
-          (, ()) . if null errs' then DMap.delete key else DMap.insert key (Const errs')
+          (, ()) . if null errs' then DHashMap.delete key else DHashMap.insert key (Const errs')
 
       rules :: Rules Query
       rules =
@@ -230,7 +231,7 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
           (_tracesVar state)
           (\query value -> do
             hashed <- readIORef $ _hashesVar state
-            case DMap.lookup query hashed of
+            case DHashMap.lookup query hashed of
               Just h ->
                 pure h
 
@@ -239,7 +240,7 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
                   h =
                     Const $ hashTagged query value
                 atomicModifyIORef (_hashesVar state) $
-                  (, ()) . DMap.insert query h
+                  (, ()) . DHashMap.insert query h
                 pure h
           ) $
         traceFetch_ $
@@ -254,14 +255,14 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
 
       Prune -> do
         atomicModifyIORef (_tracesVar state) $
-          (, ()) . DMap.intersectionWithKey (\_ _ t -> t) started
+          (, ()) . DHashMap.intersectionWithKey (\_ _ t -> t) started
         atomicModifyIORef (_errorsVar state) $ \errors -> do
           let
-            errors' = DMap.intersectionWithKey (\_ _ e -> e) started errors
+            errors' = DHashMap.intersectionWithKey (\_ _ e -> e) started errors
           (errors', errors')
     let
       errors = do
-        (_ DMap.:=> Const errs) <- DMap.toList errorsMap
+        (_ :=> Const errs) <- DHashMap.toList errorsMap
         errs
     pure (result, errors)
   where

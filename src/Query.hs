@@ -8,6 +8,7 @@
 {-# language StandaloneDeriving #-}
 {-# language TemplateHaskell #-}
 {-# language TypeApplications #-}
+{-# language TypeFamilies #-}
 {-# language UndecidableInstances #-}
 {-# options_ghc -Wno-unused-matches #-} -- deriveGShow triggers this for some reason
 module Query where
@@ -15,24 +16,24 @@ module Query where
 import Protolude hiding (IntMap, put, get)
 
 import Control.Monad.Fail
-import qualified Data.Dependent.Map as DMap
-import Data.Dependent.Sum
+import Data.Constraint.Extras.TH
 import Data.GADT.Compare.TH
 import Data.GADT.Show.TH
 import Data.HashMap.Lazy (HashMap)
 import Data.HashSet (HashSet)
 import Data.IntMap (IntMap)
 import Data.Persist as Persist
+import Data.Some (Some(Some))
 import Rock
 
 import qualified ClosureConverted.Syntax as ClosureConverted
+import qualified FileSystem
 import HashTag
 import qualified LambdaLifted.Syntax as LambdaLifted
 import qualified Meta
 import qualified Module
 import Name (Name)
 import qualified Name
-import qualified FileSystem
 import qualified Occurrences.Intervals as Occurrences
 import PersistTag
 import qualified Position
@@ -85,10 +86,44 @@ deriving instance Show (Query a)
 deriveGEq ''Query
 deriveGCompare ''Query
 deriveGShow ''Query
+deriveArgDict ''Query
 
-instance Eq a => EqTag Query (Const a) where
-  eqTagged _ _ (Const a) (Const a') =
-    a == a'
+instance Hashable (Query a) where
+  hashWithSalt salt query =
+    case query of
+      SourceDirectories -> h 0 ()
+      InputFiles -> h 1 ()
+      FileText a -> h 2 a
+      ModuleFile a -> h 3 a
+      ParsedFile a -> h 4 a
+      ModuleHeader a -> h 5 a
+      ImportedNames a b -> h 6 (a, b)
+      NameAliases a -> h 7 a
+      ParsedDefinition a b -> h 8 (a, b)
+      ModulePositionMap a -> h 9 a
+      ModuleSpanMap a -> h 10 a
+      Scopes a -> h 11 a
+      ResolvedName a b -> h 12 (a, b)
+      IsDefinitionVisible a b -> h 13 (a, b)
+      ElaboratingDefinition a -> h 14 a
+      ElaboratedType a -> h 15 a
+      ElaboratedDefinition a -> h 16 a
+      ConstructorType a -> h 17 a
+      KeyedNameSpan a -> h 18 a
+      Occurrences a -> h 19 a
+      LambdaLifted a -> h 20 a
+      LambdaLiftedDefinition a -> h 21 a
+      ClosureConverted a -> h 22 a
+      ClosureConvertedType a -> h 23 a
+      ClosureConvertedConstructorType a -> h 24 a
+    where
+      h :: Hashable a => Int -> a -> Int
+      h tag payload =
+        salt `hashWithSalt` (tag, payload)
+
+instance Hashable (Some Query) where
+  hashWithSalt salt (Some query) =
+    hashWithSalt salt query
 
 instance HashTag Query where
   hashTagged query =
@@ -119,38 +154,38 @@ instance HashTag Query where
       ClosureConvertedType {} -> hash
       ClosureConvertedConstructorType {} -> hash
 
-instance Persist (DMap.Some Query) where
+instance Persist (Some Query) where
   get = do
     n <- get @Word8
     case n of
-      0 -> pure $ DMap.This SourceDirectories
-      1 -> pure $ DMap.This InputFiles
-      2 -> DMap.This . FileText <$> get
-      3 -> DMap.This . ModuleFile <$> get
-      4 -> DMap.This . ParsedFile <$> get
-      5 -> DMap.This . ModuleHeader <$> get
-      6 -> (\(x, DMap.This y) -> DMap.This $ ImportedNames x y) <$> get
-      7 -> DMap.This . NameAliases <$> get
-      8 -> (\(x, DMap.This y) -> DMap.This $ ParsedDefinition x y) <$> get
-      9 -> DMap.This . ModulePositionMap <$> get
-      10 -> DMap.This . ModuleSpanMap <$> get
-      11 -> DMap.This . Scopes <$> get
-      12 -> DMap.This . uncurry ResolvedName <$> get
-      13 -> DMap.This . uncurry IsDefinitionVisible <$> get
-      14 -> DMap.This . ElaboratingDefinition <$> get
-      15 -> DMap.This . ElaboratedType <$> get
-      16 -> DMap.This . ElaboratedDefinition <$> get
-      17 -> DMap.This . ConstructorType <$> get
-      18 -> DMap.This . KeyedNameSpan <$> get
-      19 -> DMap.This . Occurrences <$> get
-      20 -> DMap.This . LambdaLifted <$> get
-      21 -> DMap.This . LambdaLiftedDefinition <$> get
-      22 -> DMap.This . ClosureConverted <$> get
-      23 -> DMap.This . ClosureConvertedType <$> get
-      24 -> DMap.This . ClosureConvertedConstructorType <$> get
+      0 -> pure $ Some SourceDirectories
+      1 -> pure $ Some InputFiles
+      2 -> Some . FileText <$> get
+      3 -> Some . ModuleFile <$> get
+      4 -> Some . ParsedFile <$> get
+      5 -> Some . ModuleHeader <$> get
+      6 -> (\(x, Some y) -> Some $ ImportedNames x y) <$> get
+      7 -> Some . NameAliases <$> get
+      8 -> (\(x, Some y) -> Some $ ParsedDefinition x y) <$> get
+      9 -> Some . ModulePositionMap <$> get
+      10 -> Some . ModuleSpanMap <$> get
+      11 -> Some . Scopes <$> get
+      12 -> Some . uncurry ResolvedName <$> get
+      13 -> Some . uncurry IsDefinitionVisible <$> get
+      14 -> Some . ElaboratingDefinition <$> get
+      15 -> Some . ElaboratedType <$> get
+      16 -> Some . ElaboratedDefinition <$> get
+      17 -> Some . ConstructorType <$> get
+      18 -> Some . KeyedNameSpan <$> get
+      19 -> Some . Occurrences <$> get
+      20 -> Some . LambdaLifted <$> get
+      21 -> Some . LambdaLiftedDefinition <$> get
+      22 -> Some . ClosureConverted <$> get
+      23 -> Some . ClosureConvertedType <$> get
+      24 -> Some . ClosureConvertedConstructorType <$> get
       _ -> fail "Persist (Some Query): no such tag"
 
-  put (DMap.This query) =
+  put (Some query) =
     case query of
       SourceDirectories -> p 0 ()
       InputFiles -> p 1 ()
@@ -158,9 +193,9 @@ instance Persist (DMap.Some Query) where
       ModuleFile a -> p 3 a
       ParsedFile a -> p 4 a
       ModuleHeader a -> p 5 a
-      ImportedNames a b -> p 6 (a, DMap.This b)
+      ImportedNames a b -> p 6 (a, Some b)
       NameAliases a -> p 7 a
-      ParsedDefinition a b -> p 8 (a, DMap.This b)
+      ParsedDefinition a b -> p 8 (a, Some b)
       ModulePositionMap a -> p 9 a
       ModuleSpanMap a -> p 10 a
       Scopes a -> p 11 a

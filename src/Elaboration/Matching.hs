@@ -12,7 +12,6 @@ import qualified Data.HashSet as HashSet
 import Data.HashSet (HashSet)
 import qualified Data.IntSeq as IntSeq
 import Data.IORef.Lifted
-import Data.Set (Set)
 import qualified Data.Set as Set
 import Rock
 

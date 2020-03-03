@@ -1,6 +1,7 @@
 {-# language DeriveFoldable #-}
 {-# language DeriveFunctor #-}
 {-# language DeriveTraversable #-}
+{-# language FlexibleContexts #-}
 {-# language OverloadedStrings #-}
 module Elaboration.Metas where
 

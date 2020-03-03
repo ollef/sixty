@@ -4,7 +4,6 @@ module Monad where
 
 import Protolude hiding (State)
 
-import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Control.Monad.Base
 import Data.IORef.Lifted
 import Rock

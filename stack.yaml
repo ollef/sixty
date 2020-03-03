@@ -1,9 +1,17 @@
-resolver: lts-14.12
+resolver: lts-15.1
 packages:
 - .
 extra-deps:
-- parsix-0.2.2.0
+- constraints-extras-0.3.0.2
+- git: https://github.com/WebGHC/dependent-sum.git
+  commit: 5158a7dc5e714ca82e94c76ceec838ad85b0efab
+  subdirs:
+  - dependent-sum
+  - dependent-sum-template
+- dependent-hashmap-0.1.0.1
+- parsix-0.2.2.1
+- some-1.0.0.3
 - git: https://github.com/ollef/rock.git
-  commit: d3e75d07f9676765cf96f26a797bae1d74329804
+  commit: ec5d6e6d5b41585011beae6334a558cb07bce87e
 - git: https://github.com/fpco/ghc-prof-flamegraph.git
   commit: 8edd3b4806adeb25a4d55bed51c3afcc8e7a8e14

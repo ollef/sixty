@@ -1,4 +1,5 @@
 {-# language FlexibleContexts #-}
+{-# language QuantifiedConstraints #-}
 {-# language TypeApplications #-}
 {-# language UndecidableInstances #-}
 {-# options_ghc -Wno-orphans #-}
@@ -6,8 +7,9 @@ module Orphans where
 
 import Protolude hiding (IntMap, get, put)
 
-import Data.Dependent.Map (DMap, GCompare)
-import qualified Data.Dependent.Map as DMap
+import Data.Dependent.HashMap (DHashMap)
+import qualified Data.Dependent.HashMap as DHashMap
+import Data.GADT.Compare (GEq)
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
@@ -77,7 +79,7 @@ instance (Hashable k, Ord k, Hashable v) => Hashable (IntervalMap k v) where
       (\b -> IntervalMap.intersections b m)
       <$> IntervalMap.bounds m
 
-instance (Persist v, GCompare k, Persist (DMap.Some k), PersistTag k dep) => Persist (ValueDeps k dep v) where
+instance (Persist v, GEq k, Hashable (DHashMap.Some k), Persist (DHashMap.Some k), PersistTag k dep) => Persist (ValueDeps k dep v) where
   put (ValueDeps a b) = do
     put a
     put b
@@ -85,19 +87,19 @@ instance (Persist v, GCompare k, Persist (DMap.Some k), PersistTag k dep) => Per
   get =
     ValueDeps <$> get <*> get
 
-instance (Persist (DMap.Some k), PersistTag k f, GCompare k) => Persist (DMap k f) where
+instance (Persist (DHashMap.Some k), PersistTag k f, GEq k, Hashable (DHashMap.Some k)) => Persist (DHashMap k f) where
   put m = do
-    put @Int $ DMap.size m
-    forM_ (DMap.toList m) $ \(k DMap.:=> f) ->
+    put @Int $ DHashMap.size m
+    forM_ (DHashMap.toList m) $ \(k DHashMap.:=> f) ->
       putTagged k f
 
   get =
-    DMap.fromList <$> do
+    DHashMap.fromList <$> do
       n <- get @Int
       replicateM n $ do
-        DMap.This k <- get
+        DHashMap.Some k <- get
         f <- getTagged k
-        pure $ k DMap.:=> f
+        pure $ k DHashMap.:=> f
 
 instance Persist a => Persist (Identity a) where
   put (Identity a) =

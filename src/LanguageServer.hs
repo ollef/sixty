@@ -122,10 +122,7 @@ options = def
     , LSP._willSaveWaitUntil = Just False
     , LSP._save = Just $ LSP.SaveOptions $ Just False
     }
-  , Language.Haskell.LSP.Core.completionProvider = Just LSP.CompletionOptions
-    { LSP._resolveProvider = Nothing
-    , LSP._triggerCharacters = Just ["?"]
-    }
+  , LSP.completionTriggerCharacters = Just "?"
   }
 
 data State = State
@@ -220,7 +217,7 @@ messagePump state = do
         LSP.ReqHover req -> do
           sendNotification state $ "messagePump: HoverRequest: " <> show req
           let
-            LSP.TextDocumentPositionParams (LSP.TextDocumentIdentifier uri) position =
+            LSP.TextDocumentPositionParams (LSP.TextDocumentIdentifier uri) position _ =
               req ^. LSP.params
 
           (maybeAnnotation, _) <- runTask state Driver.Don'tPrune $
@@ -244,7 +241,7 @@ messagePump state = do
         LSP.ReqDefinition req -> do
           sendNotification state $ "messagePump: DefinitionRequest: " <> show req
           let
-            LSP.TextDocumentPositionParams (LSP.TextDocumentIdentifier uri) position =
+            LSP.TextDocumentPositionParams (LSP.TextDocumentIdentifier uri) position _ =
               req ^. LSP.params
 
           (maybeLocation, _) <- runTask state Driver.Don'tPrune $
@@ -269,7 +266,7 @@ messagePump state = do
         LSP.ReqCompletion req -> do
           sendNotification state $ "messagePump: CompletionRequest: " <> show req
           let
-            LSP.CompletionParams (LSP.TextDocumentIdentifier uri) position maybeContext =
+            LSP.CompletionParams (LSP.TextDocumentIdentifier uri) position maybeContext _ =
               req ^. LSP.params
 
           (completions, _) <-
@@ -296,7 +293,7 @@ messagePump state = do
         LSP.ReqDocumentHighlights req -> do
           sendNotification state $ "messagePump: document highlights request: " <> show req
           let
-            LSP.TextDocumentPositionParams (LSP.TextDocumentIdentifier uri) position =
+            LSP.TextDocumentPositionParams (LSP.TextDocumentIdentifier uri) position _ =
               req ^. LSP.params
 
 
@@ -321,7 +318,7 @@ messagePump state = do
           sendNotification state $ "messagePump: references request: " <> show req
           let
             -- TODO use context
-            LSP.ReferenceParams (LSP.TextDocumentIdentifier uri) position _context =
+            LSP.ReferenceParams (LSP.TextDocumentIdentifier uri) position _context _ =
               req ^. LSP.params
 
 
@@ -346,7 +343,7 @@ messagePump state = do
         LSP.ReqRename req -> do
           sendNotification state $ "messagePump: rename request: " <> show req
           let
-            LSP.RenameParams (LSP.TextDocumentIdentifier uri) position newName =
+            LSP.RenameParams (LSP.TextDocumentIdentifier uri) position newName _ =
               req ^. LSP.params
 
           (references, _) <- runTask state Driver.Don'tPrune $

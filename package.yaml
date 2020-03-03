@@ -44,9 +44,11 @@ library:
     - aeson
     - aeson-casing
     - ansi-terminal
+    - constraints
+    - constraints-extras
     - containers
     - data-default
-    - dependent-map
+    - dependent-hashmap
     - dependent-sum
     - dependent-sum-template
     - directory
