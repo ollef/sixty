@@ -258,10 +258,6 @@ reserved' :: Text -> Parser ()
 reserved' =
   Parsix.reserveText idStyle
 
-unindentedReserved :: Text -> Parser ()
-unindentedReserved =
-  Parsix.reserveText idStyle
-
 name :: Parser Name
 name =
   indented $ Parsix.ident idStyle
@@ -496,8 +492,8 @@ dataDefinition =
     )
   where
     boxity =
-      Boxed <$ reserved "boxed" <* unindentedReserved "data"
       <|> Unboxed <$ reserved "data"
+      Boxed <$ reserved' "boxed" <* reserved' "data"
 
     mkDataDefinition boxity_ (span, name_) params constrs =
       (name_, DataDefinition span boxity_ params constrs)
