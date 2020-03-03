@@ -3,7 +3,6 @@
 {-# language OverloadedStrings #-}
 module Parser where
 
-import Prelude (String)
 import Protolude hiding (try, moduleName)
 
 import Data.Char
@@ -260,7 +259,11 @@ reserved' =
 
 name :: Parser Name
 name =
-  indented $ Parsix.ident idStyle
+  indented name'
+
+name' :: Parser Name
+name' =
+  Parsix.ident idStyle
 
 constructor :: Parser Name.Constructor
 constructor =
@@ -427,7 +430,7 @@ atomicTerm =
       Binding span name_@(Name nameText) <- binding
       Let name_ . Just . (,) span <$ symbol ":" <*> recoveringIndentedTerm <*>
         sameLevel (withIndentationBlock $ do
-          (span', _) <- spanned $ reserved nameText
+          (span', _) <- spanned $ reserved' nameText
           clauses span' nameText)
         <|> Let name_ Nothing <$> clauses span nameText
 
@@ -466,7 +469,7 @@ definition =
   relativeTo $
     dataDefinition
     <|> do
-      (span, name_@(Name nameText)) <- spanned name
+      (span, name_@(Name nameText)) <- spanned name'
       (,) name_ <$>
         (TypeDeclaration span <$ symbol ":" <*> recoveringIndentedTerm
         <|> ConstantDefinition <$> clauses span nameText
@@ -477,7 +480,7 @@ clauses :: Span.Relative -> Text -> Parser [(Span.Relative, Clause)]
 clauses firstSpan nameText =
   (:) <$>
     ((,) firstSpan <$> clause) <*>
-    manySame ((,) <$> try (fst <$> spanned (reserved nameText *> Parsix.notFollowedBy (symbol ":"))) <*> clause)
+    manySame ((,) <$> try (fst <$> spanned (reserved' nameText *> Parsix.notFollowedBy (symbol ":"))) <*> clause)
 
 clause :: Parser Clause
 clause =
@@ -492,8 +495,8 @@ dataDefinition =
     )
   where
     boxity =
-      <|> Unboxed <$ reserved "data"
       Boxed <$ reserved' "boxed" <* reserved' "data"
+      <|> Unboxed <$ reserved' "data"
 
     mkDataDefinition boxity_ (span, name_) params constrs =
       (name_, DataDefinition span boxity_ params constrs)
@@ -543,7 +546,7 @@ import_ :: Parser Module.Import
 import_ =
   withIndentationBlock $
     mkImport
-      <$ reserved "import" <*> spanned moduleName
+      <$ reserved' "import" <*> spanned moduleName
       <*> Parsix.optional (reserved "as" *> prename)
       <*> Parsix.optional (reserved "exposing" *> exposedNames)
   where
