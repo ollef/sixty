@@ -21,9 +21,7 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.Persist as Persist
 import Rock
 
-import HashTag
 import Orphans ()
-import PersistTag
 
 data Query key result a where
   Map :: Query key result (HashMap key result)
@@ -77,29 +75,6 @@ instance ArgDict c (Query key result) where
     case query of
       Map -> Dict
       Query {} -> Dict
-
-instance (Hashable key, Hashable result) => HashTag (Query key result) where
-  hashTagged query =
-    case query of
-      Map {} -> hash
-      Query {} -> hash
-
-instance (Eq key, Hashable key, Persist key, Persist result, forall a. Persist a => Persist (f a)) => PersistTag (Query key result) f where
-  putTagged query =
-    case query of
-      Map ->
-        Persist.put
-
-      Query _ ->
-        Persist.put
-
-  getTagged query =
-    case query of
-      Map ->
-        Persist.get
-
-      Query _ ->
-        Persist.get
 
 instance Persist key => Persist (DHashMap.Some (Query key result)) where
   put (DHashMap.Some query) =

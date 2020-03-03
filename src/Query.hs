@@ -28,14 +28,12 @@ import Rock
 
 import qualified ClosureConverted.Syntax as ClosureConverted
 import qualified FileSystem
-import HashTag
 import qualified LambdaLifted.Syntax as LambdaLifted
 import qualified Meta
 import qualified Module
 import Name (Name)
 import qualified Name
 import qualified Occurrences.Intervals as Occurrences
-import PersistTag
 import qualified Position
 import qualified Presyntax
 import qualified Query.Mapped as Mapped
@@ -125,35 +123,6 @@ instance Hashable (Some Query) where
   hashWithSalt salt (Some query) =
     hashWithSalt salt query
 
-instance HashTag Query where
-  hashTagged query =
-    case query of
-      SourceDirectories {} -> hash
-      InputFiles {} -> hash
-      FileText {} -> hash
-      ModuleFile {} -> hash
-      ParsedFile {} -> hash
-      ModuleHeader {} -> hash
-      ImportedNames _ q -> hashTagged q
-      NameAliases {} -> hash
-      ParsedDefinition _ q -> hashTagged q
-      ModulePositionMap {} -> hash
-      ModuleSpanMap {} -> hash
-      Scopes {} -> hash
-      ResolvedName {} -> hash
-      IsDefinitionVisible {} -> hash
-      ElaboratingDefinition {} -> hash
-      ElaboratedType {} -> hash
-      ElaboratedDefinition {} -> hash
-      ConstructorType {} -> hash
-      KeyedNameSpan {} -> hash
-      Occurrences {} -> hash
-      LambdaLifted {} -> hash
-      LambdaLiftedDefinition {} -> hash
-      ClosureConverted {} -> hash
-      ClosureConvertedType {} -> hash
-      ClosureConvertedConstructorType {} -> hash
-
 instance Persist (Some Query) where
   get = do
     n <- get @Word8
@@ -218,60 +187,3 @@ instance Persist (Some Query) where
       p tag a = do
         put tag
         put a
-
-instance (forall a. Persist a => Persist (f a)) => PersistTag Query f where
-  putTagged query =
-    case query of
-      SourceDirectories {} -> put
-      InputFiles {} -> put
-      FileText {} -> put
-      ModuleFile {} -> put
-      ParsedFile {} -> put
-      ModuleHeader {} -> put
-      ImportedNames _ q -> putTagged q
-      NameAliases {} -> put
-      ParsedDefinition _ q -> putTagged q
-      ModulePositionMap {} -> put
-      ModuleSpanMap {} -> put
-      Scopes {} -> put
-      ResolvedName {} -> put
-      IsDefinitionVisible {} -> put
-      ElaboratingDefinition {} -> put
-      ElaboratedType {} -> put
-      ElaboratedDefinition {} -> put
-      ConstructorType {} -> put
-      KeyedNameSpan {} -> put
-      Occurrences {} -> put
-      LambdaLifted {} -> put
-      LambdaLiftedDefinition {} -> put
-      ClosureConverted {} -> put
-      ClosureConvertedType {} -> put
-      ClosureConvertedConstructorType {} -> put
-
-  getTagged query =
-    case query of
-      SourceDirectories {} -> get
-      InputFiles {} -> get
-      FileText {} -> get
-      ModuleFile {} -> get
-      ParsedFile {} -> get
-      ModuleHeader {} -> get
-      ImportedNames _ q -> getTagged q
-      NameAliases {} -> get
-      ParsedDefinition _ q -> getTagged q
-      ModulePositionMap {} -> get
-      ModuleSpanMap {} -> get
-      Scopes {} -> get
-      ResolvedName {} -> get
-      IsDefinitionVisible {} -> get
-      ElaboratingDefinition {} -> get
-      ElaboratedType {} -> get
-      ElaboratedDefinition {} -> get
-      ConstructorType {} -> get
-      KeyedNameSpan {} -> get
-      Occurrences {} -> get
-      LambdaLifted {} -> get
-      LambdaLiftedDefinition {} -> get
-      ClosureConverted {} -> get
-      ClosureConvertedType {} -> get
-      ClosureConvertedConstructorType {} -> get

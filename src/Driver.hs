@@ -3,6 +3,7 @@
 {-# language RankNTypes #-}
 {-# language ScopedTypeVariables #-}
 {-# language TupleSections #-}
+{-# language TypeApplications #-}
 {-# language TypeFamilies #-}
 module Driver where
 
@@ -12,6 +13,7 @@ import Control.Concurrent.Async.Lifted.Safe
 import Control.Concurrent.Lifted
 import Control.Monad.Trans.Control
 import Data.Dependent.HashMap (DHashMap)
+import Data.Constraint.Extras (has')
 import Data.Dependent.Sum (DSum ((:=>)))
 import qualified Data.Dependent.HashMap as DHashMap
 import Data.HashMap.Lazy (HashMap)
@@ -27,7 +29,6 @@ import Rock
 import Error (Error)
 import qualified Error.Hydrated as Error (Hydrated)
 import qualified Error.Hydrated
-import HashTag
 import qualified Name
 import qualified Paths_sixty as Paths
 import Query (Query)
@@ -238,7 +239,7 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
               Nothing -> do
                 let
                   h =
-                    Const $ hashTagged query value
+                    Const $ has' @Hashable @Identity query $ hash $ Identity value
                 atomicModifyIORef (_hashesVar state) $
                   (, ()) . DHashMap.insert query h
                 pure h
