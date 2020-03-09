@@ -30,6 +30,14 @@ add (Absolute base) (Relative rel) = Absolute $ base + rel
 data LineColumn = LineColumn !Int !Int
   deriving (Eq, Ord, Show, Generic, Persist)
 
+addLine :: LineColumn -> LineColumn
+addLine (LineColumn line _) =
+  LineColumn (line + 1) 0
+
+addColumns :: LineColumn -> Int -> LineColumn
+addColumns (LineColumn line column) delta =
+  LineColumn line $ column + delta
+
 lineColumn :: Absolute -> Text -> (LineColumn, Text)
 lineColumn (Absolute index) text =
   let

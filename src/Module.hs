@@ -50,6 +50,6 @@ instance Monoid ExposedNames where
 data Import = Import
   { _span :: !Span.Absolute
   , _module :: !Name.Module
-  , _alias :: !Name.Pre
+  , _alias :: !(Span.Absolute, Name.Pre)
   , _importedNames :: !ExposedNames
   } deriving (Eq, Show, Generic, Persist, Hashable)

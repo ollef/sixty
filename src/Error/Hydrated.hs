@@ -78,7 +78,7 @@ headingAndBody error =
           "use the same module name."
         )
 
-    Error.ModuleFileNameMismatch givenModuleName expectedModuleName _ ->
+    Error.ModuleFileNameMismatch givenModuleName expectedModuleName _ _ ->
       pure
         ( "Module name doesn't match file name"
         , "The module name given in the module header is" <> line <>
@@ -236,34 +236,42 @@ pretty h = do
 
 fromError :: Error -> Task Query Hydrated
 fromError err = do
-  (filePath, span) <-
+  (filePath, eofOrSpan) <-
     case err of
       Error.Parse filePath parseError ->
         pure
           ( filePath
-          , Span.Absolute (Error.Parsing.position parseError) (Error.Parsing.position parseError)
+          , (\p -> Span.Absolute p p) <$> Error.Parsing.position parseError
           )
 
       Error.DuplicateName keyedName ->
-        fetch $ Query.KeyedNameSpan keyedName
+        second Right <$> fetch (Query.KeyedNameSpan keyedName)
 
       Error.ImportNotFound module_ import_ -> do
         maybeModuleFile <- fetch $ Query.ModuleFile module_
-        pure (fromMaybe "<no file>" maybeModuleFile, Module._span import_)
+        pure (fromMaybe "<no file>" maybeModuleFile, Right $ Module._span import_)
 
       Error.MultipleFilesWithModuleName _ _ file2 ->
-        pure (file2, Span.Absolute 0 0)
+        pure (file2, Right $ Span.Absolute 0 0)
 
-      Error.ModuleFileNameMismatch _ _ file ->
-        pure (file, Span.Absolute 0 0)
+      Error.ModuleFileNameMismatch _ _ span file ->
+        pure (file, Right span)
 
       Error.Elaboration keyedName (Error.Spanned relativeSpan _) -> do
         (file, Span.Absolute absolutePosition _) <- fetch $ Query.KeyedNameSpan keyedName
-        pure (file, Span.absoluteFrom absolutePosition relativeSpan)
+        pure (file, Right $ Span.absoluteFrom absolutePosition relativeSpan)
   text <- fetch $ Query.FileText filePath
   let
     (lineColumn, lineText) =
-      Span.lineColumn span text
+      case eofOrSpan of
+        Left Error.Parsing.EOF -> do
+          let
+            eofPos =
+              Position.Absolute $ Text.lengthWord16 text
+          Span.lineColumn (Span.Absolute eofPos eofPos) text
+
+        Right span ->
+          Span.lineColumn span text
   pure Hydrated
     { _filePath = filePath
     , _lineColumn = lineColumn

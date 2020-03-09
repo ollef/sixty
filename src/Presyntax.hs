@@ -10,12 +10,12 @@ import Data.Persist
 
 import Boxity
 import qualified Error.Parsing as Error
+import qualified Extra
 import Literal (Literal)
 import Name (Name)
 import qualified Name
 import Orphans ()
 import Plicity
-import qualified Position
 import qualified Scope
 import qualified Span
 
@@ -76,13 +76,13 @@ app :: Term -> Term -> Term
 app fun@(Term span1 _) arg@(Term span2 _) =
   Term (Span.add span1 span2) $ App fun arg
 
-apps :: Foldable f => Term -> f (Span.Relative, Either (HashMap Name Term) Term) -> Term
-apps fun@(Term funSpan _) =
-  foldl (\fun' (argSpan, arg) -> Term (Span.add funSpan argSpan) $ either (ImplicitApps fun') (App fun') arg) fun
+implicitApp :: Term -> HashMap Name Term -> Span.Relative -> Term
+implicitApp fun@(Term funSpan _) args endSpan =
+  Term (Span.add funSpan endSpan) $ ImplicitApps fun args
 
-lams :: Foldable f => f (Position.Relative, PlicitPattern) -> Term -> Term
-lams vs body@(Term (Span.Relative _ end) _) =
-  foldr (\(start, pat) -> Term (Span.Relative start end) . Lam pat) body vs
+lams :: Foldable f => f PlicitPattern -> Term -> Term
+lams vs body@(Term bodySpan _) =
+  foldr (\pat -> Term (Span.add (plicitPatternSpan pat) bodySpan) . Lam pat) body vs
 
 pis :: Foldable f => Plicity -> f Binding -> Type -> Type -> Type
 pis plicity vs domain target@(Term (Span.Relative _ end) _) =
@@ -95,6 +95,32 @@ function domain@(Term span1 _) target@(Term span2 _) =
 anno :: Pattern -> Type -> Pattern
 anno pat@(Pattern span1 _) type_@(Term span2 _) =
   Pattern (Span.add span1 span2) (Anno pat type_)
+
+conOrVar :: Span.Relative -> Name.Pre -> [PlicitPattern] -> Pattern
+conOrVar nameSpan name patterns =
+  let
+    span =
+      maybe nameSpan (Span.add nameSpan . plicitPatternSpan) $ Extra.last patterns
+  in
+  Pattern span $ ConOrVar nameSpan name patterns
+
+case_ :: Span.Relative -> Term -> Span.Relative -> [(Pattern, Term)] -> Term
+case_ caseSpan scrutinee ofSpan brs =
+  Term (Span.add caseSpan $ maybe ofSpan (\(_, Term span _) -> span) $ Extra.last brs) $ Case scrutinee brs
+
+
+let_ :: Span.Relative -> Name -> (Maybe (Span.Relative, Type)) -> [(Span.Relative, Clause)] -> Term -> Term
+let_ nameSpan name maybeType clauses rhs@(Term rhsSpan _) =
+  Term (Span.add nameSpan rhsSpan) $ Let name maybeType clauses rhs
+
+clause :: [PlicitPattern] -> Span.Relative -> Term -> Clause
+clause pats equalsSpan rhs@(Term rhsSpan _) =
+  case pats of
+    [] ->
+      Clause (Span.add equalsSpan rhsSpan) pats rhs
+
+    pat:_ ->
+      Clause (Span.add (plicitPatternSpan pat) rhsSpan) pats rhs
 
 data Definition
   = TypeDeclaration !Span.Relative !Type

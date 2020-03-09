@@ -62,10 +62,10 @@ library:
     - monad-control
     - mtl
     - parsers
-    - parsix
     - random
     - rope-utf16-splay
     - stm
+    - template-haskell
     - text
     - transformers
     - transformers-base

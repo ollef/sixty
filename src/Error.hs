@@ -26,7 +26,7 @@ data Error
   | DuplicateName !Scope.KeyedName
   | ImportNotFound !Name.Module !Module.Import
   | MultipleFilesWithModuleName !Name.Module FilePath FilePath
-  | ModuleFileNameMismatch !Name.Module !Name.Module FilePath
+  | ModuleFileNameMismatch !Name.Module !Name.Module !Span.Absolute FilePath
   | Elaboration !Scope.KeyedName !Error.Spanned
   deriving (Eq, Show, Generic, Persist)
 

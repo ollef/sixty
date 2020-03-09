@@ -28,3 +28,16 @@ topoSortWith
   -> [SCC a]
 topoSortWith name deps as
   = stronglyConnComp [(a, name a, deps a) | a <- toList as]
+
+last :: [a] -> Maybe a
+last =
+  go Nothing
+  where
+    go result as =
+      case as of
+        [] ->
+          result
+
+        a:as' ->
+          go (Just a) as'
+

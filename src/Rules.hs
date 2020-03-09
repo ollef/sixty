@@ -31,6 +31,7 @@ import qualified Error
 import qualified Evaluation
 import qualified LambdaLifted.Syntax as LambdaLifted
 import qualified LambdaLifting
+import qualified Lexer
 import qualified Module
 import Monad
 import Name (Name(Name))
@@ -101,7 +102,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
       nonInput $ do
         text <- fetch $ FileText filePath
         fileModuleName <- moduleNameFromFilePath
-        case Parser.parseText Parser.module_ text filePath of
+        case Parser.parseTokens Parser.module_ $ Lexer.lexText text of
           Right ((maybeModuleName, header), errorsAndDefinitions) -> do
             let
               (parseErrors, definitions) =
@@ -115,7 +116,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                     Module.Import
                       { _span = Span.Absolute 0 0
                       , _module = Builtin.Module
-                      , _alias = "Sixten.Builtin"
+                      , _alias = (Span.Absolute 0 0, "Sixten.Builtin")
                       , _importedNames = Module.AllExposed
                       }
                     : Module._imports header
@@ -126,12 +127,12 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                 Nothing ->
                   ((fileModuleName, headerImportingBuiltins, definitions), errors)
 
-                Just Builtin.Module ->
+                Just (_, Builtin.Module) ->
                   ((Builtin.Module, header, definitions), errors)
 
-                Just moduleName ->
+                Just (span, moduleName) ->
                   ( (moduleName, headerImportingBuiltins, definitions)
-                  , [ Error.ModuleFileNameMismatch fileModuleName moduleName filePath
+                  , [ Error.ModuleFileNameMismatch fileModuleName moduleName span filePath
                     | fileModuleName /= moduleName
                     ] ++
                     errors

@@ -159,6 +159,6 @@ importedNames import_ m =
 
     qualifiedNames =
       HashMap.fromList
-        [ (Module._alias import_ <> "." <> prename, a)
+        [ (snd (Module._alias import_) <> "." <> prename, a)
         | (prename, a) <- HashMap.toList m
         ]
