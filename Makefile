@@ -1,14 +1,18 @@
 .PHONY: install
 install:
-	stack install --fast
+	stack build --test --no-run-tests --copy-bins
 
 .PHONY: test
 test:
-	stack test --fast
+	stack build --test
+
+.PHONY: install-profile
+install-profile:
+	stack build --profile --test --no-run-tests --copy-bins
 
 .PHONY: profile-tests
 profile-tests:
-	stack test --profile
+	stack build --test --profile
 	stack exec --package ghc-prof-flamegraph -- ghc-prof-flamegraph test-sixty.prof
 
 # Workaround for https://gitlab.haskell.org/ghc/ghc/issues/16682 -- fixed in
