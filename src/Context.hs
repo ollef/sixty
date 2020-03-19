@@ -5,13 +5,14 @@
 {-# language TupleSections #-}
 module Context where
 
-import Protolude hiding (IntMap, IntSet, force)
+import Protolude hiding (IntMap, IntSet, catch, force)
 
+import Control.Exception.Lifted
+import Control.Monad.Base
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef.Lifted
 import Rock
-import Control.Monad.Base
 
 import qualified Binding
 import Binding (Binding)
@@ -656,13 +657,13 @@ reportParseError context err = do
 
 try :: Context v -> M a -> M (Maybe a)
 try context m =
-  (Just <$> m) `catchError` \err -> do
+  (Just <$> m) `catch` \err -> do
     report context err
     pure Nothing
 
 try_ :: Context v -> M () -> M Bool
 try_ context m =
-  (True <$ m) `catchError` \err -> do
+  (True <$ m) `catch` \err -> do
     report context err
     pure False
 

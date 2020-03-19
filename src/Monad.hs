@@ -2,17 +2,18 @@
 {-# language OverloadedStrings #-}
 module Monad where
 
-import Protolude hiding (State)
+import Protolude hiding (try, State)
 
 import Control.Monad.Base
 import Data.IORef.Lifted
+import Control.Exception.Lifted
 import Rock
 
 import qualified Error
 import Query (Query)
 import Var
 
-type M = ExceptT Error.Elaboration (ReaderT State (Task Query))
+type M = ReaderT State (Task Query)
 
 newtype State = State
   { nextVar :: IORef Var
@@ -41,7 +42,7 @@ freshVar = do
 runM :: M a -> Task Query (Either Error.Elaboration a)
 runM r = do
   nextVarVar <- newIORef $ Var 0
-  runReaderT (runExceptT r) State
+  try $ runReaderT r State
     { nextVar = nextVarVar
     }
 

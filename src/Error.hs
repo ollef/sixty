@@ -42,7 +42,7 @@ data Elaboration
   | PlicityMismatch !FieldOrArgument !PlicityMismatch
   | UnableToInferImplicitLambda
   | ImplicitApplicationMismatch (HashSet Name) !PrettyableTerm !PrettyableTerm
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic, Persist, Exception)
 
 data PlicityMismatch
   = Mismatch !Plicity !Plicity

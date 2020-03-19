@@ -1,13 +1,14 @@
+{-# language DuplicateRecordFields #-}
 {-# language FlexibleContexts #-}
-{-# LANGUAGE DuplicateRecordFields #-}
 {-# language OverloadedStrings #-}
+{-# language ScopedTypeVariables #-}
 module LanguageServer.Completion where
 
-import Protolude hiding (IntMap, evaluate, moduleName)
+import Protolude hiding (IntMap, catch, evaluate, moduleName)
 
-import qualified Data.HashMap.Lazy as HashMap
--- import qualified Data.Text.IO as Text
+import Control.Exception.Lifted
 import Control.Monad.Trans.Maybe
+import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef.Lifted
 import Data.Text.Prettyprint.Doc ((<+>))
 import qualified Language.Haskell.LSP.Types as LSP
@@ -19,6 +20,7 @@ import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import qualified Domain
 import qualified Elaboration
+import qualified Error
 import qualified Error.Hydrated as Error
 import qualified Evaluation
 import qualified LanguageServer.CursorAction as CursorAction
@@ -96,7 +98,7 @@ questionMark filePath (Position.LineColumn line column) =
             appliedType <- lift $ TypeOf.typeOf context appliedValue
             _ <- MaybeT $
               (Just <$> Elaboration.subtypeWithoutRecovery context appliedType typeUnderCursor)
-              `catchError` \_ -> pure Nothing
+              `catch` \(_ :: Error.Elaboration) -> pure Nothing
             pure args
 
 

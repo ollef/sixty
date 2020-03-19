@@ -3,11 +3,12 @@
 {-# language ScopedTypeVariables #-}
 module Unification where
 
-import Protolude hiding (force, check, evaluate)
+import Protolude hiding (catch, check, evaluate, force)
 
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Rock
+import Control.Exception.Lifted
 
 import {-# source #-} qualified Elaboration
 import qualified Binding
@@ -198,7 +199,7 @@ unify context flexibility value1 value2 = do
     -- Glued values
     (Domain.Glued head1 spine1 value1'', Domain.Glued head2 spine2 value2'')
       | sameHeads head1 head2 ->
-        unifySpines Flexibility.Flexible spine1 spine2 `catchError` \_ ->
+        unifySpines Flexibility.Flexible spine1 spine2 `catch` \(_ :: Error.Elaboration) ->
           unifyForce flexibility value1'' value2''
 
     (Domain.Glued _ _ value1'', _) -> do
@@ -251,14 +252,14 @@ unify context flexibility value1 value2 = do
     catchAndAdd m =
       case flexibility of
         Flexibility.Rigid ->
-          m `catchError` \err ->
+          m `catch` \err ->
             case err of
               Error.TypeMismatch stack -> do
                 term1 <- Elaboration.readback context value1
                 term2 <- Elaboration.readback context value2
                 pterm1 <- Context.toPrettyableTerm context term1
                 pterm2 <- Context.toPrettyableTerm context term2
-                throwError $
+                throw $
                   Error.TypeMismatch $
                       stack Tsil.:>
                       ( pterm1
@@ -270,7 +271,7 @@ unify context flexibility value1 value2 = do
                 term2 <- Elaboration.readback context value2
                 pterm1 <- Context.toPrettyableTerm context term1
                 pterm2 <- Context.toPrettyableTerm context term2
-                throwError $
+                throw $
                   Error.OccursCheck $
                       stack Tsil.:>
                       ( pterm1
@@ -278,13 +279,13 @@ unify context flexibility value1 value2 = do
                       )
 
               _ ->
-                throwError err
+                throw err
 
         Flexibility.Flexible ->
           m
 
     can'tUnify =
-      throwError $ Error.TypeMismatch mempty
+      throw $ Error.TypeMismatch mempty
 
 unifyBranches
   :: Context v
@@ -377,7 +378,7 @@ unifyBranches
           panic "unifyTele"
 
     can'tUnify =
-      throwError $ Error.TypeMismatch mempty
+      throw $ Error.TypeMismatch mempty
 
 -------------------------------------------------------------------------------
 -- Case expression inversion
@@ -662,7 +663,7 @@ checkInnerSolution outerContext occurs env flexibility value = do
       pure $ Syntax.Lit lit
 
     Domain.Glued hd@(Domain.Global _) spine value'' ->
-      checkInnerNeutral outerContext occurs env Flexibility.Flexible hd spine `catchError` \_ -> do
+      checkInnerNeutral outerContext occurs env Flexibility.Flexible hd spine `catch` \(_ :: Error.Elaboration) -> do
         value''' <- force value''
         checkInnerSolution outerContext occurs env flexibility value'''
 
@@ -756,7 +757,7 @@ checkInnerHead outerContext occurs env flexibility hd =
     Domain.Var v ->
       case Environment.lookupVarIndex v env of
         Nothing ->
-          throwError $ Error.TypeMismatch mempty
+          throw $ Error.TypeMismatch mempty
 
         Just i ->
           pure $ Syntax.Var i
@@ -769,7 +770,7 @@ checkInnerHead outerContext occurs env flexibility hd =
 
     Domain.Meta m
       | m == occurs ->
-        throwError $ Error.OccursCheck mempty
+        throw $ Error.OccursCheck mempty
 
       | otherwise ->
         pure $ Syntax.Meta m
@@ -842,7 +843,7 @@ pruneMeta context meta allowedArgs = do
                   Context.extendDef
                     context'
                     "x"
-                    (Domain.Glued (Domain.Var fakeVar) mempty $ Lazy $ throwError $ Error.TypeMismatch mempty)
+                    (Domain.Glued (Domain.Var fakeVar) mempty $ Lazy $ throw $ Error.TypeMismatch mempty)
                     domain
               body <- go alloweds' context'' target
               pure $ Syntax.Lam "x" domain' plicity body
@@ -856,7 +857,7 @@ pruneMeta context meta allowedArgs = do
                   Context.extendDef
                     context'
                     name
-                    (Domain.Glued (Domain.Var fakeVar) mempty $ Lazy $ throwError $ Error.TypeMismatch mempty)
+                    (Domain.Glued (Domain.Var fakeVar) mempty $ Lazy $ throw $ Error.TypeMismatch mempty)
                     domain
               target <-
                 Evaluation.evaluateClosure
