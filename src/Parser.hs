@@ -456,10 +456,10 @@ recover k errorReason _base inp = do
 
 skipToBaseLevel :: Parser ()
 skipToBaseLevel =
-  Parser $ \_s0 s e0 _e inp lineCol _base ->
+  Parser $ \_s0 s e0 _e inp (Position.LineColumn line col) _base ->
     case inp of
       _:inp' ->
-        s () mempty $ dropWhile (\(Token tokenLineCol _ _) -> lineCol < tokenLineCol) inp'
+        s () mempty $ dropWhile (\(Token (Position.LineColumn tokenLine tokenCol) _ _) -> line == tokenLine || col < tokenCol) inp'
 
       _ ->
         e0 $ failed "Unexpected EOF"
