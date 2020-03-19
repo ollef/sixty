@@ -303,12 +303,18 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
         case mtypeDecl of
           Nothing -> do
             mdef <- fetch $ ElaboratedDefinition qualifiedName
-            case mdef of
-              Nothing ->
-                panic $ "ElaboratedType: No type or definition " <> show qualifiedName
+            pure
+              ( case mdef of
+                Nothing ->
+                  Syntax.App
+                    (Syntax.Global Builtin.fail)
+                    Explicit
+                    (Syntax.Global Builtin.TypeName)
 
-              Just (_, type_) ->
-                pure (type_, mempty)
+                Just (_, type_) ->
+                  type_
+              , mempty
+              )
 
           Just (typeDecl, type_, metaVars) -> do
             (maybeResult, errs) <- runElaborator typeKey $
