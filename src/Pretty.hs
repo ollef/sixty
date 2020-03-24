@@ -9,8 +9,8 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.Sequence as Seq
-import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
+import qualified Data.Text.Unsafe as Text
 import Rock
 
 import Binding (Binding)
@@ -159,7 +159,7 @@ prettyGlobal :: Environment v -> Name.Qualified -> Doc ann
 prettyGlobal env global = do
   let
     aliases =
-      sortOn (\(Name.Pre name) -> Text.length name) $
+      sortOn (\(Name.Pre name) -> Text.lengthWord16 name) $
       filter (unambiguous env) $
       HashSet.toList $
       HashMap.lookupDefault mempty global $
@@ -176,7 +176,7 @@ prettyConstr :: Environment v -> Name.QualifiedConstructor -> Doc ann
 prettyConstr env constr = do
   let
     aliases =
-      sortOn (\(Name.Pre name) -> Text.length name) $
+      sortOn (\(Name.Pre name) -> Text.lengthWord16 name) $
       filter (unambiguous env) $
       HashSet.toList $
       HashMap.lookupDefault mempty constr $
