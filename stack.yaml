@@ -9,7 +9,6 @@ extra-deps:
   - dependent-sum
   - dependent-sum-template
 - dependent-hashmap-0.1.0.1
-- parsix-0.2.2.1
 - some-1.0.0.3
 - git: https://github.com/ollef/rock.git
   commit: a05f76e77b5014cb7787a7926ad774e88b16e7b7
