@@ -3,10 +3,11 @@ module ClosureConverted.Readback where
 
 import Protolude hiding (IntMap, Seq, head, force, evaluate)
 
-import qualified ClosureConverted.Domain as Domain
 import qualified ClosureConversion
+import qualified ClosureConverted.Domain as Domain
 import qualified ClosureConverted.Evaluation as Evaluation
 import qualified ClosureConverted.Syntax as Syntax
+import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Environment
 import Index
 import Monad
@@ -34,10 +35,10 @@ readback env value =
             scrutinee' <- readback env scrutinee
             branches' <- case branches of
               Syntax.ConstructorBranches constructorTypeName constructorBranches ->
-                Syntax.ConstructorBranches constructorTypeName <$> forM constructorBranches (readbackConstructorBranch env env')
+                Syntax.ConstructorBranches constructorTypeName <$> OrderedHashMap.forMUnordered constructorBranches (readbackConstructorBranch env env')
 
               Syntax.LiteralBranches literalBranches ->
-                Syntax.LiteralBranches <$> forM literalBranches (\branch -> do
+                Syntax.LiteralBranches <$> OrderedHashMap.forMUnordered literalBranches (\branch -> do
                   branchValue <- Evaluation.evaluate env' branch
                   readback env branchValue
                 )

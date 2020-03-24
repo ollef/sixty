@@ -3,11 +3,11 @@ module Evaluation where
 
 import Protolude hiding (Seq, head, force, evaluate)
 
-import Data.HashMap.Lazy (HashMap)
-import qualified Data.HashMap.Lazy as HashMap
 import Rock
 
 import qualified Binding
+import Data.OrderedHashMap (OrderedHashMap)
+import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Tsil as Tsil
 import qualified Domain
 import qualified Domain.Telescope as Domain (Telescope)
@@ -25,11 +25,11 @@ import qualified Syntax.Telescope as Telescope
 evaluateConstructorDefinitions
   :: Domain.Environment v
   -> Telescope Syntax.Type Syntax.ConstructorDefinitions v
-  -> M (Domain.Telescope Domain.Type (HashMap Name.Constructor Domain.Type))
+  -> M (Domain.Telescope Domain.Type (OrderedHashMap Name.Constructor Domain.Type))
 evaluateConstructorDefinitions env tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constrs) -> do
-      constrs' <- forM constrs $ evaluate env
+      constrs' <- OrderedHashMap.forMUnordered constrs $ evaluate env
       pure $ Domain.Telescope.Empty constrs'
 
     Telescope.Extend name domain plicity target -> do
@@ -127,7 +127,7 @@ chooseConstructorBranch
   -> Maybe (Syntax.Term v)
   -> M Domain.Value
 chooseConstructorBranch outerEnv qualifiedConstr@(Name.QualifiedConstructor _ constr) outerArgs branches defaultBranch =
-  case (HashMap.lookup constr branches, defaultBranch) of
+  case (OrderedHashMap.lookup constr branches, defaultBranch) of
     (Nothing, Nothing) ->
       panic "chooseBranch no branches"
 
@@ -182,7 +182,7 @@ chooseLiteralBranch
   -> Maybe (Syntax.Term v)
   -> M Domain.Value
 chooseLiteralBranch outerEnv lit branches defaultBranch =
-  case (HashMap.lookup lit branches, defaultBranch) of
+  case (OrderedHashMap.lookup lit branches, defaultBranch) of
     (Nothing, Nothing) ->
       panic "chooseLiteralBranch no branches"
 

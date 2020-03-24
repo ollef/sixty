@@ -5,18 +5,18 @@ module Occurrences where
 
 import Protolude hiding (moduleName)
 
-import qualified Data.HashMap.Lazy as HashMap
 import Rock
 
 import Binding (Binding)
+import Data.OrderedHashMap as OrderedHashMap
 import qualified Domain
 import Environment (Environment)
 import qualified Environment
 import qualified Index
+import Literal (Literal)
 import qualified Monad
 import qualified Name
 import Occurrences.Intervals (Intervals)
-import Literal (Literal)
 import qualified Occurrences.Intervals as Intervals
 import qualified Presyntax
 import qualified Query
@@ -170,7 +170,7 @@ dataDefinitionOccurrences
 dataDefinitionOccurrences env tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constrDefs) ->
-      foldMap (termOccurrences env Nothing) $ HashMap.elems constrDefs
+      foldMap (termOccurrences env Nothing) $ OrderedHashMap.elems constrDefs
 
     Telescope.Extend binding type_ _ tele' -> do
       (env', var) <- extend env
@@ -185,10 +185,10 @@ branchesOccurrences
 branchesOccurrences env branches =
   case branches of
     Syntax.ConstructorBranches constructorTypeName constructorBranches ->
-      foldMap (constructorBranchOccurrences env constructorTypeName) $ HashMap.toList constructorBranches
+      foldMap (constructorBranchOccurrences env constructorTypeName) $ OrderedHashMap.toList constructorBranches
 
     Syntax.LiteralBranches literalBranches ->
-      foldMap (literalBranchOccurrences env) $ HashMap.toList literalBranches
+      foldMap (literalBranchOccurrences env) $ OrderedHashMap.toList literalBranches
 
 constructorBranchOccurrences
   :: Domain.Environment v

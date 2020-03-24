@@ -4,7 +4,6 @@ module ClosureConverted.TypeOf where
 
 import Protolude hiding (head)
 
-import qualified Data.HashMap.Lazy as HashMap
 import Rock
 
 import qualified Binding
@@ -15,6 +14,7 @@ import qualified ClosureConverted.Domain as Domain
 import qualified ClosureConverted.Evaluation as Evaluation
 import qualified ClosureConverted.Readback as Readback
 import qualified ClosureConverted.Syntax as Syntax
+import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Environment
 import qualified Literal
 import Monad
@@ -122,7 +122,7 @@ typeOfHead context head =
         Nothing ->
           case branches of
             Syntax.ConstructorBranches _ constructorBranches ->
-              case HashMap.elems constructorBranches of
+              case OrderedHashMap.elems constructorBranches of
                 branchTele:_ ->
                   typeOfTelescope context env branchTele
 
@@ -130,7 +130,7 @@ typeOfHead context head =
                   panic "TODO type of branchless case"
 
             Syntax.LiteralBranches literalBranches ->
-              case HashMap.elems literalBranches of
+              case OrderedHashMap.elems literalBranches of
                 body:_ -> do
                   body' <- Evaluation.evaluate env body
                   typeOf context body'

@@ -4,10 +4,10 @@ module LambdaLifted.Syntax where
 
 import Protolude hiding (Type, IntMap)
 
-import Data.HashMap.Lazy (HashMap)
 import Data.Persist
 
 import Index
+import Data.OrderedHashMap (OrderedHashMap)
 import Literal (Literal)
 import Name (Name)
 import qualified Name
@@ -30,8 +30,8 @@ data Term v
 type Type = Term
 
 data Branches v
-  = ConstructorBranches !Name.Qualified (HashMap Name.Constructor (Telescope Type Term v))
-  | LiteralBranches (HashMap Literal (Term v))
+  = ConstructorBranches !Name.Qualified (OrderedHashMap Name.Constructor (Telescope Type Term v))
+  | LiteralBranches (OrderedHashMap Literal (Term v))
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 data Definition
@@ -41,5 +41,5 @@ data Definition
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 newtype ConstructorDefinitions v =
-  ConstructorDefinitions (HashMap Name.Constructor (Type v))
+  ConstructorDefinitions (OrderedHashMap Name.Constructor (Type v))
   deriving (Eq, Show, Generic, Persist, Hashable)

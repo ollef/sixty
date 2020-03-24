@@ -18,6 +18,7 @@ import qualified Builtin
 import Context (Context)
 import qualified Context
 import qualified Data.IntMap as IntMap
+import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Domain
@@ -202,7 +203,7 @@ inferDataDefinition context thisSpan preParams constrs paramVars =
           type' <- Substitution.let_ context this type_
           pure [(constr, type')]
       pure
-        ( Telescope.Empty (Syntax.ConstructorDefinitions $ HashMap.fromList $ concat constrs')
+        ( Telescope.Empty (Syntax.ConstructorDefinitions $ OrderedHashMap.fromList $ concat constrs')
         , Syntax.Global Builtin.TypeName
         )
 

@@ -9,6 +9,7 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.Sequence as Seq
+import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Text.Prettyprint.Doc
 import qualified Data.Text.Unsafe as Text
 import Rock
@@ -138,12 +139,12 @@ prettyTerm prec env term =
               case branches of
                 Syntax.ConstructorBranches constructorTypeName constructorBranches ->
                   [ prettyConstr env (Name.QualifiedConstructor constructorTypeName constr) <+> prettyBranch env tele
-                  | (constr, (_, tele)) <- HashMap.toList constructorBranches
+                  | (constr, (_, tele)) <- OrderedHashMap.toList constructorBranches
                   ]
 
                 Syntax.LiteralBranches literalBranches ->
                   [ pretty lit <+> "->" <+> prettyTerm 0 env body
-                  | (lit, (_, body)) <- HashMap.toList literalBranches
+                  | (lit, (_, body)) <- OrderedHashMap.toList literalBranches
                   ]
               <>
               [ "_" <+> "->" <> line <>
@@ -277,7 +278,7 @@ prettyConstructorDefinitions env tele =
       indent 2
         (vcat
           [ pretty constr <+> ":" <+> prettyTerm 0 env type_
-          | (constr, type_) <- HashMap.toList constrs
+          | (constr, type_) <- OrderedHashMap.toList constrs
           ]
         )
 

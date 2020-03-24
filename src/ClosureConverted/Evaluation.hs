@@ -3,11 +3,11 @@ module ClosureConverted.Evaluation where
 
 import Protolude hiding (head, evaluate)
 
-import Data.HashMap.Lazy as HashMap
 import Rock
 
 import qualified ClosureConverted.Domain as Domain
 import qualified ClosureConverted.Syntax as Syntax
+import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Environment
 import Literal (Literal)
 import Monad
@@ -100,7 +100,7 @@ chooseConstructorBranch
   -> Maybe (Syntax.Term v)
   -> M Domain.Value
 chooseConstructorBranch outerEnv (Name.QualifiedConstructor _ constr) outerArgs branches defaultBranch =
-  case (HashMap.lookup constr branches, defaultBranch) of
+  case (OrderedHashMap.lookup constr branches, defaultBranch) of
     (Nothing, Nothing) ->
       panic "chooseBranch no branches"
 
@@ -134,7 +134,7 @@ chooseLiteralBranch
   -> Maybe (Syntax.Term v)
   -> M Domain.Value
 chooseLiteralBranch outerEnv lit branches defaultBranch =
-  case (HashMap.lookup lit branches, defaultBranch) of
+  case (OrderedHashMap.lookup lit branches, defaultBranch) of
     (Nothing, Nothing) ->
       panic "chooseLiteralBranch no branches"
 

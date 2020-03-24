@@ -19,6 +19,7 @@ import Context (Context)
 import qualified Context
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
+import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Domain
 import qualified Elaboration
 import qualified Index
@@ -256,7 +257,7 @@ dataDefinitionAction
 dataDefinitionAction k env tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constrDefs) ->
-      asum $ termAction k env <$> HashMap.elems constrDefs
+      asum $ termAction k env <$> OrderedHashMap.elems constrDefs
 
     Telescope.Extend binding type_ _ tele' -> do
       (env', var) <- extend env binding type_
@@ -273,10 +274,10 @@ branchesAction
 branchesAction k env scrutinee branches =
   case branches of
     Syntax.ConstructorBranches constructorTypeName constructorBranches ->
-      asum (constructorBranchAction k env constructorTypeName scrutinee <$> HashMap.toList constructorBranches)
+      asum (constructorBranchAction k env constructorTypeName scrutinee <$> OrderedHashMap.toList constructorBranches)
 
     Syntax.LiteralBranches literalBranches ->
-      asum (literalBranchAction k env <$> HashMap.toList literalBranches)
+      asum (literalBranchAction k env <$> OrderedHashMap.toList literalBranches)
 
 constructorBranchAction
   :: RelativeCallback a

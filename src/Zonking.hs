@@ -3,6 +3,7 @@ module Zonking where
 import Protolude
 
 import qualified Domain
+import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Environment
 import qualified Evaluation
 import qualified Meta
@@ -132,10 +133,10 @@ zonkBranches
 zonkBranches env metas branches =
   case branches of
     Syntax.ConstructorBranches constructorTypeName constructorBranches ->
-      Syntax.ConstructorBranches constructorTypeName <$> mapM (mapM $ zonkTelescope env metas) constructorBranches
+      Syntax.ConstructorBranches constructorTypeName <$> OrderedHashMap.mapMUnordered (mapM $ zonkTelescope env metas) constructorBranches
 
     Syntax.LiteralBranches literalBranches ->
-      Syntax.LiteralBranches <$> mapM (mapM $ zonkTerm env metas) literalBranches
+      Syntax.LiteralBranches <$> OrderedHashMap.mapMUnordered (mapM $ zonkTerm env metas) literalBranches
 
 zonkTelescope
   :: Domain.Environment v

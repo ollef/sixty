@@ -3,12 +3,13 @@ module Readback where
 
 import Protolude hiding (IntMap, Seq, head, force, evaluate)
 
+import qualified Binding
+import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Domain
 import qualified Environment
 import qualified Evaluation
 import Index
 import Monad
-import qualified Binding
 import qualified Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
@@ -93,10 +94,10 @@ readbackMaybeHead env head =
       scrutinee' <- readback env scrutinee
       branches' <- case branches of
         Syntax.ConstructorBranches constructorTypeName constructorBranches ->
-          Syntax.ConstructorBranches constructorTypeName <$> forM constructorBranches (mapM $ readbackConstructorBranch env env')
+          Syntax.ConstructorBranches constructorTypeName <$> OrderedHashMap.forMUnordered constructorBranches (mapM $ readbackConstructorBranch env env')
 
         Syntax.LiteralBranches literalBranches ->
-          Syntax.LiteralBranches <$> forM literalBranches (mapM $ \branch -> do
+          Syntax.LiteralBranches <$> OrderedHashMap.forMUnordered literalBranches (mapM $ \branch -> do
             branchValue <- Evaluation.evaluate env' branch
             readback env branchValue
           )

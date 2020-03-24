@@ -5,9 +5,9 @@ module Inlining where
 
 import Protolude hiding (Type, IntMap, evaluate, empty)
 
-import Data.HashMap.Lazy (HashMap)
-
 import Binding (Binding)
+import Data.OrderedHashMap (OrderedHashMap)
+import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Environment
 import Literal (Literal)
 import qualified Meta
@@ -43,7 +43,7 @@ inlineDataDefinition
 inlineDataDefinition env tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constrDefs) -> do
-      constrDefs' <- forM constrDefs $ inlineTerm env
+      constrDefs' <- OrderedHashMap.forMUnordered constrDefs $ inlineTerm env
       pure $ Telescope.Empty $ Syntax.ConstructorDefinitions constrDefs'
 
     Telescope.Extend name type_ plicity tele' -> do
@@ -83,8 +83,8 @@ data Value
 type Environment = Environment.Environment Value
 
 data Branches
-  = ConstructorBranches !Name.Qualified (HashMap Name.Constructor ([Span.Relative], ([(Binding, Var, Type, Plicity)], Value)))
-  | LiteralBranches (HashMap Literal ([Span.Relative], Value))
+  = ConstructorBranches !Name.Qualified (OrderedHashMap Name.Constructor ([Span.Relative], ([(Binding, Var, Type, Plicity)], Value)))
+  | LiteralBranches (OrderedHashMap Literal ([Span.Relative], Value))
   deriving Show
 
 type Type = Value
@@ -170,10 +170,10 @@ evaluateBranches
 evaluateBranches dup env branches =
   case branches of
     Syntax.ConstructorBranches constructorTypeName constructorBranches ->
-      ConstructorBranches constructorTypeName <$> mapM (mapM $ evaluateTelescope dup env) constructorBranches
+      ConstructorBranches constructorTypeName <$> OrderedHashMap.mapMUnordered (mapM $ evaluateTelescope dup env) constructorBranches
 
     Syntax.LiteralBranches literalBranches ->
-      LiteralBranches <$> mapM (mapM $ evaluate dup env) literalBranches
+      LiteralBranches <$> OrderedHashMap.mapMUnordered (mapM $ evaluate dup env) literalBranches
 
 evaluateTelescope
   :: Duplicable

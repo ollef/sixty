@@ -3,15 +3,15 @@ module TypeOf where
 
 import Protolude
 
-import qualified Data.HashMap.Lazy as HashMap
 import Rock
 
+import qualified Binding
 import qualified Builtin
 import Context (Context)
 import qualified Context
+import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Tsil as Tsil
 import qualified Domain
-import qualified Binding
 import qualified Elaboration
 import qualified Environment
 import qualified Evaluation
@@ -89,7 +89,7 @@ typeOfHead context hd =
         Nothing ->
           case branches of
             Syntax.ConstructorBranches _ constructorBranches ->
-              case HashMap.elems constructorBranches of
+              case OrderedHashMap.elems constructorBranches of
                 (_, branchTele):_ ->
                   typeOfTelescope context env branchTele
 
@@ -97,7 +97,7 @@ typeOfHead context hd =
                   panic "TODO type of branchless case"
 
             Syntax.LiteralBranches literalBranches ->
-              case HashMap.elems literalBranches of
+              case OrderedHashMap.elems literalBranches of
                 (_, body):_ -> do
                   body' <- Evaluation.evaluate env body
                   typeOf context body'

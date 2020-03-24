@@ -4,10 +4,10 @@ module ClosureConverted.Syntax where
 
 import Protolude hiding (Type, IntMap)
 
-import Data.HashMap.Lazy (HashMap)
-import Unsafe.Coerce
 import Data.Persist
+import Unsafe.Coerce
 
+import Data.OrderedHashMap (OrderedHashMap)
 import Index
 import Literal (Literal)
 import Name (Name)
@@ -62,10 +62,10 @@ data Branches v
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 type ConstructorBranches v =
-  HashMap Name.Constructor (Telescope Type Term v)
+  OrderedHashMap Name.Constructor (Telescope Type Term v)
 
 type LiteralBranches v =
-  HashMap Literal (Term v)
+  OrderedHashMap Literal (Term v)
 
 data Definition
   = TypeDeclaration !(Type Void)
@@ -76,7 +76,7 @@ data Definition
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 newtype ConstructorDefinitions v =
-  ConstructorDefinitions (HashMap Name.Constructor (Type v))
+  ConstructorDefinitions (OrderedHashMap Name.Constructor (Type v))
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 fromVoid :: Term Void -> Term v

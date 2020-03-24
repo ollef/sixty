@@ -5,10 +5,8 @@ module Unification where
 
 import Protolude hiding (catch, check, evaluate, force)
 
-import Data.HashMap.Lazy (HashMap)
-import qualified Data.HashMap.Lazy as HashMap
-import Rock
 import Control.Exception.Lifted
+import Rock
 
 import {-# source #-} qualified Elaboration
 import qualified Binding
@@ -17,6 +15,8 @@ import Context (Context)
 import qualified Context
 import Data.IntSeq (IntSeq)
 import qualified Data.IntSeq as IntSeq
+import Data.OrderedHashMap (OrderedHashMap)
+import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Tsil as Tsil
 import Data.Tsil (Tsil)
 import qualified Domain
@@ -312,21 +312,21 @@ unifyBranches
   where
     unifyMaps
       :: (Eq k, Hashable k)
-      => HashMap k (x, v1)
-      -> HashMap k (x, v2)
+      => OrderedHashMap k (x, v1)
+      -> OrderedHashMap k (x, v2)
       -> (v1 -> v2 -> M ())
       -> M ()
     unifyMaps brs1 brs2 k = do
       let
         branches =
-          HashMap.intersectionWith (,) brs1 brs2
+          OrderedHashMap.intersectionWith (,) brs1 brs2
 
         missing1 =
-          HashMap.difference brs1 branches
+          OrderedHashMap.difference brs1 branches
 
         missing2 =
-          HashMap.difference brs2 branches
-      unless (HashMap.null missing1 && HashMap.null missing2)
+          OrderedHashMap.difference brs2 branches
+      unless (OrderedHashMap.null missing1 && OrderedHashMap.null missing2)
         can'tUnify
 
       forM_ branches $ \((_, tele1), (_, tele2)) ->
@@ -413,7 +413,7 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
   branches' <- fmap catMaybes $
     case branches of
       Syntax.ConstructorBranches constructorTypeName constructorBranches ->
-        forM (HashMap.toList constructorBranches) $ \(constr, (_, tele)) -> do
+        forM (OrderedHashMap.toList constructorBranches) $ \(constr, (_, tele)) -> do
           isMatch <- branchMatches outerContext outerEnv tele
           pure $
             if isMatch then
@@ -423,7 +423,7 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
               Nothing
 
       Syntax.LiteralBranches literalBranches ->
-        forM (HashMap.toList literalBranches) $ \(int, (_, branch)) -> do
+        forM (OrderedHashMap.toList literalBranches) $ \(int, (_, branch)) -> do
           isMatch <- branchMatches outerContext outerEnv $ Telescope.Empty branch
           pure $
             if isMatch then
@@ -780,12 +780,12 @@ checkInnerHead outerContext occurs env flexibility hd =
       branches' <- case branches of
         Syntax.ConstructorBranches constructorTypeName constructorBranches ->
           fmap (Syntax.ConstructorBranches constructorTypeName) $
-            forM constructorBranches $ mapM $
+            OrderedHashMap.forMUnordered constructorBranches $ mapM $
               checkInnerBranch outerContext occurs env env' flexibility
 
         Syntax.LiteralBranches literalBranches ->
           fmap Syntax.LiteralBranches $
-            forM literalBranches $ mapM $ \branch -> do
+            OrderedHashMap.forMUnordered literalBranches $ mapM $ \branch -> do
               branch' <- Evaluation.evaluate env' branch
               checkInnerSolution outerContext occurs env flexibility branch'
 

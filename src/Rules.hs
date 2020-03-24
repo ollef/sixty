@@ -14,6 +14,7 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.IntMap as IntMap
+import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Text as Text
 import qualified Data.Text.Unsafe as Text
 import Rock
@@ -360,7 +361,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                 case tele' of
                   Telescope.Empty (Syntax.ConstructorDefinitions constrs) ->
                     Telescope.Empty $
-                      HashMap.lookupDefault
+                      OrderedHashMap.lookupDefault
                         (panic "ConstructorType: no such constructor")
                         constr
                         constrs
@@ -455,7 +456,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
           Just (ClosureConverted.Syntax.DataDefinition (ClosureConverted.Syntax.ConstructorDefinitions constrs)) -> do
             pure $
               Telescope.Empty $
-              HashMap.lookupDefault
+              OrderedHashMap.lookupDefault
                 (panic "ClosureConvertedConstructorType: no such constructor")
                 constr
                 constrs
@@ -467,7 +468,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                 case tele' of
                   Telescope.Empty (ClosureConverted.Syntax.ConstructorDefinitions constrs) ->
                     Telescope.Empty $
-                      HashMap.lookupDefault
+                      OrderedHashMap.lookupDefault
                         (panic "ClosureConvertedConstructorType: no such constructor")
                         constr
                         constrs

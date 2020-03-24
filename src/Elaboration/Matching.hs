@@ -7,7 +7,6 @@ import Protolude hiding (IntMap, IntSet, force, try)
 import Control.Exception.Lifted
 import Control.Monad.Fail
 import Control.Monad.Trans.Maybe
-import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.HashSet (HashSet)
@@ -24,6 +23,8 @@ import Context (Context)
 import qualified Context
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
+import Data.OrderedHashMap (OrderedHashMap)
+import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Domain
@@ -323,13 +324,13 @@ uncoveredScrutineePatterns context coveredConstructors value = do
             Telescope.Empty (Syntax.ConstructorDefinitions constrDefs) -> do
               let
                 uncoveredConstrDefs =
-                  HashMap.difference
+                  OrderedHashMap.differenceFromMap
                     constrDefs
                     (HashSet.toMap $
                       HashSet.map (\(Name.QualifiedConstructor _ constr) -> constr) covered
                     )
 
-              foreach (HashMap.toList uncoveredConstrDefs) $ \(constr, type_) ->
+              foreach (OrderedHashMap.toList uncoveredConstrDefs) $ \(constr, type_) ->
                 Pattern.Con
                   (Name.QualifiedConstructor typeName constr)
                   [ (plicity, Pattern.Wildcard)
@@ -780,21 +781,21 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
       :: Context v
       -> [(Plicity, Domain.Value)]
       -> Domain.Spine
-      -> Domain.Telescope Domain.Type (HashMap Name.Constructor Domain.Type)
+      -> Domain.Telescope Domain.Type (OrderedHashMap Name.Constructor Domain.Type)
       -> M (Syntax.Type v)
     goParams context params conArgs dataTele =
       case (params, dataTele) of
         ([], Domain.Telescope.Empty constructors) -> do
           matchedConstructors <-
-            HashMap.fromListWith (<>) . concat . takeWhile (not . null) <$>
+            OrderedHashMap.fromListWith (<>) . concat . takeWhile (not . null) <$>
               mapM
                 (findVarConstructorMatches context scrutineeVar . _matches)
                 (_clauses config)
 
-          branches <- forM (HashMap.toList matchedConstructors) $ \(qualifiedConstr@(Name.QualifiedConstructor _ constr), patterns) -> do
+          branches <- forM (OrderedHashMap.toList matchedConstructors) $ \(qualifiedConstr@(Name.QualifiedConstructor _ constr), patterns) -> do
             let
               constrType =
-                HashMap.lookupDefault
+                OrderedHashMap.lookupDefault
                   (panic "Matching constrType")
                   constr
                   constructors
@@ -807,19 +808,19 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
 
 
           defaultBranch <-
-            if HashMap.size matchedConstructors == length constructors then
+            if OrderedHashMap.size matchedConstructors == length constructors then
               pure Nothing
 
             else
               Just <$> elaborate context config
                 { _coveredConstructors =
-                  IntMap.insertWith (<>) scrutineeVar (HashSet.fromMap $ void matchedConstructors) $
+                  IntMap.insertWith (<>) scrutineeVar (HashSet.fromMap $ void $ OrderedHashMap.toMap matchedConstructors) $
                   _coveredConstructors config
                 }
 
           scrutinee <- Elaboration.readback context scrutineeValue
 
-          pure $ Syntax.Case scrutinee (Syntax.ConstructorBranches typeName $ HashMap.fromList branches) defaultBranch
+          pure $ Syntax.Case scrutinee (Syntax.ConstructorBranches typeName $ OrderedHashMap.fromList branches) defaultBranch
 
         ((plicity1, param):params', Domain.Telescope.Extend _ _ plicity2 targetClosure)
           | plicity1 == plicity2 -> do
@@ -939,30 +940,30 @@ splitLiteral
   -> M (Syntax.Term v)
 splitLiteral context config scrutineeValue scrutineeVar span lit outerType = do
   matchedLiterals <-
-    HashMap.fromListWith (<>) . concat . takeWhile (not . null) <$>
+    OrderedHashMap.fromListWith (<>) . concat . takeWhile (not . null) <$>
       mapM
         (findVarLiteralMatches context scrutineeVar . _matches)
         (_clauses config)
 
   f <- Unification.tryUnify (Context.spanned span context) (Elaboration.inferLiteral lit) outerType
 
-  branches <- flip HashMap.traverseWithKey matchedLiterals $ \int spans -> do
+  branches <- forM (OrderedHashMap.toList matchedLiterals) $ \(int, spans) -> do
     let
       context' =
         Context.defineWellOrdered context scrutineeVar $ Domain.Lit int
     result <- elaborate context' config
-    pure (spans, f result)
+    pure (int, (spans, f result))
 
   defaultBranch <-
     Just <$> elaborate context config
       { _coveredLiterals =
-        IntMap.insertWith (<>) scrutineeVar (HashSet.fromMap $ void matchedLiterals) $
+        IntMap.insertWith (<>) scrutineeVar (HashSet.fromMap $ void $ OrderedHashMap.toMap matchedLiterals) $
         _coveredLiterals config
       }
 
   scrutinee <- Elaboration.readback context scrutineeValue
 
-  pure $ f $ Syntax.Case scrutinee (Syntax.LiteralBranches branches) defaultBranch
+  pure $ f $ Syntax.Case scrutinee (Syntax.LiteralBranches $ OrderedHashMap.fromList branches) defaultBranch
 
 findVarLiteralMatches
   :: Context v
@@ -1072,14 +1073,14 @@ uninhabitedType context fuel coveredConstructors type_ = do
             Domain.Telescope.Empty constructors -> do
               let
                 qualifiedConstructors =
-                  HashMap.fromList
+                  OrderedHashMap.fromList
                     [ (Name.QualifiedConstructor global constr, constrType)
-                    | (constr, constrType) <- HashMap.toList constructors
+                    | (constr, constrType) <- OrderedHashMap.toList constructors
                     ]
 
                 uncoveredConstructorTypes =
                   toList $
-                  HashMap.difference qualifiedConstructors (HashSet.toMap coveredConstructors)
+                  OrderedHashMap.differenceFromMap qualifiedConstructors (HashSet.toMap coveredConstructors)
 
               allM (uninhabitedConstrType context fuel) uncoveredConstructorTypes
 

@@ -4,7 +4,7 @@ module Syntax where
 
 import Protolude hiding (Type, IntMap)
 
-import Data.HashMap.Lazy (HashMap)
+import Data.OrderedHashMap (OrderedHashMap)
 import Unsafe.Coerce
 import Data.Persist
 
@@ -44,10 +44,10 @@ data Branches v
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 type ConstructorBranches v =
-  HashMap Name.Constructor ([Span.Relative], Telescope Type Term v)
+  OrderedHashMap Name.Constructor ([Span.Relative], Telescope Type Term v)
 
 type LiteralBranches v =
-  HashMap Literal ([Span.Relative], Term v)
+  OrderedHashMap Literal ([Span.Relative], Term v)
 
 implicitPi :: Binding -> Type v -> Plicity -> Scope Type v -> Type v
 implicitPi name type_ plicity =
@@ -113,7 +113,7 @@ data Definition
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 newtype ConstructorDefinitions v =
-  ConstructorDefinitions (HashMap Name.Constructor (Type v))
+  ConstructorDefinitions (OrderedHashMap Name.Constructor (Type v))
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 constructorFieldPlicities :: Type v -> [Plicity]

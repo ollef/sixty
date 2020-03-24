@@ -9,8 +9,9 @@ import Prelude (Show (showsPrec))
 import Protolude hiding (Type, IntMap, IntSet, evaluate)
 
 import Data.Graph
-import Data.HashMap.Lazy (HashMap)
 
+import Data.OrderedHashMap (OrderedHashMap)
+import qualified Data.OrderedHashMap as OrderedHashMap
 import Binding (Binding)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
@@ -119,7 +120,7 @@ inlineSolutions scopeKey solutions def type_ = do
     inlineTeleSolutions env tele =
       case tele of
         Telescope.Empty (Syntax.ConstructorDefinitions constrs) -> do
-          constrs' <- forM constrs $ inlineTermSolutions env
+          constrs' <- OrderedHashMap.forMUnordered constrs $ inlineTermSolutions env
           pure $ Telescope.Empty (Syntax.ConstructorDefinitions constrs')
 
         Telescope.Extend name paramType plicity tele' -> do
@@ -201,8 +202,8 @@ unduplicable duplicableValue =
       makeLit lit
 
 data Branches
-  = ConstructorBranches !Name.Qualified (HashMap Name.Constructor ([Span.Relative], ([(Binding, Var, Type, Plicity)], Value)))
-  | LiteralBranches (HashMap Literal ([Span.Relative], Value))
+  = ConstructorBranches !Name.Qualified (OrderedHashMap Name.Constructor ([Span.Relative], ([(Binding, Var, Type, Plicity)], Value)))
+  | LiteralBranches (OrderedHashMap Literal ([Span.Relative], Value))
   deriving Show
 
 newtype Occurrences = Occurrences { unoccurrences :: IntMap Meta.Index (Tsil (Maybe DuplicableValue)) }
@@ -380,10 +381,10 @@ evaluateBranches
 evaluateBranches env branches =
   case branches of
     Syntax.ConstructorBranches constructorTypeName constructorBranches ->
-      ConstructorBranches constructorTypeName <$> mapM (mapM $ evaluateTelescope env) constructorBranches
+      ConstructorBranches constructorTypeName <$> OrderedHashMap.mapMUnordered (mapM $ evaluateTelescope env) constructorBranches
 
     Syntax.LiteralBranches literalBranches ->
-      LiteralBranches <$> mapM (mapM $ evaluate env) literalBranches
+      LiteralBranches <$> OrderedHashMap.mapMUnordered (mapM $ evaluate env) literalBranches
 
 evaluateTelescope
   :: Domain.Environment v
@@ -720,7 +721,7 @@ inlineIndex index targetScope solution@ ~(solutionVar, duplicableArgs, solutionV
         scrutinee' <- recurse scrutinee
         branches' <- case branches of
           ConstructorBranches constructorTypeName constructorBranches ->
-            fmap (ConstructorBranches constructorTypeName) $ forM constructorBranches $ \(span, (bindings, body)) -> do
+            fmap (ConstructorBranches constructorTypeName) $ OrderedHashMap.forMUnordered constructorBranches $ \(span, (bindings, body)) -> do
               let
                 go targetScope' bindings' =
                   case bindings' of
@@ -737,7 +738,7 @@ inlineIndex index targetScope solution@ ~(solutionVar, duplicableArgs, solutionV
               pure (span, (bindings', body'))
 
           LiteralBranches literalBranches ->
-            LiteralBranches <$> mapM (mapM recurse) literalBranches
+            LiteralBranches <$> OrderedHashMap.mapMUnordered (mapM recurse) literalBranches
         defaultBranch' <- forM defaultBranch recurse
         pure $ makeCase scrutinee' branches' defaultBranch'
 

@@ -5,6 +5,7 @@ import Protolude
 import Rock
 
 import qualified ClosureConverted.Syntax as ClosureConverted
+import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified LambdaLifted.Syntax as LambdaLifted
 import qualified Name
 import Query (Query)
@@ -29,7 +30,7 @@ convertDefinition def =
 
     LambdaLifted.DataDefinition (Telescope.Empty (LambdaLifted.ConstructorDefinitions constrDefs)) ->
       ClosureConverted.DataDefinition . ClosureConverted.ConstructorDefinitions <$>
-        mapM convertTerm constrDefs
+        OrderedHashMap.mapMUnordered convertTerm constrDefs
 
     LambdaLifted.DataDefinition tele ->
       ClosureConverted.ParameterisedDataDefinition <$> convertParameterisedDataDefinition tele
@@ -41,7 +42,7 @@ convertParameterisedDataDefinition
 convertParameterisedDataDefinition tele =
   case tele of
     Telescope.Empty (LambdaLifted.ConstructorDefinitions constrDefs) ->
-      Telescope.Empty . ClosureConverted.ConstructorDefinitions <$> mapM convertTerm constrDefs
+      Telescope.Empty . ClosureConverted.ConstructorDefinitions <$> OrderedHashMap.mapMUnordered convertTerm constrDefs
 
     Telescope.Extend binding type_ plicity tele' ->
       Telescope.Extend binding <$>
@@ -156,11 +157,11 @@ convertBranches branches =
   case branches of
     LambdaLifted.ConstructorBranches constructorTypeName constructorBranches ->
       ClosureConverted.ConstructorBranches constructorTypeName <$>
-        mapM convertTelescope constructorBranches
+        OrderedHashMap.mapMUnordered convertTelescope constructorBranches
 
     LambdaLifted.LiteralBranches literalBranches ->
       ClosureConverted.LiteralBranches <$>
-        mapM convertTerm literalBranches
+        OrderedHashMap.mapMUnordered convertTerm literalBranches
 
 convertTelescope
   :: MonadFetch Query m

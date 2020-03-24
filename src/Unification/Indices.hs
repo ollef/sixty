@@ -8,8 +8,8 @@ module Unification.Indices where
 import Protolude hiding (catch, force, IntSet)
 
 import Control.Exception.Lifted
-import Data.HashMap.Lazy (HashMap)
-import qualified Data.HashMap.Lazy as HashMap
+import Data.OrderedHashMap (OrderedHashMap)
+import qualified Data.OrderedHashMap as OrderedHashMap
 
 import qualified Binding
 import Context (Context)
@@ -205,21 +205,21 @@ unifyBranches
   where
     unifyMaps
       :: (Eq k, Hashable k)
-      => HashMap k (x, v1)
-      -> HashMap k (x, v2)
+      => OrderedHashMap k (x, v1)
+      -> OrderedHashMap k (x, v2)
       -> (Context v -> v1 -> v2 -> M (Context v))
       -> M (Context v)
     unifyMaps brs1 brs2 k = do
       let
         branches =
-          HashMap.intersectionWith (,) brs1 brs2
+          OrderedHashMap.intersectionWith (,) brs1 brs2
 
         missing1 =
-          HashMap.difference brs1 branches
+          OrderedHashMap.difference brs1 branches
 
         missing2 =
-          HashMap.difference brs2 branches
-      unless (HashMap.null missing1 && HashMap.null missing2) $
+          OrderedHashMap.difference brs2 branches
+      unless (OrderedHashMap.null missing1 && OrderedHashMap.null missing2) $
         throw Dunno
 
       context' <-

@@ -5,7 +5,6 @@ module LambdaLifting where
 import Protolude hiding (Type, IntSet, IntMap, evaluate, state)
 
 import Data.Graph (SCC(AcyclicSCC))
-import Data.HashMap.Lazy (HashMap)
 import Rock
 
 import Binding (Binding)
@@ -14,6 +13,8 @@ import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
+import Data.OrderedHashMap (OrderedHashMap)
+import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Tsil as Tsil
 import qualified Domain
 import qualified Environment
@@ -87,8 +88,8 @@ data InnerValue
 type Type = Value
 
 data Branches
-  = ConstructorBranches !Name.Qualified (HashMap Name.Constructor ([(Binding, Var, Type)], Value))
-  | LiteralBranches (HashMap Literal Value)
+  = ConstructorBranches !Name.Qualified (OrderedHashMap Name.Constructor ([(Binding, Var, Type)], Value))
+  | LiteralBranches (OrderedHashMap Literal Value)
   deriving Show
 
 type Occurrences = IntSet Var
@@ -353,10 +354,10 @@ evaluateBranches
 evaluateBranches env branches =
   case branches of
     Syntax.ConstructorBranches constructorTypeName constructorBranches ->
-      ConstructorBranches constructorTypeName <$> mapM (evaluateTelescope env . snd) constructorBranches
+      ConstructorBranches constructorTypeName <$> OrderedHashMap.mapMUnordered (evaluateTelescope env . snd) constructorBranches
 
     Syntax.LiteralBranches literalBranches ->
-      LiteralBranches <$> mapM (\(_, branch) -> evaluate env branch []) literalBranches
+      LiteralBranches <$> OrderedHashMap.mapMUnordered (\(_, branch) -> evaluate env branch []) literalBranches
 
 evaluateTelescope
   :: Environment v
@@ -432,7 +433,7 @@ liftDataDefinition
 liftDataDefinition env tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constrDefs) -> do
-      constrDefs' <- forM constrDefs $ \type_ -> do
+      constrDefs' <- OrderedHashMap.forMUnordered constrDefs $ \type_ -> do
         type' <- evaluate env type_ []
         pure $ readback env type'
       pure $ Telescope.Empty $ LambdaLifted.ConstructorDefinitions constrDefs'
