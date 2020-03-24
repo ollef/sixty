@@ -2,8 +2,9 @@
 {-# language RankNTypes #-}
 module Elaboration.Matching where
 
-import Protolude hiding (IntMap, IntSet, force)
+import Protolude hiding (IntMap, IntSet, force, try)
 
+import Control.Exception.Lifted
 import Control.Monad.Fail
 import Control.Monad.Trans.Maybe
 import Data.HashMap.Lazy (HashMap)
@@ -1001,7 +1002,7 @@ splitEqualityOr context config matches k =
           _
           (Presyntax.Pattern _ Presyntax.WildcardPattern)
           (Builtin.Equals type_ value1 value2) -> do
-            result <- runExceptT $ Indices.unify context Flexibility.Rigid mempty value1 value2
+            result <- try $ Indices.unify context Flexibility.Rigid mempty value1 value2
             case result of
               Left Indices.Nope ->
                 elaborate context config
@@ -1050,7 +1051,7 @@ uninhabitedType context fuel coveredConstructors type_ = do
   type' <- Context.forceHead context type_
   case type' of
     Builtin.Equals _ value1 value2 -> do
-      result <- runExceptT $ Indices.unify context Flexibility.Rigid mempty value1 value2
+      result <- try $ Indices.unify context Flexibility.Rigid mempty value1 value2
       pure $ case result of
         Left Indices.Nope ->
           True

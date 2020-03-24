@@ -1,11 +1,13 @@
+{-# language DeriveAnyClass #-}
 {-# language FlexibleContexts #-}
 {-# language OverloadedStrings #-}
 {-# language RankNTypes #-}
 {-# language ScopedTypeVariables #-}
 module Unification.Indices where
 
-import Protolude hiding (force, IntSet)
+import Protolude hiding (catch, force, IntSet)
 
+import Control.Exception.Lifted
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 
@@ -32,9 +34,7 @@ import Var
 data Error
   = Nope
   | Dunno
-  deriving (Eq, Ord, Show)
-
-type E = ExceptT Error
+  deriving (Eq, Ord, Show, Exception)
 
 unify
   :: Context v
@@ -42,10 +42,10 @@ unify
   -> IntSet Var
   -> Domain.Value
   -> Domain.Value
-  -> E M (Context v)
+  -> M (Context v)
 unify context flexibility untouchables value1 value2 = do
-  value1' <- lift $ Context.forceHeadGlue context value1
-  value2' <- lift $ Context.forceHeadGlue context value2
+  value1' <- Context.forceHeadGlue context value1
+  value2' <- Context.forceHeadGlue context value2
   case (value1', value2') of
     -- Same heads
     (Domain.Neutral head1 spine1, Domain.Neutral head2 spine2)
@@ -58,19 +58,19 @@ unify context flexibility untouchables value1 value2 = do
 
     (Domain.Neutral (Domain.Con con1) _, Domain.Neutral (Domain.Con con2) _)
       | con1 /= con2 ->
-        throwError Nope
+        throw Nope
 
     (Domain.Glued head1 spine1 value1'', Domain.Glued head2 spine2 value2'')
       | Unification.sameHeads head1 head2 ->
-        unifySpines Flexibility.Flexible spine1 spine2 `catchError` \_ ->
+        unifySpines Flexibility.Flexible spine1 spine2 `catch` \(_ :: Error) ->
           unifyForce context flexibility value1'' value2''
 
     (Domain.Glued _ _ value1'', _) -> do
-      value1''' <- lift $ force value1''
+      value1''' <- force value1''
       unify context flexibility untouchables value1''' value2'
 
     (_, Domain.Glued _ _ value2'') -> do
-      value2''' <- lift $ force value2''
+      value2''' <- force value2''
       unify context flexibility untouchables value1' value2'''
 
     (Domain.Lam name1 type1 plicity1 closure1, Domain.Lam _ type2 plicity2 closure2)
@@ -84,16 +84,16 @@ unify context flexibility untouchables value1 value2 = do
     (Domain.Pi name1 domain1 plicity1 targetClosure1, Domain.Fun domain2 plicity2 target2)
       | plicity1 == plicity2 -> do
         context1 <- unify context flexibility untouchables domain2 domain1
-        (context2, var) <- lift $ Context.extend context1 name1 domain1
-        target1 <- lift $ Evaluation.evaluateClosure targetClosure1 $ Domain.var var
+        (context2, var) <- Context.extend context1 name1 domain1
+        target1 <- Evaluation.evaluateClosure targetClosure1 $ Domain.var var
         context3 <- unify context2 flexibility (IntSet.insert var untouchables) target1 target2
         pure $ unextend context3
 
     (Domain.Fun domain1 plicity1 target1, Domain.Pi name2 domain2 plicity2 targetClosure2)
       | plicity1 == plicity2 -> do
         context1 <- unify context flexibility untouchables domain2 domain1
-        (context2, var) <- lift $ Context.extend context1 name2 domain2
-        target2 <- lift $ Evaluation.evaluateClosure targetClosure2 $ Domain.var var
+        (context2, var) <- Context.extend context1 name2 domain2
+        target2 <- Evaluation.evaluateClosure targetClosure2 $ Domain.var var
         context3 <- unify context2 flexibility (IntSet.insert var untouchables) target1 target2
         pure $ unextend context3
 
@@ -104,25 +104,25 @@ unify context flexibility untouchables value1 value2 = do
 
     -- Eta expand
     (Domain.Lam name1 type1 plicity1 closure1, v2) -> do
-      (context1, var) <- lift $ Context.extend context name1 type1
+      (context1, var) <- Context.extend context name1 type1
       let
         varValue =
           Domain.var var
 
-      body1 <- lift $ Evaluation.evaluateClosure closure1 varValue
-      body2 <- lift $ Evaluation.apply v2 plicity1 varValue
+      body1 <- Evaluation.evaluateClosure closure1 varValue
+      body2 <- Evaluation.apply v2 plicity1 varValue
 
       context2 <- unify context1 flexibility (IntSet.insert var untouchables) body1 body2
       pure $ unextend context2
 
     (v1, Domain.Lam name2 type2 plicity2 closure2) -> do
-      (context1, var) <- lift $ Context.extend context name2 type2
+      (context1, var) <- Context.extend context name2 type2
       let
         varValue =
           Domain.var var
 
-      body1 <- lift $ Evaluation.apply v1 plicity2 varValue
-      body2 <- lift $ Evaluation.evaluateClosure closure2 varValue
+      body1 <- Evaluation.apply v1 plicity2 varValue
+      body2 <- Evaluation.evaluateClosure closure2 varValue
 
       context2 <- unify context1 flexibility (IntSet.insert var untouchables) body1 body2
       pure $ unextend context2
@@ -143,12 +143,12 @@ unify context flexibility untouchables value1 value2 = do
       unifyBranches context'' flexibility untouchables branches1 branches2
 
     _ ->
-      throwError Dunno
+      throw Dunno
 
   where
     unifyForce context' flexibility' lazyValue1 lazyValue2 = do
-      v1 <- lift $ force lazyValue1
-      v2 <- lift $ force lazyValue2
+      v1 <- force lazyValue1
+      v2 <- force lazyValue2
       unify context' flexibility' untouchables v1 v2
 
     unifySpines flexibility' spine1 spine2 =
@@ -160,23 +160,23 @@ unify context flexibility untouchables value1 value2 = do
     unifyAbstraction name type1 closure1 type2 closure2 = do
       context1 <- unify context flexibility untouchables type1 type2
 
-      (context2, var) <- lift $ Context.extend context1 name type1
+      (context2, var) <- Context.extend context1 name type1
       let
         varValue =
           Domain.var var
 
-      body1 <- lift $ Evaluation.evaluateClosure closure1 varValue
-      body2 <- lift $ Evaluation.evaluateClosure closure2 varValue
+      body1 <- Evaluation.evaluateClosure closure1 varValue
+      body2 <- Evaluation.evaluateClosure closure2 varValue
       context3 <- unify context2 flexibility (IntSet.insert var untouchables) body1 body2
       pure $ unextend context3
 
     solve var value
       | IntSet.member var untouchables =
-        throwError Dunno
+        throw Dunno
 
       | otherwise = do
         occurs context Flexibility.Rigid (IntSet.insert var untouchables) value
-        lift $ Context.define context var value
+        Context.define context var value
 
 unifyBranches
   :: forall v
@@ -185,7 +185,7 @@ unifyBranches
   -> IntSet Var
   -> Domain.Branches
   -> Domain.Branches
-  -> E M (Context v)
+  -> M (Context v)
 unifyBranches
   outerContext
   flexibility
@@ -201,14 +201,14 @@ unifyBranches
         unifyMaps litBranches1 litBranches2 unifyTerms
 
       _ ->
-        throwError Dunno
+        throw Dunno
   where
     unifyMaps
       :: (Eq k, Hashable k)
       => HashMap k (x, v1)
       -> HashMap k (x, v2)
-      -> (Context v -> v1 -> v2 -> E M (Context v))
-      -> E M (Context v)
+      -> (Context v -> v1 -> v2 -> M (Context v))
+      -> M (Context v)
     unifyMaps brs1 brs2 k = do
       let
         branches =
@@ -220,7 +220,7 @@ unifyBranches
         missing2 =
           HashMap.difference brs2 branches
       unless (HashMap.null missing1 && HashMap.null missing2) $
-        throwError Dunno
+        throw Dunno
 
       context' <-
         foldM
@@ -236,11 +236,11 @@ unifyBranches
           pure context'
 
         _ ->
-          throwError Dunno
+          throw Dunno
 
     unifyTerms context term1 term2 = do
-      term1' <- lift $ Evaluation.evaluate outerEnv1 term1
-      term2' <- lift $ Evaluation.evaluate outerEnv2 term2
+      term1' <- Evaluation.evaluate outerEnv1 term1
+      term2' <- Evaluation.evaluate outerEnv2 term2
       unify context flexibility outerUntouchables term1' term2'
 
     unifyTele
@@ -250,15 +250,15 @@ unifyBranches
       -> Context v'
       -> Telescope Syntax.Type Syntax.Term v1
       -> Telescope Syntax.Type Syntax.Term v2
-      -> E M (Context v')
+      -> M (Context v')
     unifyTele env1 env2 untouchables context tele1 tele2 =
       case (tele1, tele2) of
         (Telescope.Extend binding1 type1 plicity1 tele1', Telescope.Extend _binding2 type2 plicity2 tele2')
           | plicity1 == plicity2 -> do
-            type1' <- lift $ Evaluation.evaluate env1 type1
-            type2' <- lift $ Evaluation.evaluate env2 type2
+            type1' <- Evaluation.evaluate env1 type1
+            type2' <- Evaluation.evaluate env2 type2
             context' <- unify context flexibility untouchables type1' type2'
-            (context'', var) <- lift $ Context.extend context' (Binding.toName binding1) type1'
+            (context'', var) <- Context.extend context' (Binding.toName binding1) type1'
             context''' <-
               unifyTele
                 (Environment.extendVar env1 var)
@@ -270,8 +270,8 @@ unifyBranches
             pure $ unextend context'''
 
         (Telescope.Empty body1, Telescope.Empty body2) -> do
-          body1' <- lift $ Evaluation.evaluate env1 body1
-          body2' <- lift $ Evaluation.evaluate env2 body2
+          body1' <- Evaluation.evaluate env1 body1
+          body2' <- Evaluation.evaluate env2 body2
           unify context flexibility untouchables body1' body2'
 
         _ ->
@@ -286,9 +286,9 @@ unextend context' =
     _ ->
       panic "Unification.Indices.unextend"
 
-occurs :: Context v -> Flexibility -> IntSet Var -> Domain.Value -> E M ()
+occurs :: Context v -> Flexibility -> IntSet Var -> Domain.Value -> M ()
 occurs context flexibility untouchables value = do
-  value' <- lift $ Context.forceHeadGlue context value
+  value' <- Context.forceHeadGlue context value
   case value' of
     Domain.Neutral hd spine -> do
       occursHead context flexibility untouchables hd
@@ -301,7 +301,7 @@ occurs context flexibility untouchables value = do
       occursForce value''
 
     Domain.Glued hd spine value'' ->
-      occurs context Flexibility.Flexible untouchables (Domain.Neutral hd spine) `catchError` \_ ->
+      occurs context Flexibility.Flexible untouchables (Domain.Neutral hd spine) `catch` \(_ :: Error) ->
         occursForce value''
 
     Domain.Lam name type_ _ closure ->
@@ -316,17 +316,17 @@ occurs context flexibility untouchables value = do
 
   where
     occursForce lazyValue = do
-      value' <- lift $ force lazyValue
+      value' <- force lazyValue
       occurs context flexibility untouchables value'
 
     occursAbstraction name type_ closure = do
       occurs context flexibility untouchables type_
-      (context', var) <- lift $ Context.extend context name type_
+      (context', var) <- Context.extend context name type_
       let
         varValue =
           Domain.var var
 
-      body <- lift $ Evaluation.evaluateClosure closure varValue
+      body <- Evaluation.evaluateClosure closure varValue
       occurs context' flexibility untouchables body
 
 occursHead
@@ -334,12 +334,12 @@ occursHead
   -> Flexibility
   -> IntSet Var
   -> Domain.Head
-  -> E M ()
+  -> M ()
 occursHead context flexibility untouchables hd =
   case hd of
     Domain.Var var
       | IntSet.member var untouchables ->
-        throwError $
+        throw $
           case flexibility of
             Flexibility.Rigid ->
               Nope
@@ -368,7 +368,7 @@ occursBranches
   -> Flexibility
   -> IntSet Var
   -> Domain.Branches
-  -> E M ()
+  -> M ()
 occursBranches outerContext flexibility outerUntouchables (Domain.Branches outerEnv branches defaultBranch) = do
   case branches of
     Syntax.ConstructorBranches _ constructorBranches ->
@@ -385,18 +385,18 @@ occursBranches outerContext flexibility outerUntouchables (Domain.Branches outer
       -> IntSet Var
       -> Domain.Environment v1
       -> Telescope Syntax.Type Syntax.Term v1
-      -> E M ()
+      -> M ()
     occursTele context untouchables env tele =
       case tele of
         Telescope.Extend binding type_ _plicity tele' -> do
-          type' <- lift $ Evaluation.evaluate env type_
+          type' <- Evaluation.evaluate env type_
           occurs context flexibility untouchables type'
-          (context'', var) <- lift $ Context.extend context (Binding.toName binding) type'
+          (context'', var) <- Context.extend context (Binding.toName binding) type'
           occursTele
             context''
             (IntSet.insert var untouchables)
             (Environment.extendVar env var)
             tele'
         Telescope.Empty body -> do
-          body' <- lift $ Evaluation.evaluate env body
+          body' <- Evaluation.evaluate env body
           occurs context flexibility untouchables body'
