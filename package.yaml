@@ -55,6 +55,7 @@ library:
     - filepath
     - fingertree
     - fsnotify
+    - hashable
     - haskell-lsp
     - lens
     - lifted-async

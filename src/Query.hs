@@ -27,6 +27,7 @@ import Data.Some (Some(Some))
 import Rock
 
 import qualified ClosureConverted.Syntax as ClosureConverted
+import Extra
 import qualified FileSystem
 import qualified LambdaLifted.Syntax as LambdaLifted
 import qualified Meta
@@ -87,7 +88,10 @@ deriveGShow ''Query
 deriveArgDict ''Query
 
 instance Hashable (Query a) where
-  hashWithSalt salt query =
+  {-# inline hashWithSalt #-}
+  hashWithSalt =
+    defaultHashWithSalt
+  hash query =
     case query of
       SourceDirectories -> h 0 ()
       InputFiles -> h 1 ()
@@ -115,11 +119,17 @@ instance Hashable (Query a) where
       ClosureConvertedType a -> h 23 a
       ClosureConvertedConstructorType a -> h 24 a
     where
+      {-# inline h #-}
       h :: Hashable a => Int -> a -> Int
       h tag payload =
-        salt `hashWithSalt` (tag, payload)
+        hash tag `hashWithSalt` payload
 
 instance Hashable (Some Query) where
+  {-# inline hash #-}
+  hash (Some query) =
+    hash query
+
+  {-# inline hashWithSalt #-}
   hashWithSalt salt (Some query) =
     hashWithSalt salt query
 

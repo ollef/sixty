@@ -12,6 +12,8 @@ import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
 import Data.Persist
 
+import Extra
+
 newtype Pre = Pre Text
   deriving stock (Eq, Ord, Show)
   deriving newtype (IsString, Semigroup, Hashable, Persist)
@@ -29,13 +31,34 @@ newtype Module = Module Text
   deriving newtype (IsString, Hashable, Persist)
 
 data Qualified = Qualified !Module !Name
-  deriving (Eq, Ord, Show, Generic, Hashable, Persist)
+  deriving (Eq, Ord, Show, Generic, Persist)
+
+instance Hashable Qualified where
+  hashWithSalt =
+    defaultHashWithSalt
+
+  hash (Qualified m n) =
+    hash m `hashWithSalt` n
 
 data QualifiedConstructor = QualifiedConstructor !Qualified !Constructor
-  deriving (Eq, Ord, Show, Generic, Hashable, Persist)
+  deriving (Eq, Ord, Show, Generic, Persist)
+
+instance Hashable QualifiedConstructor where
+  hashWithSalt =
+    defaultHashWithSalt
+
+  hash (QualifiedConstructor m n) =
+    hash m `hashWithSalt` n
 
 data Lifted = Lifted !Qualified !Int
-  deriving (Eq, Ord, Show, Generic, Hashable, Persist)
+  deriving (Eq, Ord, Show, Generic, Persist)
+
+instance Hashable Lifted where
+  hashWithSalt =
+    defaultHashWithSalt
+
+  hash (Lifted m n) =
+    hash m `hashWithSalt` n
 
 -------------------------------------------------------------------------------
 

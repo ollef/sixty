@@ -41,3 +41,12 @@ last =
         a:as' ->
           go (Just a) as'
 
+{-# inline defaultHashWithSalt #-}
+defaultHashWithSalt :: Hashable a => Int -> a -> Int
+defaultHashWithSalt salt x =
+  salt `combine` hash x
+  where
+    {-# inline combine #-}
+    combine :: Int -> Int -> Int
+    combine h1 h2 =
+      (h1 * 16777619) `xor` h2
