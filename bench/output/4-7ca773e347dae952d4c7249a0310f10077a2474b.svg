@@ -1,0 +1,1362 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" width="1200" height="934" onload="init(evt)" viewBox="0 0 1200 934" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<!-- Flame graph stack visualization. See https://github.com/brendangregg/FlameGraph for latest version, and http://www.brendangregg.com/flamegraphs.html for examples. -->
+<!-- NOTES:  -->
+<defs >
+	<linearGradient id="background" y1="0" y2="1" x1="0" x2="0" >
+		<stop stop-color="#eeeeee" offset="5%" />
+		<stop stop-color="#eeeeb0" offset="95%" />
+	</linearGradient>
+</defs>
+<style type="text/css">
+	.func_g:hover { stroke:black; stroke-width:0.5; cursor:pointer; }
+</style>
+<script type="text/ecmascript">
+<![CDATA[
+	var details, searchbtn, matchedtxt, svg;
+	function init(evt) {
+		details = document.getElementById("details").firstChild;
+		searchbtn = document.getElementById("search");
+		matchedtxt = document.getElementById("matched");
+		svg = document.getElementsByTagName("svg")[0];
+		searching = 0;
+	}
+
+	// mouse-over for info
+	function s(node) {		// show
+		info = g_to_text(node);
+		details.nodeValue = "Function: " + info;
+	}
+	function c() {			// clear
+		details.nodeValue = ' ';
+	}
+
+	// ctrl-F for search
+	window.addEventListener("keydown",function (e) {
+		if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
+			e.preventDefault();
+			search_prompt();
+		}
+	})
+
+	// functions
+	function find_child(parent, name, attr) {
+		var children = parent.childNodes;
+		for (var i=0; i<children.length;i++) {
+			if (children[i].tagName == name)
+				return (attr != undefined) ? children[i].attributes[attr].value : children[i];
+		}
+		return;
+	}
+	function orig_save(e, attr, val) {
+		if (e.attributes["_orig_"+attr] != undefined) return;
+		if (e.attributes[attr] == undefined) return;
+		if (val == undefined) val = e.attributes[attr].value;
+		e.setAttribute("_orig_"+attr, val);
+	}
+	function orig_load(e, attr) {
+		if (e.attributes["_orig_"+attr] == undefined) return;
+		e.attributes[attr].value = e.attributes["_orig_"+attr].value;
+		e.removeAttribute("_orig_"+attr);
+	}
+	function g_to_text(e) {
+		var text = find_child(e, "title").firstChild.nodeValue;
+		return (text)
+	}
+	function g_to_func(e) {
+		var func = g_to_text(e);
+		// if there's any manipulation we want to do to the function
+		// name before it's searched, do it here before returning.
+		return (func);
+	}
+	function update_text(e) {
+		var r = find_child(e, "rect");
+		var t = find_child(e, "text");
+		var w = parseFloat(r.attributes["width"].value) -3;
+		var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+		t.attributes["x"].value = parseFloat(r.attributes["x"].value) +3;
+
+		// Smaller than this size won't fit anything
+		if (w < 2*12*0.59) {
+			t.textContent = "";
+			return;
+		}
+
+		t.textContent = txt;
+		// Fit in full text width
+		if (/^ *$/.test(txt) || t.getSubStringLength(0, txt.length) < w)
+			return;
+
+		for (var x=txt.length-2; x>0; x--) {
+			if (t.getSubStringLength(0, x+2) <= w) {
+				t.textContent = txt.substring(0,x) + "..";
+				return;
+			}
+		}
+		t.textContent = "";
+	}
+
+	// zoom
+	function zoom_reset(e) {
+		if (e.attributes != undefined) {
+			orig_load(e, "x");
+			orig_load(e, "width");
+		}
+		if (e.childNodes == undefined) return;
+		for(var i=0, c=e.childNodes; i<c.length; i++) {
+			zoom_reset(c[i]);
+		}
+	}
+	function zoom_child(e, x, ratio) {
+		if (e.attributes != undefined) {
+			if (e.attributes["x"] != undefined) {
+				orig_save(e, "x");
+				e.attributes["x"].value = (parseFloat(e.attributes["x"].value) - x - 10) * ratio + 10;
+				if(e.tagName == "text") e.attributes["x"].value = find_child(e.parentNode, "rect", "x") + 3;
+			}
+			if (e.attributes["width"] != undefined) {
+				orig_save(e, "width");
+				e.attributes["width"].value = parseFloat(e.attributes["width"].value) * ratio;
+			}
+		}
+
+		if (e.childNodes == undefined) return;
+		for(var i=0, c=e.childNodes; i<c.length; i++) {
+			zoom_child(c[i], x-10, ratio);
+		}
+	}
+	function zoom_parent(e) {
+		if (e.attributes) {
+			if (e.attributes["x"] != undefined) {
+				orig_save(e, "x");
+				e.attributes["x"].value = 10;
+			}
+			if (e.attributes["width"] != undefined) {
+				orig_save(e, "width");
+				e.attributes["width"].value = parseInt(svg.width.baseVal.value) - (10*2);
+			}
+		}
+		if (e.childNodes == undefined) return;
+		for(var i=0, c=e.childNodes; i<c.length; i++) {
+			zoom_parent(c[i]);
+		}
+	}
+	function zoom(node) {
+		var attr = find_child(node, "rect").attributes;
+		var width = parseFloat(attr["width"].value);
+		var xmin = parseFloat(attr["x"].value);
+		var xmax = parseFloat(xmin + width);
+		var ymin = parseFloat(attr["y"].value);
+		var ratio = (svg.width.baseVal.value - 2*10) / width;
+
+		// XXX: Workaround for JavaScript float issues (fix me)
+		var fudge = 0.0001;
+
+		var unzoombtn = document.getElementById("unzoom");
+		unzoombtn.style["opacity"] = "1.0";
+
+		var el = document.getElementsByTagName("g");
+		for(var i=0;i<el.length;i++){
+			var e = el[i];
+			var a = find_child(e, "rect").attributes;
+			var ex = parseFloat(a["x"].value);
+			var ew = parseFloat(a["width"].value);
+			// Is it an ancestor
+			if (0 == 0) {
+				var upstack = parseFloat(a["y"].value) > ymin;
+			} else {
+				var upstack = parseFloat(a["y"].value) < ymin;
+			}
+			if (upstack) {
+				// Direct ancestor
+				if (ex <= xmin && (ex+ew+fudge) >= xmax) {
+					e.style["opacity"] = "0.5";
+					zoom_parent(e);
+					e.onclick = function(e){unzoom(); zoom(this);};
+					update_text(e);
+				}
+				// not in current path
+				else
+					e.style["display"] = "none";
+			}
+			// Children maybe
+			else {
+				// no common path
+				if (ex < xmin || ex + fudge >= xmax) {
+					e.style["display"] = "none";
+				}
+				else {
+					zoom_child(e, xmin, ratio);
+					e.onclick = function(e){zoom(this);};
+					update_text(e);
+				}
+			}
+		}
+	}
+	function unzoom() {
+		var unzoombtn = document.getElementById("unzoom");
+		unzoombtn.style["opacity"] = "0.0";
+
+		var el = document.getElementsByTagName("g");
+		for(i=0;i<el.length;i++) {
+			el[i].style["display"] = "block";
+			el[i].style["opacity"] = "1";
+			zoom_reset(el[i]);
+			update_text(el[i]);
+		}
+	}
+
+	// search
+	function reset_search() {
+		var el = document.getElementsByTagName("rect");
+		for (var i=0; i < el.length; i++) {
+			orig_load(el[i], "fill")
+		}
+	}
+	function search_prompt() {
+		if (!searching) {
+			var term = prompt("Enter a search term (regexp " +
+			    "allowed, eg: ^ext4_)", "");
+			if (term != null) {
+				search(term)
+			}
+		} else {
+			reset_search();
+			searching = 0;
+			searchbtn.style["opacity"] = "0.1";
+			searchbtn.firstChild.nodeValue = "Search"
+			matchedtxt.style["opacity"] = "0.0";
+			matchedtxt.firstChild.nodeValue = ""
+		}
+	}
+	function search(term) {
+		var re = new RegExp(term);
+		var el = document.getElementsByTagName("g");
+		var matches = new Object();
+		var maxwidth = 0;
+		for (var i = 0; i < el.length; i++) {
+			var e = el[i];
+			if (e.attributes["class"].value != "func_g")
+				continue;
+			var func = g_to_func(e);
+			var rect = find_child(e, "rect");
+			if (rect == null) {
+				// the rect might be wrapped in an anchor
+				// if nameattr href is being used
+				if (rect = find_child(e, "a")) {
+				    rect = find_child(r, "rect");
+				}
+			}
+			if (func == null || rect == null)
+				continue;
+
+			// Save max width. Only works as we have a root frame
+			var w = parseFloat(rect.attributes["width"].value);
+			if (w > maxwidth)
+				maxwidth = w;
+
+			if (func.match(re)) {
+				// highlight
+				var x = parseFloat(rect.attributes["x"].value);
+				orig_save(rect, "fill");
+				rect.attributes["fill"].value =
+				    "rgb(230,0,230)";
+
+				// remember matches
+				if (matches[x] == undefined) {
+					matches[x] = w;
+				} else {
+					if (w > matches[x]) {
+						// overwrite with parent
+						matches[x] = w;
+					}
+				}
+				searching = 1;
+			}
+		}
+		if (!searching)
+			return;
+
+		searchbtn.style["opacity"] = "1.0";
+		searchbtn.firstChild.nodeValue = "Reset Search"
+
+		// calculate percent matched, excluding vertical overlap
+		var count = 0;
+		var lastx = -1;
+		var lastw = 0;
+		var keys = Array();
+		for (k in matches) {
+			if (matches.hasOwnProperty(k))
+				keys.push(k);
+		}
+		// sort the matched frames by their x location
+		// ascending, then width descending
+		keys.sort(function(a, b){
+			return a - b;
+		});
+		// Step through frames saving only the biggest bottom-up frames
+		// thanks to the sort order. This relies on the tree property
+		// where children are always smaller than their parents.
+		var fudge = 0.0001;	// JavaScript floating point
+		for (var k in keys) {
+			var x = parseFloat(keys[k]);
+			var w = matches[keys[k]];
+			if (x >= lastx + lastw - fudge) {
+				count += w;
+				lastx = x;
+				lastw = w;
+			}
+		}
+		// display matched percent
+		matchedtxt.style["opacity"] = "1.0";
+		pct = 100 * count / maxwidth;
+		if (pct == 100)
+			pct = "100"
+		else
+			pct = pct.toFixed(1)
+		matchedtxt.firstChild.nodeValue = "Matched: " + pct + "%";
+	}
+	function searchover(e) {
+		searchbtn.style["opacity"] = "1.0";
+	}
+	function searchout(e) {
+		if (searching) {
+			searchbtn.style["opacity"] = "1.0";
+		} else {
+			searchbtn.style["opacity"] = "0.1";
+		}
+	}
+]]>
+</script>
+<rect x="0.0" y="0" width="1200.0" height="934.0" fill="url(#background)"  />
+<text text-anchor="middle" x="600.00" y="24" font-size="17" font-family="Verdana" fill="rgb(0,0,0)"  >Flame Graph</text>
+<text text-anchor="" x="10.00" y="917" font-size="12" font-family="Verdana" fill="rgb(0,0,0)" id="details" > </text>
+<text text-anchor="" x="10.00" y="24" font-size="12" font-family="Verdana" fill="rgb(0,0,0)" id="unzoom" onclick="unzoom()" style="opacity:0.0;cursor:pointer" >Reset Zoom</text>
+<text text-anchor="" x="1090.00" y="24" font-size="12" font-family="Verdana" fill="rgb(0,0,0)" id="search" onmouseover="searchover()" onmouseout="searchout()" onclick="search_prompt()" style="opacity:0.1;cursor:pointer" >Search</text>
+<text text-anchor="" x="1090.00" y="917" font-size="12" font-family="Verdana" fill="rgb(0,0,0)" id="matched" > </text>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Combinators.position.\ (7 samples, 0.70%)</title><rect x="909.2" y="213" width="8.2" height="15.0" fill="rgb(207,62,1)" rx="2" ry="2" />
+<text text-anchor="" x="912.16" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.satisfy.\ (5 samples, 0.50%)</title><rect x="925.7" y="229" width="5.9" height="15.0" fill="rgb(244,122,31)" rx="2" ry="2" />
+<text text-anchor="" x="928.68" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Options.Applicative.Extra.execParserPure (848 samples, 84.80%)</title><rect x="11.2" y="805" width="1000.6" height="15.0" fill="rgb(248,89,30)" rx="2" ry="2" />
+<text text-anchor="" x="14.18" y="815.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Options.Applicative.Extra.execParserPure</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.checkDefinition (2 samples, 0.20%)</title><rect x="794.7" y="469" width="2.4" height="15.0" fill="rgb(246,104,35)" rx="2" ry="2" />
+<text text-anchor="" x="797.70" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.fetch (1 samples, 0.10%)</title><rect x="795.9" y="373" width="1.2" height="15.0" fill="rgb(226,187,38)" rx="2" ry="2" />
+<text text-anchor="" x="798.88" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.moduleName (3 samples, 0.30%)</title><rect x="922.1" y="341" width="3.6" height="15.0" fill="rgb(216,96,0)" rx="2" ry="2" />
+<text text-anchor="" x="925.14" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Dependent.Map.Internal.lookup.go (52 samples, 5.20%)</title><rect x="36.0" y="469" width="61.3" height="15.0" fill="rgb(235,22,46)" rx="2" ry="2" />
+<text text-anchor="" x="38.96" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.D..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Main.checkCommand (848 samples, 84.80%)</title><rect x="11.2" y="645" width="1000.6" height="15.0" fill="rgb(241,14,42)" rx="2" ry="2" />
+<text text-anchor="" x="14.18" y="655.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Main.checkCommand</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Dependent.Map.Internal.balance.sizeL (37 samples, 3.70%)</title><rect x="476.1" y="437" width="43.7" height="15.0" fill="rgb(232,164,14)" rx="2" ry="2" />
+<text text-anchor="" x="479.10" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.unsafeInsert (1 samples, 0.10%)</title><rect x="803.0" y="373" width="1.1" height="15.0" fill="rgb(246,122,28)" rx="2" ry="2" />
+<text text-anchor="" x="805.96" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.literal (1 samples, 0.10%)</title><rect x="1002.4" y="149" width="1.2" height="15.0" fill="rgb(208,224,23)" rx="2" ry="2" />
+<text text-anchor="" x="1005.38" y="159.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.atomicTerm (8 samples, 0.80%)</title><rect x="987.0" y="229" width="9.5" height="15.0" fill="rgb(215,32,5)" rx="2" ry="2" />
+<text text-anchor="" x="990.04" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.inferUnspanned (1 samples, 0.10%)</title><rect x="794.7" y="309" width="1.2" height="15.0" fill="rgb(242,47,38)" rx="2" ry="2" />
+<text text-anchor="" x="797.70" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Char.satisfy (5 samples, 0.50%)</title><rect x="935.1" y="293" width="5.9" height="15.0" fill="rgb(210,40,31)" rx="2" ry="2" />
+<text text-anchor="" x="938.12" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Combinators.&lt;?&gt; (6 samples, 0.60%)</title><rect x="1000.0" y="197" width="7.1" height="15.0" fill="rgb(208,20,11)" rx="2" ry="2" />
+<text text-anchor="" x="1003.02" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Char.text (1 samples, 0.10%)</title><rect x="921.0" y="277" width="1.1" height="15.0" fill="rgb(211,151,34)" rx="2" ry="2" />
+<text text-anchor="" x="923.96" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Dependent.Map.insertLookupWithKey.go.l' (1 samples, 0.10%)</title><rect x="594.1" y="453" width="1.2" height="15.0" fill="rgb(217,202,32)" rx="2" ry="2" />
+<text text-anchor="" x="597.10" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.fmap (1 samples, 0.10%)</title><rect x="795.9" y="437" width="1.2" height="15.0" fill="rgb(220,220,20)" rx="2" ry="2" />
+<text text-anchor="" x="798.88" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.check (1 samples, 0.10%)</title><rect x="794.7" y="357" width="1.2" height="15.0" fill="rgb(252,16,40)" rx="2" ry="2" />
+<text text-anchor="" x="797.70" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.compare (4 samples, 0.40%)</title><rect x="84.3" y="421" width="4.8" height="15.0" fill="rgb(234,193,36)" rx="2" ry="2" />
+<text text-anchor="" x="87.34" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>UNKNOWN (151 samples, 15.10%)</title><rect x="1011.8" y="869" width="178.2" height="15.0" fill="rgb(220,11,10)" rx="2" ry="2" />
+<text text-anchor="" x="1014.82" y="879.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >UNKNOWN</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Position.next (1 samples, 0.10%)</title><rect x="921.0" y="165" width="1.1" height="15.0" fill="rgb(244,123,45)" rx="2" ry="2" />
+<text text-anchor="" x="923.96" y="175.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.clauses (3 samples, 0.30%)</title><rect x="969.3" y="245" width="3.6" height="15.0" fill="rgb(223,186,21)" rx="2" ry="2" />
+<text text-anchor="" x="972.34" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Dependent.Map.insertLookupWithKey.go.r' (1 samples, 0.10%)</title><rect x="595.3" y="453" width="1.2" height="15.0" fill="rgb(251,164,21)" rx="2" ry="2" />
+<text text-anchor="" x="598.28" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.idLetter (1 samples, 0.10%)</title><rect x="984.7" y="229" width="1.2" height="15.0" fill="rgb(236,84,30)" rx="2" ry="2" />
+<text text-anchor="" x="987.68" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.indented (1 samples, 0.10%)</title><rect x="974.1" y="213" width="1.1" height="15.0" fill="rgb(205,59,3)" rx="2" ry="2" />
+<text text-anchor="" x="977.06" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.indented (1 samples, 0.10%)</title><rect x="998.8" y="181" width="1.2" height="15.0" fill="rgb(231,145,33)" rx="2" ry="2" />
+<text text-anchor="" x="1001.84" y="191.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.name (1 samples, 0.10%)</title><rect x="974.1" y="229" width="1.1" height="15.0" fill="rgb(241,158,9)" rx="2" ry="2" />
+<text text-anchor="" x="977.06" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Combinators.&lt;?&gt; (6 samples, 0.60%)</title><rect x="975.2" y="245" width="7.1" height="15.0" fill="rgb(214,204,14)" rx="2" ry="2" />
+<text text-anchor="" x="978.24" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.recoveringIndentedTerm (3 samples, 0.30%)</title><rect x="969.3" y="213" width="3.6" height="15.0" fill="rgb(246,86,34)" rx="2" ry="2" />
+<text text-anchor="" x="972.34" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.lookup# (1 samples, 0.10%)</title><rect x="793.5" y="485" width="1.2" height="15.0" fill="rgb(247,34,31)" rx="2" ry="2" />
+<text text-anchor="" x="796.52" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Char.satisfy (3 samples, 0.30%)</title><rect x="922.1" y="293" width="3.6" height="15.0" fill="rgb(210,31,12)" rx="2" ry="2" />
+<text text-anchor="" x="925.14" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>all (1,000 samples, 100%)</title><rect x="10.0" y="885" width="1180.0" height="15.0" fill="rgb(210,220,9)" rx="2" ry="2" />
+<text text-anchor="" x="13.00" y="895.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Scope.compare (46 samples, 4.60%)</title><rect x="727.4" y="421" width="54.3" height="15.0" fill="rgb(212,176,46)" rx="2" ry="2" />
+<text text-anchor="" x="730.44" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Scope..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.checkUnspanned (1 samples, 0.10%)</title><rect x="794.7" y="325" width="1.2" height="15.0" fill="rgb(252,87,18)" rx="2" ry="2" />
+<text text-anchor="" x="797.70" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.writer (186 samples, 18.60%)</title><rect x="790.0" y="517" width="219.5" height="15.0" fill="rgb(208,68,37)" rx="2" ry="2" />
+<text text-anchor="" x="792.98" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rock.Core.writer</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.clauses (1 samples, 0.10%)</title><rect x="980.0" y="213" width="1.1" height="15.0" fill="rgb(211,50,36)" rx="2" ry="2" />
+<text text-anchor="" x="982.96" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rules.rules.nonInput (170 samples, 17.00%)</title><rect x="807.7" y="485" width="200.6" height="15.0" fill="rgb(226,20,41)" rx="2" ry="2" />
+<text text-anchor="" x="810.68" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rules.rules.nonInput</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.satisfy.\ (5 samples, 0.50%)</title><rect x="935.1" y="261" width="5.9" height="15.0" fill="rgb(248,21,14)" rx="2" ry="2" />
+<text text-anchor="" x="938.12" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.indented (1 samples, 0.10%)</title><rect x="1002.4" y="117" width="1.2" height="15.0" fill="rgb(244,176,0)" rx="2" ry="2" />
+<text text-anchor="" x="1005.38" y="127.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.fmap (55 samples, 5.50%)</title><rect x="32.4" y="517" width="64.9" height="15.0" fill="rgb(219,178,51)" rx="2" ry="2" />
+<text text-anchor="" x="35.42" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rock.Co..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.atomicTerm (1 samples, 0.10%)</title><rect x="929.2" y="53" width="1.2" height="15.0" fill="rgb(224,96,45)" rx="2" ry="2" />
+<text text-anchor="" x="932.22" y="63.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.Matching.splitEqualityOr (1 samples, 0.10%)</title><rect x="794.7" y="389" width="1.2" height="15.0" fill="rgb(208,80,46)" rx="2" ry="2" />
+<text text-anchor="" x="797.70" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.GADT.Compare.TH.compare' (74 samples, 7.40%)</title><rect x="694.4" y="437" width="87.3" height="15.0" fill="rgb(209,139,49)" rx="2" ry="2" />
+<text text-anchor="" x="697.40" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.GADT...</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.plicitPattern (1 samples, 0.10%)</title><rect x="982.3" y="261" width="1.2" height="15.0" fill="rgb(214,115,45)" rx="2" ry="2" />
+<text text-anchor="" x="985.32" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.satisfy (2 samples, 0.20%)</title><rect x="931.6" y="261" width="2.3" height="15.0" fill="rgb(242,171,16)" rx="2" ry="2" />
+<text text-anchor="" x="934.58" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Char.char (1 samples, 0.10%)</title><rect x="921.0" y="213" width="1.1" height="15.0" fill="rgb(209,23,45)" rx="2" ry="2" />
+<text text-anchor="" x="923.96" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.&gt;&gt;= (843 samples, 84.30%)</title><rect x="14.7" y="533" width="994.8" height="15.0" fill="rgb(242,66,32)" rx="2" ry="2" />
+<text text-anchor="" x="17.72" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rock.Core.&gt;&gt;=</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Token._styleStart (3 samples, 0.30%)</title><rect x="922.1" y="325" width="3.6" height="15.0" fill="rgb(209,142,40)" rx="2" ry="2" />
+<text text-anchor="" x="925.14" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Combinators.position.\ (53 samples, 5.30%)</title><rect x="945.7" y="325" width="62.6" height="15.0" fill="rgb(232,121,47)" rx="2" ry="2" />
+<text text-anchor="" x="948.74" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Text.P..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.pure.\ (1 samples, 0.10%)</title><rect x="917.4" y="213" width="1.2" height="15.0" fill="rgb(207,152,16)" rx="2" ry="2" />
+<text text-anchor="" x="920.42" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.string (5 samples, 0.50%)</title><rect x="925.7" y="325" width="5.9" height="15.0" fill="rgb(243,60,25)" rx="2" ry="2" />
+<text text-anchor="" x="928.68" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.memoise.\ (576 samples, 57.60%)</title><rect x="110.3" y="501" width="679.7" height="15.0" fill="rgb(235,210,20)" rx="2" ry="2" />
+<text text-anchor="" x="113.30" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rock.Core.memoise.\</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Char.string (1 samples, 0.10%)</title><rect x="921.0" y="229" width="1.1" height="15.0" fill="rgb(237,71,50)" rx="2" ry="2" />
+<text text-anchor="" x="923.96" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Combinators.skipMany (1 samples, 0.10%)</title><rect x="938.7" y="197" width="1.1" height="15.0" fill="rgb(223,167,6)" rx="2" ry="2" />
+<text text-anchor="" x="941.66" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.moduleHeader.moduleExposing (1 samples, 0.10%)</title><rect x="921.0" y="325" width="1.1" height="15.0" fill="rgb(215,101,12)" rx="2" ry="2" />
+<text text-anchor="" x="923.96" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.fmap (170 samples, 17.00%)</title><rect x="807.7" y="469" width="200.6" height="15.0" fill="rgb(235,21,21)" rx="2" ry="2" />
+<text text-anchor="" x="810.68" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rock.Core.fmap</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.writer (2 samples, 0.20%)</title><rect x="1009.5" y="549" width="2.3" height="15.0" fill="rgb(217,71,10)" rx="2" ry="2" />
+<text text-anchor="" x="1012.46" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Combinators.&lt;?&gt;.\ (2 samples, 0.20%)</title><rect x="1004.7" y="149" width="2.4" height="15.0" fill="rgb(247,186,14)" rx="2" ry="2" />
+<text text-anchor="" x="1007.74" y="159.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.someSpace.comments (1 samples, 0.10%)</title><rect x="941.0" y="325" width="1.2" height="15.0" fill="rgb(206,10,44)" rx="2" ry="2" />
+<text text-anchor="" x="944.02" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.term (1 samples, 0.10%)</title><rect x="930.4" y="117" width="1.2" height="15.0" fill="rgb(209,112,19)" rx="2" ry="2" />
+<text text-anchor="" x="933.40" y="127.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.term (1 samples, 0.10%)</title><rect x="981.1" y="213" width="1.2" height="15.0" fill="rgb(225,128,31)" rx="2" ry="2" />
+<text text-anchor="" x="984.14" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.fmap.\ (1 samples, 0.10%)</title><rect x="917.4" y="85" width="1.2" height="15.0" fill="rgb(247,218,10)" rx="2" ry="2" />
+<text text-anchor="" x="920.42" y="95.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Position.next (1 samples, 0.10%)</title><rect x="918.6" y="245" width="1.2" height="15.0" fill="rgb(245,147,2)" rx="2" ry="2" />
+<text text-anchor="" x="921.60" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.&lt;|&gt;.\ (1 samples, 0.10%)</title><rect x="913.9" y="133" width="1.2" height="15.0" fill="rgb(208,5,10)" rx="2" ry="2" />
+<text text-anchor="" x="916.88" y="143.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.satisfy (5 samples, 0.50%)</title><rect x="935.1" y="277" width="5.9" height="15.0" fill="rgb(242,222,47)" rx="2" ry="2" />
+<text text-anchor="" x="938.12" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.lookup# (1 samples, 0.10%)</title><rect x="806.5" y="437" width="1.2" height="15.0" fill="rgb(241,227,1)" rx="2" ry="2" />
+<text text-anchor="" x="809.50" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Dependent.Map.Internal.lookup (54 samples, 5.40%)</title><rect x="33.6" y="485" width="63.7" height="15.0" fill="rgb(248,226,22)" rx="2" ry="2" />
+<text text-anchor="" x="36.60" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.De..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.GADT.Compare.TH.geq' (1 samples, 0.10%)</title><rect x="96.1" y="437" width="1.2" height="15.0" fill="rgb(234,101,28)" rx="2" ry="2" />
+<text text-anchor="" x="99.14" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.parseText (166 samples, 16.60%)</title><rect x="812.4" y="421" width="195.9" height="15.0" fill="rgb(252,18,25)" rx="2" ry="2" />
+<text text-anchor="" x="815.40" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Parser.parseText</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Combinators.&lt;?&gt; (1 samples, 0.10%)</title><rect x="982.3" y="245" width="1.2" height="15.0" fill="rgb(213,23,48)" rx="2" ry="2" />
+<text text-anchor="" x="985.32" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Command.Check.check (848 samples, 84.80%)</title><rect x="11.2" y="613" width="1000.6" height="15.0" fill="rgb(243,104,21)" rx="2" ry="2" />
+<text text-anchor="" x="14.18" y="623.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Command.Check.check</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Char.satisfy (3 samples, 0.30%)</title><rect x="922.1" y="277" width="3.6" height="15.0" fill="rgb(212,128,48)" rx="2" ry="2" />
+<text text-anchor="" x="925.14" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.unexpected (1 samples, 0.10%)</title><rect x="919.8" y="325" width="1.2" height="15.0" fill="rgb(231,210,53)" rx="2" ry="2" />
+<text text-anchor="" x="922.78" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Options.Applicative.Common.runParser (848 samples, 84.80%)</title><rect x="11.2" y="693" width="1000.6" height="15.0" fill="rgb(242,5,25)" rx="2" ry="2" />
+<text text-anchor="" x="14.18" y="703.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Options.Applicative.Common.runParser</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Resolution.moduleScopes (1 samples, 0.10%)</title><rect x="798.2" y="485" width="1.2" height="15.0" fill="rgb(212,187,3)" rx="2" ry="2" />
+<text text-anchor="" x="801.24" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Query.gcompare (34 samples, 3.40%)</title><rect x="57.2" y="453" width="40.1" height="15.0" fill="rgb(222,133,18)" rx="2" ry="2" />
+<text text-anchor="" x="60.20" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Que..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.clause (3 samples, 0.30%)</title><rect x="969.3" y="229" width="3.6" height="15.0" fill="rgb(219,180,54)" rx="2" ry="2" />
+<text text-anchor="" x="972.34" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.Clauses.check (1 samples, 0.10%)</title><rect x="794.7" y="453" width="1.2" height="15.0" fill="rgb(249,199,17)" rx="2" ry="2" />
+<text text-anchor="" x="797.70" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.unexpected.\ (1 samples, 0.10%)</title><rect x="919.8" y="261" width="1.2" height="15.0" fill="rgb(226,47,8)" rx="2" ry="2" />
+<text text-anchor="" x="922.78" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Dependent.Map.Internal.size (12 samples, 1.20%)</title><rect x="505.6" y="421" width="14.2" height="15.0" fill="rgb(223,161,27)" rx="2" ry="2" />
+<text text-anchor="" x="508.60" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Driver.runTask.rules.\ (1 samples, 0.10%)</title><rect x="799.4" y="469" width="1.2" height="15.0" fill="rgb(240,219,35)" rx="2" ry="2" />
+<text text-anchor="" x="802.42" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.spanned (19 samples, 1.90%)</title><rect x="985.9" y="245" width="22.4" height="15.0" fill="rgb(250,151,30)" rx="2" ry="2" />
+<text text-anchor="" x="988.86" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >P..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Combinators.skipSome (2 samples, 0.20%)</title><rect x="942.2" y="325" width="2.4" height="15.0" fill="rgb(253,66,14)" rx="2" ry="2" />
+<text text-anchor="" x="945.20" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.reserved (1 samples, 0.10%)</title><rect x="1003.6" y="149" width="1.1" height="15.0" fill="rgb(229,86,36)" rx="2" ry="2" />
+<text text-anchor="" x="1006.56" y="159.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.prename (2 samples, 0.20%)</title><rect x="983.5" y="261" width="2.4" height="15.0" fill="rgb(208,4,52)" rx="2" ry="2" />
+<text text-anchor="" x="986.50" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Options.Applicative.Extra.execParserPure.p (848 samples, 84.80%)</title><rect x="11.2" y="773" width="1000.6" height="15.0" fill="rgb(209,6,53)" rx="2" ry="2" />
+<text text-anchor="" x="14.18" y="783.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Options.Applicative.Extra.execParserPure.p</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.compare (5 samples, 0.50%)</title><rect x="775.8" y="389" width="5.9" height="15.0" fill="rgb(210,52,24)" rx="2" ry="2" />
+<text text-anchor="" x="778.82" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.compare (9 samples, 0.90%)</title><rect x="716.8" y="421" width="10.6" height="15.0" fill="rgb(235,93,41)" rx="2" ry="2" />
+<text text-anchor="" x="719.82" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.multilineComment (5 samples, 0.50%)</title><rect x="925.7" y="341" width="5.9" height="15.0" fill="rgb(212,34,3)" rx="2" ry="2" />
+<text text-anchor="" x="928.68" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.integer (1 samples, 0.10%)</title><rect x="1002.4" y="133" width="1.2" height="15.0" fill="rgb(215,186,5)" rx="2" ry="2" />
+<text text-anchor="" x="1005.38" y="143.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Dependent.Map.Internal.rotateL (1 samples, 0.10%)</title><rect x="565.8" y="437" width="1.2" height="15.0" fill="rgb(236,140,44)" rx="2" ry="2" />
+<text text-anchor="" x="568.78" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Combinators.skipSome (1 samples, 0.10%)</title><rect x="938.7" y="229" width="1.1" height="15.0" fill="rgb(230,166,47)" rx="2" ry="2" />
+<text text-anchor="" x="941.66" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Dependent.Map.Internal.balance (173 samples, 17.30%)</title><rect x="362.8" y="453" width="204.2" height="15.0" fill="rgb(237,194,32)" rx="2" ry="2" />
+<text text-anchor="" x="365.82" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.Dependent.Map.Interna..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.unsafeInsert.go (1 samples, 0.10%)</title><rect x="803.0" y="357" width="1.1" height="15.0" fill="rgb(213,94,41)" rx="2" ry="2" />
+<text text-anchor="" x="805.96" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.atomicTerm.lets (1 samples, 0.10%)</title><rect x="997.7" y="197" width="1.1" height="15.0" fill="rgb(250,153,39)" rx="2" ry="2" />
+<text text-anchor="" x="1000.66" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Resolution.importedNames.qualifiedNames (2 samples, 0.20%)</title><rect x="801.8" y="421" width="2.3" height="15.0" fill="rgb(211,15,8)" rx="2" ry="2" />
+<text text-anchor="" x="804.78" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.&gt;&gt;=.\ (135 samples, 13.50%)</title><rect x="849.0" y="357" width="159.3" height="15.0" fill="rgb(254,155,22)" rx="2" ry="2" />
+<text text-anchor="" x="851.98" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Text.Parsix.Parser.I..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rules.rules.noError (6 samples, 0.60%)</title><rect x="800.6" y="485" width="7.1" height="15.0" fill="rgb(214,148,46)" rx="2" ry="2" />
+<text text-anchor="" x="803.60" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.satisfy (1 samples, 0.10%)</title><rect x="984.7" y="213" width="1.2" height="15.0" fill="rgb(242,160,25)" rx="2" ry="2" />
+<text text-anchor="" x="987.68" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Options.Applicative.Extra.customExecParser (848 samples, 84.80%)</title><rect x="11.2" y="821" width="1000.6" height="15.0" fill="rgb(226,131,4)" rx="2" ry="2" />
+<text text-anchor="" x="14.18" y="831.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Options.Applicative.Extra.customExecParser</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.char (2 samples, 0.20%)</title><rect x="931.6" y="325" width="2.3" height="15.0" fill="rgb(210,186,29)" rx="2" ry="2" />
+<text text-anchor="" x="934.58" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Token._styleLetter (1 samples, 0.10%)</title><rect x="916.2" y="101" width="1.2" height="15.0" fill="rgb(206,82,29)" rx="2" ry="2" />
+<text text-anchor="" x="919.24" y="111.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.module_ (7 samples, 0.70%)</title><rect x="909.2" y="181" width="8.2" height="15.0" fill="rgb(226,149,8)" rx="2" ry="2" />
+<text text-anchor="" x="912.16" y="191.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Char.text (1 samples, 0.10%)</title><rect x="921.0" y="261" width="1.1" height="15.0" fill="rgb(209,31,33)" rx="2" ry="2" />
+<text text-anchor="" x="923.96" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.spannedTerm (1 samples, 0.10%)</title><rect x="929.2" y="37" width="1.2" height="15.0" fill="rgb(252,207,6)" rx="2" ry="2" />
+<text text-anchor="" x="932.22" y="47.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.&gt;&gt;=.\.\ (11 samples, 1.10%)</title><rect x="905.6" y="245" width="13.0" height="15.0" fill="rgb(245,7,53)" rx="2" ry="2" />
+<text text-anchor="" x="908.62" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.spannedTerm (1 samples, 0.10%)</title><rect x="1005.9" y="133" width="1.2" height="15.0" fill="rgb(251,117,5)" rx="2" ry="2" />
+<text text-anchor="" x="1008.92" y="143.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.satisfy.\ (15 samples, 1.50%)</title><rect x="902.1" y="261" width="17.7" height="15.0" fill="rgb(212,126,43)" rx="2" ry="2" />
+<text text-anchor="" x="905.08" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Char.char (2 samples, 0.20%)</title><rect x="931.6" y="277" width="2.3" height="15.0" fill="rgb(234,33,46)" rx="2" ry="2" />
+<text text-anchor="" x="934.58" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.inferName (1 samples, 0.10%)</title><rect x="794.7" y="293" width="1.2" height="15.0" fill="rgb(227,220,53)" rx="2" ry="2" />
+<text text-anchor="" x="797.70" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.reserved (1 samples, 0.10%)</title><rect x="921.0" y="309" width="1.1" height="15.0" fill="rgb(230,190,1)" rx="2" ry="2" />
+<text text-anchor="" x="923.96" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Combinators.&lt;?&gt;.\ (6 samples, 0.60%)</title><rect x="1000.0" y="181" width="7.1" height="15.0" fill="rgb(232,172,49)" rx="2" ry="2" />
+<text text-anchor="" x="1003.02" y="191.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.spannedTerm (4 samples, 0.40%)</title><rect x="975.2" y="197" width="4.8" height="15.0" fill="rgb(246,175,53)" rx="2" ry="2" />
+<text text-anchor="" x="978.24" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Resolution.importedNames (2 samples, 0.20%)</title><rect x="801.8" y="437" width="2.3" height="15.0" fill="rgb(241,53,32)" rx="2" ry="2" />
+<text text-anchor="" x="804.78" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.spanned (1 samples, 0.10%)</title><rect x="930.4" y="101" width="1.2" height="15.0" fill="rgb(243,183,12)" rx="2" ry="2" />
+<text text-anchor="" x="933.40" y="111.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Options.Applicative.Common.runParser.result (848 samples, 84.80%)</title><rect x="11.2" y="677" width="1000.6" height="15.0" fill="rgb(253,35,30)" rx="2" ry="2" />
+<text text-anchor="" x="14.18" y="687.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Options.Applicative.Common.runParser.result</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.satisfy.\ (3 samples, 0.30%)</title><rect x="922.1" y="245" width="3.6" height="15.0" fill="rgb(236,97,15)" rx="2" ry="2" />
+<text text-anchor="" x="925.14" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.satisfy (3 samples, 0.30%)</title><rect x="922.1" y="261" width="3.6" height="15.0" fill="rgb(232,0,54)" rx="2" ry="2" />
+<text text-anchor="" x="925.14" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Query.gcompare (164 samples, 16.40%)</title><rect x="596.5" y="453" width="193.5" height="15.0" fill="rgb(240,186,43)" rx="2" ry="2" />
+<text text-anchor="" x="599.46" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Query.gcompare</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Options.Applicative.Common.runParserInfo (848 samples, 84.80%)</title><rect x="11.2" y="757" width="1000.6" height="15.0" fill="rgb(234,101,40)" rx="2" ry="2" />
+<text text-anchor="" x="14.18" y="767.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Options.Applicative.Common.runParserInfo</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Query.Mapped.rule (1 samples, 0.10%)</title><rect x="797.1" y="485" width="1.1" height="15.0" fill="rgb(209,159,35)" rx="2" ry="2" />
+<text text-anchor="" x="800.06" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Options.Applicative.Common.runParserFully (848 samples, 84.80%)</title><rect x="11.2" y="741" width="1000.6" height="15.0" fill="rgb(234,49,7)" rx="2" ry="2" />
+<text text-anchor="" x="14.18" y="751.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Options.Applicative.Common.runParserFully</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.Matching.elaborateWithCoverage (1 samples, 0.10%)</title><rect x="794.7" y="421" width="1.2" height="15.0" fill="rgb(216,173,0)" rx="2" ry="2" />
+<text text-anchor="" x="797.70" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.indented (1 samples, 0.10%)</title><rect x="919.8" y="341" width="1.2" height="15.0" fill="rgb(254,133,9)" rx="2" ry="2" />
+<text text-anchor="" x="922.78" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.compare (2 samples, 0.20%)</title><rect x="93.8" y="405" width="2.3" height="15.0" fill="rgb(206,65,26)" rx="2" ry="2" />
+<text text-anchor="" x="96.78" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Combinators.&lt;?&gt;.\ (6 samples, 0.60%)</title><rect x="975.2" y="229" width="7.1" height="15.0" fill="rgb(231,104,1)" rx="2" ry="2" />
+<text text-anchor="" x="978.24" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.runParser (166 samples, 16.60%)</title><rect x="812.4" y="389" width="195.9" height="15.0" fill="rgb(234,197,28)" rx="2" ry="2" />
+<text text-anchor="" x="815.40" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Text.Parsix.Parser.Intern..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.spannedTerm (4 samples, 0.40%)</title><rect x="1000.0" y="165" width="4.7" height="15.0" fill="rgb(254,178,52)" rx="2" ry="2" />
+<text text-anchor="" x="1003.02" y="175.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.symbol (1 samples, 0.10%)</title><rect x="998.8" y="197" width="1.2" height="15.0" fill="rgb(241,58,40)" rx="2" ry="2" />
+<text text-anchor="" x="1001.84" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.&gt;&gt;= (166 samples, 16.60%)</title><rect x="812.4" y="373" width="195.9" height="15.0" fill="rgb(229,53,3)" rx="2" ry="2" />
+<text text-anchor="" x="815.40" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Text.Parsix.Parser.Intern..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.prename (2 samples, 0.20%)</title><rect x="977.6" y="165" width="2.4" height="15.0" fill="rgb(236,227,35)" rx="2" ry="2" />
+<text text-anchor="" x="980.60" y="175.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Query.Mapped.gcompare (4 samples, 0.40%)</title><rect x="784.1" y="421" width="4.7" height="15.0" fill="rgb(242,46,19)" rx="2" ry="2" />
+<text text-anchor="" x="787.08" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.prename (1 samples, 0.10%)</title><rect x="912.7" y="149" width="1.2" height="15.0" fill="rgb(216,82,30)" rx="2" ry="2" />
+<text text-anchor="" x="915.70" y="159.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.fmap (3 samples, 0.30%)</title><rect x="804.1" y="453" width="3.6" height="15.0" fill="rgb(238,1,28)" rx="2" ry="2" />
+<text text-anchor="" x="807.14" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.reserved (1 samples, 0.10%)</title><rect x="997.7" y="181" width="1.1" height="15.0" fill="rgb(229,113,22)" rx="2" ry="2" />
+<text text-anchor="" x="1000.66" y="191.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.atomicPattern (1 samples, 0.10%)</title><rect x="982.3" y="213" width="1.2" height="15.0" fill="rgb(254,79,39)" rx="2" ry="2" />
+<text text-anchor="" x="985.32" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Dependent.Map.Internal.balance.sizeR (39 samples, 3.90%)</title><rect x="519.8" y="437" width="46.0" height="15.0" fill="rgb(244,12,42)" rx="2" ry="2" />
+<text text-anchor="" x="522.76" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rules.rules (1 samples, 0.10%)</title><rect x="1010.6" y="533" width="1.2" height="15.0" fill="rgb(247,191,46)" rx="2" ry="2" />
+<text text-anchor="" x="1013.64" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.&lt;*&gt; (2 samples, 0.20%)</title><rect x="801.8" y="453" width="2.3" height="15.0" fill="rgb(231,5,14)" rx="2" ry="2" />
+<text text-anchor="" x="804.78" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Main.main (848 samples, 84.80%)</title><rect x="11.2" y="853" width="1000.6" height="15.0" fill="rgb(232,95,27)" rx="2" ry="2" />
+<text text-anchor="" x="14.18" y="863.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Main.main</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Dependent.Map.Internal.size (12 samples, 1.20%)</title><rect x="551.6" y="421" width="14.2" height="15.0" fill="rgb(254,27,32)" rx="2" ry="2" />
+<text text-anchor="" x="554.62" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Combinators.skipMany (1 samples, 0.10%)</title><rect x="938.7" y="213" width="1.1" height="15.0" fill="rgb(243,202,14)" rx="2" ry="2" />
+<text text-anchor="" x="941.66" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.prename (1 samples, 0.10%)</title><rect x="991.8" y="213" width="1.1" height="15.0" fill="rgb(247,43,0)" rx="2" ry="2" />
+<text text-anchor="" x="994.76" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.idLetter (16 samples, 1.60%)</title><rect x="900.9" y="341" width="18.9" height="15.0" fill="rgb(227,144,14)" rx="2" ry="2" />
+<text text-anchor="" x="903.90" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.reserved (3 samples, 0.30%)</title><rect x="992.9" y="213" width="3.6" height="15.0" fill="rgb(227,161,43)" rx="2" ry="2" />
+<text text-anchor="" x="995.94" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.recoveringIndentedTerm (1 samples, 0.10%)</title><rect x="972.9" y="245" width="1.2" height="15.0" fill="rgb(213,139,7)" rx="2" ry="2" />
+<text text-anchor="" x="975.88" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.Matching.elaborateClauses (1 samples, 0.10%)</title><rect x="794.7" y="437" width="1.2" height="15.0" fill="rgb(221,225,40)" rx="2" ry="2" />
+<text text-anchor="" x="797.70" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>MAIN.MAIN (849 samples, 84.90%)</title><rect x="10.0" y="869" width="1001.8" height="15.0" fill="rgb(245,42,33)" rx="2" ry="2" />
+<text text-anchor="" x="13.00" y="879.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >MAIN.MAIN</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.&lt;|&gt;.\ (1 samples, 0.10%)</title><rect x="916.2" y="69" width="1.2" height="15.0" fill="rgb(230,33,11)" rx="2" ry="2" />
+<text text-anchor="" x="919.24" y="79.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.compare (1 samples, 0.10%)</title><rect x="87.9" y="405" width="1.2" height="15.0" fill="rgb(244,198,37)" rx="2" ry="2" />
+<text text-anchor="" x="90.88" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Position.next (1 samples, 0.10%)</title><rect x="939.8" y="245" width="1.2" height="15.0" fill="rgb(233,56,13)" rx="2" ry="2" />
+<text text-anchor="" x="942.84" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Combinators.skipMany (2 samples, 0.20%)</title><rect x="942.2" y="309" width="2.4" height="15.0" fill="rgb(239,91,23)" rx="2" ry="2" />
+<text text-anchor="" x="945.20" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.inferName (1 samples, 0.10%)</title><rect x="795.9" y="389" width="1.2" height="15.0" fill="rgb(249,224,37)" rx="2" ry="2" />
+<text text-anchor="" x="798.88" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rules.rules.runElaborator (1 samples, 0.10%)</title><rect x="1008.3" y="485" width="1.2" height="15.0" fill="rgb(250,107,22)" rx="2" ry="2" />
+<text text-anchor="" x="1011.28" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Dependent.Map.insertLookupWithKey.go (569 samples, 56.90%)</title><rect x="118.6" y="469" width="671.4" height="15.0" fill="rgb(246,193,5)" rx="2" ry="2" />
+<text text-anchor="" x="121.56" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.Dependent.Map.insertLookupWithKey.go</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Char.string (5 samples, 0.50%)</title><rect x="925.7" y="309" width="5.9" height="15.0" fill="rgb(213,151,25)" rx="2" ry="2" />
+<text text-anchor="" x="928.68" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.someSpace (9 samples, 0.90%)</title><rect x="933.9" y="341" width="10.7" height="15.0" fill="rgb(211,26,21)" rx="2" ry="2" />
+<text text-anchor="" x="936.94" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.definition (2 samples, 0.20%)</title><rect x="928.0" y="117" width="2.4" height="15.0" fill="rgb(216,34,31)" rx="2" ry="2" />
+<text text-anchor="" x="931.04" y="127.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.satisfy (1 samples, 0.10%)</title><rect x="921.0" y="197" width="1.1" height="15.0" fill="rgb(207,30,20)" rx="2" ry="2" />
+<text text-anchor="" x="923.96" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Dependent.Map.insertLookupWithKey.go.found (3 samples, 0.30%)</title><rect x="590.6" y="453" width="3.5" height="15.0" fill="rgb(242,184,37)" rx="2" ry="2" />
+<text text-anchor="" x="593.56" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Combinators.skipMany (2 samples, 0.20%)</title><rect x="942.2" y="293" width="2.4" height="15.0" fill="rgb(225,209,18)" rx="2" ry="2" />
+<text text-anchor="" x="945.20" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.checkTopLevelDefinition (2 samples, 0.20%)</title><rect x="794.7" y="485" width="2.4" height="15.0" fill="rgb(241,78,34)" rx="2" ry="2" />
+<text text-anchor="" x="797.70" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.unexpected (1 samples, 0.10%)</title><rect x="919.8" y="277" width="1.2" height="15.0" fill="rgb(218,160,5)" rx="2" ry="2" />
+<text text-anchor="" x="922.78" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.satisfy (15 samples, 1.50%)</title><rect x="902.1" y="277" width="17.7" height="15.0" fill="rgb(213,66,22)" rx="2" ry="2" />
+<text text-anchor="" x="905.08" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Resolution.moduleScopes.go (1 samples, 0.10%)</title><rect x="798.2" y="453" width="1.2" height="15.0" fill="rgb(218,159,45)" rx="2" ry="2" />
+<text text-anchor="" x="801.24" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Char.char (5 samples, 0.50%)</title><rect x="925.7" y="261" width="5.9" height="15.0" fill="rgb(214,42,17)" rx="2" ry="2" />
+<text text-anchor="" x="928.68" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.satisfy (16 samples, 1.60%)</title><rect x="900.9" y="325" width="18.9" height="15.0" fill="rgb(246,80,44)" rx="2" ry="2" />
+<text text-anchor="" x="903.90" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.spanned (1 samples, 0.10%)</title><rect x="981.1" y="181" width="1.2" height="15.0" fill="rgb(208,211,45)" rx="2" ry="2" />
+<text text-anchor="" x="984.14" y="191.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.fmap (1 samples, 0.10%)</title><rect x="917.4" y="101" width="1.2" height="15.0" fill="rgb(244,16,24)" rx="2" ry="2" />
+<text text-anchor="" x="920.42" y="111.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.definition (11 samples, 1.10%)</title><rect x="969.3" y="261" width="13.0" height="15.0" fill="rgb(241,115,12)" rx="2" ry="2" />
+<text text-anchor="" x="972.34" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.satisfy.\ (2 samples, 0.20%)</title><rect x="931.6" y="245" width="2.3" height="15.0" fill="rgb(227,164,36)" rx="2" ry="2" />
+<text text-anchor="" x="934.58" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.prename (1 samples, 0.10%)</title><rect x="916.2" y="117" width="1.2" height="15.0" fill="rgb(221,81,53)" rx="2" ry="2" />
+<text text-anchor="" x="919.24" y="127.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.satisfy.\ (1 samples, 0.10%)</title><rect x="921.0" y="181" width="1.1" height="15.0" fill="rgb(241,141,46)" rx="2" ry="2" />
+<text text-anchor="" x="923.96" y="191.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.fmap (167 samples, 16.70%)</title><rect x="811.2" y="453" width="197.1" height="15.0" fill="rgb(207,64,15)" rx="2" ry="2" />
+<text text-anchor="" x="814.22" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rock.Core.fmap</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.checkUnspanned (1 samples, 0.10%)</title><rect x="795.9" y="421" width="1.2" height="15.0" fill="rgb(244,122,12)" rx="2" ry="2" />
+<text text-anchor="" x="798.88" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.plicitAtomicTerm (10 samples, 1.00%)</title><rect x="996.5" y="229" width="11.8" height="15.0" fill="rgb(211,83,39)" rx="2" ry="2" />
+<text text-anchor="" x="999.48" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Char.satisfy (16 samples, 1.60%)</title><rect x="900.9" y="293" width="18.9" height="15.0" fill="rgb(216,220,5)" rx="2" ry="2" />
+<text text-anchor="" x="903.90" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Char.text (1 samples, 0.10%)</title><rect x="921.0" y="245" width="1.1" height="15.0" fill="rgb(232,207,1)" rx="2" ry="2" />
+<text text-anchor="" x="923.96" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.moduleHeader (1 samples, 0.10%)</title><rect x="921.0" y="341" width="1.1" height="15.0" fill="rgb(232,108,22)" rx="2" ry="2" />
+<text text-anchor="" x="923.96" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.runTask (848 samples, 84.80%)</title><rect x="11.2" y="581" width="1000.6" height="15.0" fill="rgb(252,63,52)" rx="2" ry="2" />
+<text text-anchor="" x="14.18" y="591.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rock.Core.runTask</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.spanned (1 samples, 0.10%)</title><rect x="974.1" y="245" width="1.1" height="15.0" fill="rgb(225,50,23)" rx="2" ry="2" />
+<text text-anchor="" x="977.06" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.GADT.Compare.TH.geq' (6 samples, 0.60%)</title><rect x="781.7" y="437" width="7.1" height="15.0" fill="rgb(206,91,2)" rx="2" ry="2" />
+<text text-anchor="" x="784.72" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.recoveringIndentedTerm (1 samples, 0.10%)</title><rect x="929.2" y="101" width="1.2" height="15.0" fill="rgb(252,19,49)" rx="2" ry="2" />
+<text text-anchor="" x="932.22" y="111.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.indented (1 samples, 0.10%)</title><rect x="991.8" y="197" width="1.1" height="15.0" fill="rgb(251,156,9)" rx="2" ry="2" />
+<text text-anchor="" x="994.76" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.satisfy (5 samples, 0.50%)</title><rect x="935.1" y="325" width="5.9" height="15.0" fill="rgb(231,60,40)" rx="2" ry="2" />
+<text text-anchor="" x="938.12" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Combinators.position (7 samples, 0.70%)</title><rect x="909.2" y="229" width="8.2" height="15.0" fill="rgb(243,31,23)" rx="2" ry="2" />
+<text text-anchor="" x="912.16" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Token._styleLetter (2 samples, 0.20%)</title><rect x="983.5" y="245" width="2.4" height="15.0" fill="rgb(252,32,47)" rx="2" ry="2" />
+<text text-anchor="" x="986.50" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Token._styleLetter (1 samples, 0.10%)</title><rect x="912.7" y="133" width="1.2" height="15.0" fill="rgb(223,27,52)" rx="2" ry="2" />
+<text text-anchor="" x="915.70" y="143.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.term (1 samples, 0.10%)</title><rect x="971.7" y="181" width="1.2" height="15.0" fill="rgb(228,228,36)" rx="2" ry="2" />
+<text text-anchor="" x="974.70" y="191.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.check (1 samples, 0.10%)</title><rect x="795.9" y="453" width="1.2" height="15.0" fill="rgb(223,224,18)" rx="2" ry="2" />
+<text text-anchor="" x="798.88" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.spanned (1 samples, 0.10%)</title><rect x="982.3" y="181" width="1.2" height="15.0" fill="rgb(210,8,48)" rx="2" ry="2" />
+<text text-anchor="" x="985.32" y="191.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Combinators.&lt;?&gt; (2 samples, 0.20%)</title><rect x="1004.7" y="165" width="2.4" height="15.0" fill="rgb(239,134,38)" rx="2" ry="2" />
+<text text-anchor="" x="1007.74" y="175.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.satisfy (3 samples, 0.30%)</title><rect x="922.1" y="309" width="3.6" height="15.0" fill="rgb(234,133,35)" rx="2" ry="2" />
+<text text-anchor="" x="925.14" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Combinators.&lt;?&gt;.\ (1 samples, 0.10%)</title><rect x="982.3" y="229" width="1.2" height="15.0" fill="rgb(230,142,50)" rx="2" ry="2" />
+<text text-anchor="" x="985.32" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Combinators.unexpected (1 samples, 0.10%)</title><rect x="919.8" y="293" width="1.2" height="15.0" fill="rgb(226,153,8)" rx="2" ry="2" />
+<text text-anchor="" x="922.78" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.fromList (1 samples, 0.10%)</title><rect x="803.0" y="405" width="1.1" height="15.0" fill="rgb(225,105,50)" rx="2" ry="2" />
+<text text-anchor="" x="805.96" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.module_ (36 samples, 3.60%)</title><rect x="965.8" y="293" width="42.5" height="15.0" fill="rgb(237,208,19)" rx="2" ry="2" />
+<text text-anchor="" x="968.80" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Pars..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.parseText (166 samples, 16.60%)</title><rect x="812.4" y="405" width="195.9" height="15.0" fill="rgb(243,29,23)" rx="2" ry="2" />
+<text text-anchor="" x="815.40" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Text.Parsix.Parser.Intern..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Options.Applicative.Common.evalParser (848 samples, 84.80%)</title><rect x="11.2" y="661" width="1000.6" height="15.0" fill="rgb(205,216,25)" rx="2" ry="2" />
+<text text-anchor="" x="14.18" y="671.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Options.Applicative.Common.evalParser</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Dependent.Map.insertLookupWithKey (572 samples, 57.20%)</title><rect x="115.0" y="485" width="675.0" height="15.0" fill="rgb(249,115,30)" rx="2" ry="2" />
+<text text-anchor="" x="118.02" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.Dependent.Map.insertLookupWithKey</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.compare (2 samples, 0.20%)</title><rect x="725.1" y="405" width="2.3" height="15.0" fill="rgb(207,29,46)" rx="2" ry="2" />
+<text text-anchor="" x="728.08" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.inferUnspanned (1 samples, 0.10%)</title><rect x="795.9" y="405" width="1.2" height="15.0" fill="rgb(221,205,10)" rx="2" ry="2" />
+<text text-anchor="" x="798.88" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.Matching.splitConstructorOr (1 samples, 0.10%)</title><rect x="794.7" y="373" width="1.2" height="15.0" fill="rgb(239,156,30)" rx="2" ry="2" />
+<text text-anchor="" x="797.70" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.compare (17 samples, 1.70%)</title><rect x="761.7" y="405" width="20.0" height="15.0" fill="rgb(225,67,5)" rx="2" ry="2" />
+<text text-anchor="" x="764.66" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.spanned (1 samples, 0.10%)</title><rect x="971.7" y="149" width="1.2" height="15.0" fill="rgb(234,185,27)" rx="2" ry="2" />
+<text text-anchor="" x="974.70" y="159.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.atomicTerm (4 samples, 0.40%)</title><rect x="975.2" y="213" width="4.8" height="15.0" fill="rgb(243,28,42)" rx="2" ry="2" />
+<text text-anchor="" x="978.24" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.Matching.elaborate (1 samples, 0.10%)</title><rect x="794.7" y="405" width="1.2" height="15.0" fill="rgb(246,186,43)" rx="2" ry="2" />
+<text text-anchor="" x="797.70" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.&gt;&gt;=.\.\ (51 samples, 5.10%)</title><rect x="948.1" y="309" width="60.2" height="15.0" fill="rgb(221,175,11)" rx="2" ry="2" />
+<text text-anchor="" x="951.10" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Text.P..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.&lt;*&gt; (1 samples, 0.10%)</title><rect x="790.0" y="501" width="1.2" height="15.0" fill="rgb(230,15,40)" rx="2" ry="2" />
+<text text-anchor="" x="792.98" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Resolution.moduleScopes.(...) (1 samples, 0.10%)</title><rect x="798.2" y="469" width="1.2" height="15.0" fill="rgb(231,192,19)" rx="2" ry="2" />
+<text text-anchor="" x="801.24" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Combinators.position (54 samples, 5.40%)</title><rect x="944.6" y="341" width="63.7" height="15.0" fill="rgb(248,19,17)" rx="2" ry="2" />
+<text text-anchor="" x="947.56" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Text.Pa..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.text (1 samples, 0.10%)</title><rect x="921.0" y="293" width="1.1" height="15.0" fill="rgb(216,216,47)" rx="2" ry="2" />
+<text text-anchor="" x="923.96" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.fromList.\ (1 samples, 0.10%)</title><rect x="803.0" y="389" width="1.1" height="15.0" fill="rgb(224,99,15)" rx="2" ry="2" />
+<text text-anchor="" x="805.96" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Char.char (2 samples, 0.20%)</title><rect x="931.6" y="309" width="2.3" height="15.0" fill="rgb(243,88,27)" rx="2" ry="2" />
+<text text-anchor="" x="934.58" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.many (36 samples, 3.60%)</title><rect x="965.8" y="277" width="42.5" height="15.0" fill="rgb(249,196,48)" rx="2" ry="2" />
+<text text-anchor="" x="968.80" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Pars..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.pure (1 samples, 0.10%)</title><rect x="917.4" y="229" width="1.2" height="15.0" fill="rgb(222,147,42)" rx="2" ry="2" />
+<text text-anchor="" x="920.42" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Dependent.Map.insertLookupWithKey.go.(...) (20 samples, 2.00%)</title><rect x="567.0" y="453" width="23.6" height="15.0" fill="rgb(218,54,32)" rx="2" ry="2" />
+<text text-anchor="" x="569.96" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >D..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.spannedPattern (1 samples, 0.10%)</title><rect x="982.3" y="197" width="1.2" height="15.0" fill="rgb(216,193,29)" rx="2" ry="2" />
+<text text-anchor="" x="985.32" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Char.satisfy (5 samples, 0.50%)</title><rect x="935.1" y="309" width="5.9" height="15.0" fill="rgb(214,150,27)" rx="2" ry="2" />
+<text text-anchor="" x="938.12" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.indented (1 samples, 0.10%)</title><rect x="972.9" y="229" width="1.2" height="15.0" fill="rgb(235,174,25)" rx="2" ry="2" />
+<text text-anchor="" x="975.88" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rules.rules (185 samples, 18.50%)</title><rect x="791.2" y="501" width="218.3" height="15.0" fill="rgb(226,95,31)" rx="2" ry="2" />
+<text text-anchor="" x="794.16" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rules.rules</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.term (19 samples, 1.90%)</title><rect x="985.9" y="261" width="22.4" height="15.0" fill="rgb(243,164,21)" rx="2" ry="2" />
+<text text-anchor="" x="988.86" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >P..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.&gt;&gt;=.\.\ (7 samples, 0.70%)</title><rect x="909.2" y="197" width="8.2" height="15.0" fill="rgb(216,174,15)" rx="2" ry="2" />
+<text text-anchor="" x="912.16" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.&lt;|&gt; (1 samples, 0.10%)</title><rect x="913.9" y="149" width="1.2" height="15.0" fill="rgb(221,153,3)" rx="2" ry="2" />
+<text text-anchor="" x="916.88" y="159.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.GADT.Compare.TH.runGComparing (1 samples, 0.10%)</title><rect x="788.8" y="437" width="1.2" height="15.0" fill="rgb(212,45,51)" rx="2" ry="2" />
+<text text-anchor="" x="791.80" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.satisfy (5 samples, 0.50%)</title><rect x="925.7" y="245" width="5.9" height="15.0" fill="rgb(231,157,44)" rx="2" ry="2" />
+<text text-anchor="" x="928.68" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Combinators.unexpected (1 samples, 0.10%)</title><rect x="919.8" y="309" width="1.2" height="15.0" fill="rgb(245,196,42)" rx="2" ry="2" />
+<text text-anchor="" x="922.78" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Driver.runTask (848 samples, 84.80%)</title><rect x="11.2" y="597" width="1000.6" height="15.0" fill="rgb(214,54,12)" rx="2" ry="2" />
+<text text-anchor="" x="14.18" y="607.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Driver.runTask</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.&lt;|&gt; (1 samples, 0.10%)</title><rect x="916.2" y="85" width="1.2" height="15.0" fill="rgb(219,14,23)" rx="2" ry="2" />
+<text text-anchor="" x="919.24" y="95.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.fmap (6 samples, 0.60%)</title><rect x="800.6" y="469" width="7.1" height="15.0" fill="rgb(218,178,50)" rx="2" ry="2" />
+<text text-anchor="" x="803.60" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.fmap (54 samples, 5.40%)</title><rect x="33.6" y="501" width="63.7" height="15.0" fill="rgb(222,118,34)" rx="2" ry="2" />
+<text text-anchor="" x="36.60" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rock.Co..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Char.char (2 samples, 0.20%)</title><rect x="931.6" y="293" width="2.3" height="15.0" fill="rgb(226,0,10)" rx="2" ry="2" />
+<text text-anchor="" x="934.58" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.qidLetter (2 samples, 0.20%)</title><rect x="931.6" y="341" width="2.3" height="15.0" fill="rgb(250,23,21)" rx="2" ry="2" />
+<text text-anchor="" x="934.58" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Char.satisfy (1 samples, 0.10%)</title><rect x="984.7" y="197" width="1.2" height="15.0" fill="rgb(228,58,46)" rx="2" ry="2" />
+<text text-anchor="" x="987.68" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Driver.runTask.rules (847 samples, 84.70%)</title><rect x="12.4" y="565" width="999.4" height="15.0" fill="rgb(250,35,24)" rx="2" ry="2" />
+<text text-anchor="" x="15.36" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Driver.runTask.rules</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.&gt;&gt;=.\.\ (3 samples, 0.30%)</title><rect x="936.3" y="245" width="3.5" height="15.0" fill="rgb(225,68,38)" rx="2" ry="2" />
+<text text-anchor="" x="939.30" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.compare (1 samples, 0.10%)</title><rect x="787.6" y="405" width="1.2" height="15.0" fill="rgb(227,160,35)" rx="2" ry="2" />
+<text text-anchor="" x="790.62" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.liftIO (587 samples, 58.70%)</title><rect x="97.3" y="517" width="692.7" height="15.0" fill="rgb(219,53,4)" rx="2" ry="2" />
+<text text-anchor="" x="100.32" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rock.Core.liftIO</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.&lt;*&gt; (166 samples, 16.60%)</title><rect x="812.4" y="437" width="195.9" height="15.0" fill="rgb(216,139,1)" rx="2" ry="2" />
+<text text-anchor="" x="815.40" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rock.Core.&lt;*&gt;</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.spannedTerm (1 samples, 0.10%)</title><rect x="971.7" y="165" width="1.2" height="15.0" fill="rgb(250,74,31)" rx="2" ry="2" />
+<text text-anchor="" x="974.70" y="175.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.lookup# (1 samples, 0.10%)</title><rect x="797.1" y="469" width="1.1" height="15.0" fill="rgb(235,213,19)" rx="2" ry="2" />
+<text text-anchor="" x="800.06" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.liftIO (1 samples, 0.10%)</title><rect x="799.4" y="485" width="1.2" height="15.0" fill="rgb(233,174,49)" rx="2" ry="2" />
+<text text-anchor="" x="802.42" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Options.Applicative.Internal.&gt;&gt;= (848 samples, 84.80%)</title><rect x="11.2" y="725" width="1000.6" height="15.0" fill="rgb(228,143,43)" rx="2" ry="2" />
+<text text-anchor="" x="14.18" y="735.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Options.Applicative.Internal.&gt;&gt;=</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.memoise (844 samples, 84.40%)</title><rect x="13.5" y="549" width="996.0" height="15.0" fill="rgb(212,203,7)" rx="2" ry="2" />
+<text text-anchor="" x="16.54" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rock.Core.memoise</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.fmap (1 samples, 0.10%)</title><rect x="794.7" y="341" width="1.2" height="15.0" fill="rgb(248,227,32)" rx="2" ry="2" />
+<text text-anchor="" x="797.70" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parsix.Parser.Internal.&gt;&gt;=.\.\ (2 samples, 0.20%)</title><rect x="923.3" y="229" width="2.4" height="15.0" fill="rgb(205,66,20)" rx="2" ry="2" />
+<text text-anchor="" x="926.32" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Scope.compare (6 samples, 0.60%)</title><rect x="89.1" y="421" width="7.0" height="15.0" fill="rgb(243,72,41)" rx="2" ry="2" />
+<text text-anchor="" x="92.06" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.GADT.Compare.TH.compare' (12 samples, 1.20%)</title><rect x="82.0" y="437" width="14.1" height="15.0" fill="rgb(254,103,50)" rx="2" ry="2" />
+<text text-anchor="" x="84.98" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.compare (1 samples, 0.10%)</title><rect x="95.0" y="389" width="1.1" height="15.0" fill="rgb(243,142,29)" rx="2" ry="2" />
+<text text-anchor="" x="97.96" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Text.Parser.Char.satisfy (16 samples, 1.60%)</title><rect x="900.9" y="309" width="18.9" height="15.0" fill="rgb(229,96,2)" rx="2" ry="2" />
+<text text-anchor="" x="903.90" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.GADT.Compare.TH.&gt;&gt;= (1 samples, 0.10%)</title><rect x="693.2" y="437" width="1.2" height="15.0" fill="rgb(210,108,19)" rx="2" ry="2" />
+<text text-anchor="" x="696.22" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Options.Applicative.Internal.&gt;&gt;=.\ (848 samples, 84.80%)</title><rect x="11.2" y="709" width="1000.6" height="15.0" fill="rgb(224,134,10)" rx="2" ry="2" />
+<text text-anchor="" x="14.18" y="719.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Options.Applicative.Internal.&gt;&gt;=.\</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.atomicTerm (8 samples, 0.80%)</title><rect x="997.7" y="213" width="9.4" height="15.0" fill="rgb(248,186,24)" rx="2" ry="2" />
+<text text-anchor="" x="1000.66" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Options.Applicative.Internal.runP (848 samples, 84.80%)</title><rect x="11.2" y="789" width="1000.6" height="15.0" fill="rgb(251,122,27)" rx="2" ry="2" />
+<text text-anchor="" x="14.18" y="799.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Options.Applicative.Internal.runP</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.spannedTerm (1 samples, 0.10%)</title><rect x="981.1" y="197" width="1.2" height="15.0" fill="rgb(217,78,48)" rx="2" ry="2" />
+<text text-anchor="" x="984.14" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+</svg>

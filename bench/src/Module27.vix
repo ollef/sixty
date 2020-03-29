@@ -1,0 +1,104 @@
+module Module27 exposing (..)
+
+import Module19
+import Module21
+import Module26
+import Module10
+import Module19
+import Module19
+import Module19
+import Module18
+import Module26
+import Module3
+
+f1 : Type
+f1 = Module3.f6 -> Module19.f9
+
+f2 : Type
+f2 = Module18.f8 -> Module26.f27
+
+f3 : Type
+f3 = Module26.f27 -> Module19.f15
+
+f4 : Type
+f4 = Module19.f1 -> Module26.f8
+
+f5 : Type
+f5 = Module10.f12 -> Module21.f5
+
+f6 : Type
+f6 = Module19.f3 -> Module26.f25
+
+f7 : Type
+f7 = Module26.f22 -> Module10.f29
+
+f8 : Type
+f8 = Module26.f4 -> Module10.f28
+
+f9 : Type
+f9 = Module3.f6 -> Module19.f11
+
+f10 : Type
+f10 = Module19.f25 -> Module19.f8
+
+f11 : Type
+f11 = Module19.f16 -> Module3.f20
+
+f12 : Type
+f12 = Module19.f2 -> Module19.f12
+
+f13 : Type
+f13 = Module19.f29 -> Module10.f17
+
+f14 : Type
+f14 = Module26.f3 -> Module19.f9
+
+f15 : Type
+f15 = Module10.f17 -> Module19.f28
+
+f16 : Type
+f16 = Module26.f20 -> Module19.f9
+
+f17 : Type
+f17 = Module26.f29 -> Module10.f11
+
+f18 : Type
+f18 = Module18.f27 -> Module26.f8
+
+f19 : Type
+f19 = Module19.f28 -> Module26.f2
+
+f20 : Type
+f20 = Module19.f22 -> Module19.f23
+
+f21 : Type
+f21 = Module18.f28 -> Module26.f19
+
+f22 : Type
+f22 = Module26.f29 -> Module10.f16
+
+f23 : Type
+f23 = Module18.f15 -> Module19.f23
+
+f24 : Type
+f24 = Module19.f10 -> Module10.f16
+
+f25 : Type
+f25 = Module10.f24 -> Module10.f8
+
+f26 : Type
+f26 = Module19.f21 -> Module26.f25
+
+f27 : Type
+f27 = Module21.f18 -> Module19.f21
+
+f28 : Type
+f28 = Module19.f19 -> Module19.f5
+
+f29 : Type
+f29 = Module3.f22 -> Module21.f12
+
+f30 : Type
+f30 = Module18.f19 -> Module21.f9
+
+
