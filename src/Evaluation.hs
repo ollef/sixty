@@ -60,7 +60,7 @@ evaluate env term =
         maybeDefinition <- fetch $ Query.ElaboratedDefinition name
         case maybeDefinition of
           Just (Syntax.ConstantDefinition term', _) -> do
-            value <- lazy $ evaluate (Environment.empty $ Environment.scopeKey env) term'
+            value <- lazy $ evaluate (Environment.emptyFrom env) term'
             pure $ Domain.Glued (Domain.Global name) mempty value
 
           _ ->

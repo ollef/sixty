@@ -26,6 +26,14 @@ empty key =
     , values = mempty
     }
 
+emptyFrom :: Environment value' v -> Environment value Void
+emptyFrom env =
+  Environment
+    { scopeKey = scopeKey env
+    , indices = Index.Map.Empty
+    , values = mempty
+    }
+
 extend
   :: Environment value v
   -> M (Environment value (Succ v), Var)

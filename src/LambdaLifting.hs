@@ -282,7 +282,7 @@ saturatedConstructorApp env con args = do
       Telescope.length constructorTele
 
     emptyEnv =
-      Environment.empty $ Environment.scopeKey env
+      Environment.emptyFrom env
 
   constructorTypeValue <- lift $ Evaluation.evaluate emptyEnv constructorType
 
@@ -418,7 +418,7 @@ liftLambda env term = do
       ]
 
     emptyEnv =
-      Environment.empty $ Environment.scopeKey env
+      Environment.emptyFrom env
 
   pure (sortedOccs, readbackTelescope emptyEnv (occurrenceTele <> tele) body)
   where

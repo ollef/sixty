@@ -68,7 +68,7 @@ zonk env metas term =
           pure $ Right term
 
         Just term' -> do
-          value <- Evaluation.evaluate (Environment.empty $ Environment.scopeKey env) term'
+          value <- Evaluation.evaluate (Environment.emptyFrom env) term'
           pure $ Left value
 
     Syntax.Let binding term' type_ scope -> do

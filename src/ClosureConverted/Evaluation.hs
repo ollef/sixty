@@ -29,7 +29,7 @@ evaluate env term =
       maybeDefinition <- fetchVisibleDefinition env name
       case maybeDefinition of
         Just (Syntax.ConstantDefinition term') -> do
-          evaluate (Environment.empty $ Environment.scopeKey env) term'
+          evaluate (Environment.emptyFrom env) term'
 
         _ ->
           pure $ Domain.global name
