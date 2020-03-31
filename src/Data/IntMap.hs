@@ -56,6 +56,10 @@ lookupDefault :: Coercible key Containers.Key => value -> key -> IntMap key valu
 lookupDefault def key m =
   Containers.findWithDefault def (coerce key) (coerce m)
 
+delete :: Coercible key Containers.Key => key -> IntMap key value -> IntMap key value
+delete key (IntMap m) =
+  coerce $ Containers.delete (coerce key) m
+
 member :: Coercible key Containers.Key => key -> IntMap key value -> Bool
 member key (IntMap m) =
   Containers.member (coerce key) m
