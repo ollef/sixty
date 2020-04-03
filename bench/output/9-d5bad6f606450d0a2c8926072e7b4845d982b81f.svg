@@ -1,0 +1,1814 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" width="1200" height="1414" onload="init(evt)" viewBox="0 0 1200 1414" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<!-- Flame graph stack visualization. See https://github.com/brendangregg/FlameGraph for latest version, and http://www.brendangregg.com/flamegraphs.html for examples. -->
+<!-- NOTES:  -->
+<defs >
+	<linearGradient id="background" y1="0" y2="1" x1="0" x2="0" >
+		<stop stop-color="#eeeeee" offset="5%" />
+		<stop stop-color="#eeeeb0" offset="95%" />
+	</linearGradient>
+</defs>
+<style type="text/css">
+	.func_g:hover { stroke:black; stroke-width:0.5; cursor:pointer; }
+</style>
+<script type="text/ecmascript">
+<![CDATA[
+	var details, searchbtn, matchedtxt, svg;
+	function init(evt) {
+		details = document.getElementById("details").firstChild;
+		searchbtn = document.getElementById("search");
+		matchedtxt = document.getElementById("matched");
+		svg = document.getElementsByTagName("svg")[0];
+		searching = 0;
+	}
+
+	// mouse-over for info
+	function s(node) {		// show
+		info = g_to_text(node);
+		details.nodeValue = "Function: " + info;
+	}
+	function c() {			// clear
+		details.nodeValue = ' ';
+	}
+
+	// ctrl-F for search
+	window.addEventListener("keydown",function (e) {
+		if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
+			e.preventDefault();
+			search_prompt();
+		}
+	})
+
+	// functions
+	function find_child(parent, name, attr) {
+		var children = parent.childNodes;
+		for (var i=0; i<children.length;i++) {
+			if (children[i].tagName == name)
+				return (attr != undefined) ? children[i].attributes[attr].value : children[i];
+		}
+		return;
+	}
+	function orig_save(e, attr, val) {
+		if (e.attributes["_orig_"+attr] != undefined) return;
+		if (e.attributes[attr] == undefined) return;
+		if (val == undefined) val = e.attributes[attr].value;
+		e.setAttribute("_orig_"+attr, val);
+	}
+	function orig_load(e, attr) {
+		if (e.attributes["_orig_"+attr] == undefined) return;
+		e.attributes[attr].value = e.attributes["_orig_"+attr].value;
+		e.removeAttribute("_orig_"+attr);
+	}
+	function g_to_text(e) {
+		var text = find_child(e, "title").firstChild.nodeValue;
+		return (text)
+	}
+	function g_to_func(e) {
+		var func = g_to_text(e);
+		// if there's any manipulation we want to do to the function
+		// name before it's searched, do it here before returning.
+		return (func);
+	}
+	function update_text(e) {
+		var r = find_child(e, "rect");
+		var t = find_child(e, "text");
+		var w = parseFloat(r.attributes["width"].value) -3;
+		var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+		t.attributes["x"].value = parseFloat(r.attributes["x"].value) +3;
+
+		// Smaller than this size won't fit anything
+		if (w < 2*12*0.59) {
+			t.textContent = "";
+			return;
+		}
+
+		t.textContent = txt;
+		// Fit in full text width
+		if (/^ *$/.test(txt) || t.getSubStringLength(0, txt.length) < w)
+			return;
+
+		for (var x=txt.length-2; x>0; x--) {
+			if (t.getSubStringLength(0, x+2) <= w) {
+				t.textContent = txt.substring(0,x) + "..";
+				return;
+			}
+		}
+		t.textContent = "";
+	}
+
+	// zoom
+	function zoom_reset(e) {
+		if (e.attributes != undefined) {
+			orig_load(e, "x");
+			orig_load(e, "width");
+		}
+		if (e.childNodes == undefined) return;
+		for(var i=0, c=e.childNodes; i<c.length; i++) {
+			zoom_reset(c[i]);
+		}
+	}
+	function zoom_child(e, x, ratio) {
+		if (e.attributes != undefined) {
+			if (e.attributes["x"] != undefined) {
+				orig_save(e, "x");
+				e.attributes["x"].value = (parseFloat(e.attributes["x"].value) - x - 10) * ratio + 10;
+				if(e.tagName == "text") e.attributes["x"].value = find_child(e.parentNode, "rect", "x") + 3;
+			}
+			if (e.attributes["width"] != undefined) {
+				orig_save(e, "width");
+				e.attributes["width"].value = parseFloat(e.attributes["width"].value) * ratio;
+			}
+		}
+
+		if (e.childNodes == undefined) return;
+		for(var i=0, c=e.childNodes; i<c.length; i++) {
+			zoom_child(c[i], x-10, ratio);
+		}
+	}
+	function zoom_parent(e) {
+		if (e.attributes) {
+			if (e.attributes["x"] != undefined) {
+				orig_save(e, "x");
+				e.attributes["x"].value = 10;
+			}
+			if (e.attributes["width"] != undefined) {
+				orig_save(e, "width");
+				e.attributes["width"].value = parseInt(svg.width.baseVal.value) - (10*2);
+			}
+		}
+		if (e.childNodes == undefined) return;
+		for(var i=0, c=e.childNodes; i<c.length; i++) {
+			zoom_parent(c[i]);
+		}
+	}
+	function zoom(node) {
+		var attr = find_child(node, "rect").attributes;
+		var width = parseFloat(attr["width"].value);
+		var xmin = parseFloat(attr["x"].value);
+		var xmax = parseFloat(xmin + width);
+		var ymin = parseFloat(attr["y"].value);
+		var ratio = (svg.width.baseVal.value - 2*10) / width;
+
+		// XXX: Workaround for JavaScript float issues (fix me)
+		var fudge = 0.0001;
+
+		var unzoombtn = document.getElementById("unzoom");
+		unzoombtn.style["opacity"] = "1.0";
+
+		var el = document.getElementsByTagName("g");
+		for(var i=0;i<el.length;i++){
+			var e = el[i];
+			var a = find_child(e, "rect").attributes;
+			var ex = parseFloat(a["x"].value);
+			var ew = parseFloat(a["width"].value);
+			// Is it an ancestor
+			if (0 == 0) {
+				var upstack = parseFloat(a["y"].value) > ymin;
+			} else {
+				var upstack = parseFloat(a["y"].value) < ymin;
+			}
+			if (upstack) {
+				// Direct ancestor
+				if (ex <= xmin && (ex+ew+fudge) >= xmax) {
+					e.style["opacity"] = "0.5";
+					zoom_parent(e);
+					e.onclick = function(e){unzoom(); zoom(this);};
+					update_text(e);
+				}
+				// not in current path
+				else
+					e.style["display"] = "none";
+			}
+			// Children maybe
+			else {
+				// no common path
+				if (ex < xmin || ex + fudge >= xmax) {
+					e.style["display"] = "none";
+				}
+				else {
+					zoom_child(e, xmin, ratio);
+					e.onclick = function(e){zoom(this);};
+					update_text(e);
+				}
+			}
+		}
+	}
+	function unzoom() {
+		var unzoombtn = document.getElementById("unzoom");
+		unzoombtn.style["opacity"] = "0.0";
+
+		var el = document.getElementsByTagName("g");
+		for(i=0;i<el.length;i++) {
+			el[i].style["display"] = "block";
+			el[i].style["opacity"] = "1";
+			zoom_reset(el[i]);
+			update_text(el[i]);
+		}
+	}
+
+	// search
+	function reset_search() {
+		var el = document.getElementsByTagName("rect");
+		for (var i=0; i < el.length; i++) {
+			orig_load(el[i], "fill")
+		}
+	}
+	function search_prompt() {
+		if (!searching) {
+			var term = prompt("Enter a search term (regexp " +
+			    "allowed, eg: ^ext4_)", "");
+			if (term != null) {
+				search(term)
+			}
+		} else {
+			reset_search();
+			searching = 0;
+			searchbtn.style["opacity"] = "0.1";
+			searchbtn.firstChild.nodeValue = "Search"
+			matchedtxt.style["opacity"] = "0.0";
+			matchedtxt.firstChild.nodeValue = ""
+		}
+	}
+	function search(term) {
+		var re = new RegExp(term);
+		var el = document.getElementsByTagName("g");
+		var matches = new Object();
+		var maxwidth = 0;
+		for (var i = 0; i < el.length; i++) {
+			var e = el[i];
+			if (e.attributes["class"].value != "func_g")
+				continue;
+			var func = g_to_func(e);
+			var rect = find_child(e, "rect");
+			if (rect == null) {
+				// the rect might be wrapped in an anchor
+				// if nameattr href is being used
+				if (rect = find_child(e, "a")) {
+				    rect = find_child(r, "rect");
+				}
+			}
+			if (func == null || rect == null)
+				continue;
+
+			// Save max width. Only works as we have a root frame
+			var w = parseFloat(rect.attributes["width"].value);
+			if (w > maxwidth)
+				maxwidth = w;
+
+			if (func.match(re)) {
+				// highlight
+				var x = parseFloat(rect.attributes["x"].value);
+				orig_save(rect, "fill");
+				rect.attributes["fill"].value =
+				    "rgb(230,0,230)";
+
+				// remember matches
+				if (matches[x] == undefined) {
+					matches[x] = w;
+				} else {
+					if (w > matches[x]) {
+						// overwrite with parent
+						matches[x] = w;
+					}
+				}
+				searching = 1;
+			}
+		}
+		if (!searching)
+			return;
+
+		searchbtn.style["opacity"] = "1.0";
+		searchbtn.firstChild.nodeValue = "Reset Search"
+
+		// calculate percent matched, excluding vertical overlap
+		var count = 0;
+		var lastx = -1;
+		var lastw = 0;
+		var keys = Array();
+		for (k in matches) {
+			if (matches.hasOwnProperty(k))
+				keys.push(k);
+		}
+		// sort the matched frames by their x location
+		// ascending, then width descending
+		keys.sort(function(a, b){
+			return a - b;
+		});
+		// Step through frames saving only the biggest bottom-up frames
+		// thanks to the sort order. This relies on the tree property
+		// where children are always smaller than their parents.
+		var fudge = 0.0001;	// JavaScript floating point
+		for (var k in keys) {
+			var x = parseFloat(keys[k]);
+			var w = matches[keys[k]];
+			if (x >= lastx + lastw - fudge) {
+				count += w;
+				lastx = x;
+				lastw = w;
+			}
+		}
+		// display matched percent
+		matchedtxt.style["opacity"] = "1.0";
+		pct = 100 * count / maxwidth;
+		if (pct == 100)
+			pct = "100"
+		else
+			pct = pct.toFixed(1)
+		matchedtxt.firstChild.nodeValue = "Matched: " + pct + "%";
+	}
+	function searchover(e) {
+		searchbtn.style["opacity"] = "1.0";
+	}
+	function searchout(e) {
+		if (searching) {
+			searchbtn.style["opacity"] = "1.0";
+		} else {
+			searchbtn.style["opacity"] = "0.1";
+		}
+	}
+]]>
+</script>
+<rect x="0.0" y="0" width="1200.0" height="1414.0" fill="url(#background)"  />
+<text text-anchor="middle" x="600.00" y="24" font-size="17" font-family="Verdana" fill="rgb(0,0,0)"  >Flame Graph</text>
+<text text-anchor="" x="10.00" y="1397" font-size="12" font-family="Verdana" fill="rgb(0,0,0)" id="details" > </text>
+<text text-anchor="" x="10.00" y="24" font-size="12" font-family="Verdana" fill="rgb(0,0,0)" id="unzoom" onclick="unzoom()" style="opacity:0.0;cursor:pointer" >Reset Zoom</text>
+<text text-anchor="" x="1090.00" y="24" font-size="12" font-family="Verdana" fill="rgb(0,0,0)" id="search" onmouseover="searchover()" onmouseout="searchout()" onclick="search_prompt()" style="opacity:0.1;cursor:pointer" >Search</text>
+<text text-anchor="" x="1090.00" y="1397" font-size="12" font-family="Verdana" fill="rgb(0,0,0)" id="matched" > </text>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Monad.Trans.Control.liftWith.\.\ (1 samples, 0.10%)</title><rect x="24.2" y="869" width="1.1" height="15.0" fill="rgb(232,60,39)" rx="2" ry="2" />
+<text text-anchor="" x="27.16" y="879.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.fromList.\ (12 samples, 1.20%)</title><rect x="948.1" y="309" width="14.2" height="15.0" fill="rgb(223,18,33)" rx="2" ry="2" />
+<text text-anchor="" x="951.10" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Lexer.identifier (3 samples, 0.30%)</title><rect x="1047.2" y="373" width="3.6" height="15.0" fill="rgb(215,51,3)" rx="2" ry="2" />
+<text text-anchor="" x="1050.22" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.Matching.elaborateClauses (21 samples, 2.10%)</title><rect x="1002.4" y="277" width="24.8" height="15.0" fill="rgb(239,2,2)" rx="2" ry="2" />
+<text text-anchor="" x="1005.38" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >E..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rules.rules (1 samples, 0.10%)</title><rect x="24.2" y="725" width="1.1" height="15.0" fill="rgb(240,25,8)" rx="2" ry="2" />
+<text text-anchor="" x="27.16" y="735.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>all (1,000 samples, 100%)</title><rect x="10.0" y="1365" width="1180.0" height="15.0" fill="rgb(246,190,40)" rx="2" ry="2" />
+<text text-anchor="" x="13.00" y="1375.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Query.geq (2 samples, 0.20%)</title><rect x="151.6" y="341" width="2.4" height="15.0" fill="rgb(207,90,47)" rx="2" ry="2" />
+<text text-anchor="" x="154.60" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Monad.Trans.Control.defaultLiftBaseWith.\.\.\ (873 samples, 87.30%)</title><rect x="21.8" y="885" width="1030.1" height="15.0" fill="rgb(253,177,41)" rx="2" ry="2" />
+<text text-anchor="" x="24.80" y="895.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Control.Monad.Trans.Control.defaultLiftBaseWith.\.\.\</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Driver.runTask.writeErrors (1 samples, 0.10%)</title><rect x="867.9" y="405" width="1.1" height="15.0" fill="rgb(240,107,18)" rx="2" ry="2" />
+<text text-anchor="" x="870.86" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Generic.Instances.ghashWithSalt (5 samples, 0.50%)</title><rect x="777.0" y="149" width="5.9" height="15.0" fill="rgb(221,87,28)" rx="2" ry="2" />
+<text text-anchor="" x="780.00" y="159.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.manyAccum.\ (6 samples, 0.60%)</title><rect x="912.7" y="325" width="7.1" height="15.0" fill="rgb(217,88,9)" rx="2" ry="2" />
+<text text-anchor="" x="915.70" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.hash (1 samples, 0.10%)</title><rect x="961.1" y="245" width="1.2" height="15.0" fill="rgb(210,22,29)" rx="2" ry="2" />
+<text text-anchor="" x="964.08" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insertModifying.go (1 samples, 0.10%)</title><rect x="972.9" y="325" width="1.2" height="15.0" fill="rgb(218,24,35)" rx="2" ry="2" />
+<text text-anchor="" x="975.88" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.unsafeInsert.h0 (1 samples, 0.10%)</title><rect x="961.1" y="277" width="1.2" height="15.0" fill="rgb(207,42,11)" rx="2" ry="2" />
+<text text-anchor="" x="964.08" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Monad.Trans.Control.liftBaseWith (875 samples, 87.50%)</title><rect x="19.4" y="997" width="1032.5" height="15.0" fill="rgb(232,81,34)" rx="2" ry="2" />
+<text text-anchor="" x="22.44" y="1007.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Control.Monad.Trans.Control.liftBaseWith</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Unification.tryUnify (6 samples, 0.60%)</title><rect x="1018.9" y="133" width="7.1" height="15.0" fill="rgb(253,158,0)" rx="2" ry="2" />
+<text text-anchor="" x="1021.90" y="143.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.Metas.inlineSolutions.inlineTermSolutions (1 samples, 0.10%)</title><rect x="880.8" y="261" width="1.2" height="15.0" fill="rgb(231,138,9)" rx="2" ry="2" />
+<text text-anchor="" x="883.84" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Generic.Instances.hashSum (2 samples, 0.20%)</title><rect x="145.7" y="213" width="2.4" height="15.0" fill="rgb(240,191,11)" rx="2" ry="2" />
+<text text-anchor="" x="148.70" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Exception.Lifted.try.\ (5 samples, 0.50%)</title><rect x="876.1" y="325" width="5.9" height="15.0" fill="rgb(238,13,5)" rx="2" ry="2" />
+<text text-anchor="" x="879.12" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.Metas.inlineSolutions.inlineDefSolutions (1 samples, 0.10%)</title><rect x="880.8" y="277" width="1.2" height="15.0" fill="rgb(227,25,28)" rx="2" ry="2" />
+<text text-anchor="" x="883.84" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Monad.Trans.Control.liftBaseWith (873 samples, 87.30%)</title><rect x="21.8" y="901" width="1030.1" height="15.0" fill="rgb(220,164,24)" rx="2" ry="2" />
+<text text-anchor="" x="24.80" y="911.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Control.Monad.Trans.Control.liftBaseWith</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rules.rules.nonInput (1 samples, 0.10%)</title><rect x="985.9" y="389" width="1.1" height="15.0" fill="rgb(219,176,25)" rx="2" ry="2" />
+<text text-anchor="" x="988.86" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insertModifying.go (1 samples, 0.10%)</title><rect x="982.3" y="309" width="1.2" height="15.0" fill="rgb(209,155,49)" rx="2" ry="2" />
+<text text-anchor="" x="985.32" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insert' (1 samples, 0.10%)</title><rect x="1041.3" y="485" width="1.2" height="15.0" fill="rgb(217,180,0)" rx="2" ry="2" />
+<text text-anchor="" x="1044.32" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.inferUnspanned (1 samples, 0.10%)</title><rect x="1028.3" y="261" width="1.2" height="15.0" fill="rgb(236,69,12)" rx="2" ry="2" />
+<text text-anchor="" x="1031.34" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.Matching.simplifyClause (1 samples, 0.10%)</title><rect x="1004.7" y="229" width="1.2" height="15.0" fill="rgb(233,183,40)" rx="2" ry="2" />
+<text text-anchor="" x="1007.74" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Driver.runTask.rules (1 samples, 0.10%)</title><rect x="24.2" y="789" width="1.1" height="15.0" fill="rgb(211,188,33)" rx="2" ry="2" />
+<text text-anchor="" x="27.16" y="799.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.alterFEager.lookupRes (44 samples, 4.40%)</title><rect x="806.5" y="373" width="51.9" height="15.0" fill="rgb(222,38,34)" rx="2" ry="2" />
+<text text-anchor="" x="809.50" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data...</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.fmap.\ (1 samples, 0.10%)</title><rect x="912.7" y="293" width="1.2" height="15.0" fill="rgb(218,88,30)" rx="2" ry="2" />
+<text text-anchor="" x="915.70" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insertModifying (1 samples, 0.10%)</title><rect x="982.3" y="325" width="1.2" height="15.0" fill="rgb(231,29,24)" rx="2" ry="2" />
+<text text-anchor="" x="985.32" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insertNewKey.go.st' (15 samples, 1.50%)</title><rect x="659.0" y="325" width="17.7" height="15.0" fill="rgb(216,89,50)" rx="2" ry="2" />
+<text text-anchor="" x="662.00" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Driver.runTask.rules (857 samples, 85.70%)</title><rect x="30.1" y="469" width="1011.2" height="15.0" fill="rgb(232,227,34)" rx="2" ry="2" />
+<text text-anchor="" x="33.06" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Driver.runTask.rules</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Lexer.lex (5 samples, 0.50%)</title><rect x="1044.9" y="389" width="5.9" height="15.0" fill="rgb(208,22,38)" rx="2" ry="2" />
+<text text-anchor="" x="1047.86" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Options.Applicative.Extra.execParserPure (875 samples, 87.50%)</title><rect x="19.4" y="1285" width="1032.5" height="15.0" fill="rgb(225,123,54)" rx="2" ry="2" />
+<text text-anchor="" x="22.44" y="1295.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Options.Applicative.Extra.execParserPure</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashWithSalt1 (77 samples, 7.70%)</title><rect x="700.3" y="277" width="90.9" height="15.0" fill="rgb(205,42,17)" rx="2" ry="2" />
+<text text-anchor="" x="703.30" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.Hasha..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Lexer.identifier (10 samples, 1.00%)</title><rect x="896.2" y="357" width="11.8" height="15.0" fill="rgb(220,158,39)" rx="2" ry="2" />
+<text text-anchor="" x="899.18" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.Matching.elaborate (20 samples, 2.00%)</title><rect x="1003.6" y="245" width="23.6" height="15.0" fill="rgb(219,52,48)" rx="2" ry="2" />
+<text text-anchor="" x="1006.56" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >E..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.&gt;&gt;= (1 samples, 0.10%)</title><rect x="913.9" y="277" width="1.2" height="15.0" fill="rgb(243,144,52)" rx="2" ry="2" />
+<text text-anchor="" x="916.88" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashWithSalt (2 samples, 0.20%)</title><rect x="787.6" y="213" width="2.4" height="15.0" fill="rgb(205,145,7)" rx="2" ry="2" />
+<text text-anchor="" x="790.62" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.hashWithSalt (11 samples, 1.10%)</title><rect x="755.8" y="165" width="12.9" height="15.0" fill="rgb(207,66,29)" rx="2" ry="2" />
+<text text-anchor="" x="758.76" y="175.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Concurrent.Async.Lifted.Safe.fmap (870 samples, 87.00%)</title><rect x="25.3" y="613" width="1026.6" height="15.0" fill="rgb(236,163,39)" rx="2" ry="2" />
+<text text-anchor="" x="28.34" y="623.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Control.Concurrent.Async.Lifted.Safe.fmap</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.manyAccum.\ (1 samples, 0.10%)</title><rect x="1050.8" y="341" width="1.1" height="15.0" fill="rgb(238,13,13)" rx="2" ry="2" />
+<text text-anchor="" x="1053.76" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Dependent.HashMap.alterF.\ (13 samples, 1.30%)</title><rect x="253.1" y="373" width="15.3" height="15.0" fill="rgb(236,222,13)" rx="2" ry="2" />
+<text text-anchor="" x="256.08" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.Matching.splitConstructorOr (18 samples, 1.80%)</title><rect x="1005.9" y="213" width="21.3" height="15.0" fill="rgb(240,108,50)" rx="2" ry="2" />
+<text text-anchor="" x="1008.92" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashByteArrayWithSalt (1 samples, 0.10%)</title><rect x="702.7" y="245" width="1.1" height="15.0" fill="rgb(207,104,14)" rx="2" ry="2" />
+<text text-anchor="" x="705.66" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.liftHashWithSalt2 (3 samples, 0.30%)</title><rect x="782.9" y="229" width="3.5" height="15.0" fill="rgb(208,212,10)" rx="2" ry="2" />
+<text text-anchor="" x="785.90" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashWithSalt (11 samples, 1.10%)</title><rect x="136.3" y="341" width="12.9" height="15.0" fill="rgb(250,23,51)" rx="2" ry="2" />
+<text text-anchor="" x="139.26" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Array.copy (1 samples, 0.10%)</title><rect x="942.2" y="293" width="1.2" height="15.0" fill="rgb(233,27,27)" rx="2" ry="2" />
+<text text-anchor="" x="945.20" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.Metas.evaluate (1 samples, 0.10%)</title><rect x="880.8" y="245" width="1.2" height="15.0" fill="rgb(230,14,28)" rx="2" ry="2" />
+<text text-anchor="" x="883.84" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.plicitAtomicTerm (5 samples, 0.50%)</title><rect x="913.9" y="309" width="5.9" height="15.0" fill="rgb(221,113,24)" rx="2" ry="2" />
+<text text-anchor="" x="916.88" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Generic.Instances.ghashWithSalt (1 samples, 0.10%)</title><rect x="886.7" y="325" width="1.2" height="15.0" fill="rgb(208,82,35)" rx="2" ry="2" />
+<text text-anchor="" x="889.74" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashWithSalt (1 samples, 0.10%)</title><rect x="886.7" y="341" width="1.2" height="15.0" fill="rgb(227,186,43)" rx="2" ry="2" />
+<text text-anchor="" x="889.74" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Lexer.index (1 samples, 0.10%)</title><rect x="906.8" y="341" width="1.2" height="15.0" fill="rgb(227,10,31)" rx="2" ry="2" />
+<text text-anchor="" x="909.80" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.hash (2 samples, 0.20%)</title><rect x="762.8" y="133" width="2.4" height="15.0" fill="rgb(237,11,45)" rx="2" ry="2" />
+<text text-anchor="" x="765.84" y="143.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Driver.checkAll.\.names (1 samples, 0.10%)</title><rect x="1041.3" y="517" width="1.2" height="15.0" fill="rgb(225,41,43)" rx="2" ry="2" />
+<text text-anchor="" x="1044.32" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Options.Applicative.Internal.runP (875 samples, 87.50%)</title><rect x="19.4" y="1269" width="1032.5" height="15.0" fill="rgb(249,131,53)" rx="2" ry="2" />
+<text text-anchor="" x="22.44" y="1279.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Options.Applicative.Internal.runP</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Command.Check.check (875 samples, 87.50%)</title><rect x="19.4" y="1093" width="1032.5" height="15.0" fill="rgb(213,137,40)" rx="2" ry="2" />
+<text text-anchor="" x="22.44" y="1103.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Command.Check.check</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Concurrent.Async.concurrently'.\ (870 samples, 87.00%)</title><rect x="25.3" y="645" width="1026.6" height="15.0" fill="rgb(210,165,39)" rx="2" ry="2" />
+<text text-anchor="" x="28.34" y="655.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Control.Concurrent.Async.concurrently'.\</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Inlining.inlineDefinition (1 samples, 0.10%)</title><rect x="997.7" y="309" width="1.1" height="15.0" fill="rgb(218,224,2)" rx="2" ry="2" />
+<text text-anchor="" x="1000.66" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.hashWithSalt (5 samples, 0.50%)</title><rect x="800.6" y="293" width="5.9" height="15.0" fill="rgb(245,33,47)" rx="2" ry="2" />
+<text text-anchor="" x="803.60" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Options.Applicative.Common.runParserInfo (875 samples, 87.50%)</title><rect x="19.4" y="1237" width="1032.5" height="15.0" fill="rgb(213,72,43)" rx="2" ry="2" />
+<text text-anchor="" x="22.44" y="1247.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Options.Applicative.Common.runParserInfo</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Monad.Trans.Control.defaultLiftBaseWith (874 samples, 87.40%)</title><rect x="20.6" y="981" width="1031.3" height="15.0" fill="rgb(209,158,41)" rx="2" ry="2" />
+<text text-anchor="" x="23.62" y="991.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Control.Monad.Trans.Control.defaultLiftBaseWith</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Monad.Trans.Control.defaultRestoreM (1 samples, 0.10%)</title><rect x="1022.4" y="53" width="1.2" height="15.0" fill="rgb(247,83,8)" rx="2" ry="2" />
+<text text-anchor="" x="1025.44" y="63.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hash (1 samples, 0.10%)</title><rect x="146.9" y="149" width="1.2" height="15.0" fill="rgb(230,111,19)" rx="2" ry="2" />
+<text text-anchor="" x="149.88" y="159.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insertModifying (1 samples, 0.10%)</title><rect x="972.9" y="341" width="1.2" height="15.0" fill="rgb(249,79,9)" rx="2" ry="2" />
+<text text-anchor="" x="975.88" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashByteArrayWithSalt (1 samples, 0.10%)</title><rect x="805.3" y="229" width="1.2" height="15.0" fill="rgb(217,17,17)" rx="2" ry="2" />
+<text text-anchor="" x="808.32" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.lookupRecordCollision# (41 samples, 4.10%)</title><rect x="810.0" y="357" width="48.4" height="15.0" fill="rgb(242,120,53)" rx="2" ry="2" />
+<text text-anchor="" x="813.04" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Driver.pooledForConcurrentlyIO_.go (870 samples, 87.00%)</title><rect x="25.3" y="597" width="1026.6" height="15.0" fill="rgb(249,216,51)" rx="2" ry="2" />
+<text text-anchor="" x="28.34" y="607.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Driver.pooledForConcurrentlyIO_.go</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Some.Newtype.$mSome.\ (14 samples, 1.40%)</title><rect x="133.9" y="373" width="16.5" height="15.0" fill="rgb(221,36,46)" rx="2" ry="2" />
+<text text-anchor="" x="136.90" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Concurrent.Async.concurrently (870 samples, 87.00%)</title><rect x="25.3" y="677" width="1026.6" height="15.0" fill="rgb(211,15,43)" rx="2" ry="2" />
+<text text-anchor="" x="28.34" y="687.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Control.Concurrent.Async.concurrently</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Resolution.moduleScopes.go.definitionCase.ok (1 samples, 0.10%)</title><rect x="974.1" y="325" width="1.1" height="15.0" fill="rgb(210,155,37)" rx="2" ry="2" />
+<text text-anchor="" x="977.06" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Generic.Instances.hashSum (3 samples, 0.30%)</title><rect x="144.5" y="229" width="3.6" height="15.0" fill="rgb(211,207,38)" rx="2" ry="2" />
+<text text-anchor="" x="147.52" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Lexer.identifier.state1 (1 samples, 0.10%)</title><rect x="1049.6" y="357" width="1.2" height="15.0" fill="rgb(214,49,22)" rx="2" ry="2" />
+<text text-anchor="" x="1052.58" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.subtype (1 samples, 0.10%)</title><rect x="1026.0" y="165" width="1.2" height="15.0" fill="rgb(236,155,34)" rx="2" ry="2" />
+<text text-anchor="" x="1028.98" y="175.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.writer (7 samples, 0.70%)</title><rect x="1033.1" y="453" width="8.2" height="15.0" fill="rgb(245,114,36)" rx="2" ry="2" />
+<text text-anchor="" x="1036.06" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insertNewKey.go.st (25 samples, 2.50%)</title><rect x="629.5" y="325" width="29.5" height="15.0" fill="rgb(251,78,48)" rx="2" ry="2" />
+<text text-anchor="" x="632.50" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Da..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Lexer.lex (19 samples, 1.90%)</title><rect x="890.3" y="373" width="22.4" height="15.0" fill="rgb(242,202,35)" rx="2" ry="2" />
+<text text-anchor="" x="893.28" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >L..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.subtype (1 samples, 0.10%)</title><rect x="24.2" y="581" width="1.1" height="15.0" fill="rgb(231,176,42)" rx="2" ry="2" />
+<text text-anchor="" x="27.16" y="591.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Array.copy.\ (24 samples, 2.40%)</title><rect x="584.7" y="293" width="28.3" height="15.0" fill="rgb(250,178,41)" rx="2" ry="2" />
+<text text-anchor="" x="587.66" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Da..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Some.Newtype.$mSome.\ (98 samples, 9.80%)</title><rect x="690.9" y="325" width="115.6" height="15.0" fill="rgb(208,42,42)" rx="2" ry="2" />
+<text text-anchor="" x="693.86" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.Some.Newt..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashWithSalt1 (11 samples, 1.10%)</title><rect x="136.3" y="325" width="12.9" height="15.0" fill="rgb(233,42,2)" rx="2" ry="2" />
+<text text-anchor="" x="139.26" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.Matching.splitEqualityOr (18 samples, 1.80%)</title><rect x="1005.9" y="229" width="21.3" height="15.0" fill="rgb(211,47,41)" rx="2" ry="2" />
+<text text-anchor="" x="1008.92" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.writer (8 samples, 0.80%)</title><rect x="1042.5" y="437" width="9.4" height="15.0" fill="rgb(239,181,50)" rx="2" ry="2" />
+<text text-anchor="" x="1045.50" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Generic.Instances.ghashWithSalt (42 samples, 4.20%)</title><rect x="733.3" y="213" width="49.6" height="15.0" fill="rgb(244,55,51)" rx="2" ry="2" />
+<text text-anchor="" x="736.34" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data...</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Concurrent.Async.Lifted.Safe.liftBaseOp2_ (870 samples, 87.00%)</title><rect x="25.3" y="709" width="1026.6" height="15.0" fill="rgb(221,46,6)" rx="2" ry="2" />
+<text text-anchor="" x="28.34" y="719.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Control.Concurrent.Async.Lifted.Safe.liftBaseOp2_</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.fetch.\ (8 samples, 0.80%)</title><rect x="1042.5" y="501" width="9.4" height="15.0" fill="rgb(207,175,24)" rx="2" ry="2" />
+<text text-anchor="" x="1045.50" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Inlining.inlineTerm (1 samples, 0.10%)</title><rect x="997.7" y="293" width="1.1" height="15.0" fill="rgb(253,48,8)" rx="2" ry="2" />
+<text text-anchor="" x="1000.66" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.checkDefinitionMetaSolutions (7 samples, 0.70%)</title><rect x="991.8" y="325" width="8.2" height="15.0" fill="rgb(233,52,5)" rx="2" ry="2" />
+<text text-anchor="" x="994.76" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Inlining.evaluate (1 samples, 0.10%)</title><rect x="997.7" y="277" width="1.1" height="15.0" fill="rgb(222,132,38)" rx="2" ry="2" />
+<text text-anchor="" x="1000.66" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.spannedIdentifier.\ (2 samples, 0.20%)</title><rect x="915.1" y="229" width="2.3" height="15.0" fill="rgb(217,210,18)" rx="2" ry="2" />
+<text text-anchor="" x="918.06" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Driver.checkAll.\.\ (1 samples, 0.10%)</title><rect x="24.2" y="837" width="1.1" height="15.0" fill="rgb(232,163,37)" rx="2" ry="2" />
+<text text-anchor="" x="27.16" y="847.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Query.geq (1 samples, 0.10%)</title><rect x="154.0" y="421" width="1.1" height="15.0" fill="rgb(230,216,7)" rx="2" ry="2" />
+<text text-anchor="" x="156.96" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.Clauses.check (21 samples, 2.10%)</title><rect x="1002.4" y="293" width="24.8" height="15.0" fill="rgb(251,96,25)" rx="2" ry="2" />
+<text text-anchor="" x="1005.38" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >E..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.writer (148 samples, 14.80%)</title><rect x="858.4" y="421" width="174.7" height="15.0" fill="rgb(214,0,35)" rx="2" ry="2" />
+<text text-anchor="" x="861.42" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rock.Core.writer</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.checkUnspanned (16 samples, 1.60%)</title><rect x="1008.3" y="181" width="18.9" height="15.0" fill="rgb(233,95,20)" rx="2" ry="2" />
+<text text-anchor="" x="1011.28" y="191.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Concurrent.Async.Lifted.Safe.concurrently (870 samples, 87.00%)</title><rect x="25.3" y="725" width="1026.6" height="15.0" fill="rgb(223,170,44)" rx="2" ry="2" />
+<text text-anchor="" x="28.34" y="735.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Control.Concurrent.Async.Lifted.Safe.concurrently</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Generic.Instances.hashSum (1 samples, 0.10%)</title><rect x="799.4" y="229" width="1.2" height="15.0" fill="rgb(206,47,25)" rx="2" ry="2" />
+<text text-anchor="" x="802.42" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Unification.tryUnify (1 samples, 0.10%)</title><rect x="24.2" y="565" width="1.1" height="15.0" fill="rgb(234,13,0)" rx="2" ry="2" />
+<text text-anchor="" x="27.16" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rules.rules.noError (1 samples, 0.10%)</title><rect x="984.7" y="389" width="1.2" height="15.0" fill="rgb(250,89,30)" rx="2" ry="2" />
+<text text-anchor="" x="987.68" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Resolution.exposedNames (4 samples, 0.40%)</title><rect x="965.8" y="325" width="4.7" height="15.0" fill="rgb(230,35,40)" rx="2" ry="2" />
+<text text-anchor="" x="968.80" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Generic.Instances.ghashWithSalt (32 samples, 3.20%)</title><rect x="745.1" y="197" width="37.8" height="15.0" fill="rgb(216,226,40)" rx="2" ry="2" />
+<text text-anchor="" x="748.14" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Dat..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.intersection.go (1 samples, 0.10%)</title><rect x="969.3" y="293" width="1.2" height="15.0" fill="rgb(226,16,53)" rx="2" ry="2" />
+<text text-anchor="" x="972.34" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Lexer.lexText (19 samples, 1.90%)</title><rect x="890.3" y="389" width="22.4" height="15.0" fill="rgb(214,170,33)" rx="2" ry="2" />
+<text text-anchor="" x="893.28" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >L..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Array.copy (30 samples, 3.00%)</title><rect x="577.6" y="309" width="35.4" height="15.0" fill="rgb(242,98,19)" rx="2" ry="2" />
+<text text-anchor="" x="580.58" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Dat..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Array.copy (1 samples, 0.10%)</title><rect x="933.9" y="373" width="1.2" height="15.0" fill="rgb(248,46,3)" rx="2" ry="2" />
+<text text-anchor="" x="936.94" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Resolution.moduleScopes.go.qualifiedPreName (1 samples, 0.10%)</title><rect x="983.5" y="341" width="1.2" height="15.0" fill="rgb(237,19,25)" rx="2" ry="2" />
+<text text-anchor="" x="986.50" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.inferUnspanned (14 samples, 1.40%)</title><rect x="1009.5" y="165" width="16.5" height="15.0" fill="rgb(227,1,4)" rx="2" ry="2" />
+<text text-anchor="" x="1012.46" y="175.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Context.try_ (2 samples, 0.20%)</title><rect x="1021.3" y="117" width="2.3" height="15.0" fill="rgb(206,130,3)" rx="2" ry="2" />
+<text text-anchor="" x="1024.26" y="127.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Concurrent.Async.concurrently' (870 samples, 87.00%)</title><rect x="25.3" y="661" width="1026.6" height="15.0" fill="rgb(224,119,30)" rx="2" ry="2" />
+<text text-anchor="" x="28.34" y="671.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Control.Concurrent.Async.concurrently'</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Lexer.lex.state1 (1 samples, 0.10%)</title><rect x="909.2" y="357" width="1.1" height="15.0" fill="rgb(221,172,52)" rx="2" ry="2" />
+<text text-anchor="" x="912.16" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Monad.runM (38 samples, 3.80%)</title><rect x="988.2" y="373" width="44.9" height="15.0" fill="rgb(251,167,43)" rx="2" ry="2" />
+<text text-anchor="" x="991.22" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Mona..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Array.copy.\ (3 samples, 0.30%)</title><rect x="957.5" y="245" width="3.6" height="15.0" fill="rgb(217,0,37)" rx="2" ry="2" />
+<text text-anchor="" x="960.54" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insert'.go (1 samples, 0.10%)</title><rect x="971.7" y="309" width="1.2" height="15.0" fill="rgb(233,61,44)" rx="2" ry="2" />
+<text text-anchor="" x="974.70" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Monad.Trans.Control.restoreM (1 samples, 0.10%)</title><rect x="1022.4" y="69" width="1.2" height="15.0" fill="rgb(220,147,3)" rx="2" ry="2" />
+<text text-anchor="" x="1025.44" y="79.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insert' (1 samples, 0.10%)</title><rect x="971.7" y="325" width="1.2" height="15.0" fill="rgb(218,184,37)" rx="2" ry="2" />
+<text text-anchor="" x="974.70" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.many (1 samples, 0.10%)</title><rect x="1050.8" y="373" width="1.1" height="15.0" fill="rgb(253,70,6)" rx="2" ry="2" />
+<text text-anchor="" x="1053.76" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Generic.Instances.hashSum (1 samples, 0.10%)</title><rect x="773.5" y="165" width="1.1" height="15.0" fill="rgb(224,220,12)" rx="2" ry="2" />
+<text text-anchor="" x="776.46" y="175.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Monad.Trans.Control.control (1 samples, 0.10%)</title><rect x="1024.8" y="69" width="1.2" height="15.0" fill="rgb(209,116,1)" rx="2" ry="2" />
+<text text-anchor="" x="1027.80" y="79.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insertModifying.h0 (1 samples, 0.10%)</title><rect x="980.0" y="309" width="1.1" height="15.0" fill="rgb(214,136,35)" rx="2" ry="2" />
+<text text-anchor="" x="982.96" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Concurrent.Async.Lifted.Safe.&lt;*&gt; (870 samples, 87.00%)</title><rect x="25.3" y="773" width="1026.6" height="15.0" fill="rgb(225,134,32)" rx="2" ry="2" />
+<text text-anchor="" x="28.34" y="783.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Control.Concurrent.Async.Lifted.Safe.&lt;*&gt;</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Generic.Instances.ghashWithSalt (1 samples, 0.10%)</title><rect x="146.9" y="197" width="1.2" height="15.0" fill="rgb(220,133,8)" rx="2" ry="2" />
+<text text-anchor="" x="149.88" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Constraint.withDict (870 samples, 87.00%)</title><rect x="25.3" y="741" width="1026.6" height="15.0" fill="rgb(253,138,15)" rx="2" ry="2" />
+<text text-anchor="" x="28.34" y="751.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.Constraint.withDict</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.defaultHashWithSalt (2 samples, 0.20%)</title><rect x="780.5" y="117" width="2.4" height="15.0" fill="rgb(252,36,46)" rx="2" ry="2" />
+<text text-anchor="" x="783.54" y="127.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashByteArrayWithSalt (1 samples, 0.10%)</title><rect x="764.0" y="85" width="1.2" height="15.0" fill="rgb(214,194,53)" rx="2" ry="2" />
+<text text-anchor="" x="767.02" y="95.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.parseTokens (6 samples, 0.60%)</title><rect x="912.7" y="389" width="7.1" height="15.0" fill="rgb(244,180,52)" rx="2" ry="2" />
+<text text-anchor="" x="915.70" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Constraint.\\ (870 samples, 87.00%)</title><rect x="25.3" y="757" width="1026.6" height="15.0" fill="rgb(212,140,45)" rx="2" ry="2" />
+<text text-anchor="" x="28.34" y="767.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.Constraint.\\</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insertModifying (5 samples, 0.50%)</title><rect x="975.2" y="325" width="5.9" height="15.0" fill="rgb(231,182,2)" rx="2" ry="2" />
+<text text-anchor="" x="978.24" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rules.rules (139 samples, 13.90%)</title><rect x="869.0" y="405" width="164.1" height="15.0" fill="rgb(205,210,54)" rx="2" ry="2" />
+<text text-anchor="" x="872.04" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rules.rules</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.fromList.\ (3 samples, 0.30%)</title><rect x="939.8" y="341" width="3.6" height="15.0" fill="rgb(207,25,17)" rx="2" ry="2" />
+<text text-anchor="" x="942.84" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.fmap (1 samples, 0.10%)</title><rect x="912.7" y="309" width="1.2" height="15.0" fill="rgb(218,69,6)" rx="2" ry="2" />
+<text text-anchor="" x="915.70" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.hashWithSalt (1 samples, 0.10%)</title><rect x="798.2" y="229" width="1.2" height="15.0" fill="rgb(215,114,14)" rx="2" ry="2" />
+<text text-anchor="" x="801.24" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.checkDefinition (26 samples, 2.60%)</title><rect x="1001.2" y="309" width="30.7" height="15.0" fill="rgb(219,165,19)" rx="2" ry="2" />
+<text text-anchor="" x="1004.20" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >El..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Resolution.moduleScopes.go.publicScope' (1 samples, 0.10%)</title><rect x="982.3" y="341" width="1.2" height="15.0" fill="rgb(206,98,51)" rx="2" ry="2" />
+<text text-anchor="" x="985.32" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Resolution.moduleScopes.go.publicScope' (1 samples, 0.10%)</title><rect x="981.1" y="341" width="1.2" height="15.0" fill="rgb(243,205,27)" rx="2" ry="2" />
+<text text-anchor="" x="984.14" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.hashWithSalt (1 samples, 0.10%)</title><rect x="785.3" y="213" width="1.1" height="15.0" fill="rgb(254,16,3)" rx="2" ry="2" />
+<text text-anchor="" x="788.26" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Evaluation.evaluate (1 samples, 0.10%)</title><rect x="1014.2" y="117" width="1.2" height="15.0" fill="rgb(205,212,35)" rx="2" ry="2" />
+<text text-anchor="" x="1017.18" y="127.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Lexer.operator (2 samples, 0.20%)</title><rect x="910.3" y="357" width="2.4" height="15.0" fill="rgb(218,178,3)" rx="2" ry="2" />
+<text text-anchor="" x="913.34" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Resolution.moduleScopes (12 samples, 1.20%)</title><rect x="970.5" y="389" width="14.2" height="15.0" fill="rgb(217,132,5)" rx="2" ry="2" />
+<text text-anchor="" x="973.52" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.defaultLiftHashWithSalt (71 samples, 7.10%)</title><rect x="706.2" y="245" width="83.8" height="15.0" fill="rgb(219,16,29)" rx="2" ry="2" />
+<text text-anchor="" x="709.20" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.Hash..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Resolution.moduleScopes.(...) (12 samples, 1.20%)</title><rect x="970.5" y="373" width="14.2" height="15.0" fill="rgb(224,49,3)" rx="2" ry="2" />
+<text text-anchor="" x="973.52" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.hash (1 samples, 0.10%)</title><rect x="961.1" y="261" width="1.2" height="15.0" fill="rgb(211,123,7)" rx="2" ry="2" />
+<text text-anchor="" x="964.08" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Driver.runTask (875 samples, 87.50%)</title><rect x="19.4" y="1077" width="1032.5" height="15.0" fill="rgb(231,223,23)" rx="2" ry="2" />
+<text text-anchor="" x="22.44" y="1087.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Driver.runTask</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.Metas.inlineSolutions (3 samples, 0.30%)</title><rect x="878.5" y="293" width="3.5" height="15.0" fill="rgb(226,75,31)" rx="2" ry="2" />
+<text text-anchor="" x="881.48" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.unsafeInsert (12 samples, 1.20%)</title><rect x="948.1" y="293" width="14.2" height="15.0" fill="rgb(253,211,18)" rx="2" ry="2" />
+<text text-anchor="" x="951.10" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.fromList (13 samples, 1.30%)</title><rect x="946.9" y="325" width="15.4" height="15.0" fill="rgb(243,222,44)" rx="2" ry="2" />
+<text text-anchor="" x="949.92" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Options.Applicative.Extra.customExecParser (875 samples, 87.50%)</title><rect x="19.4" y="1301" width="1032.5" height="15.0" fill="rgb(215,70,11)" rx="2" ry="2" />
+<text text-anchor="" x="22.44" y="1311.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Options.Applicative.Extra.customExecParser</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.&gt;&gt;= (1 samples, 0.10%)</title><rect x="917.4" y="181" width="1.2" height="15.0" fill="rgb(209,5,48)" rx="2" ry="2" />
+<text text-anchor="" x="920.42" y="191.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.inferName (1 samples, 0.10%)</title><rect x="1028.3" y="245" width="1.2" height="15.0" fill="rgb(236,193,40)" rx="2" ry="2" />
+<text text-anchor="" x="1031.34" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Options.Applicative.Common.evalParser (875 samples, 87.50%)</title><rect x="19.4" y="1141" width="1032.5" height="15.0" fill="rgb(248,102,39)" rx="2" ry="2" />
+<text text-anchor="" x="22.44" y="1151.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Options.Applicative.Common.evalParser</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashByteArrayWithSalt (1 samples, 0.10%)</title><rect x="961.1" y="197" width="1.2" height="15.0" fill="rgb(232,86,20)" rx="2" ry="2" />
+<text text-anchor="" x="964.08" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashWithSalt (1 samples, 0.10%)</title><rect x="702.7" y="261" width="1.1" height="15.0" fill="rgb(236,49,53)" rx="2" ry="2" />
+<text text-anchor="" x="705.66" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.memoise (8 samples, 0.80%)</title><rect x="1042.5" y="469" width="9.4" height="15.0" fill="rgb(238,98,0)" rx="2" ry="2" />
+<text text-anchor="" x="1045.50" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Driver.runTask.rules.\ (2 samples, 0.20%)</title><rect x="1042.5" y="405" width="2.4" height="15.0" fill="rgb(226,32,41)" rx="2" ry="2" />
+<text text-anchor="" x="1045.50" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Monad.Trans.Control.liftWith.\ (874 samples, 87.40%)</title><rect x="20.6" y="933" width="1031.3" height="15.0" fill="rgb(218,167,9)" rx="2" ry="2" />
+<text text-anchor="" x="23.62" y="943.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Control.Monad.Trans.Control.liftWith.\</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Resolution.moduleScopes.go (12 samples, 1.20%)</title><rect x="970.5" y="357" width="14.2" height="15.0" fill="rgb(236,105,26)" rx="2" ry="2" />
+<text text-anchor="" x="973.52" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.runTask (875 samples, 87.50%)</title><rect x="19.4" y="1061" width="1032.5" height="15.0" fill="rgb(227,181,51)" rx="2" ry="2" />
+<text text-anchor="" x="22.44" y="1071.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rock.Core.runTask</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Array.copy (3 samples, 0.30%)</title><rect x="957.5" y="261" width="3.6" height="15.0" fill="rgb(210,52,9)" rx="2" ry="2" />
+<text text-anchor="" x="960.54" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.checkDefinitionMetaSolutions (5 samples, 0.50%)</title><rect x="876.1" y="309" width="5.9" height="15.0" fill="rgb(209,202,24)" rx="2" ry="2" />
+<text text-anchor="" x="879.12" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashByteArrayWithSalt (1 samples, 0.10%)</title><rect x="788.8" y="197" width="1.2" height="15.0" fill="rgb(237,4,5)" rx="2" ry="2" />
+<text text-anchor="" x="791.80" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Options.Applicative.Common.runParser.result (875 samples, 87.50%)</title><rect x="19.4" y="1157" width="1032.5" height="15.0" fill="rgb(252,12,36)" rx="2" ry="2" />
+<text text-anchor="" x="22.44" y="1167.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Options.Applicative.Common.runParser.result</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Concurrent.Async.Lifted.Safe.&lt;&gt; (870 samples, 87.00%)</title><rect x="25.3" y="789" width="1026.6" height="15.0" fill="rgb(211,131,17)" rx="2" ry="2" />
+<text text-anchor="" x="28.34" y="799.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Control.Concurrent.Async.Lifted.Safe.&lt;&gt;</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Concurrent.Async.catchAll (870 samples, 87.00%)</title><rect x="25.3" y="629" width="1026.6" height="15.0" fill="rgb(224,21,3)" rx="2" ry="2" />
+<text text-anchor="" x="28.34" y="639.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Control.Concurrent.Async.catchAll</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Monad.runM (5 samples, 0.50%)</title><rect x="876.1" y="357" width="5.9" height="15.0" fill="rgb(225,94,33)" rx="2" ry="2" />
+<text text-anchor="" x="879.12" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Main.main (875 samples, 87.50%)</title><rect x="19.4" y="1333" width="1032.5" height="15.0" fill="rgb(241,213,35)" rx="2" ry="2" />
+<text text-anchor="" x="22.44" y="1343.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Main.main</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Builtin.$mTypeName.\ (6 samples, 0.60%)</title><rect x="874.9" y="389" width="7.1" height="15.0" fill="rgb(223,160,35)" rx="2" ry="2" />
+<text text-anchor="" x="877.94" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.checkTopLevelDefinition (27 samples, 2.70%)</title><rect x="1000.0" y="325" width="31.9" height="15.0" fill="rgb(234,62,13)" rx="2" ry="2" />
+<text text-anchor="" x="1003.02" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >El..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.lookup# (1 samples, 0.10%)</title><rect x="969.3" y="277" width="1.2" height="15.0" fill="rgb(214,7,4)" rx="2" ry="2" />
+<text text-anchor="" x="972.34" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashWithSalt (1 samples, 0.10%)</title><rect x="805.3" y="245" width="1.2" height="15.0" fill="rgb(243,66,21)" rx="2" ry="2" />
+<text text-anchor="" x="808.32" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.defaultLiftHashWithSalt (11 samples, 1.10%)</title><rect x="136.3" y="293" width="12.9" height="15.0" fill="rgb(228,14,22)" rx="2" ry="2" />
+<text text-anchor="" x="139.26" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.hashWithSalt (2 samples, 0.20%)</title><rect x="804.1" y="261" width="2.4" height="15.0" fill="rgb(214,18,54)" rx="2" ry="2" />
+<text text-anchor="" x="807.14" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Unification.tryUnify (1 samples, 0.10%)</title><rect x="1030.7" y="245" width="1.2" height="15.0" fill="rgb(224,3,22)" rx="2" ry="2" />
+<text text-anchor="" x="1033.70" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.fetch (1 samples, 0.10%)</title><rect x="24.2" y="821" width="1.1" height="15.0" fill="rgb(228,4,21)" rx="2" ry="2" />
+<text text-anchor="" x="27.16" y="831.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Array.copy.\ (1 samples, 0.10%)</title><rect x="933.9" y="357" width="1.2" height="15.0" fill="rgb(209,89,22)" rx="2" ry="2" />
+<text text-anchor="" x="936.94" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.hash (106 samples, 10.60%)</title><rect x="681.4" y="357" width="125.1" height="15.0" fill="rgb(239,180,50)" rx="2" ry="2" />
+<text text-anchor="" x="684.42" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.HashMap.Ba..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hash (1 samples, 0.10%)</title><rect x="961.1" y="229" width="1.2" height="15.0" fill="rgb(218,55,47)" rx="2" ry="2" />
+<text text-anchor="" x="964.08" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.liftHashWithSalt (11 samples, 1.10%)</title><rect x="136.3" y="309" width="12.9" height="15.0" fill="rgb(218,28,16)" rx="2" ry="2" />
+<text text-anchor="" x="139.26" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insertNewKey.go (332 samples, 33.20%)</title><rect x="284.9" y="341" width="391.8" height="15.0" fill="rgb(247,55,25)" rx="2" ry="2" />
+<text text-anchor="" x="287.94" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.HashMap.Base.insertNewKey.go</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Some.Newtype.==.\.\ (2 samples, 0.20%)</title><rect x="151.6" y="373" width="2.4" height="15.0" fill="rgb(247,180,6)" rx="2" ry="2" />
+<text text-anchor="" x="154.60" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.unsafeInsert.go (10 samples, 1.00%)</title><rect x="949.3" y="277" width="11.8" height="15.0" fill="rgb(217,23,13)" rx="2" ry="2" />
+<text text-anchor="" x="952.28" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insertNewKey.go.ary' (62 samples, 6.20%)</title><rect x="546.9" y="325" width="73.2" height="15.0" fill="rgb(241,173,36)" rx="2" ry="2" />
+<text text-anchor="" x="549.90" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.Has..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Generic.Instances.hashSum (12 samples, 1.20%)</title><rect x="768.7" y="181" width="14.2" height="15.0" fill="rgb(220,182,32)" rx="2" ry="2" />
+<text text-anchor="" x="771.74" y="191.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.IntMap.traverseWithKey (1 samples, 0.10%)</title><rect x="996.5" y="293" width="1.2" height="15.0" fill="rgb(224,114,42)" rx="2" ry="2" />
+<text text-anchor="" x="999.48" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.hashWithSalt (1 samples, 0.10%)</title><rect x="790.0" y="261" width="1.2" height="15.0" fill="rgb(215,149,50)" rx="2" ry="2" />
+<text text-anchor="" x="792.98" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Lexer.operatorToken (1 samples, 0.10%)</title><rect x="911.5" y="341" width="1.2" height="15.0" fill="rgb(250,151,11)" rx="2" ry="2" />
+<text text-anchor="" x="914.52" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Options.Applicative.Common.runParserFully (875 samples, 87.50%)</title><rect x="19.4" y="1221" width="1032.5" height="15.0" fill="rgb(210,29,4)" rx="2" ry="2" />
+<text text-anchor="" x="22.44" y="1231.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Options.Applicative.Common.runParserFully</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insertNewKey.go.i (8 samples, 0.80%)</title><rect x="620.1" y="325" width="9.4" height="15.0" fill="rgb(251,25,31)" rx="2" ry="2" />
+<text text-anchor="" x="623.06" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashWithSalt (86 samples, 8.60%)</title><rect x="699.1" y="293" width="101.5" height="15.0" fill="rgb(227,223,32)" rx="2" ry="2" />
+<text text-anchor="" x="702.12" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.Hashabl..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.IORef.Lifted.newIORef (1 samples, 0.10%)</title><rect x="1031.9" y="357" width="1.2" height="15.0" fill="rgb(211,46,43)" rx="2" ry="2" />
+<text text-anchor="" x="1034.88" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.hash (1 samples, 0.10%)</title><rect x="785.3" y="197" width="1.1" height="15.0" fill="rgb(213,59,33)" rx="2" ry="2" />
+<text text-anchor="" x="788.26" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.&gt;&gt;=.\.\ (2 samples, 0.20%)</title><rect x="915.1" y="197" width="2.3" height="15.0" fill="rgb(239,49,54)" rx="2" ry="2" />
+<text text-anchor="" x="918.06" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.memoise.\ (8 samples, 0.80%)</title><rect x="1042.5" y="453" width="9.4" height="15.0" fill="rgb(239,31,25)" rx="2" ry="2" />
+<text text-anchor="" x="1045.50" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashWithSalt (2 samples, 0.20%)</title><rect x="766.4" y="117" width="2.3" height="15.0" fill="rgb(205,105,26)" rx="2" ry="2" />
+<text text-anchor="" x="769.38" y="127.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Exception.Lifted.catch (1 samples, 0.10%)</title><rect x="1024.8" y="85" width="1.2" height="15.0" fill="rgb(241,3,53)" rx="2" ry="2" />
+<text text-anchor="" x="1027.80" y="95.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Driver.runTask.rules (8 samples, 0.80%)</title><rect x="1042.5" y="485" width="9.4" height="15.0" fill="rgb(239,16,16)" rx="2" ry="2" />
+<text text-anchor="" x="1045.50" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Inlining.evaluate (1 samples, 0.10%)</title><rect x="998.8" y="293" width="1.2" height="15.0" fill="rgb(254,198,9)" rx="2" ry="2" />
+<text text-anchor="" x="1001.84" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Monad.Trans.Control.restoreM (1 samples, 0.10%)</title><rect x="1024.8" y="53" width="1.2" height="15.0" fill="rgb(208,164,37)" rx="2" ry="2" />
+<text text-anchor="" x="1027.80" y="63.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Exception.Lifted.try (36 samples, 3.60%)</title><rect x="989.4" y="357" width="42.5" height="15.0" fill="rgb(215,184,9)" rx="2" ry="2" />
+<text text-anchor="" x="992.40" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Cont..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.&lt;*&gt; (1 samples, 0.10%)</title><rect x="913.9" y="293" width="1.2" height="15.0" fill="rgb(218,163,47)" rx="2" ry="2" />
+<text text-anchor="" x="916.88" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashWithSalt (1 samples, 0.10%)</title><rect x="764.0" y="101" width="1.2" height="15.0" fill="rgb(238,50,16)" rx="2" ry="2" />
+<text text-anchor="" x="767.02" y="111.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.IORef.Lifted.atomicModifyIORef (870 samples, 87.00%)</title><rect x="25.3" y="581" width="1026.6" height="15.0" fill="rgb(215,92,52)" rx="2" ry="2" />
+<text text-anchor="" x="28.34" y="591.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.IORef.Lifted.atomicModifyIORef</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Dependent.HashMap.alterF (567 samples, 56.70%)</title><rect x="189.4" y="405" width="669.0" height="15.0" fill="rgb(252,52,41)" rx="2" ry="2" />
+<text text-anchor="" x="192.36" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.Dependent.HashMap.alterF</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rules.rules.runElaborator (1 samples, 0.10%)</title><rect x="24.2" y="709" width="1.1" height="15.0" fill="rgb(214,145,49)" rx="2" ry="2" />
+<text text-anchor="" x="27.16" y="719.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashWithSalt (2 samples, 0.20%)</title><rect x="774.6" y="149" width="2.4" height="15.0" fill="rgb(207,13,35)" rx="2" ry="2" />
+<text text-anchor="" x="777.64" y="159.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.check (4 samples, 0.40%)</title><rect x="1027.2" y="293" width="4.7" height="15.0" fill="rgb(248,14,44)" rx="2" ry="2" />
+<text text-anchor="" x="1030.16" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hash (2 samples, 0.20%)</title><rect x="762.8" y="117" width="2.4" height="15.0" fill="rgb(239,97,18)" rx="2" ry="2" />
+<text text-anchor="" x="765.84" y="127.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.unsafeInsert.go (3 samples, 0.30%)</title><rect x="939.8" y="309" width="3.6" height="15.0" fill="rgb(233,96,26)" rx="2" ry="2" />
+<text text-anchor="" x="942.84" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Monad.Trans.Control.defaultLiftBaseWith.\ (874 samples, 87.40%)</title><rect x="20.6" y="965" width="1031.3" height="15.0" fill="rgb(238,132,38)" rx="2" ry="2" />
+<text text-anchor="" x="23.62" y="975.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Control.Monad.Trans.Control.defaultLiftBaseWith.\</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insertModifying.go (4 samples, 0.40%)</title><rect x="975.2" y="309" width="4.8" height="15.0" fill="rgb(248,31,14)" rx="2" ry="2" />
+<text text-anchor="" x="978.24" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashWithSalt (1 samples, 0.10%)</title><rect x="961.1" y="213" width="1.2" height="15.0" fill="rgb(218,219,37)" rx="2" ry="2" />
+<text text-anchor="" x="964.08" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.manyAccum (6 samples, 0.60%)</title><rect x="912.7" y="341" width="7.1" height="15.0" fill="rgb(238,142,42)" rx="2" ry="2" />
+<text text-anchor="" x="915.70" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rules.rules (5 samples, 0.50%)</title><rect x="1035.4" y="437" width="5.9" height="15.0" fill="rgb(220,93,18)" rx="2" ry="2" />
+<text text-anchor="" x="1038.42" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Query.hash (99 samples, 9.90%)</title><rect x="689.7" y="341" width="116.8" height="15.0" fill="rgb(229,174,12)" rx="2" ry="2" />
+<text text-anchor="" x="692.68" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Query.hash</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Main.checkCommand (875 samples, 87.50%)</title><rect x="19.4" y="1125" width="1032.5" height="15.0" fill="rgb(219,217,34)" rx="2" ry="2" />
+<text text-anchor="" x="22.44" y="1135.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Main.checkCommand</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Generic.Instances.ghashWithSalt (13 samples, 1.30%)</title><rect x="753.4" y="181" width="15.3" height="15.0" fill="rgb(231,84,17)" rx="2" ry="2" />
+<text text-anchor="" x="756.40" y="191.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.alterFEager.\ (346 samples, 34.60%)</title><rect x="268.4" y="373" width="408.3" height="15.0" fill="rgb(212,137,23)" rx="2" ry="2" />
+<text text-anchor="" x="271.42" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.HashMap.Base.alterFEager.\</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.lookup# (5 samples, 0.50%)</title><rect x="882.0" y="389" width="5.9" height="15.0" fill="rgb(209,180,5)" rx="2" ry="2" />
+<text text-anchor="" x="885.02" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Options.Applicative.Common.runParser (875 samples, 87.50%)</title><rect x="19.4" y="1173" width="1032.5" height="15.0" fill="rgb(250,106,41)" rx="2" ry="2" />
+<text text-anchor="" x="22.44" y="1183.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Options.Applicative.Common.runParser</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.hash (2 samples, 0.20%)</title><rect x="885.6" y="373" width="2.3" height="15.0" fill="rgb(239,137,22)" rx="2" ry="2" />
+<text text-anchor="" x="888.56" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rules.rules.\ (26 samples, 2.60%)</title><rect x="939.8" y="373" width="30.7" height="15.0" fill="rgb(249,59,39)" rx="2" ry="2" />
+<text text-anchor="" x="942.84" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Ru..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.memoise.\ (744 samples, 74.40%)</title><rect x="155.1" y="437" width="878.0" height="15.0" fill="rgb(238,208,46)" rx="2" ry="2" />
+<text text-anchor="" x="158.14" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rock.Core.memoise.\</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Some.Newtype.== (3 samples, 0.30%)</title><rect x="150.4" y="405" width="3.6" height="15.0" fill="rgb(253,34,53)" rx="2" ry="2" />
+<text text-anchor="" x="153.42" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.module_ (6 samples, 0.60%)</title><rect x="912.7" y="373" width="7.1" height="15.0" fill="rgb(210,111,0)" rx="2" ry="2" />
+<text text-anchor="" x="915.70" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.insertMetasReturningSyntax (1 samples, 0.10%)</title><rect x="1017.7" y="133" width="1.2" height="15.0" fill="rgb(219,145,45)" rx="2" ry="2" />
+<text text-anchor="" x="1020.72" y="143.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Some.Newtype.withSome (3 samples, 0.30%)</title><rect x="150.4" y="389" width="3.6" height="15.0" fill="rgb(217,162,42)" rx="2" ry="2" />
+<text text-anchor="" x="153.42" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.intersection (4 samples, 0.40%)</title><rect x="965.8" y="309" width="4.7" height="15.0" fill="rgb(236,23,3)" rx="2" ry="2" />
+<text text-anchor="" x="968.80" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.lookup# (45 samples, 4.50%)</title><rect x="100.9" y="421" width="53.1" height="15.0" fill="rgb(248,114,13)" rx="2" ry="2" />
+<text text-anchor="" x="103.86" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data...</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.Metas.inlineSolutions (3 samples, 0.30%)</title><rect x="992.9" y="309" width="3.6" height="15.0" fill="rgb(235,156,34)" rx="2" ry="2" />
+<text text-anchor="" x="995.94" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.hashWithSalt (3 samples, 0.30%)</title><rect x="765.2" y="133" width="3.5" height="15.0" fill="rgb(254,172,16)" rx="2" ry="2" />
+<text text-anchor="" x="768.20" y="143.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.clauses (1 samples, 0.10%)</title><rect x="916.2" y="181" width="1.2" height="15.0" fill="rgb(232,175,13)" rx="2" ry="2" />
+<text text-anchor="" x="919.24" y="191.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insertNewKey (341 samples, 34.10%)</title><rect x="274.3" y="357" width="402.4" height="15.0" fill="rgb(230,67,24)" rx="2" ry="2" />
+<text text-anchor="" x="277.32" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.HashMap.Base.insertNewKey</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashWithSalt (9 samples, 0.90%)</title><rect x="137.4" y="277" width="10.7" height="15.0" fill="rgb(213,11,29)" rx="2" ry="2" />
+<text text-anchor="" x="140.44" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.inferName (2 samples, 0.20%)</title><rect x="1013.0" y="149" width="2.4" height="15.0" fill="rgb(250,71,1)" rx="2" ry="2" />
+<text text-anchor="" x="1016.00" y="159.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.memoise (845 samples, 84.50%)</title><rect x="36.0" y="453" width="997.1" height="15.0" fill="rgb(241,189,2)" rx="2" ry="2" />
+<text text-anchor="" x="38.96" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rock.Core.memoise</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.hash (8 samples, 0.80%)</title><rect x="759.3" y="149" width="9.4" height="15.0" fill="rgb(247,135,24)" rx="2" ry="2" />
+<text text-anchor="" x="762.30" y="159.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashByteArrayWithSalt (1 samples, 0.10%)</title><rect x="767.6" y="101" width="1.1" height="15.0" fill="rgb(229,217,41)" rx="2" ry="2" />
+<text text-anchor="" x="770.56" y="111.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Unification.unify (1 samples, 0.10%)</title><rect x="1030.7" y="229" width="1.2" height="15.0" fill="rgb(227,44,30)" rx="2" ry="2" />
+<text text-anchor="" x="1033.70" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Unification.unify.catchAndAdd (1 samples, 0.10%)</title><rect x="1030.7" y="213" width="1.2" height="15.0" fill="rgb(210,53,25)" rx="2" ry="2" />
+<text text-anchor="" x="1033.70" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Array.copy.\ (1 samples, 0.10%)</title><rect x="942.2" y="277" width="1.2" height="15.0" fill="rgb(237,130,30)" rx="2" ry="2" />
+<text text-anchor="" x="945.20" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Exception.Lifted.try.\ (1 samples, 0.10%)</title><rect x="24.2" y="661" width="1.1" height="15.0" fill="rgb(249,95,18)" rx="2" ry="2" />
+<text text-anchor="" x="27.16" y="671.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashWithSalt (53 samples, 5.30%)</title><rect x="720.4" y="229" width="62.5" height="15.0" fill="rgb(253,170,10)" rx="2" ry="2" />
+<text text-anchor="" x="723.36" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.H..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.liftBaseWith (875 samples, 87.50%)</title><rect x="19.4" y="1013" width="1032.5" height="15.0" fill="rgb(243,175,46)" rx="2" ry="2" />
+<text text-anchor="" x="22.44" y="1023.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rock.Core.liftBaseWith</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>UNKNOWN (117 samples, 11.70%)</title><rect x="1051.9" y="1349" width="138.1" height="15.0" fill="rgb(236,81,1)" rx="2" ry="2" />
+<text text-anchor="" x="1054.94" y="1359.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >UNKNOWN</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Generic.Instances.ghashWithSalt (6 samples, 0.60%)</title><rect x="141.0" y="245" width="7.1" height="15.0" fill="rgb(241,12,4)" rx="2" ry="2" />
+<text text-anchor="" x="143.98" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Generic.Instances.ghashWithSalt (2 samples, 0.20%)</title><rect x="797.1" y="245" width="2.3" height="15.0" fill="rgb(226,41,14)" rx="2" ry="2" />
+<text text-anchor="" x="800.06" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.check (17 samples, 1.70%)</title><rect x="1007.1" y="197" width="20.1" height="15.0" fill="rgb(216,41,41)" rx="2" ry="2" />
+<text text-anchor="" x="1010.10" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rules.rules.runElaborator (5 samples, 0.50%)</title><rect x="876.1" y="373" width="5.9" height="15.0" fill="rgb(247,124,38)" rx="2" ry="2" />
+<text text-anchor="" x="879.12" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Resolution.moduleScopes.go.definitionCase (1 samples, 0.10%)</title><rect x="974.1" y="341" width="1.1" height="15.0" fill="rgb(225,127,45)" rx="2" ry="2" />
+<text text-anchor="" x="977.06" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.combine (1 samples, 0.10%)</title><rect x="781.7" y="101" width="1.2" height="15.0" fill="rgb(213,37,12)" rx="2" ry="2" />
+<text text-anchor="" x="784.72" y="111.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.hash (18 samples, 1.80%)</title><rect x="129.2" y="405" width="21.2" height="15.0" fill="rgb(229,5,52)" rx="2" ry="2" />
+<text text-anchor="" x="132.18" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Unification.unify.catchAndAdd (1 samples, 0.10%)</title><rect x="1024.8" y="101" width="1.2" height="15.0" fill="rgb(218,164,11)" rx="2" ry="2" />
+<text text-anchor="" x="1027.80" y="111.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Driver.pooledForConcurrentlyIO_ (870 samples, 87.00%)</title><rect x="25.3" y="837" width="1026.6" height="15.0" fill="rgb(241,49,51)" rx="2" ry="2" />
+<text text-anchor="" x="28.34" y="847.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Driver.pooledForConcurrentlyIO_</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.plicitAtomicTerm (1 samples, 0.10%)</title><rect x="1050.8" y="325" width="1.1" height="15.0" fill="rgb(215,95,36)" rx="2" ry="2" />
+<text text-anchor="" x="1053.76" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Concurrent.Async.Lifted.Safe.mappend (870 samples, 87.00%)</title><rect x="25.3" y="805" width="1026.6" height="15.0" fill="rgb(214,114,54)" rx="2" ry="2" />
+<text text-anchor="" x="28.34" y="815.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Control.Concurrent.Async.Lifted.Safe.mappend</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hash (1 samples, 0.10%)</title><rect x="886.7" y="357" width="1.2" height="15.0" fill="rgb(232,28,12)" rx="2" ry="2" />
+<text text-anchor="" x="889.74" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.withIndentedToken.\.\ (2 samples, 0.20%)</title><rect x="915.1" y="213" width="2.3" height="15.0" fill="rgb(248,112,9)" rx="2" ry="2" />
+<text text-anchor="" x="918.06" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Array.new_ (6 samples, 0.60%)</title><rect x="613.0" y="309" width="7.1" height="15.0" fill="rgb(238,192,5)" rx="2" ry="2" />
+<text text-anchor="" x="615.98" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Driver.checkAll (875 samples, 87.50%)</title><rect x="19.4" y="1045" width="1032.5" height="15.0" fill="rgb(240,8,36)" rx="2" ry="2" />
+<text text-anchor="" x="22.44" y="1055.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Driver.checkAll</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insertModifying.go.ary' (2 samples, 0.20%)</title><rect x="977.6" y="293" width="2.4" height="15.0" fill="rgb(210,86,5)" rx="2" ry="2" />
+<text text-anchor="" x="980.60" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Monad.Trans.Control.liftWith (874 samples, 87.40%)</title><rect x="20.6" y="949" width="1031.3" height="15.0" fill="rgb(224,186,41)" rx="2" ry="2" />
+<text text-anchor="" x="23.62" y="959.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Control.Monad.Trans.Control.liftWith</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Driver.pooledForConcurrently_.\ (870 samples, 87.00%)</title><rect x="25.3" y="853" width="1026.6" height="15.0" fill="rgb(236,80,8)" rx="2" ry="2" />
+<text text-anchor="" x="28.34" y="863.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Driver.pooledForConcurrently_.\</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashWithSalt (4 samples, 0.40%)</title><rect x="778.2" y="133" width="4.7" height="15.0" fill="rgb(208,64,36)" rx="2" ry="2" />
+<text text-anchor="" x="781.18" y="143.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Resolution.importedNames.qualifiedNames (19 samples, 1.90%)</title><rect x="943.4" y="341" width="22.4" height="15.0" fill="rgb(220,132,21)" rx="2" ry="2" />
+<text text-anchor="" x="946.38" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >R..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.alterFEager (544 samples, 54.40%)</title><rect x="216.5" y="389" width="641.9" height="15.0" fill="rgb(210,96,14)" rx="2" ry="2" />
+<text text-anchor="" x="219.50" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.HashMap.Base.alterFEager</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.hash (3 samples, 0.30%)</title><rect x="803.0" y="277" width="3.5" height="15.0" fill="rgb(215,210,38)" rx="2" ry="2" />
+<text text-anchor="" x="805.96" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Dependent.HashMap.alterLookup (579 samples, 57.90%)</title><rect x="175.2" y="421" width="683.2" height="15.0" fill="rgb(214,8,12)" rx="2" ry="2" />
+<text text-anchor="" x="178.20" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.Dependent.HashMap.alterLookup</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insertModifying.go.ary' (1 samples, 0.10%)</title><rect x="974.1" y="277" width="1.1" height="15.0" fill="rgb(217,24,7)" rx="2" ry="2" />
+<text text-anchor="" x="977.06" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Query.hash (13 samples, 1.30%)</title><rect x="135.1" y="357" width="15.3" height="15.0" fill="rgb(222,118,18)" rx="2" ry="2" />
+<text text-anchor="" x="138.08" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insert'.go (1 samples, 0.10%)</title><rect x="1041.3" y="469" width="1.2" height="15.0" fill="rgb(238,150,27)" rx="2" ry="2" />
+<text text-anchor="" x="1044.32" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.many (6 samples, 0.60%)</title><rect x="912.7" y="357" width="7.1" height="15.0" fill="rgb(220,77,3)" rx="2" ry="2" />
+<text text-anchor="" x="915.70" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Monad.Trans.Control.defaultRestoreM (1 samples, 0.10%)</title><rect x="1024.8" y="37" width="1.2" height="15.0" fill="rgb(253,88,1)" rx="2" ry="2" />
+<text text-anchor="" x="1027.80" y="47.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.liftBase (1 samples, 0.10%)</title><rect x="1031.9" y="341" width="1.2" height="15.0" fill="rgb(232,58,44)" rx="2" ry="2" />
+<text text-anchor="" x="1034.88" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Evaluation.evaluate (1 samples, 0.10%)</title><rect x="889.1" y="389" width="1.2" height="15.0" fill="rgb(226,185,48)" rx="2" ry="2" />
+<text text-anchor="" x="892.10" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Exception.Lifted.try (1 samples, 0.10%)</title><rect x="24.2" y="677" width="1.1" height="15.0" fill="rgb(220,174,18)" rx="2" ry="2" />
+<text text-anchor="" x="27.16" y="687.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashWithSalt (1 samples, 0.10%)</title><rect x="146.9" y="181" width="1.2" height="15.0" fill="rgb(229,34,7)" rx="2" ry="2" />
+<text text-anchor="" x="149.88" y="191.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.fetch (8 samples, 0.80%)</title><rect x="1042.5" y="517" width="9.4" height="15.0" fill="rgb(244,177,39)" rx="2" ry="2" />
+<text text-anchor="" x="1045.50" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Generic.Instances.hashSum (1 samples, 0.10%)</title><rect x="799.4" y="245" width="1.2" height="15.0" fill="rgb(219,90,51)" rx="2" ry="2" />
+<text text-anchor="" x="802.42" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.fetch.\ (858 samples, 85.80%)</title><rect x="28.9" y="485" width="1012.4" height="15.0" fill="rgb(234,174,23)" rx="2" ry="2" />
+<text text-anchor="" x="31.88" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rock.Core.fetch.\</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Generic.Instances.ghashWithSalt (8 samples, 0.80%)</title><rect x="791.2" y="277" width="9.4" height="15.0" fill="rgb(250,23,1)" rx="2" ry="2" />
+<text text-anchor="" x="794.16" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Lexer.identifier.state1 (2 samples, 0.20%)</title><rect x="904.4" y="341" width="2.4" height="15.0" fill="rgb(240,68,9)" rx="2" ry="2" />
+<text text-anchor="" x="907.44" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>MAIN.MAIN (883 samples, 88.30%)</title><rect x="10.0" y="1349" width="1041.9" height="15.0" fill="rgb(232,122,14)" rx="2" ry="2" />
+<text text-anchor="" x="13.00" y="1359.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >MAIN.MAIN</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Lexer.index (1 samples, 0.10%)</title><rect x="908.0" y="357" width="1.2" height="15.0" fill="rgb(209,21,36)" rx="2" ry="2" />
+<text text-anchor="" x="910.98" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.liftHashWithSalt2 (1 samples, 0.10%)</title><rect x="148.1" y="277" width="1.1" height="15.0" fill="rgb(245,78,3)" rx="2" ry="2" />
+<text text-anchor="" x="151.06" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.Matching.elaborateWithCoverage (21 samples, 2.10%)</title><rect x="1002.4" y="261" width="24.8" height="15.0" fill="rgb(246,216,53)" rx="2" ry="2" />
+<text text-anchor="" x="1005.38" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >E..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Monad.Trans.Control.control (2 samples, 0.20%)</title><rect x="1021.3" y="85" width="2.3" height="15.0" fill="rgb(241,58,0)" rx="2" ry="2" />
+<text text-anchor="" x="1024.26" y="95.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.hashWithSalt (1 samples, 0.10%)</title><rect x="149.2" y="341" width="1.2" height="15.0" fill="rgb(214,202,30)" rx="2" ry="2" />
+<text text-anchor="" x="152.24" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.GADT.Internal.defaultEq (2 samples, 0.20%)</title><rect x="151.6" y="357" width="2.4" height="15.0" fill="rgb(251,96,28)" rx="2" ry="2" />
+<text text-anchor="" x="154.60" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.unsafeInsert (3 samples, 0.30%)</title><rect x="939.8" y="325" width="3.6" height="15.0" fill="rgb(231,203,38)" rx="2" ry="2" />
+<text text-anchor="" x="942.84" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.defaultHashWithSalt (2 samples, 0.20%)</title><rect x="731.0" y="213" width="2.3" height="15.0" fill="rgb(228,47,30)" rx="2" ry="2" />
+<text text-anchor="" x="733.98" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Monad.Trans.Control.liftWith.\.\ (870 samples, 87.00%)</title><rect x="25.3" y="549" width="1026.6" height="15.0" fill="rgb(254,86,27)" rx="2" ry="2" />
+<text text-anchor="" x="28.34" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Control.Monad.Trans.Control.liftWith.\.\</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Dependent.HashMap.alterF.\ (4 samples, 0.40%)</title><rect x="211.8" y="389" width="4.7" height="15.0" fill="rgb(218,3,44)" rx="2" ry="2" />
+<text text-anchor="" x="214.78" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.lookup# (4 samples, 0.40%)</title><rect x="935.1" y="373" width="4.7" height="15.0" fill="rgb(220,202,53)" rx="2" ry="2" />
+<text text-anchor="" x="938.12" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insert (1 samples, 0.10%)</title><rect x="1041.3" y="501" width="1.2" height="15.0" fill="rgb(240,183,31)" rx="2" ry="2" />
+<text text-anchor="" x="1044.32" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Generic.Instances.ghashWithSalt (2 samples, 0.20%)</title><rect x="142.2" y="229" width="2.3" height="15.0" fill="rgb(248,65,52)" rx="2" ry="2" />
+<text text-anchor="" x="145.16" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.module_ (1 samples, 0.10%)</title><rect x="1050.8" y="389" width="1.1" height="15.0" fill="rgb(237,9,53)" rx="2" ry="2" />
+<text text-anchor="" x="1053.76" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.defaultHashWithSalt (1 samples, 0.10%)</title><rect x="145.7" y="181" width="1.2" height="15.0" fill="rgb(247,195,1)" rx="2" ry="2" />
+<text text-anchor="" x="148.70" y="191.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rules.rules.runElaborator (39 samples, 3.90%)</title><rect x="987.0" y="389" width="46.1" height="15.0" fill="rgb(216,169,18)" rx="2" ry="2" />
+<text text-anchor="" x="990.04" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rule..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Resolution.importedNames (23 samples, 2.30%)</title><rect x="943.4" y="357" width="27.1" height="15.0" fill="rgb(252,62,29)" rx="2" ry="2" />
+<text text-anchor="" x="946.38" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >R..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.evaluate (1 samples, 0.10%)</title><rect x="1014.2" y="133" width="1.2" height="15.0" fill="rgb(233,84,39)" rx="2" ry="2" />
+<text text-anchor="" x="1017.18" y="143.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Query.hash (15 samples, 1.50%)</title><rect x="132.7" y="389" width="17.7" height="15.0" fill="rgb(244,166,7)" rx="2" ry="2" />
+<text text-anchor="" x="135.72" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.checkUnspanned (4 samples, 0.40%)</title><rect x="1027.2" y="277" width="4.7" height="15.0" fill="rgb(208,99,27)" rx="2" ry="2" />
+<text text-anchor="" x="1030.16" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.fromList (3 samples, 0.30%)</title><rect x="939.8" y="357" width="3.6" height="15.0" fill="rgb(213,156,45)" rx="2" ry="2" />
+<text text-anchor="" x="942.84" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.hashWithSalt (1 samples, 0.10%)</title><rect x="143.3" y="213" width="1.2" height="15.0" fill="rgb(205,109,53)" rx="2" ry="2" />
+<text text-anchor="" x="146.34" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Options.Applicative.Extra.execParserPure.p (875 samples, 87.50%)</title><rect x="19.4" y="1253" width="1032.5" height="15.0" fill="rgb(235,195,18)" rx="2" ry="2" />
+<text text-anchor="" x="22.44" y="1263.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Options.Applicative.Extra.execParserPure.p</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Resolution.importedNames.unqualifiedNames (4 samples, 0.40%)</title><rect x="965.8" y="341" width="4.7" height="15.0" fill="rgb(208,117,1)" rx="2" ry="2" />
+<text text-anchor="" x="968.80" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Unification.unify (1 samples, 0.10%)</title><rect x="24.2" y="549" width="1.1" height="15.0" fill="rgb(211,69,49)" rx="2" ry="2" />
+<text text-anchor="" x="27.16" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Concurrent.Async.Lifted.Safe.liftBaseOp2_.\ (870 samples, 87.00%)</title><rect x="25.3" y="693" width="1026.6" height="15.0" fill="rgb(230,133,10)" rx="2" ry="2" />
+<text text-anchor="" x="28.34" y="703.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Control.Concurrent.Async.Lifted.Safe.liftBaseOp2_.\</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Generic.Instances.hashSum (7 samples, 0.70%)</title><rect x="774.6" y="165" width="8.3" height="15.0" fill="rgb(217,19,5)" rx="2" ry="2" />
+<text text-anchor="" x="777.64" y="175.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Exception.Lifted.try.\ (35 samples, 3.50%)</title><rect x="990.6" y="341" width="41.3" height="15.0" fill="rgb(217,75,23)" rx="2" ry="2" />
+<text text-anchor="" x="993.58" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Con..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.memoise.\ (1 samples, 0.10%)</title><rect x="24.2" y="757" width="1.1" height="15.0" fill="rgb(208,68,44)" rx="2" ry="2" />
+<text text-anchor="" x="27.16" y="767.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.Metas.inlineSolutions.inlineDefSolutions (3 samples, 0.30%)</title><rect x="992.9" y="293" width="3.6" height="15.0" fill="rgb(243,109,6)" rx="2" ry="2" />
+<text text-anchor="" x="995.94" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.alterFEager.h (110 samples, 11.00%)</title><rect x="676.7" y="373" width="129.8" height="15.0" fill="rgb(252,134,43)" rx="2" ry="2" />
+<text text-anchor="" x="679.70" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.HashMap.Bas..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.== (1 samples, 0.10%)</title><rect x="152.8" y="325" width="1.2" height="15.0" fill="rgb(206,82,9)" rx="2" ry="2" />
+<text text-anchor="" x="155.78" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.check (1 samples, 0.10%)</title><rect x="24.2" y="613" width="1.1" height="15.0" fill="rgb(242,216,28)" rx="2" ry="2" />
+<text text-anchor="" x="27.16" y="623.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Generic.Instances.ghashWithSalt (7 samples, 0.70%)</title><rect x="139.8" y="261" width="8.3" height="15.0" fill="rgb(221,198,5)" rx="2" ry="2" />
+<text text-anchor="" x="142.80" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.checkDefinition (1 samples, 0.10%)</title><rect x="24.2" y="629" width="1.1" height="15.0" fill="rgb(245,189,50)" rx="2" ry="2" />
+<text text-anchor="" x="27.16" y="639.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Generic.Instances.ghashWithSalt (5 samples, 0.50%)</title><rect x="794.7" y="261" width="5.9" height="15.0" fill="rgb(251,172,4)" rx="2" ry="2" />
+<text text-anchor="" x="797.70" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.liftHashWithSalt (73 samples, 7.30%)</title><rect x="703.8" y="261" width="86.2" height="15.0" fill="rgb(209,11,1)" rx="2" ry="2" />
+<text text-anchor="" x="706.84" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.Hasha..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Driver.checkAll.\ (1 samples, 0.10%)</title><rect x="24.2" y="853" width="1.1" height="15.0" fill="rgb(251,123,13)" rx="2" ry="2" />
+<text text-anchor="" x="27.16" y="863.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Query.Mapped.rule (43 samples, 4.30%)</title><rect x="919.8" y="389" width="50.7" height="15.0" fill="rgb(245,6,14)" rx="2" ry="2" />
+<text text-anchor="" x="922.78" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Query..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Concurrent.Async.Lifted.Safe.replicateConcurrently_ (870 samples, 87.00%)</title><rect x="25.3" y="821" width="1026.6" height="15.0" fill="rgb(243,108,36)" rx="2" ry="2" />
+<text text-anchor="" x="28.34" y="831.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Control.Concurrent.Async.Lifted.Safe.replicateConcurrently_</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.clone16 (41 samples, 4.10%)</title><rect x="498.5" y="325" width="48.4" height="15.0" fill="rgb(227,188,48)" rx="2" ry="2" />
+<text text-anchor="" x="501.52" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.parseTokens (1 samples, 0.10%)</title><rect x="1050.8" y="405" width="1.1" height="15.0" fill="rgb(234,90,50)" rx="2" ry="2" />
+<text text-anchor="" x="1053.76" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.manyAccum (1 samples, 0.10%)</title><rect x="1050.8" y="357" width="1.1" height="15.0" fill="rgb(209,204,41)" rx="2" ry="2" />
+<text text-anchor="" x="1053.76" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Driver.runTask.rules.\ (1 samples, 0.10%)</title><rect x="887.9" y="389" width="1.2" height="15.0" fill="rgb(207,101,42)" rx="2" ry="2" />
+<text text-anchor="" x="890.92" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Lexer.identifier.position1 (1 samples, 0.10%)</title><rect x="903.3" y="341" width="1.1" height="15.0" fill="rgb(252,221,16)" rx="2" ry="2" />
+<text text-anchor="" x="906.26" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Driver.checkAll.\ (869 samples, 86.90%)</title><rect x="26.5" y="533" width="1025.4" height="15.0" fill="rgb(214,141,13)" rx="2" ry="2" />
+<text text-anchor="" x="29.52" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Driver.checkAll.\</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.liftBaseWith.\ (870 samples, 87.00%)</title><rect x="25.3" y="869" width="1026.6" height="15.0" fill="rgb(212,153,32)" rx="2" ry="2" />
+<text text-anchor="" x="28.34" y="879.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rock.Core.liftBaseWith.\</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.hash (1 samples, 0.10%)</title><rect x="143.3" y="197" width="1.2" height="15.0" fill="rgb(210,42,49)" rx="2" ry="2" />
+<text text-anchor="" x="146.34" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insertModifying (1 samples, 0.10%)</title><rect x="974.1" y="309" width="1.1" height="15.0" fill="rgb(222,142,0)" rx="2" ry="2" />
+<text text-anchor="" x="977.06" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Exception.Lifted.try (5 samples, 0.50%)</title><rect x="876.1" y="341" width="5.9" height="15.0" fill="rgb(236,10,3)" rx="2" ry="2" />
+<text text-anchor="" x="879.12" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Options.Applicative.Internal.&gt;&gt;=.\ (875 samples, 87.50%)</title><rect x="19.4" y="1189" width="1032.5" height="15.0" fill="rgb(226,147,33)" rx="2" ry="2" />
+<text text-anchor="" x="22.44" y="1199.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Options.Applicative.Internal.&gt;&gt;=.\</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.memoise (1 samples, 0.10%)</title><rect x="24.2" y="773" width="1.1" height="15.0" fill="rgb(244,193,35)" rx="2" ry="2" />
+<text text-anchor="" x="27.16" y="783.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Driver.pooledForConcurrently_ (875 samples, 87.50%)</title><rect x="19.4" y="1029" width="1032.5" height="15.0" fill="rgb(214,90,4)" rx="2" ry="2" />
+<text text-anchor="" x="22.44" y="1039.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Driver.pooledForConcurrently_</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Inlining.inlineTerm (1 samples, 0.10%)</title><rect x="998.8" y="309" width="1.2" height="15.0" fill="rgb(233,58,25)" rx="2" ry="2" />
+<text text-anchor="" x="1001.84" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Unification.unify (2 samples, 0.20%)</title><rect x="1023.6" y="117" width="2.4" height="15.0" fill="rgb(212,214,22)" rx="2" ry="2" />
+<text text-anchor="" x="1026.62" y="127.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Driver.pooledForConcurrentlyIO_.go.\ (870 samples, 87.00%)</title><rect x="25.3" y="565" width="1026.6" height="15.0" fill="rgb(234,118,39)" rx="2" ry="2" />
+<text text-anchor="" x="28.34" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Driver.pooledForConcurrentlyIO_.go.\</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Options.Applicative.Internal.&gt;&gt;= (875 samples, 87.50%)</title><rect x="19.4" y="1205" width="1032.5" height="15.0" fill="rgb(215,141,36)" rx="2" ry="2" />
+<text text-anchor="" x="22.44" y="1215.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Options.Applicative.Internal.&gt;&gt;=</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.subtype (2 samples, 0.20%)</title><rect x="1029.5" y="261" width="2.4" height="15.0" fill="rgb(219,3,15)" rx="2" ry="2" />
+<text text-anchor="" x="1032.52" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.fetch (859 samples, 85.90%)</title><rect x="27.7" y="501" width="1013.6" height="15.0" fill="rgb(228,78,37)" rx="2" ry="2" />
+<text text-anchor="" x="30.70" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Rock.Core.fetch</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rules.rules (8 samples, 0.80%)</title><rect x="1042.5" y="421" width="9.4" height="15.0" fill="rgb(238,139,40)" rx="2" ry="2" />
+<text text-anchor="" x="1045.50" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.checkTopLevelDefinition (1 samples, 0.10%)</title><rect x="24.2" y="645" width="1.1" height="15.0" fill="rgb(216,67,0)" rx="2" ry="2" />
+<text text-anchor="" x="27.16" y="655.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.defaultHashWithSalt (1 samples, 0.10%)</title><rect x="775.8" y="133" width="1.2" height="15.0" fill="rgb(246,8,43)" rx="2" ry="2" />
+<text text-anchor="" x="778.82" y="143.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Resolution.moduleScopes.go.privateScope' (5 samples, 0.50%)</title><rect x="975.2" y="341" width="5.9" height="15.0" fill="rgb(226,156,40)" rx="2" ry="2" />
+<text text-anchor="" x="978.24" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.&gt;&gt;=.\ (1 samples, 0.10%)</title><rect x="913.9" y="261" width="1.2" height="15.0" fill="rgb(240,97,27)" rx="2" ry="2" />
+<text text-anchor="" x="916.88" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.Metas.inlineSolutions.inlineTermSolutions (3 samples, 0.30%)</title><rect x="992.9" y="277" width="3.6" height="15.0" fill="rgb(208,13,7)" rx="2" ry="2" />
+<text text-anchor="" x="995.94" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.&gt;&gt;=.\ (1 samples, 0.10%)</title><rect x="917.4" y="165" width="1.2" height="15.0" fill="rgb(226,80,43)" rx="2" ry="2" />
+<text text-anchor="" x="920.42" y="175.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.&lt;&gt; (3 samples, 0.30%)</title><rect x="962.3" y="325" width="3.5" height="15.0" fill="rgb(246,67,48)" rx="2" ry="2" />
+<text text-anchor="" x="965.26" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insert (1 samples, 0.10%)</title><rect x="971.7" y="341" width="1.2" height="15.0" fill="rgb(213,174,47)" rx="2" ry="2" />
+<text text-anchor="" x="974.70" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Lexer.lexText (5 samples, 0.50%)</title><rect x="1044.9" y="405" width="5.9" height="15.0" fill="rgb(206,40,0)" rx="2" ry="2" />
+<text text-anchor="" x="1047.86" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Monad.runM (1 samples, 0.10%)</title><rect x="24.2" y="693" width="1.1" height="15.0" fill="rgb(228,151,24)" rx="2" ry="2" />
+<text text-anchor="" x="27.16" y="703.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashWithSalt (1 samples, 0.10%)</title><rect x="799.4" y="213" width="1.2" height="15.0" fill="rgb(224,148,13)" rx="2" ry="2" />
+<text text-anchor="" x="802.42" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.IntMap.traverse (1 samples, 0.10%)</title><rect x="879.7" y="277" width="1.1" height="15.0" fill="rgb(253,63,5)" rx="2" ry="2" />
+<text text-anchor="" x="882.66" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Driver.runTask.ignoreTaskKind (1 samples, 0.10%)</title><rect x="866.7" y="405" width="1.2" height="15.0" fill="rgb(213,106,53)" rx="2" ry="2" />
+<text text-anchor="" x="869.68" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Monad.Trans.Control.defaultLiftBaseWith.\.\ (874 samples, 87.40%)</title><rect x="20.6" y="917" width="1031.3" height="15.0" fill="rgb(254,217,43)" rx="2" ry="2" />
+<text text-anchor="" x="23.62" y="927.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Control.Monad.Trans.Control.defaultLiftBaseWith.\.\</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Name.hashWithSalt (3 samples, 0.30%)</title><rect x="786.4" y="229" width="3.6" height="15.0" fill="rgb(220,100,25)" rx="2" ry="2" />
+<text text-anchor="" x="789.44" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.fetch.\ (1 samples, 0.10%)</title><rect x="24.2" y="805" width="1.1" height="15.0" fill="rgb(216,44,1)" rx="2" ry="2" />
+<text text-anchor="" x="27.16" y="815.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.defaultHashWithSalt (1 samples, 0.10%)</title><rect x="146.9" y="165" width="1.2" height="15.0" fill="rgb(252,155,32)" rx="2" ry="2" />
+<text text-anchor="" x="149.88" y="175.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Rock.Core.writer (1 samples, 0.10%)</title><rect x="24.2" y="741" width="1.1" height="15.0" fill="rgb(213,178,32)" rx="2" ry="2" />
+<text text-anchor="" x="27.16" y="751.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Dependent.HashMap.lookup (49 samples, 4.90%)</title><rect x="97.3" y="437" width="57.8" height="15.0" fill="rgb(205,159,6)" rx="2" ry="2" />
+<text text-anchor="" x="100.32" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Data.D..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Driver.checkAll.\.\ (859 samples, 85.90%)</title><rect x="27.7" y="517" width="1013.6" height="15.0" fill="rgb(249,199,52)" rx="2" ry="2" />
+<text text-anchor="" x="30.70" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Driver.checkAll.\.\</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Control.Exception.Lifted.catch (2 samples, 0.20%)</title><rect x="1021.3" y="101" width="2.3" height="15.0" fill="rgb(221,152,22)" rx="2" ry="2" />
+<text text-anchor="" x="1024.26" y="111.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Query.hash (94 samples, 9.40%)</title><rect x="695.6" y="309" width="110.9" height="15.0" fill="rgb(224,128,23)" rx="2" ry="2" />
+<text text-anchor="" x="698.58" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >Query.hash</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.Hashable.Class.hashWithSalt (1 samples, 0.10%)</title><rect x="145.7" y="197" width="1.2" height="15.0" fill="rgb(206,204,15)" rx="2" ry="2" />
+<text text-anchor="" x="148.70" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.checkUnspanned (1 samples, 0.10%)</title><rect x="24.2" y="597" width="1.1" height="15.0" fill="rgb(217,189,28)" rx="2" ry="2" />
+<text text-anchor="" x="27.16" y="607.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.subtype (9 samples, 0.90%)</title><rect x="1015.4" y="149" width="10.6" height="15.0" fill="rgb(215,87,29)" rx="2" ry="2" />
+<text text-anchor="" x="1018.36" y="159.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Data.HashMap.Base.insertModifying.go (1 samples, 0.10%)</title><rect x="974.1" y="293" width="1.1" height="15.0" fill="rgb(247,72,3)" rx="2" ry="2" />
+<text text-anchor="" x="977.06" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.checkMetaSolutions (1 samples, 0.10%)</title><rect x="996.5" y="309" width="1.2" height="15.0" fill="rgb(235,79,39)" rx="2" ry="2" />
+<text text-anchor="" x="999.48" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Elaboration.Metas.evaluate (2 samples, 0.20%)</title><rect x="994.1" y="261" width="2.4" height="15.0" fill="rgb(230,117,21)" rx="2" ry="2" />
+<text text-anchor="" x="997.12" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>Parser.&lt;*&gt; (1 samples, 0.10%)</title><rect x="917.4" y="197" width="1.2" height="15.0" fill="rgb(245,146,2)" rx="2" ry="2" />
+<text text-anchor="" x="920.42" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+</svg>

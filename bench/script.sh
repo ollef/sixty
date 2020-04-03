@@ -8,8 +8,9 @@ set -e
 # 4: 7ca773e347dae952d4c7249a0310f10077a2474b # manual query parallelisation
 # 5: 8ea6700415f1c46fb300571382ef438ae6082e8e # parser lookahead
 # 6: 722533c5d71871ca1aa6235fe79a53f33da99c36 # dependent hashmap
-# 7: 11c46c5b03f26a66347d5f387bd4cdfd5f6de4a2 # separate lexer
-# 8: d5bad6f606450d0a2c8926072e7b4845d982b81f # speed up hashing
+# 7: 048d2cec50e9994a0b159a2383580e3df5dd2a7e # ReaderT in rock
+# 8: 11c46c5b03f26a66347d5f387bd4cdfd5f6de4a2 # separate lexer
+# 9: d5bad6f606450d0a2c8926072e7b4845d982b81f # speed up hashing
 
 index=0
 
@@ -21,6 +22,7 @@ for commit in \
   7ca773e347dae952d4c7249a0310f10077a2474b \
   8ea6700415f1c46fb300571382ef438ae6082e8e \
   722533c5d71871ca1aa6235fe79a53f33da99c36 \
+  048d2cec50e9994a0b159a2383580e3df5dd2a7e \
   11c46c5b03f26a66347d5f387bd4cdfd5f6de4a2 \
   d5bad6f606450d0a2c8926072e7b4845d982b81f \
   ;
