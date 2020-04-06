@@ -5,7 +5,7 @@
 {-# language ScopedTypeVariables #-}
 module Unification.Indices where
 
-import Protolude hiding (catch, force, IntSet)
+import Protolude hiding (catch, force, IntSet, throwIO)
 
 import Control.Exception.Lifted
 import Data.OrderedHashMap (OrderedHashMap)
@@ -58,7 +58,7 @@ unify context flexibility untouchables value1 value2 = do
 
     (Domain.Neutral (Domain.Con con1) _, Domain.Neutral (Domain.Con con2) _)
       | con1 /= con2 ->
-        throw Nope
+        throwIO Nope
 
     (Domain.Glued head1 spine1 value1'', Domain.Glued head2 spine2 value2'')
       | Unification.sameHeads head1 head2 ->
@@ -143,7 +143,7 @@ unify context flexibility untouchables value1 value2 = do
       unifyBranches context'' flexibility untouchables branches1 branches2
 
     _ ->
-      throw Dunno
+      throwIO Dunno
 
   where
     unifyForce context' flexibility' lazyValue1 lazyValue2 = do
@@ -172,7 +172,7 @@ unify context flexibility untouchables value1 value2 = do
 
     solve var value
       | IntSet.member var untouchables =
-        throw Dunno
+        throwIO Dunno
 
       | otherwise = do
         occurs context Flexibility.Rigid (IntSet.insert var untouchables) value
@@ -201,7 +201,7 @@ unifyBranches
         unifyMaps litBranches1 litBranches2 unifyTerms
 
       _ ->
-        throw Dunno
+        throwIO Dunno
   where
     unifyMaps
       :: (Eq k, Hashable k)
@@ -220,7 +220,7 @@ unifyBranches
         missing2 =
           OrderedHashMap.difference brs2 branches
       unless (OrderedHashMap.null missing1 && OrderedHashMap.null missing2) $
-        throw Dunno
+        throwIO Dunno
 
       context' <-
         foldM
@@ -236,7 +236,7 @@ unifyBranches
           pure context'
 
         _ ->
-          throw Dunno
+          throwIO Dunno
 
     unifyTerms context term1 term2 = do
       term1' <- Evaluation.evaluate outerEnv1 term1
@@ -339,7 +339,7 @@ occursHead context flexibility untouchables hd =
   case hd of
     Domain.Var var
       | IntSet.member var untouchables ->
-        throw $
+        throwIO $
           case flexibility of
             Flexibility.Rigid ->
               Nope

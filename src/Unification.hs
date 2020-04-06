@@ -3,7 +3,7 @@
 {-# language ScopedTypeVariables #-}
 module Unification where
 
-import Protolude hiding (catch, check, evaluate, force)
+import Protolude hiding (catch, check, evaluate, force, throwIO)
 
 import Control.Exception.Lifted
 import Rock
@@ -259,7 +259,7 @@ unify context flexibility value1 value2 = do
                 term2 <- Elaboration.readback context value2
                 pterm1 <- Context.toPrettyableTerm context term1
                 pterm2 <- Context.toPrettyableTerm context term2
-                throw $
+                throwIO $
                   Error.TypeMismatch $
                       stack Tsil.:>
                       ( pterm1
@@ -271,7 +271,7 @@ unify context flexibility value1 value2 = do
                 term2 <- Elaboration.readback context value2
                 pterm1 <- Context.toPrettyableTerm context term1
                 pterm2 <- Context.toPrettyableTerm context term2
-                throw $
+                throwIO $
                   Error.OccursCheck $
                       stack Tsil.:>
                       ( pterm1
@@ -279,13 +279,13 @@ unify context flexibility value1 value2 = do
                       )
 
               _ ->
-                throw err
+                throwIO err
 
         Flexibility.Flexible ->
           m
 
     can'tUnify =
-      throw $ Error.TypeMismatch mempty
+      throwIO $ Error.TypeMismatch mempty
 
 unifyBranches
   :: Context v
@@ -378,7 +378,7 @@ unifyBranches
           panic "unifyTele"
 
     can'tUnify =
-      throw $ Error.TypeMismatch mempty
+      throwIO $ Error.TypeMismatch mempty
 
 -------------------------------------------------------------------------------
 -- Case expression inversion
@@ -757,7 +757,7 @@ checkInnerHead outerContext occurs env flexibility hd =
     Domain.Var v ->
       case Environment.lookupVarIndex v env of
         Nothing ->
-          throw $ Error.TypeMismatch mempty
+          throwIO $ Error.TypeMismatch mempty
 
         Just i ->
           pure $ Syntax.Var i
@@ -770,7 +770,7 @@ checkInnerHead outerContext occurs env flexibility hd =
 
     Domain.Meta m
       | m == occurs ->
-        throw $ Error.OccursCheck mempty
+        throwIO $ Error.OccursCheck mempty
 
       | otherwise ->
         pure $ Syntax.Meta m
@@ -840,10 +840,11 @@ pruneMeta context meta allowedArgs = do
                   Context.extend context' "x" domain
                 else do
                   fakeVar <- freshVar
+                  typeMismatch <- lazy $ throwIO $ Error.TypeMismatch mempty
                   Context.extendDef
                     context'
                     "x"
-                    (Domain.Glued (Domain.Var fakeVar) mempty $ Lazy $ throw $ Error.TypeMismatch mempty)
+                    (Domain.Glued (Domain.Var fakeVar) mempty typeMismatch)
                     domain
               body <- go alloweds' context'' target
               pure $ Syntax.Lam "x" domain' plicity body
@@ -854,10 +855,11 @@ pruneMeta context meta allowedArgs = do
                   Context.extend context' name domain
                 else do
                   fakeVar <- freshVar
+                  typeMismatch <- lazy $ throwIO $ Error.TypeMismatch mempty
                   Context.extendDef
                     context'
                     name
-                    (Domain.Glued (Domain.Var fakeVar) mempty $ Lazy $ throw $ Error.TypeMismatch mempty)
+                    (Domain.Glued (Domain.Var fakeVar) mempty typeMismatch)
                     domain
               target <-
                 Evaluation.evaluateClosure
