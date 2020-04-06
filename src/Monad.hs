@@ -4,10 +4,11 @@ module Monad where
 
 import Protolude hiding (try, State)
 
-import Control.Monad.Base
 import Data.IORef.Lifted
+import Control.Monad.Trans.Control
 import Control.Exception.Lifted
 import Rock
+import System.IO.Unsafe (unsafeDupablePerformIO)
 
 import qualified Error
 import Query (Query)
@@ -19,19 +20,22 @@ newtype State = State
   { nextVar :: IORef Var
   }
 
-newtype Lazy a = Lazy { force :: M a }
+newtype Lazy a = Lazy a
 
-lazy :: MonadBase IO m => M a -> m (Lazy a)
-lazy m = do
-  ref <- newIORef $ panic "Can't happen, I promise!"
-  writeIORef ref $ do
-    result <- m
-    writeIORef ref $ pure result
-    pure result
-  pure $ Lazy $ join $ readIORef ref
+{-# inline force #-}
+force :: Lazy a -> M a
+force (Lazy a) =
+  a `seq` pure a
+
+{-# inline lazy #-}
+lazy :: M a -> M (Lazy a)
+lazy m =
+  liftBaseWith $ \runInIO ->
+    pure $ Lazy $ unsafeDupablePerformIO $ runInIO m
 
 eager :: a -> Lazy a
-eager = Lazy . pure
+eager =
+  Lazy
 
 freshVar :: M Var
 freshVar = do
