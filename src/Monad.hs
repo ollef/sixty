@@ -20,7 +20,7 @@ newtype State = State
   { nextVar :: IORef Var
   }
 
-newtype Lazy a = Lazy a
+data Lazy a = Lazy a
 
 {-# inline force #-}
 force :: Lazy a -> M a
