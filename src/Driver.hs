@@ -317,7 +317,7 @@ pooledForConcurrentlyIO_ as f = do
               _ <- f a
               go
             )
-  replicateConcurrently_ ((processCount + 1) `div` 2) go
+  replicateConcurrently_ (max 8 processCount) go
 
 pooledForConcurrentlyIO
   :: Traversable t
@@ -344,7 +344,7 @@ pooledForConcurrentlyIO as f = do
               atomicWriteIORef ref result
               go
             )
-  replicateConcurrently_ ((processCount + 1) `div` 2) go
+  replicateConcurrently_ (max 8 processCount) go
   forM jobs $ \(_, ref) ->
     readIORef ref
 
