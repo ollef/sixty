@@ -27,7 +27,7 @@ force :: Lazy a -> M a
 force (Lazy a) =
   a `seq` pure a
 
-{-# inline lazy #-}
+{-# noinline lazy #-}
 lazy :: M a -> M (Lazy a)
 lazy m =
   liftBaseWith $ \runInIO ->
