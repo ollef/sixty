@@ -1,0 +1,26 @@
+data Unit = MkUnit
+
+data Sigma A (B : A -> Type) where
+  MkSigma : (a : A) -> B a -> Sigma A B
+
+proj1 : forall A B. Sigma A B -> A
+proj1 (MkSigma a _) = a
+
+proj2 : forall A B. (s : Sigma A B) -> B (proj1 s)
+proj2 (MkSigma _ b) = b
+
+data Telescope where
+  Nil : Telescope
+  Cons : (A : Type) -> (A -> Telescope) -> Telescope
+
+Record : Telescope -> Type
+Record Nil = Unit
+Record (Cons A tele) = Sigma A (\a. Record (tele a))
+
+Pi : (tele : Telescope) -> (Record tele -> Type) -> Type
+Pi Nil B = B MkUnit
+Pi (Cons A tele) B = forall (a : A). Pi (tele a) (\b. B (MkSigma a b))
+
+apply : (tele : Telescope) -> (F : Record tele -> Type) -> Pi tele F -> (rec : Record tele) -> F rec
+apply Nil F f MkUnit = f
+apply (Cons A tele) F f (MkSigma a rec) = apply (tele a) (\b. F (MkSigma a b)) (f @{a}) rec
