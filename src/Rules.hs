@@ -360,6 +360,10 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
     ConstructorType (Name.QualifiedConstructor dataTypeName constr) ->
       noError $ do
         def <- fetch $ ElaboratedDefinition dataTypeName
+        let
+          fail =
+            Syntax.App (Syntax.Global Builtin.fail) Explicit $ Syntax.App (Syntax.Global Builtin.fail) Explicit (Syntax.Global Builtin.TypeName)
+
         case def of
           Just (Syntax.DataDefinition _ tele, _) -> do
             let
@@ -369,7 +373,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                   Telescope.Empty (Syntax.ConstructorDefinitions constrs) ->
                     Telescope.Empty $
                       OrderedHashMap.lookupDefault
-                        (panic "ConstructorType: no such constructor")
+                        fail
                         constr
                         constrs
 
@@ -379,7 +383,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             pure $ go tele
 
           _ ->
-            panic "ConstructorType: none-datatype"
+            pure $ Telescope.Empty fail
 
     KeyedNameSpan (Scope.KeyedName key (Name.Qualified module_ name@(Name textName))) ->
       noError $ do
