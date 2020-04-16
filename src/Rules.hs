@@ -56,7 +56,14 @@ rules :: [FilePath] -> HashSet FilePath -> (FilePath -> IO Text) -> GenRules (Wr
 rules sourceDirectories files readFile_ (Writer (Writer query)) =
   case query of
     SourceDirectories ->
-      input $ pure sourceDirectories
+      input $ pure $
+        case (sourceDirectories, HashSet.toList files) of
+          -- A little hack to allow opening single source files without a project file
+          ([], [file]) ->
+            [takeDirectory file]
+
+          _ ->
+            sourceDirectories
 
     InputFiles ->
       input $ do
