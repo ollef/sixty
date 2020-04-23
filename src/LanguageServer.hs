@@ -35,6 +35,7 @@ import qualified Error.Hydrated as Error (Hydrated)
 import qualified Error.Hydrated
 import qualified FileSystem
 import qualified LanguageServer.Completion as Completion
+import qualified LanguageServer.CodeLens as CodeLens
 import qualified LanguageServer.DocumentHighlights as DocumentHighlights
 import qualified LanguageServer.GoToDefinition as GoToDefinition
 import qualified LanguageServer.Hover as Hover
@@ -111,6 +112,7 @@ handlers sendMessage =
     , LSP.documentHighlightHandler = Just $ sendMessage . LSP.ReqDocumentHighlights
     , LSP.referencesHandler = Just $ sendMessage . LSP.ReqFindReferences
     , LSP.renameHandler = Just $ sendMessage . LSP.ReqRename
+    , LSP.codeLensHandler = Just $ sendMessage . LSP.ReqCodeLens
     }
 
 options :: LSP.Options
@@ -373,6 +375,29 @@ messagePump state = do
           LSP.sendFunc (_lspFuncs state) $ LSP.RspRename $ LSP.makeResponseMessage req response
           messagePump state
 
+        LSP.ReqCodeLens req -> do
+          let
+            LSP.CodeLensParams (LSP.TextDocumentIdentifier uri) _ =
+              req ^. LSP.params
+
+          (codeLenses, _) <- runTask state Driver.Don'tPrune $
+            CodeLens.codeLens $ uriToFilePath uri
+          let
+            response =
+              LSP.List
+                [ LSP.CodeLens
+                  { _range = spanToRange span
+                  , _command = Just LSP.Command
+                    { _title = show doc
+                    , _command = ""
+                    , _arguments = Nothing
+                    }
+                  , _xdata = Nothing
+                  }
+                | (span, doc) <- codeLenses
+                ]
+          LSP.sendFunc (_lspFuncs state) $ LSP.RspCodeLens $ LSP.makeResponseMessage req response
+          messagePump state
         _ ->
           messagePump state
 
