@@ -644,103 +644,102 @@ inlineIndex
   -> (Var, [Maybe DuplicableValue], Value, Value)
   -> Value
   -> Shared Value
-inlineIndex index targetScope solution@ ~(solutionVar, duplicableArgs, solutionValue, solutionType) value@(Value innerValue occs)
-  | IntSet.null targetScope =
-    if index `IntMap.member` occurrencesMap value then do
-      modified
-      pure $ makeLet "meta" solutionVar solutionValue solutionType value
+inlineIndex index targetScope solution@ ~(solutionVar, duplicableArgs, solutionValue, solutionType) value@(Value innerValue occs) = do
+  let
+    recurse value' =
+      sharing value' $
+        inlineIndex index targetScope solution value'
 
-    else
+    recurseScope var value' =
+      sharing value' $
+        inlineIndex index (IntSet.delete var targetScope) solution value'
+  case innerValue of
+    Meta index' args
+      | index == index' -> do
+        modified
+        let
+          remainingArgs =
+            snd <$>
+              filter
+                (isNothing . fst)
+                (zip (duplicableArgs <> repeat Nothing) (toList args))
+        pure $ foldl' (\v1 v2 -> makeApp v1 Explicit v2) solutionValue remainingArgs
+
+    _ | IntSet.null targetScope ->
+      if index `IntMap.member` occurrencesMap value then do
+        modified
+        pure $ makeLet "meta" solutionVar solutionValue solutionType value
+
+      else
+        pure value
+
+    Var _ ->
       pure value
 
-  | otherwise = do
-    let
-      recurse value' =
-        sharing value' $
-          inlineIndex index targetScope solution value'
+    Global _ ->
+      pure value
 
-      recurseScope var value' =
-        sharing value' $
-          inlineIndex index (IntSet.delete var targetScope) solution value'
+    Con _ ->
+      pure value
 
-    case innerValue of
-      Var _ ->
-        pure value
+    Lit _ ->
+      pure value
 
-      Global _ ->
-        pure value
+    Meta index' args
+      | otherwise -> do
+        args' <- forM args $ inlineIndex index targetScope solution
+        pure $ makeMeta index' args'
 
-      Con _ ->
-        pure value
+    Let name var value' type_ body -> do
+      value'' <- recurse value'
+      type' <- recurse type_
+      body' <- recurseScope var body
+      pure $ makeLet name var value'' type' body'
 
-      Lit _ ->
-        pure value
+    Pi name var domain plicity target -> do
+      domain' <- recurse domain
+      target' <- recurseScope var target
+      pure $ makePi name var domain' plicity target'
 
-      Meta index' args
-        | index == index' -> do
-          modified
-          let
-            remainingArgs =
-              snd <$>
-                filter
-                  (isNothing . fst)
-                  (zip (duplicableArgs <> repeat Nothing) (toList args))
-          pure $ foldl' (\v1 v2 -> makeApp v1 Explicit v2) solutionValue remainingArgs
+    Fun domain plicity target -> do
+      domain' <- recurse domain
+      target' <- recurse target
+      pure $ makeFun domain' plicity target'
 
-        | otherwise -> do
-          args' <- forM args $ inlineIndex index targetScope solution
-          pure $ makeMeta index' args'
+    Lam name var type_ plicity body -> do
+      type' <- recurse type_
+      body' <- recurseScope var body
+      pure $ makeLam name var type' plicity body'
 
-      Let name var value' type_ body -> do
-        value'' <- recurse value'
-        type' <- recurse type_
-        body' <- recurseScope var body
-        pure $ makeLet name var value'' type' body'
+    App function plicity argument -> do
+      function' <- recurse function
+      argument' <- recurse argument
+      pure $ makeApp function' plicity argument'
 
-      Pi name var domain plicity target -> do
-        domain' <- recurse domain
-        target' <- recurseScope var target
-        pure $ makePi name var domain' plicity target'
+    Case scrutinee branches defaultBranch -> do
+      scrutinee' <- recurse scrutinee
+      branches' <- case branches of
+        ConstructorBranches constructorTypeName constructorBranches ->
+          fmap (ConstructorBranches constructorTypeName) $ OrderedHashMap.forMUnordered constructorBranches $ \(span, (bindings, body)) -> do
+            let
+              go targetScope' bindings' =
+                case bindings' of
+                  [] -> do
+                    body' <- sharing body $ inlineIndex index targetScope' solution body
+                    pure ([], body')
 
-      Fun domain plicity target -> do
-        domain' <- recurse domain
-        target' <- recurse target
-        pure $ makeFun domain' plicity target'
+                  (name, var, type_, plicity):bindings'' -> do
+                    type' <- sharing type_ $ inlineIndex index targetScope' solution type_
+                    (bindings''', body') <- go (IntSet.delete var targetScope') bindings''
+                    pure ((name, var, type', plicity):bindings''', body')
 
-      Lam name var type_ plicity body -> do
-        type' <- recurse type_
-        body' <- recurseScope var body
-        pure $ makeLam name var type' plicity body'
+            (bindings', body') <- go targetScope bindings
+            pure (span, (bindings', body'))
 
-      App function plicity argument -> do
-        function' <- recurse function
-        argument' <- recurse argument
-        pure $ makeApp function' plicity argument'
+        LiteralBranches literalBranches ->
+          LiteralBranches <$> OrderedHashMap.mapMUnordered (mapM recurse) literalBranches
+      defaultBranch' <- forM defaultBranch recurse
+      pure $ makeCase scrutinee' branches' defaultBranch'
 
-      Case scrutinee branches defaultBranch -> do
-        scrutinee' <- recurse scrutinee
-        branches' <- case branches of
-          ConstructorBranches constructorTypeName constructorBranches ->
-            fmap (ConstructorBranches constructorTypeName) $ OrderedHashMap.forMUnordered constructorBranches $ \(span, (bindings, body)) -> do
-              let
-                go targetScope' bindings' =
-                  case bindings' of
-                    [] -> do
-                      body' <- sharing body $ inlineIndex index targetScope' solution body
-                      pure ([], body')
-
-                    (name, var, type_, plicity):bindings'' -> do
-                      type' <- sharing type_ $ inlineIndex index targetScope' solution type_
-                      (bindings''', body') <- go (IntSet.delete var targetScope') bindings''
-                      pure ((name, var, type', plicity):bindings''', body')
-
-              (bindings', body') <- go targetScope bindings
-              pure (span, (bindings', body'))
-
-          LiteralBranches literalBranches ->
-            LiteralBranches <$> OrderedHashMap.mapMUnordered (mapM recurse) literalBranches
-        defaultBranch' <- forM defaultBranch recurse
-        pure $ makeCase scrutinee' branches' defaultBranch'
-
-      Spanned span value' ->
-        makeSpanned span <$> recurse (Value value' occs)
+    Spanned span value' ->
+      makeSpanned span <$> recurse (Value value' occs)
