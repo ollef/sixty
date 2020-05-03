@@ -115,9 +115,16 @@ prettyTerm prec env term =
         <> line <> "in"
         <> line <> prettyTerm letPrec env' body
 
-    Syntax.Pi {} ->
+    Syntax.Pi _ _ Implicit _ ->
+      "forall" <+> prettyImplicitPiTerm env term
+
+    Syntax.Pi binding type_ plicity scope ->
       prettyParen (prec > funPrec) $
-        prettyPiTerm env term
+        let
+          (env', name) = extend env binding
+        in
+        Plicity.prettyAnnotation plicity <> lparen <> pretty name <+> ":" <+> prettyTerm 0 env type_ <> rparen
+        <+> "->" <+> prettyTerm funPrec env' scope
 
     Syntax.Fun domain plicity target ->
       prettyParen (prec > funPrec) $
@@ -221,21 +228,21 @@ prettyLamTerm env term =
     t ->
       "." <+> prettyTerm lamPrec env t
 
-prettyPiTerm :: Environment v -> Syntax.Term v -> Doc ann
-prettyPiTerm env term =
+prettyImplicitPiTerm :: Environment v -> Syntax.Term v -> Doc ann
+prettyImplicitPiTerm env term =
   case term of
-    Syntax.Pi binding type_ plicity scope ->
+    Syntax.Pi binding type_ Implicit scope ->
       let
         (env', name) = extend env binding
       in
-      Plicity.prettyAnnotation plicity <> lparen <> pretty name <+> ":" <+> prettyTerm 0 env type_ <> rparen
-      <> prettyPiTerm env' scope
+      lparen <> pretty name <+> ":" <+> prettyTerm 0 env type_ <> rparen
+      <> prettyImplicitPiTerm env' scope
 
     Syntax.Spanned _ term' ->
-      prettyPiTerm env term'
+      prettyImplicitPiTerm env term'
 
     t ->
-      " ->" <+> prettyTerm funPrec env t
+      "." <+> prettyTerm funPrec env t
 
 prettyBranch
   :: Environment v
