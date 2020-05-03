@@ -7,7 +7,7 @@
 {-# language TypeFamilies #-}
 module Driver where
 
-import Protolude hiding (force, State, state, readMVar, getNumCapabilities)
+import Protolude hiding (State, state, getNumCapabilities)
 
 import Control.Concurrent.Async.Lifted.Safe
 import Control.Concurrent.Lifted
@@ -90,7 +90,7 @@ runTask sourceDirectories files prettyError task = do
 -------------------------------------------------------------------------------
 -- Incremental execution
 data State err = State
-  { _startedVar :: !(IORef (DHashMap Query MVar))
+  { _startedVar :: !(IORef (DHashMap Query MemoEntry))
   , _hashesVar :: !(IORef (DHashMap Query (Const Int)))
   , _reverseDependenciesVar :: !(IORef (ReverseDependencies Query))
   , _tracesVar :: !(IORef (Traces Query (Const Int)))
@@ -151,13 +151,7 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
       hashes <- readIORef $ _hashesVar state
 
       case DHashMap.lookup Query.InputFiles started of
-        Nothing -> do
-          atomicWriteIORef (_reverseDependenciesVar state) mempty
-          atomicWriteIORef (_startedVar state) mempty
-          atomicWriteIORef (_hashesVar state) mempty
-
-        Just inputFilesVar -> do
-          inputFiles <- readMVar inputFilesVar
+        Just (Done inputFiles) -> do
           -- TODO find a nicer way to do this
           builtinFile <- Paths.getDataFileName "builtin/Builtin.vix"
           if inputFiles /= HashSet.insert builtinFile (HashSet.fromMap $ void files) then do
@@ -167,13 +161,12 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
 
           else do
             changedFiles' <- flip filterM (toList changedFiles) $ \file ->
-              case DHashMap.lookup (Query.FileText file) started of
-                Just resultVar -> do
-                  text <- readMVar resultVar
-                  pure $ Just text /= HashMap.lookup file files
+              pure $ case DHashMap.lookup (Query.FileText file) started of
+                Just (Done text) ->
+                  Just text /= HashMap.lookup file files
 
-                Nothing ->
-                  pure True
+                _ ->
+                  True
             -- Text.hPutStrLn stderr $ "Driver changed files " <> show changedFiles'
             let
               (keysToInvalidate, reverseDependencies') =
@@ -199,6 +192,12 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
             atomicWriteIORef (_reverseDependenciesVar state) reverseDependencies'
 
     -- printVar <- newMVar 0
+        _ -> do
+          atomicWriteIORef (_reverseDependenciesVar state) mempty
+          atomicWriteIORef (_startedVar state) mempty
+          atomicWriteIORef (_hashesVar state) mempty
+
+    threadDepsVar <- newIORef mempty
     let
       readSourceFile_ file
         | Just text <- HashMap.lookup file files =
@@ -226,7 +225,7 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
 
       rules :: Rules Query
       rules =
-        memoise (_startedVar state) $
+        memoiseWithCycleDetection (_startedVar state) threadDepsVar $
         trackReverseDependencies (_reverseDependenciesVar state) $
         verifyTraces
           (_tracesVar state)
