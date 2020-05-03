@@ -288,12 +288,12 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                   forM mtype $ \_ ->
                     fetch $ ElaboratedType qualifiedName
 
-            case mtype of
-              Nothing ->
-                runElaborator keyedName $ Elaboration.inferTopLevelDefinition keyedName def
+            runElaborator keyedName $
+              case mtype of
+                Nothing ->
+                  Elaboration.inferTopLevelDefinition keyedName def
 
-              Just type_ ->
-                runElaborator keyedName $ do
+                Just type_ -> do
                   typeValue <- Evaluation.evaluate (Environment.empty keyedName) type_
                   ((def', metaVars), errs) <- Elaboration.checkTopLevelDefinition keyedName def typeValue
                   pure ((def', type_, metaVars), errs)
