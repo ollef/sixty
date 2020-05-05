@@ -15,6 +15,10 @@ profile-tests:
 	stack build --test --profile
 	stack exec --package ghc-prof-flamegraph -- ghc-prof-flamegraph test-sixty.prof
 
+.PHONY: ddump-simpl
+ddump-simpl:
+	stack build --test --no-run-tests --ghc-options='-ddump-simpl -ddump-to-file'
+
 .PHONY: ghcid
 ghcid:
 	stack exec --package ghcid -- ghcid
