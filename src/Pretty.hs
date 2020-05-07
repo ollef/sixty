@@ -206,8 +206,8 @@ unambiguous env name =
     Just (Scope.Name _) ->
       True
 
-    Just (Scope.Constructors cs) ->
-      HashSet.size cs == 1
+    Just (Scope.Constructors cs ds) ->
+      HashSet.size cs + HashSet.size ds == 1
 
     Just (Scope.Ambiguous _ _) ->
       False

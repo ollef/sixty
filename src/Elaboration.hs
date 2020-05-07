@@ -731,14 +731,14 @@ inferName context name expectedTypeName =
             , type'
             )
 
-        Just (Scope.Constructors candidates) -> do
-          maybeConstr <- resolveConstructor candidates expectedTypeName
+        Just (Scope.Constructors constructorCandidates dataCandidates) -> do
+          maybeConstr <- resolveConstructor constructorCandidates dataCandidates expectedTypeName
           case maybeConstr of
-            Ambiguous candidates' -> do
-              Context.report context $ Error.Ambiguous name candidates' mempty
+            Ambiguous constrCandidates' dataCandidates' -> do
+              Context.report context $ Error.Ambiguous name constrCandidates' dataCandidates'
               inferenceFailed context
 
-            Resolved constr -> do
+            ResolvedConstructor constr -> do
               type_ <- fetch $ Query.ConstructorType constr
               type' <- evaluate context $ Syntax.fromVoid $ Telescope.fold Syntax.implicitPi type_
               pure
@@ -746,8 +746,16 @@ inferName context name expectedTypeName =
                 , type'
                 )
 
-        Just (Scope.Ambiguous constrCandidates nameCandidates) -> do
-          Context.report context $ Error.Ambiguous name constrCandidates nameCandidates
+            ResolvedData data_ -> do
+              type_ <- fetch $ Query.ElaboratedType data_
+              type' <- evaluate context $ Syntax.fromVoid type_
+              pure
+                ( Syntax.Global data_
+                , type'
+                )
+
+        Just (Scope.Ambiguous constrCandidates dataCandidates) -> do
+          Context.report context $ Error.Ambiguous name constrCandidates dataCandidates
           inferenceFailed context
 
 inferLiteral :: Literal -> Domain.Type
@@ -846,37 +854,51 @@ elaborateLet context name maybeType clauses = do
   pure (context', binding, boundTerm, typeTerm)
 
 data ResolvedConstructor
-  = Ambiguous (HashSet Name.QualifiedConstructor)
-  | Resolved !Name.QualifiedConstructor
+  = Ambiguous (HashSet Name.QualifiedConstructor) (HashSet Name.Qualified)
+  | ResolvedConstructor !Name.QualifiedConstructor
+  | ResolvedData !Name.Qualified
   deriving Show
 
 resolveConstructor
   :: HashSet Name.QualifiedConstructor
+  -> HashSet Name.Qualified
   -> M (Maybe Name.Qualified)
   -> M ResolvedConstructor
-resolveConstructor candidates expectedTypeName =
-  case toList candidates of
-    [constr] ->
-      pure $ Resolved constr
+resolveConstructor constructorCandidates dataCandidates expectedTypeName =
+  case (toList constructorCandidates, toList dataCandidates) of
+    ([constr], []) ->
+      pure $ ResolvedConstructor constr
+
+    ([], [data_]) ->
+      pure $ ResolvedData data_
 
     _ -> do
       maybeExpectedTypeName <- expectedTypeName
       case maybeExpectedTypeName of
         Nothing ->
-          pure $ Ambiguous candidates
+          pure $ Ambiguous constructorCandidates dataCandidates
+
+        Just Builtin.TypeName ->
+          pure $
+            case toList dataCandidates of
+              [data_] ->
+                ResolvedData data_
+
+              _ ->
+                Ambiguous mempty dataCandidates
 
         Just typeName -> do
           let
             constrs' =
               HashSet.filter
                 (\(Name.QualifiedConstructor constrTypeName _) -> constrTypeName == typeName)
-                candidates
+                constructorCandidates
           case toList constrs' of
             [constr] ->
-              pure $ Resolved constr
+              pure $ ResolvedConstructor constr
 
             _ ->
-              pure $ Ambiguous constrs'
+              pure $ Ambiguous constrs' mempty
 
 getExpectedTypeName
   :: Context v

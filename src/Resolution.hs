@@ -104,14 +104,14 @@ moduleScopes module_@(Name.Module moduleText) definitions =
 
             constructors =
               [ ( ( Name.Pre text
-                  , Scope.Constructors $
-                    HashSet.singleton $
-                    Name.QualifiedConstructor qualifiedName constr
+                  , Scope.Constructors
+                    (HashSet.singleton $ Name.QualifiedConstructor qualifiedName constr)
+                    mempty
                   )
                 , ( Name.Pre $ moduleText <> "." <> text
-                  , Scope.Constructors $
-                    HashSet.singleton $
-                    Name.QualifiedConstructor qualifiedName constr
+                  , Scope.Constructors
+                    (HashSet.singleton $ Name.QualifiedConstructor qualifiedName constr)
+                    mempty
                   )
                 )
               | constrDef <- constrDefs
@@ -126,6 +126,13 @@ moduleScopes module_@(Name.Module moduleText) definitions =
               , constr@(Name.Constructor text) <- constrs
               ]
 
+            privateScope''' =
+              HashMap.insertWith (<>) qualifiedPreName (Scope.Constructors mempty $ HashSet.singleton qualifiedName) $
+              HashMap.insertWith (<>) prename (Scope.Constructors mempty $ HashSet.singleton qualifiedName) privateScope''
+
+            publicScope''' =
+              HashMap.insertWith (<>) prename (Scope.Constructors mempty $ HashSet.singleton qualifiedName) publicScope''
+
             publicConstructors =
               HashMap.fromListWith (<>) $ fst <$> constructors
 
@@ -133,8 +140,8 @@ moduleScopes module_@(Name.Module moduleText) definitions =
               HashMap.fromListWith (<>) $ concatMap (\(a, b) -> [a, b]) constructors
 
           in
-          ( HashMap.unionWith (<>) privateConstructors privateScope''
-          , HashMap.unionWith (<>) publicConstructors publicScope''
+          ( HashMap.unionWith (<>) privateConstructors privateScope'''
+          , HashMap.unionWith (<>) publicConstructors publicScope'''
           , visibility'
           , scopes'
           , errs'

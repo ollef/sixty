@@ -218,10 +218,17 @@ getUsableNames itemContext context varPositions = do
           CursorAction.DefinitionContext ->
             go
 
-      Scope.Constructors constrs -> do
+      Scope.Constructors constrs datas -> do
         let
           go =
-            pure
+            pure $
+              case toList datas of
+                [data_] ->
+                  [(name, Syntax.Global data_, LSP.CiEnum)]
+
+                _ ->
+                  []
+              <>
               [ (name, Syntax.Con con, LSP.CiEnumMember)
               | con <- toList constrs
               ]

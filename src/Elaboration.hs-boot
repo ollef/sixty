@@ -39,11 +39,13 @@ getExpectedTypeName
   -> M (Maybe Name.Qualified)
 
 data ResolvedConstructor
-  = Ambiguous (HashSet Name.QualifiedConstructor)
-  | Resolved !Name.QualifiedConstructor
+  = Ambiguous (HashSet Name.QualifiedConstructor) (HashSet Name.Qualified)
+  | ResolvedConstructor !Name.QualifiedConstructor
+  | ResolvedData !Name.Qualified
 
 resolveConstructor
   :: HashSet Name.QualifiedConstructor
+  -> HashSet Name.Qualified
   -> M (Maybe Name.Qualified)
   -> M ResolvedConstructor
 

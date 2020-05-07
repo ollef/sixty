@@ -484,17 +484,20 @@ simplifyMatch context coveredConstructors coveredLiterals (Match value forcedVal
 
               entryConstrs =
                 Scope.entryConstructors scopeEntry
-            resolved <- lift $ Elaboration.resolveConstructor entryConstrs expectedTypeName
+            resolved <- lift $ Elaboration.resolveConstructor entryConstrs mempty expectedTypeName
             case resolved of
-              Elaboration.Ambiguous _ ->
-                pure [match']
-
-              Elaboration.Resolved constr
+              Elaboration.ResolvedConstructor constr
                 | HashSet.member constr coveredConstrs ->
                   fail "Constructor already covered"
 
                 | otherwise ->
                   pure [match']
+
+              Elaboration.ResolvedData {} ->
+                pure [match']
+
+              Elaboration.Ambiguous {} ->
+                pure [match']
 
           _ ->
             pure [match']
@@ -716,13 +719,16 @@ splitConstructorOr context config matches k =
                   entryConstrs =
                     Scope.entryConstructors scopeEntry
 
-                resolved <- Elaboration.resolveConstructor entryConstrs expectedTypeName
+                resolved <- Elaboration.resolveConstructor entryConstrs mempty expectedTypeName
                 case resolved of
-                  Elaboration.Ambiguous _ ->
+                  Elaboration.ResolvedConstructor constr ->
+                    splitConstructor context config scrutinee var span constr type_
+
+                  Elaboration.ResolvedData {} ->
                     splitConstructorOr context config matches' k
 
-                  Elaboration.Resolved constr ->
-                    splitConstructor context config scrutinee var span constr type_
+                  Elaboration.Ambiguous {} ->
+                    splitConstructorOr context config matches' k
 
               _ ->
                 splitConstructorOr context config matches' k
@@ -915,13 +921,17 @@ findVarConstructorMatches context var matches =
 
                 entryConstrs =
                   Scope.entryConstructors scopeEntry
-              resolved <- Elaboration.resolveConstructor entryConstrs expectedTypeName
+              resolved <- Elaboration.resolveConstructor entryConstrs mempty expectedTypeName
               case resolved of
-                Elaboration.Ambiguous _ ->
+                Elaboration.ResolvedConstructor constr ->
+                  ((constr, [(span, patterns)]) :) <$> findVarConstructorMatches context var matches'
+
+                Elaboration.ResolvedData {} ->
                   findVarConstructorMatches context var matches'
 
-                Elaboration.Resolved constr ->
-                  ((constr, [(span, patterns)]) :) <$> findVarConstructorMatches context var matches'
+                Elaboration.Ambiguous {} ->
+                  findVarConstructorMatches context var matches'
+
 
             _ ->
               findVarConstructorMatches context var matches'

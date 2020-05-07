@@ -24,7 +24,7 @@ data KeyedName = KeyedName !Key !Name.Qualified
 
 data Entry
   = Name !Name.Qualified
-  | Constructors (HashSet Name.QualifiedConstructor)
+  | Constructors (HashSet Name.QualifiedConstructor) (HashSet Name.Qualified) -- ^ Only data
   | Ambiguous (HashSet Name.QualifiedConstructor) (HashSet Name.Qualified)
   deriving (Eq, Show, Generic, Persist, Hashable)
 
@@ -34,7 +34,7 @@ entryConstructors entry =
     Name _ ->
       mempty
 
-    Constructors cs ->
+    Constructors cs _ ->
       cs
 
     Ambiguous cs _ ->
@@ -57,8 +57,16 @@ instance Semigroup Entry where
     | otherwise =
       Ambiguous mempty $ HashSet.fromList [name1, name2]
 
-  Constructors constrs1 <> Constructors constrs2 =
-    Constructors (constrs1 <> constrs2)
+  Constructors constrs1 data1 <> Constructors constrs2 data2 =
+    Constructors (constrs1 <> constrs2) (data1 <> data2)
+
+  entry@(Constructors _ data_) <> Name name
+    | name `HashSet.member` data_ =
+      entry
+
+  Name name <> entry@(Constructors _ data_)
+    | name `HashSet.member` data_ =
+      entry
 
   Name name <> entry =
     Ambiguous mempty (HashSet.singleton name) <> entry
@@ -66,11 +74,11 @@ instance Semigroup Entry where
   entry <> Name name =
     entry <> Ambiguous mempty (HashSet.singleton name)
 
-  Constructors constrs <> entry =
-    Ambiguous constrs mempty <> entry
+  Constructors constrs data_ <> entry =
+    Ambiguous constrs data_ <> entry
 
-  entry <> Constructors constrs =
-    entry <> Ambiguous constrs mempty
+  entry <> Constructors constrs data_ =
+    entry <> Ambiguous constrs data_
 
   Ambiguous constrs1 names1 <> Ambiguous constrs2 names2 =
     Ambiguous (constrs1 <> constrs2) (names1 <> names2)
@@ -86,9 +94,13 @@ aliases scope =
         Name name ->
           [Right (name, HashSet.singleton prename)]
 
-        Constructors constrs ->
+        Constructors constrs dataNames ->
           [ Left (constr, HashSet.singleton prename)
           | constr <- HashSet.toList constrs
+          ]
+          <>
+          [ Right (name, HashSet.singleton prename)
+          | name <- HashSet.toList dataNames
           ]
 
         Ambiguous constrs names ->
