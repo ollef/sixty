@@ -51,7 +51,7 @@ headingAndBody error =
               line <> "Expected: " <> hcat (punctuate comma $ Doc.pretty <$> expected)
         )
 
-    Error.DuplicateName keyedName@(Scope.KeyedName _ name) _position -> do
+    Error.DuplicateName keyedName@(Scope.KeyedName _ name) _span -> do
       (filePath, oldSpan) <- fetch $ Query.KeyedNameSpan keyedName
       text <- fetch $ Query.FileText filePath
       let
@@ -250,9 +250,9 @@ fromError err = do
           , (\p -> Span.Absolute p p) <$> Error.Parsing.position parseError
           )
 
-      Error.DuplicateName (Scope.KeyedName _ (Name.Qualified module_ _)) position -> do
+      Error.DuplicateName (Scope.KeyedName _ (Name.Qualified module_ _)) span -> do
         maybeModuleFile <- fetch $ Query.ModuleFile module_
-        pure (fromMaybe "<no file>" maybeModuleFile, Right $ Span.Absolute position position)
+        pure (fromMaybe "<no file>" maybeModuleFile, Right span)
 
       Error.ImportNotFound module_ import_ -> do
         maybeModuleFile <- fetch $ Query.ModuleFile module_

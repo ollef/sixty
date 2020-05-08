@@ -17,14 +17,13 @@ import qualified Module
 import Name (Name)
 import qualified Name
 import Plicity
-import qualified Position
 import qualified Scope
 import qualified Span
 import qualified Syntax
 
 data Error
   = Parse FilePath !Error.Parsing
-  | DuplicateName !Scope.KeyedName !Position.Absolute
+  | DuplicateName !Scope.KeyedName !Span.Absolute
   | ImportNotFound !Name.Module !Module.Import
   | MultipleFilesWithModuleName !Name.Module FilePath FilePath
   | ModuleFileNameMismatch !Name.Module !Name.Module !Span.Absolute FilePath

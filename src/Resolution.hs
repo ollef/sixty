@@ -17,6 +17,7 @@ import qualified Position
 import qualified Presyntax
 import Scope (Scope)
 import qualified Scope
+import qualified Span
 
 moduleScopes
   :: Name.Module
@@ -34,6 +35,13 @@ moduleScopes module_@(Name.Module moduleText) definitions =
 
     go (!privateScope, !publicScope, !visibility, !scopes, !errs) (position, (name@(Name nameText), def)) =
       let
+        span
+          | s:_ <- Presyntax.spans def =
+            Span.absoluteFrom position s
+
+          | otherwise =
+            Span.Absolute position position
+
         prename =
           Name.Pre nameText
 
@@ -72,7 +80,7 @@ moduleScopes module_@(Name.Module moduleText) definitions =
               , publicScope
               , visibility
               , scopes
-              , duplicate Scope.Definition qualifiedName position : errs
+              , duplicate Scope.Definition qualifiedName span : errs
               )
       in
       case def of
@@ -83,7 +91,7 @@ moduleScopes module_@(Name.Module moduleText) definitions =
               , publicScope
               , visibility
               , scopes
-              , duplicate key qualifiedName position : errs
+              , duplicate key qualifiedName span : errs
               )
 
             Nothing ->
