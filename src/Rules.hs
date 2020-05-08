@@ -35,7 +35,6 @@ import qualified LambdaLifting
 import qualified Lexer
 import qualified Module
 import Monad
-import Name (Name(Name))
 import qualified Name
 import qualified Occurrences
 import qualified Parser
@@ -385,10 +384,11 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
           _ ->
             pure $ Telescope.Empty fail
 
-    KeyedNameSpan (Scope.KeyedName key (Name.Qualified module_ name@(Name textName))) ->
+    KeyedNameSpan (Scope.KeyedName key (Name.Qualified module_ name)) ->
       noError $ do
         positions <- fetch $ ModulePositionMap module_
         maybeFilePath <- fetch $ Query.ModuleFile module_
+        mdef <- fetch $ ParsedDefinition module_ $ Mapped.Query (key, name)
         pure $ case maybeFilePath of
           Nothing ->
             ( "<no file>"
@@ -397,14 +397,16 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
 
           Just filePath ->
             ( filePath
-            , case HashMap.lookup (key, name) positions of
-              Nothing ->
+            , case (HashMap.lookup (key, name) positions, mdef) of
+              (Nothing, _) ->
                 Span.Absolute 0 0
 
-              Just position ->
-                Span.Absolute
-                  position
-                  (position + Position.Absolute (Text.lengthWord16 textName))
+              (Just position, Just def)
+                | span:_ <- Presyntax.spans def ->
+                  Span.absoluteFrom position span
+
+              (Just position, _) ->
+                Span.Absolute position position
             )
 
     Occurrences scopeKey@(Scope.KeyedName key name) ->
