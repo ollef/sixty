@@ -1,44 +1,6 @@
-data Unit = Unit
+data Unit = MkUnit
 
-u : Unit
-u = Unit
+g : Unit -> Unit
+g MkUnit = MkUnit
 
-u' = -- unsolved meta error expected
-  Unit -- ambiguous name error expected
-
-Maybe2 : Type -> Type
-
-data Maybe a = Maybe a | Nothing
-
-data Maybe2 a = Maybe2 a | Nothing
-
-f : Maybe Unit
-f = Nothing
-
-f' : Type
-f' = Maybe Unit
-
-g : Maybe2 Unit
-g = Nothing
-
-g' : Type
-g' = Maybe2 Unit
-
-h = -- unsolved meta error expected
-  Nothing -- ambiguous name error expected
-
-fun : Unit -> Unit
-fun Unit = Unit
-
-f'un : Maybe Unit -> Maybe2 Unit
-f'un (Maybe Unit) = Maybe2 Unit
-f'un Nothing = Nothing
-
-g'un : Maybe2 Unit -> Maybe Unit
-g'un (Maybe2 Unit) = Maybe Unit
-g'un Nothing = Nothing
-
-Maybe2 = Unit
-
-j : Maybe2 Unit
-j = Nothing
+Unit = Type
