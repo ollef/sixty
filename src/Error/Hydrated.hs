@@ -20,6 +20,7 @@ import qualified Error
 import qualified Error.Parsing
 import qualified Module
 import Name (Name)
+import qualified Name
 import Plicity
 import qualified Position
 import qualified Pretty
@@ -50,10 +51,15 @@ headingAndBody error =
               line <> "Expected: " <> hcat (punctuate comma $ Doc.pretty <$> expected)
         )
 
-    Error.DuplicateName (Scope.KeyedName _ name) ->
+    Error.DuplicateName keyedName@(Scope.KeyedName _ name) _position -> do
+      (filePath, oldSpan) <- fetch $ Query.KeyedNameSpan keyedName
+      text <- fetch $ Query.FileText filePath
+      let
+        (lineColumn, _) =
+          Span.lineColumn oldSpan text
       pure
         ( "Duplicate name:" <+> Doc.pretty name
-        , Doc.pretty name <+> "has already been defined."
+        , Doc.pretty name <+> "has already been defined at" <+> Doc.pretty lineColumn <> "."
         )
 
     Error.ImportNotFound _ import_ ->
@@ -244,8 +250,9 @@ fromError err = do
           , (\p -> Span.Absolute p p) <$> Error.Parsing.position parseError
           )
 
-      Error.DuplicateName keyedName ->
-        second Right <$> fetch (Query.KeyedNameSpan keyedName)
+      Error.DuplicateName (Scope.KeyedName _ (Name.Qualified module_ _)) position -> do
+        maybeModuleFile <- fetch $ Query.ModuleFile module_
+        pure (fromMaybe "<no file>" maybeModuleFile, Right $ Span.Absolute position position)
 
       Error.ImportNotFound module_ import_ -> do
         maybeModuleFile <- fetch $ Query.ModuleFile module_

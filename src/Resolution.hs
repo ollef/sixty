@@ -10,16 +10,17 @@ import qualified Data.HashSet as HashSet
 
 import Error (Error)
 import qualified Error
+import qualified Module
 import Name (Name(Name))
 import qualified Name
+import qualified Position
 import qualified Presyntax
 import Scope (Scope)
-import qualified Module
 import qualified Scope
 
 moduleScopes
   :: Name.Module
-  -> [(Name, Presyntax.Definition)]
+  -> [(Position.Absolute, (Name, Presyntax.Definition))]
   -> (((Scope, Scope, Scope.Visibility), Scope.Module), [Error])
 moduleScopes module_@(Name.Module moduleText) definitions =
   let
@@ -29,10 +30,9 @@ moduleScopes module_@(Name.Module moduleText) definitions =
   (((finalPrivateScope, finalPublicScope, finalVisibility), scopes), reverse errs)
   where
     duplicate key qualifiedName =
-      Error.DuplicateName
-        (Scope.KeyedName key qualifiedName)
+      Error.DuplicateName (Scope.KeyedName key qualifiedName)
 
-    go (!privateScope, !publicScope, !visibility, !scopes, !errs) (name@(Name nameText), def) =
+    go (!privateScope, !publicScope, !visibility, !scopes, !errs) (position, (name@(Name nameText), def)) =
       let
         prename =
           Name.Pre nameText
@@ -72,7 +72,7 @@ moduleScopes module_@(Name.Module moduleText) definitions =
               , publicScope
               , visibility
               , scopes
-              , duplicate Scope.Definition qualifiedName : errs
+              , duplicate Scope.Definition qualifiedName position : errs
               )
       in
       case def of
@@ -83,7 +83,7 @@ moduleScopes module_@(Name.Module moduleText) definitions =
               , publicScope
               , visibility
               , scopes
-              , duplicate key qualifiedName : errs
+              , duplicate key qualifiedName position : errs
               )
 
             Nothing ->

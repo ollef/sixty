@@ -205,7 +205,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
         maybeFilePath <- fetch $ Query.ModuleFile module_
         fmap fold $ forM maybeFilePath $ \filePath -> do
           (_, _, defs) <- fetch $ ParsedFile filePath
-          pure $ HashMap.fromList
+          pure $ HashMap.fromListWith (\_new old -> old)
             [ ((Presyntax.key def, name), def)
             | (_, (name, def)) <- defs
             ]
@@ -232,14 +232,14 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
               (loc1, (name, def)):defs'@((loc2, _):_) ->
                 ((Presyntax.key def, name), Span.Absolute loc1 loc2) : go defs'
 
-          pure $ HashMap.fromList $ go defs
+          pure $ HashMap.fromListWith (\_new old -> old) $ go defs
 
     Scopes module_ ->
       nonInput $ do
         maybeFilePath <- fetch $ Query.ModuleFile module_
         fmap fold $ forM maybeFilePath $ \filePath -> do
           (_, _, defs) <- fetch $ ParsedFile filePath
-          pure $ Resolution.moduleScopes module_ $ snd <$> defs
+          pure $ Resolution.moduleScopes module_ defs
 
     ResolvedName (Scope.KeyedName key (Name.Qualified module_ keyName)) prename ->
       noError $ do

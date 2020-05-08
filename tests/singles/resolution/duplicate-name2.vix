@@ -3,4 +3,4 @@ data Unit = MkUnit
 g : Unit -> Unit
 g MkUnit = MkUnit
 
-Unit = Type
+Unit = Type -- duplicate name error expected
