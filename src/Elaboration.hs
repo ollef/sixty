@@ -538,8 +538,7 @@ checkUnspanned context term expectedType = do
         expectedTypeName =
           getExpectedTypeName context expectedType'
       (term', type_) <- inferUnspanned context term expectedTypeName
-      f <- subtype context type_ expectedType
-      pure $ f term'
+      subtypeWithTerm context term' type_ expectedType
 
 inferUnspanned
   :: Context v
@@ -1036,7 +1035,28 @@ subtype context type1 type2 = do
         Domain.Pi _ _ Implicit _ ->
           UntilImplicit $ const True
 
-        Domain.Neutral (Domain.Meta _) _ ->
+        _ ->
+          UntilExplicit
+
+  (args, type1') <- insertMetasReturningSyntax context until type1
+  f <- Unification.tryUnify context type1' type2
+  pure $ \term -> f $ Syntax.apps term args
+
+subtypeWithTerm
+  :: Context v
+  -> Syntax.Term v
+  -> Domain.Type
+  -> Domain.Type
+  -> M (Syntax.Term v)
+subtypeWithTerm context term type1 type2 = do
+  type2' <- Context.forceHead context type2
+  let
+    until =
+      case (term, type2') of
+        (_, Domain.Pi _ _ Implicit _) ->
+          UntilImplicit $ const True
+
+        (Syntax.Lam _ _ Implicit _, Domain.Neutral (Domain.Meta _) _) ->
           UntilImplicit $ const True
 
         _ ->
@@ -1044,7 +1064,7 @@ subtype context type1 type2 = do
 
   (args, type1') <- insertMetasReturningSyntax context until type1
   f <- Unification.tryUnify context type1' type2
-  pure $ \term -> f $ Syntax.apps term args
+  pure $ f $ Syntax.apps term args
 
 subtypeWithoutRecovery
   :: Context v
