@@ -63,6 +63,7 @@ library:
     - monad-control
     - mtl
     - parsers
+    - primitive
     - random
     - rope-utf16-splay
     - stm
