@@ -107,6 +107,13 @@ unify context flexibility value1 value2 = do
 
         unifySpines flexibility' spine1 spine2
 
+    (Domain.Lit lit1, Domain.Lit lit2)
+      | lit1 == lit2 ->
+        pure ()
+
+      | otherwise ->
+        can'tUnify
+
     (Domain.Lam name1 type1 plicity1 closure1, Domain.Lam _ type2 plicity2 closure2)
       | plicity1 == plicity2 ->
       unifyAbstraction name1 type1 closure1 type2 closure2
@@ -454,6 +461,9 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
 
             (Domain.Neutral head1 _, Domain.Neutral head2 _) ->
               pure $ sameHeads head1 head2
+
+            (Domain.Lit l1, Domain.Lit l2) ->
+              pure $ l1 == l2
 
             (Domain.Lam {}, Domain.Lam {}) ->
               pure True

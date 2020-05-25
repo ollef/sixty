@@ -60,6 +60,13 @@ unify context flexibility untouchables value1 value2 = do
       | con1 /= con2 ->
         throwIO Nope
 
+    (Domain.Lit lit1, Domain.Lit lit2)
+      | lit1 == lit2 ->
+        pure context
+
+      | otherwise ->
+        throwIO Nope
+
     (Domain.Glued head1 spine1 value1'', Domain.Glued head2 spine2 value2'')
       | Unification.sameHeads head1 head2 ->
         unifySpines Flexibility.Flexible spine1 spine2 `catch` \(_ :: Error) ->
