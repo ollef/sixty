@@ -107,6 +107,13 @@ unify context flexibility value1 value2 = do
 
         unifySpines flexibility' spine1 spine2
 
+    (Domain.Con con1 args1, Domain.Con con2 args2)
+      | con1 == con2 ->
+        unifySpines flexibility args1 args2
+
+      | otherwise ->
+        can'tUnify
+
     (Domain.Lit lit1, Domain.Lit lit2)
       | lit1 == lit2 ->
         pure ()
@@ -462,6 +469,9 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
             (Domain.Neutral head1 _, Domain.Neutral head2 _) ->
               pure $ sameHeads head1 head2
 
+            (Domain.Con con1 _, Domain.Con con2 _) ->
+              pure $ con1 == con2
+
             (Domain.Lit l1, Domain.Lit l2) ->
               pure $ l1 == l2
 
@@ -496,9 +506,6 @@ sameHeads head1 head2 =
 
     (Domain.Global global1, Domain.Global global2) ->
       global1 == global2
-
-    (Domain.Con con1, Domain.Con con2) ->
-      con1 == con2
 
     (Domain.Meta meta1, Domain.Meta meta2) ->
       meta1 == meta2
@@ -541,7 +548,7 @@ fullyApplyToMetas context constr type_ = do
           (Syntax.fromVoid $ Telescope.fold Syntax.Pi constrType)
       instantiatedConstrType <- Context.instantiateType context constrType' $ toList typeArgs
       (metas, _) <- Elaboration.insertMetas context Elaboration.UntilTheEnd instantiatedConstrType
-      pure $ Domain.Neutral (Domain.Con constr) $ typeArgs <> Tsil.fromList metas
+      pure $ Domain.Con constr $ typeArgs <> Tsil.fromList metas
 
     _ ->
       panic "fullyApplyToMetas"
@@ -566,6 +573,9 @@ shouldKeepMetaArgument value1 value2 =
   where
     simpleNonVar value =
       case value of
+        Domain.Con _ Tsil.Empty ->
+          True
+
         Domain.Neutral hd Tsil.Empty ->
           case hd of
             Domain.Var _ ->
@@ -668,6 +678,9 @@ checkInnerSolution outerContext occurs env flexibility value = do
 
     Domain.Neutral hd spine ->
       checkInnerNeutral outerContext occurs env flexibility hd spine
+
+    Domain.Con con args ->
+      Syntax.apps (Syntax.Con con) <$> mapM (mapM $ checkInnerSolution outerContext occurs env flexibility) args
 
     Domain.Lit lit ->
       pure $ Syntax.Lit lit
@@ -774,9 +787,6 @@ checkInnerHead outerContext occurs env flexibility hd =
 
     Domain.Global g ->
       pure $ Syntax.Global g
-
-    Domain.Con g ->
-      pure $ Syntax.Con g
 
     Domain.Meta m
       | m == occurs ->

@@ -104,8 +104,8 @@ evaluate env term =
     Syntax.Case scrutinee branches defaultBranch -> do
       scrutineeValue <- evaluate env scrutinee
       case (scrutineeValue, branches) of
-        (Domain.Neutral (Domain.Con constr) spine, Syntax.ConstructorBranches _ constructorBranches) ->
-          chooseConstructorBranch env constr (toList spine) constructorBranches defaultBranch
+        (Domain.Con constr args, Syntax.ConstructorBranches _ constructorBranches) ->
+          chooseConstructorBranch env constr (toList args) constructorBranches defaultBranch
 
         (Domain.Lit lit, Syntax.LiteralBranches literalBranches) ->
           chooseLiteralBranch env lit literalBranches defaultBranch
@@ -208,6 +208,10 @@ apply fun plicity arg =
         apply value' plicity arg
       pure $ Domain.Glued hd (args Tsil.:> (plicity, arg)) appliedValue
 
+
+    Domain.Con con args ->
+      pure $ Domain.Con con $ args Tsil.:> (plicity, arg)
+
     _ ->
       panic "applying non-function"
 
@@ -236,7 +240,7 @@ forceHead env value =
     Domain.Neutral (Domain.Case scrutinee branches@(Domain.Branches branchEnv brs defaultBranch)) spine -> do
       scrutinee' <- forceHead env scrutinee
       case (scrutinee', brs) of
-        (Domain.Neutral (Domain.Con constr) constructorArgs, Syntax.ConstructorBranches _ constructorBranches) -> do
+        (Domain.Con constr constructorArgs, Syntax.ConstructorBranches _ constructorBranches) -> do
           value' <- chooseConstructorBranch branchEnv constr (toList constructorArgs) constructorBranches defaultBranch
           value'' <- forceHead env value'
           applySpine value'' spine

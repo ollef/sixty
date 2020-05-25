@@ -56,8 +56,11 @@ unify context flexibility untouchables value1 value2 = do
 
         unifySpines flexibility' spine1 spine2
 
-    (Domain.Neutral (Domain.Con con1) _, Domain.Neutral (Domain.Con con2) _)
-      | con1 /= con2 ->
+    (Domain.Con con1 args1, Domain.Con con2 args2)
+      | con1 == con2 ->
+        unifySpines flexibility args1 args2
+
+      | otherwise ->
         throwIO Nope
 
     (Domain.Lit lit1, Domain.Lit lit2)
@@ -301,6 +304,9 @@ occurs context flexibility untouchables value = do
       occursHead context flexibility untouchables hd
       mapM_ (occurs context (max (Domain.headFlexibility hd) flexibility) untouchables . snd) spine
 
+    Domain.Con _ args ->
+      mapM_ (occurs context flexibility untouchables . snd) args
+
     Domain.Lit _ ->
       pure ()
 
@@ -358,9 +364,6 @@ occursHead context flexibility untouchables hd =
         pure ()
 
     Domain.Global _ ->
-      pure ()
-
-    Domain.Con _ ->
       pure ()
 
     Domain.Meta _ ->

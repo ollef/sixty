@@ -61,8 +61,8 @@ pattern Refl
   -> Domain.Value
   -> Domain.Value
 pattern Refl k a b =
-  Domain.Neutral
-    (Domain.Con ReflName)
+  Domain.Con
+    ReflName
     (Tsil.Empty Tsil.:> (Implicit, k) Tsil.:> (Explicit, a) Tsil.:> (Explicit, b))
 
 pattern IntName :: Name.Qualified

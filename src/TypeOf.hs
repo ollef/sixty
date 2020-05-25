@@ -32,6 +32,14 @@ typeOf context value =
     Domain.Lit lit ->
       pure $ Elaboration.inferLiteral lit
 
+    Domain.Con constr args -> do
+      tele <- fetch $ Query.ConstructorType constr
+      let
+        type_ =
+          Telescope.fold Syntax.Pi tele
+      constrType <- Evaluation.evaluate (Environment.empty $ Context.scopeKey context) type_
+      typeOfApplication context constrType args
+
     Domain.Glued hd spine _ ->
       typeOf context $ Domain.Neutral hd spine
 
@@ -58,13 +66,6 @@ typeOfHead context hd =
 
     Domain.Global global -> do
       type_ <- fetch $ Query.ElaboratedType global
-      Evaluation.evaluate (Environment.empty $ Context.scopeKey context) type_
-
-    Domain.Con constr -> do
-      tele <- fetch $ Query.ConstructorType constr
-      let
-        type_ =
-          Telescope.fold Syntax.Pi tele
       Evaluation.evaluate (Environment.empty $ Context.scopeKey context) type_
 
     Domain.Meta index -> do

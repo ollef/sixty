@@ -305,6 +305,9 @@ dependencies context value = do
       hdVars <- headVars hd
       pure $ hdVars <> fold spineVars
 
+    Domain.Con _ args ->
+      fold <$> mapM (dependencies context . snd) args
+
     Domain.Lit _ ->
       pure mempty
 
@@ -355,9 +358,6 @@ dependencies context value = do
             pure $ IntSet.singleton v
 
         Domain.Global _ ->
-          pure mempty
-
-        Domain.Con _ ->
           pure mempty
 
         Domain.Meta _ ->
@@ -537,7 +537,7 @@ forceHead context value =
     Domain.Neutral (Domain.Case scrutinee branches@(Domain.Branches branchEnv brs defaultBranch)) spine -> do
       scrutinee' <- forceHead context scrutinee
       case (scrutinee', brs) of
-        (Domain.Neutral (Domain.Con constr) constructorArgs, Syntax.ConstructorBranches _ constructorBranches) -> do
+        (Domain.Con constr constructorArgs, Syntax.ConstructorBranches _ constructorBranches) -> do
           value' <- Evaluation.chooseConstructorBranch branchEnv constr (toList constructorArgs) constructorBranches defaultBranch
           value'' <- forceHead context value'
           Evaluation.applySpine value'' spine
@@ -589,7 +589,7 @@ forceHeadGlue context value =
     Domain.Neutral (Domain.Case scrutinee branches@(Domain.Branches branchEnv brs defaultBranch)) spine -> do
       scrutinee' <- forceHead context scrutinee
       case (scrutinee', brs) of
-        (Domain.Neutral (Domain.Con constr) constructorArgs, Syntax.ConstructorBranches _ constructorBranches) -> do
+        (Domain.Con constr constructorArgs, Syntax.ConstructorBranches _ constructorBranches) -> do
           value' <- Evaluation.chooseConstructorBranch branchEnv constr (toList constructorArgs) constructorBranches defaultBranch
           value'' <- forceHeadGlue context value'
           Evaluation.applySpine value'' spine

@@ -912,6 +912,9 @@ getExpectedTypeName context type_ = do
     Domain.Neutral {} ->
       pure Nothing
 
+    Domain.Con {} ->
+      pure Nothing
+
     Domain.Lit {} ->
       pure Nothing
 

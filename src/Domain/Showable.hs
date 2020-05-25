@@ -20,6 +20,7 @@ import Var (Var)
 
 data Value
   = Neutral !Head Spine
+  | Con !Name.QualifiedConstructor (Tsil (Plicity, Value))
   | Lit !Literal
   | Glued !Head Spine !Value
   | Lam !Name !Type !Plicity !Closure
@@ -30,7 +31,6 @@ data Value
 data Head
   = Var !Var
   | Global !Name.Qualified
-  | Con !Name.QualifiedConstructor
   | Meta !Meta.Index
   | Case !Value !Branches
   deriving Show
@@ -57,6 +57,9 @@ to value =
     Domain.Neutral hd spine ->
       Neutral <$> headTo hd <*> mapM (mapM to) spine
 
+    Domain.Con con args ->
+      Con con <$> mapM (mapM to) args
+
     Domain.Lit lit ->
       pure $ Lit lit
 
@@ -80,9 +83,6 @@ headTo hd =
 
     Domain.Global global ->
       pure $ Global global
-
-    Domain.Con con ->
-      pure $ Con con
 
     Domain.Meta meta ->
       pure $ Meta meta

@@ -131,14 +131,6 @@ isPatternValue context value = do
     Domain.Neutral (Domain.Global _) _ ->
       pure False
 
-    Domain.Neutral (Domain.Con constr) spine -> do
-      constrTypeTele <- fetch $ Query.ConstructorType constr
-      let
-        spine' =
-          dropTypeArgs constrTypeTele $ toList spine
-
-      and <$> mapM (isPatternValue context . snd) spine'
-
     Domain.Neutral (Domain.Case {}) _ ->
       pure False
 
@@ -147,6 +139,14 @@ isPatternValue context value = do
 
     Domain.Lit _ ->
       pure True
+
+    Domain.Con constr args -> do
+      constrTypeTele <- fetch $ Query.ConstructorType constr
+      let
+        spine' =
+          dropTypeArgs constrTypeTele $ toList args
+
+      and <$> mapM (isPatternValue context . snd) spine'
 
     Domain.Glued _ _ value'' -> do
       value''' <- force value''
@@ -362,11 +362,11 @@ uncoveredScrutineePatterns context coveredConstructors value = do
     Domain.Lit lit ->
       pure [Pattern.Lit lit]
 
-    Domain.Neutral (Domain.Con constr) spine -> do
+    Domain.Con constr args -> do
       constrTypeTele <- fetch $ Query.ConstructorType constr
       let
         spine' =
-          dropTypeArgs constrTypeTele $ toList spine
+          dropTypeArgs constrTypeTele $ toList args
 
       spine'' <- forM spine' $ \(plicity, arg) -> do
         patterns <- uncoveredScrutineePatterns context coveredConstructors arg
@@ -439,7 +439,7 @@ simplifyMatch context coveredConstructors coveredLiterals (Match value forcedVal
     match' =
       Match value forcedValue' plicity pat type_
   case (forcedValue', unspannedPattern) of
-    (Domain.Neutral (Domain.Con constr) spine, Presyntax.ConOrVar _ name pats) -> do
+    (Domain.Con constr args, Presyntax.ConOrVar _ name pats) -> do
       maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
       case maybeScopeEntry of
         Just scopeEntry
@@ -450,7 +450,7 @@ simplifyMatch context coveredConstructors coveredLiterals (Match value forcedVal
                 instantiateConstructorType
                   (Context.toEnvironment context)
                   (Telescope.fromVoid constrType)
-                  (toList spine)
+                  (toList args)
 
               (matches', type') <- matchPrepatterns context patSpine pats patsType
               let
@@ -896,7 +896,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
         _ -> do
           let
             context' =
-              Context.defineWellOrdered context scrutineeVar $ Domain.Neutral (Domain.Con constr) conArgs
+              Context.defineWellOrdered context scrutineeVar $ Domain.Con constr conArgs
           result <- elaborate context' config
           pure $ Telescope.Empty result
 
@@ -1043,10 +1043,10 @@ uninhabitedScrutinee context coveredConstructors value = do
       type_ <- Context.instantiateType context varType $ toList spine
       uninhabitedType context 1 (IntMap.lookupDefault mempty var coveredConstructors) type_
 
-    Domain.Neutral (Domain.Con constr) spine -> do
+    Domain.Con constr constructorArgs -> do
       constrType <- fetch $ Query.ConstructorType constr
       let
-        args = snd <$> drop (Telescope.length constrType) (toList spine)
+        args = snd <$> drop (Telescope.length constrType) (toList constructorArgs)
       anyM (uninhabitedScrutinee context coveredConstructors) args
 
     _ ->

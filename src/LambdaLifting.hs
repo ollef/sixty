@@ -325,7 +325,7 @@ makeConstructorFunction con env type_ spine = do
       pure $ Syntax.Lam "x" domain' plicity body
 
     _ ->
-      Readback.readback env $ Domain.Neutral (Domain.Con con) spine
+      Readback.readback env $ Domain.Con con spine
 
 typeArity
   :: Domain.Environment v

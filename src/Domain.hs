@@ -21,6 +21,7 @@ import Var (Var)
 
 data Value
   = Neutral !Head Spine
+  | Con !Name.QualifiedConstructor (Tsil (Plicity, Value))
   | Lit !Literal
   | Glued !Head Spine !(Lazy Value)
   | Lam !Name !Type !Plicity !Closure
@@ -32,7 +33,6 @@ type Type = Value
 data Head
   = Var !Var
   | Global !Name.Qualified
-  | Con !Name.QualifiedConstructor
   | Meta !Meta.Index
   | Case !Value !Branches
 
@@ -53,7 +53,7 @@ global :: Name.Qualified -> Value
 global g = Neutral (Global g) mempty
 
 con :: Name.QualifiedConstructor -> Value
-con c = Neutral (Con c) mempty
+con c = Con c mempty
 
 meta :: Meta.Index -> Value
 meta i = Neutral (Meta i) mempty
@@ -68,9 +68,6 @@ headFlexibility = \case
     Flexibility.Rigid
 
   Global _ ->
-    Flexibility.Rigid
-
-  Con _ ->
     Flexibility.Rigid
 
   Meta _ ->

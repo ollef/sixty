@@ -23,6 +23,9 @@ readback env value =
       head' <- readbackHead env head
       readbackSpine head' spine
 
+    Domain.Con con args ->
+      Syntax.apps (Syntax.Con con) <$> mapM (mapM $ readback env) args
+
     Domain.Lit lit ->
       pure $ Syntax.Lit lit
 
@@ -83,9 +86,6 @@ readbackMaybeHead env head =
 
     Domain.Global g ->
       pure $ Just $ Syntax.Global g
-
-    Domain.Con c ->
-      pure $ Just $ Syntax.Con c
 
     Domain.Meta m ->
       pure $ Just $ Syntax.Meta m
