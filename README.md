@@ -77,7 +77,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Typed lambda lifting
   - [x] Typed closure conversion
   - [ ] Code generation
-  - [ ] Reference counting
+  - [ ] Garbage collection
   - [ ] Extern code
 - [ ] Prevent CBV-incompatible circular values
 - [ ] Literals
