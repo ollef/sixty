@@ -127,7 +127,7 @@ typeOfHead context head =
                   typeOfTelescope context env branchTele
 
                 [] ->
-                  panic "TODO type of branchless case"
+                  panic "TODO closure converted type of branchless case"
 
             Syntax.LiteralBranches literalBranches ->
               case OrderedHashMap.elems literalBranches of
@@ -136,7 +136,7 @@ typeOfHead context head =
                   typeOf context body'
 
                 [] ->
-                  panic "TODO type of branchless case"
+                  panic "TODO closure converted type of branchless case"
 
 typeOfApplication
   :: Context v
