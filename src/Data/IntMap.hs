@@ -5,8 +5,10 @@
 {-# language ScopedTypeVariables #-}
 module Data.IntMap where
 
-import Protolude hiding (IntMap)
+import Protolude hiding (IntMap, IntSet)
 
+import Data.IntSet (IntSet)
+import qualified Data.IntSet as IntSet
 import Data.Coerce
 import qualified "containers" Data.IntMap.Lazy as Containers
 
@@ -24,9 +26,17 @@ singleton :: Coercible key Containers.Key => key -> value -> IntMap key value
 singleton key value =
   IntMap $ Containers.singleton (coerce key) value
 
+fromSet :: Coercible key Containers.Key => (key -> value) -> IntSet key -> IntMap key value
+fromSet f (IntSet.IntSet set) =
+  IntMap $ Containers.fromSet (coerce f) set
+
 fromList :: Coercible key Containers.Key => [(key, value)] -> IntMap key value
 fromList xs =
   IntMap $ Containers.fromList $ coerce xs
+
+fromListWith :: Coercible key Containers.Key => (value -> value -> value) -> [(key, value)] -> IntMap key value
+fromListWith f xs =
+  IntMap $ Containers.fromListWith f $ coerce xs
 
 toList :: Coercible key Containers.Key => IntMap key value -> [(key, value)]
 toList (IntMap m) =
