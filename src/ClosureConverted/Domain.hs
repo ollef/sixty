@@ -14,6 +14,7 @@ import Syntax.Telescope (Telescope)
 import Index
 import Var (Var)
 
+-- TODO gluing
 data Value
   = Neutral !Head Spine
   | Con !Name.QualifiedConstructor [Value] [Value]
