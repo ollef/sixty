@@ -66,3 +66,16 @@ extend context type_ = do
       }
     , var
     )
+
+extendUnindexed
+  :: Context v
+  -> Domain.Type
+  -> M (Context v, Var)
+extendUnindexed context type_ = do
+  var <- freshVar
+  pure
+    ( context
+      { types = IntMap.insert var type_ (types context)
+      }
+    , var
+    )
