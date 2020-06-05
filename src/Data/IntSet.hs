@@ -46,3 +46,9 @@ member key (IntSet s) =
 
 map :: (Coercible key Containers.Key, Coercible key' Containers.Key) => (key -> key') -> IntSet key -> IntSet key'
 map f (IntSet s) = coerce $ Containers.map (coerce f) s
+
+difference :: IntSet key -> IntSet key' -> IntSet key
+difference (IntSet s) (IntSet t) = coerce $ Containers.difference s t
+
+intersection :: IntSet key -> IntSet key' -> IntSet key
+intersection (IntSet s) (IntSet t) = coerce $ Containers.intersection s t
