@@ -24,7 +24,7 @@ check :: [FilePath] -> Bool -> IO ()
 check argumentFiles printElaborated = do
   startTime <- getCurrentTime
   (sourceDirectories, filePaths) <- Project.filesFromArguments argumentFiles
-  ((), errs) <- Driver.runTask sourceDirectories filePaths Error.Hydrated.pretty $ do
+  ((), errs) <- Driver.runTask sourceDirectories filePaths Error.Hydrated.pretty $
     if printElaborated then
       withAsync (void Driver.checkAll) $ \checkedAll -> do
         forM_ filePaths $ \filePath -> do
@@ -61,5 +61,5 @@ check argumentFiles printElaborated = do
     , "in"
     , show (diffUTCTime endTime startTime) <> "."
     ]
-  unless (null errs) $
+  unless (null errs)
     exitFailure

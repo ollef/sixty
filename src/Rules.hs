@@ -451,7 +451,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
         maybeDef <- fetch $ LambdaLiftedDefinition name
         mapM ClosureConversion.convertDefinition maybeDef
 
-    ClosureConvertedType name@(Name.Lifted qualifiedName _) -> do
+    ClosureConvertedType name@(Name.Lifted qualifiedName _) ->
       nonInput $ do
         maybeDef <- fetch $ ClosureConverted name
         case maybeDef of
@@ -466,7 +466,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
       noError $ do
         def <- fetch $ ClosureConverted $ Name.Lifted dataTypeName 0
         case def of
-          Just (ClosureConverted.Syntax.DataDefinition (ClosureConverted.Syntax.ConstructorDefinitions constrs)) -> do
+          Just (ClosureConverted.Syntax.DataDefinition (ClosureConverted.Syntax.ConstructorDefinitions constrs)) ->
             pure $
               Telescope.Empty $
               OrderedHashMap.lookupDefault

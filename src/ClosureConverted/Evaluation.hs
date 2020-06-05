@@ -28,7 +28,7 @@ evaluate env term =
     Syntax.Global name -> do
       maybeDefinition <- fetchVisibleDefinition env name
       case maybeDefinition of
-        Just (Syntax.ConstantDefinition term') -> do
+        Just (Syntax.ConstantDefinition term') ->
           evaluate (Environment.emptyFrom env) term'
 
         _ ->
@@ -185,13 +185,7 @@ applyClosure env fun args =
           case maybeDefinition of
             Just (Syntax.FunctionDefinition tele) -> do
               maybeResult <- apply env (Telescope.fromVoid tele) args'
-              pure $
-                case maybeResult of
-                  Nothing ->
-                    neutral
-
-                  Just result ->
-                    result
+              pure $ fromMaybe neutral maybeResult
 
             _ ->
               pure neutral
@@ -213,7 +207,7 @@ evaluateClosure (Domain.Closure env body) argument = do
 fetchVisibleDefinition :: Domain.Environment v -> Name.Lifted -> M (Maybe Syntax.Definition)
 fetchVisibleDefinition env name@(Name.Lifted baseName _) = do
   definitionVisible <- fetch $ Query.IsDefinitionVisible (Environment.scopeKey env) baseName
-  if definitionVisible then do
+  if definitionVisible then
     fetch $ Query.ClosureConverted name
 
   else

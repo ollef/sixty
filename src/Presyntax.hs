@@ -109,7 +109,7 @@ case_ caseSpan scrutinee ofSpan brs =
   Term (Span.add caseSpan $ maybe ofSpan (\(_, Term span _) -> span) $ Extra.last brs) $ Case scrutinee brs
 
 
-let_ :: Span.Relative -> Name -> (Maybe (Span.Relative, Type)) -> [(Span.Relative, Clause)] -> Term -> Term
+let_ :: Span.Relative -> Name -> Maybe (Span.Relative, Type) -> [(Span.Relative, Clause)] -> Term -> Term
 let_ nameSpan name maybeType clauses rhs@(Term rhsSpan _) =
   Term (Span.add nameSpan rhsSpan) $ Let name maybeType clauses rhs
 

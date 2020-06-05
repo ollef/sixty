@@ -1,5 +1,4 @@
 {-# language GADTs #-}
-{-# language OverloadedStrings #-}
 {-# language RankNTypes #-}
 module ClosureConverted.Domain where
 

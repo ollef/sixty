@@ -78,13 +78,7 @@ definitionOccurrences env key qualifiedName =
 definitionNameSpans :: MonadFetch Query m => Scope.Key -> Name.Qualified -> m [Span.Relative]
 definitionNameSpans key (Name.Qualified moduleName name) = do
   maybeParsedDefinition <- fetch $ Query.ParsedDefinition moduleName $ Mapped.Query (key, name)
-  pure $
-    case maybeParsedDefinition of
-      Nothing ->
-        []
-
-      Just parsedDefinition ->
-        Presyntax.spans parsedDefinition
+  pure $ foldMap Presyntax.spans maybeParsedDefinition
 
 definitionConstructorSpans
   :: MonadFetch Query m

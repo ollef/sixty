@@ -131,7 +131,7 @@ isPatternValue context value = do
     Domain.Neutral (Domain.Global _) _ ->
       pure False
 
-    Domain.Neutral (Domain.Case {}) _ ->
+    Domain.Neutral Domain.Case {} _ ->
       pure False
 
     Domain.Neutral (Domain.Meta _) _ ->
@@ -376,7 +376,7 @@ uncoveredScrutineePatterns context coveredConstructors value = do
     Domain.Neutral (Domain.Meta _) _ ->
       pure []
 
-    Domain.Neutral (Domain.Case {}) _ ->
+    Domain.Neutral Domain.Case {} _ ->
       pure []
 
     Domain.Glued _ _ value'' -> do

@@ -314,7 +314,7 @@ prettyPrettyableTerm prec (Error.PrettyableTerm moduleName_ names term) = do
           go names'' env''
 
 prettyPrettyablePattern :: MonadFetch Query m => Int -> (Plicity, Error.PrettyablePattern) -> m (Doc ann)
-prettyPrettyablePattern prec (plicity, Error.PrettyablePattern moduleName_ names pattern) = do
+prettyPrettyablePattern prec (plicity, Error.PrettyablePattern moduleName_ names pattern_) = do
   env <- Pretty.emptyM moduleName_
   pure $ go names env
   where
@@ -322,7 +322,7 @@ prettyPrettyablePattern prec (plicity, Error.PrettyablePattern moduleName_ names
     go names' env' =
       case names' of
         [] ->
-          Plicity.prettyAnnotation plicity <> Pretty.prettyPattern prec env' pattern
+          Plicity.prettyAnnotation plicity <> Pretty.prettyPattern prec env' pattern_
 
         name:names'' ->
           let

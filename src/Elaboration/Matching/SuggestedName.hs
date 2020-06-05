@@ -33,8 +33,8 @@ nextExplicit context clauses = do
     )
 
 explicitNames :: Context v -> Presyntax.PlicitPattern -> M [(Span.Relative, Name)]
-explicitNames context pattern =
-  case pattern of
+explicitNames context pattern_ =
+  case pattern_ of
     Presyntax.ExplicitPattern pattern' ->
       patternNames context pattern'
 
@@ -47,7 +47,7 @@ shiftExplicit patterns =
     Presyntax.ExplicitPattern _:patterns' ->
       patterns'
 
-    Presyntax.ImplicitPattern _ _:patterns' -> do
+    Presyntax.ImplicitPattern _ _:patterns' ->
       shiftExplicit patterns'
 
     [] ->
@@ -67,10 +67,10 @@ nextImplicit context piName clauses = do
     )
 
 implicitNames :: Context v -> Name -> Presyntax.PlicitPattern -> M [(Span.Relative, Name)]
-implicitNames context piName pattern =
-  case pattern of
+implicitNames context piName pattern_ =
+  case pattern_ of
     Presyntax.ImplicitPattern _ namedPats
-      | Just pattern' <- HashMap.lookup piName namedPats -> do
+      | Just pattern' <- HashMap.lookup piName namedPats ->
         patternNames context pattern'
 
     _ ->
@@ -95,8 +95,8 @@ shiftImplicit name patterns =
       patterns
 
 patternNames :: Context v -> Presyntax.Pattern -> M [(Span.Relative, Name)]
-patternNames context pattern =
-  case pattern of
+patternNames context pattern_ =
+  case pattern_ of
     Presyntax.Pattern span (Presyntax.ConOrVar _ prename@(Name.Pre nameText) []) -> do
       maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) prename
       if HashSet.null $ foldMap Scope.entryConstructors maybeScopeEntry then
@@ -109,8 +109,8 @@ patternNames context pattern =
       pure []
 
 patternBinding :: Context v -> Presyntax.Pattern -> Name -> M Binding
-patternBinding context pattern fallbackName = do
-  spannedNames <- patternNames context pattern
+patternBinding context pattern_ fallbackName = do
+  spannedNames <- patternNames context pattern_
   pure $
     maybe (Binding.Unspanned fallbackName) Binding.Spanned $
     NonEmpty.nonEmpty spannedNames

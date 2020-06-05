@@ -134,7 +134,7 @@ evaluate context term =
         body' <- evaluate context'' body
         pure $ Let name var term'' type' body'
 
-    ClosureConverted.Function tele -> do
+    ClosureConverted.Function tele ->
       uncurry Function <$> evaluateTelescope (Context.emptyFrom context) tele
 
     ClosureConverted.Apply global args ->

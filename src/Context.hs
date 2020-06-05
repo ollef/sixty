@@ -84,7 +84,7 @@ toPrettyableTerm context term = do
   pure $
     Error.PrettyableTerm
       module_
-      (fmap (flip lookupVarName context) $ toList $ indices context)
+      ((`lookupVarName` context) <$> toList (indices context))
       (Syntax.coerce term')
 
 toPrettyableClosedTerm :: Context v -> Syntax.Term Void -> M Error.PrettyableTerm
@@ -96,14 +96,13 @@ toPrettyableClosedTerm context term = do
   pure $ Error.PrettyableTerm module_ mempty (Syntax.coerce term')
 
 toPrettyablePattern :: Context v -> Pattern -> Error.PrettyablePattern
-toPrettyablePattern context pattern = do
+toPrettyablePattern context = do
   let
     Scope.KeyedName _ (Name.Qualified module_ _) =
       Context.scopeKey context
   Error.PrettyablePattern
     module_
-    (fmap (flip lookupVarName context) $ toList $ indices context)
-    pattern
+    ((`lookupVarName` context) <$> toList (indices context))
 
 empty :: MonadBase IO m => Scope.KeyedName -> m (Context Void)
 empty key = do

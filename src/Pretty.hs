@@ -299,8 +299,8 @@ prettyConstructorDefinitions env tele =
 -------------------------------------------------------------------------------
 
 prettyPattern :: Int -> Environment v -> Pattern -> Doc ann
-prettyPattern prec env pattern =
-  case pattern of
+prettyPattern prec env pattern_ =
+  case pattern_ of
     Pattern.Wildcard ->
       "_"
 

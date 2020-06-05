@@ -65,8 +65,14 @@ checkAndPrintErrors
 checkAndPrintErrors driverState changedFiles sourceDirectories files = do
   startTime <- getCurrentTime
   (_, errs) <-
-    Driver.runIncrementalTask driverState changedFiles sourceDirectories files Error.Hydrated.pretty Driver.Prune $
-    Driver.checkAll
+    Driver.runIncrementalTask
+      driverState
+      changedFiles
+      sourceDirectories
+      files
+      Error.Hydrated.pretty
+      Driver.Prune
+      Driver.checkAll
   endTime <- getCurrentTime
 
   System.Console.ANSI.clearScreen

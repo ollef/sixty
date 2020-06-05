@@ -318,7 +318,7 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
             constrType
             (Domain.Neutral
               (Domain.Var dataVar)
-              ((\(plicity, var) -> (plicity, Domain.var var)) <$> paramVars))
+              (second Domain.var <$> paramVars))
           readback context' constrType
 
     termIndexEqualities

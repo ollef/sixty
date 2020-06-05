@@ -88,8 +88,8 @@ generateBenchmarkCommand :: ParserInfo (IO ())
 generateBenchmarkCommand =
   info
     (helper <*>
-      (fmap Command.BenchmarkProjectGenerator.generate $
-        Command.BenchmarkProjectGenerator.Options
+      fmap Command.BenchmarkProjectGenerator.generate
+        (Command.BenchmarkProjectGenerator.Options
           <$> strArgument
             (metavar "FILE"
             <> help "Output directory"
@@ -113,7 +113,7 @@ generateBenchmarkCommand =
             <> help "Generate COUNT functions per module (default: 30)"
             <> value 30
             )
-      )
+        )
     )
     $ fullDesc
     <> progDesc "Type check a Sixten program, watching for changes"

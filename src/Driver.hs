@@ -275,7 +275,7 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
 
 checkAll :: Task Query ()
 checkAll = do
-  filePaths <- fetch $ Query.InputFiles
+  filePaths <- fetch Query.InputFiles
   pooledForConcurrently_ filePaths $ \filePath -> do
     (module_, _, defs) <- fetch $ Query.ParsedFile filePath
     let

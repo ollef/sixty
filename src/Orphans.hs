@@ -63,7 +63,7 @@ instance Persist k => Persist (IntervalMap.Interval k) where
 instance (Persist k, Ord k, Persist v) => Persist (IntervalMap k v) where
   put m =
     put $ fold $
-      (\b -> IntervalMap.intersections b m)
+      (`IntervalMap.intersections` m)
       <$> IntervalMap.bounds m
 
   get =
@@ -76,7 +76,7 @@ instance Hashable k => Hashable (IntervalMap.Interval k) where
 instance (Hashable k, Ord k, Hashable v) => Hashable (IntervalMap k v) where
   hashWithSalt s m =
     hashWithSalt s $
-      (\b -> IntervalMap.intersections b m)
+      (`IntervalMap.intersections` m)
       <$> IntervalMap.bounds m
 
 instance (Persist v, GEq k, Hashable (DHashMap.Some k), Persist (DHashMap.Some k), Has' Persist k dep) => Persist (ValueDeps k dep v) where

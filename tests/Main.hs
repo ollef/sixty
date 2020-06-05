@@ -38,7 +38,7 @@ main = do
     Tasty.testGroup "tests"
       [ Tasty.testGroup "singles" $
         foreach singleFiles $ \inputFile ->
-          Tasty.testCase (drop (length singlesDirectory + 1) $ dropExtension inputFile) $ do
+          Tasty.testCase (drop (length singlesDirectory + 1) $ dropExtension inputFile) $
             checkFiles [takeDirectory inputFile] [inputFile]
       , Tasty.testGroup "multis" $
         foreach multiFiles $ \(dir, inputFiles) ->

@@ -239,14 +239,12 @@ listDirectoryRecursive predicate directory = do
 
 readFileText :: FilePath -> IO (Maybe Text)
 readFileText file =
-  do
-    Just <$> readFile file
+  (Just <$> readFile file)
   `catch` \(_ :: IOException) ->
     pure Nothing
 
 readFileJSON :: Aeson.FromJSON a => FilePath -> IO (Maybe a)
 readFileJSON file =
-  do
-    Aeson.decodeFileStrict file
+  Aeson.decodeFileStrict file
   `catch` \(_ :: IOException) ->
     pure Nothing
