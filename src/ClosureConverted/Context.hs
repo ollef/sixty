@@ -2,7 +2,7 @@
 {-# language DuplicateRecordFields #-}
 module ClosureConverted.Context where
 
-import Protolude hiding (IntMap)
+import Protolude hiding (empty, IntMap)
 
 import qualified ClosureConverted.Domain as Domain
 import Data.IntMap (IntMap)
@@ -32,6 +32,10 @@ empty scopeKey_ =
     , values = mempty
     , types = mempty
     }
+
+emptyFrom :: Context v -> Context Void
+emptyFrom context =
+  empty $ scopeKey context
 
 lookupVarType :: Var -> Context v -> Domain.Type
 lookupVarType var context =
