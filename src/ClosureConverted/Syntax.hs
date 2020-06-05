@@ -1,5 +1,5 @@
-{-# language DeriveGeneric #-}
 {-# language DeriveAnyClass #-}
+{-# language DeriveGeneric #-}
 module ClosureConverted.Syntax where
 
 import Protolude hiding (Type, IntMap)
