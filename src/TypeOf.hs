@@ -43,13 +43,13 @@ typeOf context value =
     Domain.Glued hd spine _ ->
       typeOf context $ Domain.Neutral hd spine
 
-    Domain.Lam name type_ plicity closure -> do
-      (context', var) <- Context.extend context name type_
+    Domain.Lam binding type_ plicity closure -> do
+      (context', var) <- Context.extend context (Binding.toName binding) type_
       body <- Evaluation.evaluateClosure closure (Domain.var var)
       bodyType <- typeOf context' body
       bodyType' <- Elaboration.readback context' bodyType
       pure $
-        Domain.Pi name type_ plicity $
+        Domain.Pi (Binding.toName binding) type_ plicity $
         Domain.Closure (Context.toEnvironment context) bodyType'
 
     Domain.Pi {} ->

@@ -121,9 +121,9 @@ unify context flexibility value1 value2 = do
       | otherwise ->
         can'tUnify
 
-    (Domain.Lam name1 type1 plicity1 closure1, Domain.Lam _ type2 plicity2 closure2)
+    (Domain.Lam binding1 type1 plicity1 closure1, Domain.Lam _ type2 plicity2 closure2)
       | plicity1 == plicity2 ->
-      unifyAbstraction name1 type1 closure1 type2 closure2
+      unifyAbstraction (Binding.toName binding1) type1 closure1 type2 closure2
 
     (Domain.Pi name1 domain1 plicity1 targetClosure1, Domain.Pi _ domain2 plicity2 targetClosure2)
       | plicity1 == plicity2 ->
@@ -150,7 +150,7 @@ unify context flexibility value1 value2 = do
 
     -- Eta expand
     (Domain.Lam name1 type1 plicity1 closure1, v2) -> do
-      (context', var) <- Context.extend context name1 type1
+      (context', var) <- Context.extend context (Binding.toName name1) type1
       let
         varValue =
           Domain.var var
@@ -161,7 +161,7 @@ unify context flexibility value1 value2 = do
       unify context' flexibility body1 body2
 
     (v1, Domain.Lam name2 type2 plicity2 closure2) -> do
-      (context', var) <- Context.extend context name2 type2
+      (context', var) <- Context.extend context (Binding.toName name2) type2
       let
         varValue =
           Domain.var var
@@ -694,8 +694,8 @@ checkInnerSolution outerContext occurs env flexibility value = do
       value''' <- force value''
       checkInnerSolution outerContext occurs env flexibility value'''
 
-    Domain.Lam name type_ plicity closure ->
-      Syntax.Lam (Binding.Unspanned name)
+    Domain.Lam binding type_ plicity closure ->
+      Syntax.Lam binding
         <$> checkInnerSolution outerContext occurs env flexibility type_
         <*> pure plicity
         <*> checkInnerClosure outerContext occurs env flexibility closure

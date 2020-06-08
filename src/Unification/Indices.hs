@@ -83,9 +83,9 @@ unify context flexibility untouchables value1 value2 = do
       value2''' <- force value2''
       unify context flexibility untouchables value1' value2'''
 
-    (Domain.Lam name1 type1 plicity1 closure1, Domain.Lam _ type2 plicity2 closure2)
+    (Domain.Lam binding1 type1 plicity1 closure1, Domain.Lam _ type2 plicity2 closure2)
       | plicity1 == plicity2 ->
-      unifyAbstraction name1 type1 closure1 type2 closure2
+      unifyAbstraction (Binding.toName binding1) type1 closure1 type2 closure2
 
     (Domain.Pi name1 domain1 plicity1 targetClosure1, Domain.Pi _ domain2 plicity2 targetClosure2)
       | plicity1 == plicity2 ->
@@ -113,8 +113,8 @@ unify context flexibility untouchables value1 value2 = do
         unify context1 flexibility untouchables target1 target2
 
     -- Eta expand
-    (Domain.Lam name1 type1 plicity1 closure1, v2) -> do
-      (context1, var) <- Context.extend context name1 type1
+    (Domain.Lam binding1 type1 plicity1 closure1, v2) -> do
+      (context1, var) <- Context.extend context (Binding.toName binding1) type1
       let
         varValue =
           Domain.var var
@@ -125,8 +125,8 @@ unify context flexibility untouchables value1 value2 = do
       context2 <- unify context1 flexibility (IntSet.insert var untouchables) body1 body2
       pure $ unextend context2
 
-    (v1, Domain.Lam name2 type2 plicity2 closure2) -> do
-      (context1, var) <- Context.extend context name2 type2
+    (v1, Domain.Lam binding2 type2 plicity2 closure2) -> do
+      (context1, var) <- Context.extend context (Binding.toName binding2) type2
       let
         varValue =
           Domain.var var
@@ -317,8 +317,8 @@ occurs context flexibility untouchables value = do
       occurs context Flexibility.Flexible untouchables (Domain.Neutral hd spine) `catch` \(_ :: Error) ->
         occursForce value''
 
-    Domain.Lam name type_ _ closure ->
-      occursAbstraction name type_ closure
+    Domain.Lam binding type_ _ closure ->
+      occursAbstraction (Binding.toName binding) type_ closure
 
     Domain.Pi name domain _ targetClosure ->
       occursAbstraction name domain targetClosure

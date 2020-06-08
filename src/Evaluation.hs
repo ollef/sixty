@@ -94,7 +94,7 @@ evaluate env term =
 
     Syntax.Lam binding type_ plicity body -> do
       type' <- evaluate env type_
-      pure $ Domain.Lam (Binding.toName binding) type' plicity (Domain.Closure env body)
+      pure $ Domain.Lam binding type' plicity (Domain.Closure env body)
 
     Syntax.App fun plicity arg -> do
       fun' <- evaluate env fun

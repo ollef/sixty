@@ -4,6 +4,7 @@ module Domain where
 
 import Protolude hiding (Type, Seq, IntMap)
 
+import Binding (Binding)
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Environment
@@ -24,7 +25,7 @@ data Value
   | Con !Name.QualifiedConstructor (Tsil (Plicity, Value))
   | Lit !Literal
   | Glued !Head Spine !(Lazy Value)
-  | Lam !Name !Type !Plicity !Closure
+  | Lam !Binding !Type !Plicity !Closure
   | Pi !Name !Type !Plicity !Closure
   | Fun !Type !Plicity !Type
 

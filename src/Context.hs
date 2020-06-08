@@ -318,8 +318,8 @@ dependencies context value = do
       value''' <- lift $ force value''
       dependencies context value'''
 
-    Domain.Lam name type' _ closure ->
-      abstractionDependencies name type' closure
+    Domain.Lam binding type' _ closure ->
+      abstractionDependencies (Binding.toName binding) type' closure
 
     Domain.Pi name type' _ closure ->
       abstractionDependencies name type' closure
@@ -330,9 +330,9 @@ dependencies context value = do
       pure $ domainVars <> targetVars
 
   where
-    abstractionDependencies binding type' closure = do
+    abstractionDependencies name type' closure = do
       typeVars <- dependencies context type'
-      (context', var) <- lift $ extend context binding type'
+      (context', var) <- lift $ extend context name type'
       body <- lift $ Evaluation.evaluateClosure closure $ Domain.var var
       bodyVars <- dependencies context' body
       pure $ typeVars <> IntSet.delete var bodyVars

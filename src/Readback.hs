@@ -39,8 +39,8 @@ readback env value =
         Just head' ->
           readbackSpine head' spine
 
-    Domain.Lam name type_ plicity closure ->
-      Syntax.Lam (Binding.Unspanned name) <$> readback env type_ <*> pure plicity <*> readbackClosure env closure
+    Domain.Lam binding type_ plicity closure ->
+      Syntax.Lam binding <$> readback env type_ <*> pure plicity <*> readbackClosure env closure
 
     Domain.Pi name type_ plicity closure ->
       Syntax.Pi (Binding.Unspanned name) <$> readback env type_ <*> pure plicity <*> readbackClosure env closure
