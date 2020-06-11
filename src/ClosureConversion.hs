@@ -7,6 +7,7 @@ import Rock
 import qualified ClosureConverted.Syntax as ClosureConverted
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified LambdaLifted.Syntax as LambdaLifted
+import Name (Name)
 import qualified Name
 import Query (Query)
 import qualified Query
@@ -37,8 +38,8 @@ convertDefinition def =
 
 convertParameterisedDataDefinition
   :: MonadFetch Query m
-  => Telescope LambdaLifted.Type LambdaLifted.ConstructorDefinitions v
-  -> m (Telescope ClosureConverted.Type ClosureConverted.ConstructorDefinitions v)
+  => Telescope Name LambdaLifted.Type LambdaLifted.ConstructorDefinitions v
+  -> m (Telescope Name ClosureConverted.Type ClosureConverted.ConstructorDefinitions v)
 convertParameterisedDataDefinition tele =
   case tele of
     Telescope.Empty (LambdaLifted.ConstructorDefinitions constrDefs) ->
@@ -165,8 +166,8 @@ convertBranches branches =
 
 convertTelescope
   :: MonadFetch Query m
-  => Telescope LambdaLifted.Type LambdaLifted.Term v
-  -> m (Telescope ClosureConverted.Type ClosureConverted.Term v)
+  => Telescope Name LambdaLifted.Type LambdaLifted.Term v
+  -> m (Telescope Name ClosureConverted.Type ClosureConverted.Term v)
 convertTelescope tele =
   case tele of
     Telescope.Empty term ->

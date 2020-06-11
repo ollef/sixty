@@ -11,6 +11,7 @@ import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Environment
 import Index
 import Monad
+import Name (Name)
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
 
@@ -62,8 +63,8 @@ readback env value =
 readbackConstructorBranch
   :: Domain.Environment v
   -> Domain.Environment v'
-  -> Telescope Syntax.Type Syntax.Term v'
-  -> M (Telescope Syntax.Type Syntax.Term v)
+  -> Telescope Name Syntax.Type Syntax.Term v'
+  -> M (Telescope Name Syntax.Type Syntax.Term v)
 readbackConstructorBranch outerEnv innerEnv tele =
   case tele of
     Telescope.Empty term -> do

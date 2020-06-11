@@ -3,6 +3,7 @@ module Readback where
 
 import Protolude hiding (IntMap, Seq, head, force, evaluate)
 
+import Binding (Binding)
 import qualified Binding
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Domain
@@ -109,8 +110,8 @@ readbackMaybeHead env head =
 readbackConstructorBranch
   :: Domain.Environment v
   -> Domain.Environment v'
-  -> Telescope Syntax.Type Syntax.Term v'
-  -> M (Telescope Syntax.Type Syntax.Term v)
+  -> Telescope Binding Syntax.Type Syntax.Term v'
+  -> M (Telescope Binding Syntax.Type Syntax.Term v)
 readbackConstructorBranch outerEnv innerEnv tele =
   case tele of
     Telescope.Empty term -> do

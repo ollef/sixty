@@ -24,6 +24,7 @@ import qualified Index
 import qualified LambdaLifted.Syntax as LambdaLifted
 import Literal (Literal)
 import Monad
+import Name (Name)
 import qualified Name
 import Plicity
 import qualified Query
@@ -38,7 +39,7 @@ import qualified Var
 liftDefinition
   :: Name.Qualified
   -> Syntax.Definition
-  -> M (LambdaLifted.Definition, IntMap Int (Telescope LambdaLifted.Type LambdaLifted.Term Void))
+  -> M (LambdaLifted.Definition, IntMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void))
 liftDefinition name def = do
   let
     env =
@@ -88,7 +89,7 @@ data InnerValue
 type Type = Value
 
 data Branches
-  = ConstructorBranches !Name.Qualified (OrderedHashMap Name.Constructor ([(Binding, Var, Type)], Value))
+  = ConstructorBranches !Name.Qualified (OrderedHashMap Name.Constructor ([(Name, Var, Type)], Value))
   | LiteralBranches (OrderedHashMap Literal Value)
   deriving Show
 
@@ -157,7 +158,7 @@ branchOccurrences branches =
     LiteralBranches literalBranches ->
       foldMap occurrences literalBranches
 
-telescopeOccurrences :: [(Binding, Var, Type)] -> Value -> Occurrences
+telescopeOccurrences :: [(Name, Var, Type)] -> Value -> Occurrences
 telescopeOccurrences tele body =
   case tele of
     [] ->
@@ -171,7 +172,7 @@ telescopeOccurrences tele body =
 
 data LiftState = LiftState
   { _nextIndex :: !Int
-  , _liftedDefinitions :: IntMap Int (Telescope LambdaLifted.Type LambdaLifted.Term Void)
+  , _liftedDefinitions :: IntMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void)
   } deriving Show
 
 emptyState :: LiftState
@@ -361,28 +362,28 @@ evaluateBranches env branches =
 
 evaluateTelescope
   :: Environment v
-  -> Telescope Syntax.Type Syntax.Term v
-  -> Lift ([(Binding, Var, Type)], Value)
+  -> Telescope Binding Syntax.Type Syntax.Term v
+  -> Lift ([(Name, Var, Type)], Value)
 evaluateTelescope env tele =
   case tele of
     Telescope.Empty body -> do
       body' <- evaluate env body []
       pure ([], body')
 
-    Telescope.Extend name type_ _plicity tele' -> do
+    Telescope.Extend binding type_ _plicity tele' -> do
       type' <- evaluate env type_ []
       (env', var) <- extend env type'
       (bindings, body) <- evaluateTelescope env' tele'
-      pure ((name, var, type'):bindings, body)
+      pure ((Binding.toName binding, var, type'):bindings, body)
 
-evaluateLambdaTelescope :: Environment v -> Syntax.Term v -> Lift ([(Binding, Var, Type)], Value)
+evaluateLambdaTelescope :: Environment v -> Syntax.Term v -> Lift ([(Name, Var, Type)], Value)
 evaluateLambdaTelescope env term =
   case term of
-    Syntax.Lam name type_ _plicity body -> do
+    Syntax.Lam binding type_ _plicity body -> do
       type' <- evaluate env type_ []
       (env', var) <- extend env type'
       (tele, body') <- evaluateLambdaTelescope env' body
-      pure ((name, var, type'):tele, body')
+      pure ((Binding.toName binding, var, type'):tele, body')
 
     Syntax.Spanned _ term' ->
       evaluateLambdaTelescope env term'
@@ -394,7 +395,7 @@ evaluateLambdaTelescope env term =
 liftLambda
   :: Environment v
   -> Syntax.Term v
-  -> Lift ([Var], Telescope LambdaLifted.Type LambdaLifted.Term Void)
+  -> Lift ([Var], Telescope Name LambdaLifted.Type LambdaLifted.Term Void)
 liftLambda env term = do
   (tele, body) <- evaluateLambdaTelescope env term
 
@@ -410,7 +411,7 @@ liftLambda env term = do
           (IntSet.toList occs)
 
     occurrenceTele =
-      [ (Binding.Unspanned "x", var, type_)
+      [ ("x", var, type_)
       | var <- sortedOccs
       , let
           type_ =
@@ -428,8 +429,8 @@ liftLambda env term = do
 
 liftDataDefinition
   :: Environment v
-  -> Telescope Syntax.Type Syntax.ConstructorDefinitions v
-  -> Lift (Telescope LambdaLifted.Type LambdaLifted.ConstructorDefinitions v)
+  -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v
+  -> Lift (Telescope Name LambdaLifted.Type LambdaLifted.ConstructorDefinitions v)
 liftDataDefinition env tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constrDefs) -> do
@@ -438,11 +439,11 @@ liftDataDefinition env tele =
         pure $ readback env type'
       pure $ Telescope.Empty $ LambdaLifted.ConstructorDefinitions constrDefs'
 
-    Telescope.Extend name type_ plicity tele' -> do
+    Telescope.Extend binding type_ plicity tele' -> do
       type' <- evaluate env type_ []
       (env', _) <- extend env type'
       tele'' <- liftDataDefinition env' tele'
-      pure (Telescope.Extend name (readback env type') plicity tele'')
+      pure (Telescope.Extend (Binding.toName binding) (readback env type') plicity tele'')
 
 -------------------------------------------------------------------------------
 
@@ -499,9 +500,9 @@ readbackBranches env branches =
 
 readbackTelescope
   :: Environment v
-  -> [(Binding, Var, Type)]
+  -> [(Name, Var, Type)]
   -> Value
-  -> Telescope LambdaLifted.Type LambdaLifted.Term v
+  -> Telescope Name LambdaLifted.Type LambdaLifted.Term v
 readbackTelescope env bindings body =
   case bindings of
     [] ->

@@ -19,7 +19,7 @@ data Value
   | Con !Name.QualifiedConstructor [Value] [Value]
   | Lit !Literal
   | Pi !Name !Type !Closure
-  | Function !(Telescope Syntax.Type Syntax.Type Void)
+  | Function !(Telescope Name Syntax.Type Syntax.Type Void)
 
 data Head
   = Var !Var

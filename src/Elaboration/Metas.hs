@@ -115,8 +115,8 @@ inlineSolutions scopeKey solutions def type_ = do
 
     inlineTeleSolutions
       :: Domain.Environment v
-      -> Telescope Syntax.Type Syntax.ConstructorDefinitions v
-      -> M (Telescope Syntax.Type Syntax.ConstructorDefinitions v)
+      -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v
+      -> M (Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v)
     inlineTeleSolutions env tele =
       case tele of
         Telescope.Empty (Syntax.ConstructorDefinitions constrs) -> do
@@ -388,7 +388,7 @@ evaluateBranches env branches =
 
 evaluateTelescope
   :: Domain.Environment v
-  -> Telescope Syntax.Type Syntax.Term v
+  -> Telescope Binding Syntax.Type Syntax.Term v
   -> M ([(Binding, Var, Type, Plicity)], Value)
 evaluateTelescope env tele =
   case tele of
@@ -489,7 +489,7 @@ readbackTelescope
   -> (Meta.Index -> (Var, [Maybe var]))
   -> [(Binding, Var, Type, Plicity)]
   -> Value
-  -> Telescope Syntax.Type Syntax.Term v
+  -> Telescope Binding Syntax.Type Syntax.Term v
 readbackTelescope env metas bindings body =
   case bindings of
     [] ->

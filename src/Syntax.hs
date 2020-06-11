@@ -44,7 +44,7 @@ data Branches v
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 type ConstructorBranches v =
-  OrderedHashMap Name.Constructor ([Span.Relative], Telescope Type Term v)
+  OrderedHashMap Name.Constructor ([Span.Relative], Telescope Binding Type Term v)
 
 type LiteralBranches v =
   OrderedHashMap Literal ([Span.Relative], Term v)
@@ -109,7 +109,7 @@ type MetaSolutions =
 data Definition
   = TypeDeclaration !(Type Void)
   | ConstantDefinition !(Term Void)
-  | DataDefinition !Boxity !(Telescope Type ConstructorDefinitions Void)
+  | DataDefinition !Boxity !(Telescope Binding Type ConstructorDefinitions Void)
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 newtype ConstructorDefinitions v =

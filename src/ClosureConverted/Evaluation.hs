@@ -11,6 +11,7 @@ import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Environment
 import Literal (Literal)
 import Monad
+import Name (Name)
 import qualified Name
 import qualified Query
 import Syntax.Telescope (Telescope)
@@ -113,7 +114,7 @@ chooseConstructorBranch outerEnv (Name.QualifiedConstructor _ constr) outerArgs 
     go
       :: Domain.Environment v
       -> [Domain.Value]
-      -> Telescope Syntax.Type Syntax.Term v
+      -> Telescope Name Syntax.Type Syntax.Term v
       -> M Domain.Value
     go env args tele =
       case (args, tele) of
@@ -146,7 +147,7 @@ chooseLiteralBranch outerEnv lit branches defaultBranch =
 
 apply
   :: Domain.Environment v
-  -> Telescope Syntax.Type Syntax.Term v
+  -> Telescope Name Syntax.Type Syntax.Term v
   -> [Domain.Value]
   -> M (Maybe Domain.Value)
 apply env tele args =

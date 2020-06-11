@@ -163,7 +163,7 @@ isPatternValue context value = do
 
   where
     dropTypeArgs
-      :: Telescope t t' v
+      :: Telescope n t t' v
       -> [(Plicity, value)]
       -> [(Plicity, value)]
     dropTypeArgs tele args =
@@ -318,7 +318,7 @@ uncoveredScrutineePatterns context coveredConstructors value = do
         covered =
           IntMap.lookupDefault mempty v coveredConstructors
 
-        go :: Name.Qualified -> Telescope Syntax.Type Syntax.ConstructorDefinitions v -> [Pattern]
+        go :: Name.Qualified -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v -> [Pattern]
         go typeName tele =
           case tele of
             Telescope.Empty (Syntax.ConstructorDefinitions constrDefs) -> do
@@ -393,7 +393,7 @@ uncoveredScrutineePatterns context coveredConstructors value = do
       pure []
   where
     dropTypeArgs
-      :: Telescope t t' v
+      :: Telescope n t t' v
       -> [(Plicity, value)]
       -> [(Plicity, value)]
     dropTypeArgs tele args =
@@ -512,7 +512,7 @@ simplifyMatch context coveredConstructors coveredLiterals (Match value forcedVal
 
 instantiateConstructorType
   :: Domain.Environment v
-  -> Telescope Syntax.Type Syntax.Type v
+  -> Telescope Binding Syntax.Type Syntax.Type v
   -> [(Plicity, Domain.Value)]
   -> M (Domain.Type, [(Plicity, Domain.Value)])
 instantiateConstructorType env tele spine =
@@ -787,7 +787,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
       :: Context v
       -> [(Plicity, Domain.Value)]
       -> Domain.Spine
-      -> Domain.Telescope Domain.Type (OrderedHashMap Name.Constructor Domain.Type)
+      -> Domain.Telescope Binding Domain.Type (OrderedHashMap Name.Constructor Domain.Type)
       -> M (Syntax.Type v)
     goParams context params conArgs dataTele =
       case (params, dataTele) of
@@ -842,7 +842,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
       -> Domain.Spine
       -> Domain.Type
       -> [[Presyntax.PlicitPattern]]
-      -> M (Telescope Syntax.Type Syntax.Term v)
+      -> M (Telescope Binding Syntax.Type Syntax.Term v)
     goConstrFields context constr conArgs type_ patterns =
       case type_ of
         Domain.Pi piName domain plicity targetClosure -> do

@@ -156,7 +156,7 @@ inferDataDefinition
   -> [(Presyntax.Binding, Presyntax.Type, Plicity)]
   -> [Presyntax.ConstructorDefinition]
   -> Tsil (Plicity, Var)
-  -> M (Telescope Syntax.Type Syntax.ConstructorDefinitions v, Syntax.Type v)
+  -> M (Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v, Syntax.Type v)
 inferDataDefinition context thisSpan preParams constrs paramVars =
   case preParams of
     [] -> do

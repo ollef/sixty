@@ -30,14 +30,14 @@ data Term v
 type Type = Term
 
 data Branches v
-  = ConstructorBranches !Name.Qualified (OrderedHashMap Name.Constructor (Telescope Type Term v))
+  = ConstructorBranches !Name.Qualified (OrderedHashMap Name.Constructor (Telescope Name Type Term v))
   | LiteralBranches (OrderedHashMap Literal (Term v))
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 data Definition
   = TypeDeclaration !(Type Void)
-  | ConstantDefinition !(Telescope Type Term Void)
-  | DataDefinition !(Telescope Type ConstructorDefinitions Void)
+  | ConstantDefinition !(Telescope Name Type Term Void)
+  | DataDefinition !(Telescope Name Type ConstructorDefinitions Void)
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 newtype ConstructorDefinitions v =

@@ -4,7 +4,6 @@ module ApplicativeNormalisation where
 import Protolude hiding (evaluate, Type)
 
 import qualified Applicative.Syntax as Applicative
-import qualified Binding
 import qualified Builtin
 import ClosureConverted.Context (Context)
 import qualified ClosureConverted.Context as Context
@@ -175,7 +174,7 @@ evaluateBranches context branches =
 
 evaluateTelescope
   :: Context v
-  -> Telescope ClosureConverted.Type ClosureConverted.Term v
+  -> Telescope Name ClosureConverted.Type ClosureConverted.Term v
   -> M ([(Name, Var, Type)], Value)
 evaluateTelescope context tele =
   case tele of
@@ -183,12 +182,12 @@ evaluateTelescope context tele =
       body' <- evaluate context body
       pure ([], body')
 
-    Telescope.Extend binding type_ _plicity tele' -> do
+    Telescope.Extend name type_ _plicity tele' -> do
       typeValue <- ClosureConverted.Evaluation.evaluate (Context.toEnvironment context) type_
       type' <- evaluate context type_
       (context', var) <- Context.extend context typeValue
       (names, body) <- evaluateTelescope context' tele'
-      pure ((Binding.toName binding, var, type'):names, body)
+      pure ((name, var, type'):names, body)
 
 -------------------------------------------------------------------------------
 
@@ -250,7 +249,7 @@ readbackTelescope
   :: Environment () v
   -> [(Name, Var, Type)]
   -> Value
-  -> Telescope Applicative.Type Applicative.Term v
+  -> Telescope Name Applicative.Type Applicative.Term v
 readbackTelescope env args body =
   case args of
     [] ->
@@ -258,7 +257,7 @@ readbackTelescope env args body =
 
     (name, var, type_):args' ->
       Telescope.Extend
-        (Binding.Unspanned name)
+        name
         (readback env type_)
         Explicit
         (readbackTelescope (Environment.extendVar env var) args' body)

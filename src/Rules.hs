@@ -20,6 +20,7 @@ import qualified Data.Text.Unsafe as Text
 import Rock
 import System.FilePath
 
+import Binding (Binding)
 import qualified Builtin
 import qualified ClosureConversion
 import qualified ClosureConverted.Context
@@ -35,6 +36,7 @@ import qualified LambdaLifting
 import qualified Lexer
 import qualified Module
 import Monad
+import Name (Name)
 import qualified Name
 import qualified Occurrences
 import qualified Parser
@@ -366,7 +368,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
         case def of
           Just (Syntax.DataDefinition _ tele, _) -> do
             let
-              go :: Telescope Syntax.Type Syntax.ConstructorDefinitions v -> Telescope Syntax.Type Syntax.Type v
+              go :: Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v -> Telescope Binding Syntax.Type Syntax.Type v
               go tele' =
                 case tele' of
                   Telescope.Empty (Syntax.ConstructorDefinitions constrs) ->
@@ -476,7 +478,9 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
 
           Just (ClosureConverted.Syntax.ParameterisedDataDefinition tele) -> do
             let
-              go :: Telescope ClosureConverted.Syntax.Type ClosureConverted.Syntax.ConstructorDefinitions v -> Telescope ClosureConverted.Syntax.Type ClosureConverted.Syntax.Type v
+              go
+                :: Telescope Name ClosureConverted.Syntax.Type ClosureConverted.Syntax.ConstructorDefinitions v
+                -> Telescope Name ClosureConverted.Syntax.Type ClosureConverted.Syntax.Type v
               go tele' =
                 case tele' of
                   Telescope.Empty (ClosureConverted.Syntax.ConstructorDefinitions constrs) ->

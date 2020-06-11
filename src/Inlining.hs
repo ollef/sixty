@@ -38,8 +38,8 @@ inlineDefinition scopeKey def = do
 
 inlineDataDefinition
   :: Environment v
-  -> Telescope Syntax.Type Syntax.ConstructorDefinitions v
-  -> M (Telescope Syntax.Type Syntax.ConstructorDefinitions v)
+  -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v
+  -> M (Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v)
 inlineDataDefinition env tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constrDefs) -> do
@@ -178,7 +178,7 @@ evaluateBranches dup env branches =
 evaluateTelescope
   :: Duplicable
   -> Environment v
-  -> Telescope Syntax.Type Syntax.Term v
+  -> Telescope Binding Syntax.Type Syntax.Term v
   -> M ([(Binding, Var, Type, Plicity)], Value)
 evaluateTelescope dup env tele =
   case tele of
@@ -266,7 +266,7 @@ readbackTelescope
   :: Environment v
   -> [(Binding, Var, Type, Plicity)]
   -> Value
-  -> Telescope Syntax.Type Syntax.Term v
+  -> Telescope Binding Syntax.Type Syntax.Term v
 readbackTelescope env bindings body =
   case bindings of
     [] ->

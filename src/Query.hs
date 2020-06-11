@@ -26,6 +26,7 @@ import Data.Persist as Persist
 import Data.Some (Some(Some))
 import Rock
 
+import Binding (Binding)
 import qualified ClosureConverted.Syntax as ClosureConverted
 import Extra
 import qualified FileSystem
@@ -62,15 +63,15 @@ data Query a where
   ElaboratingDefinition :: Scope.KeyedName -> Query (Maybe (Syntax.Definition, Syntax.Type Void, Meta.Vars (Syntax.Term Void)))
   ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void)
   ElaboratedDefinition :: Name.Qualified -> Query (Maybe (Syntax.Definition, Syntax.Type Void))
-  ConstructorType :: Name.QualifiedConstructor -> Query (Telescope Syntax.Type Syntax.Type Void)
+  ConstructorType :: Name.QualifiedConstructor -> Query (Telescope Binding Syntax.Type Syntax.Type Void)
   KeyedNameSpan :: Scope.KeyedName -> Query (FilePath, Span.Absolute)
   Occurrences :: Scope.KeyedName -> Query Occurrences.Intervals
 
-  LambdaLifted :: Name.Qualified -> Query (Maybe (LambdaLifted.Definition, IntMap Int (Telescope LambdaLifted.Type LambdaLifted.Term Void)))
+  LambdaLifted :: Name.Qualified -> Query (Maybe (LambdaLifted.Definition, IntMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void)))
   LambdaLiftedDefinition :: Name.Lifted -> Query (Maybe LambdaLifted.Definition)
   ClosureConverted :: Name.Lifted -> Query (Maybe ClosureConverted.Definition)
   ClosureConvertedType :: Name.Lifted -> Query (ClosureConverted.Type Void)
-  ClosureConvertedConstructorType :: Name.QualifiedConstructor -> Query (Telescope ClosureConverted.Type ClosureConverted.Type Void)
+  ClosureConvertedConstructorType :: Name.QualifiedConstructor -> Query (Telescope Name ClosureConverted.Type ClosureConverted.Type Void)
 
 fetchImportedName
   :: MonadFetch Query m

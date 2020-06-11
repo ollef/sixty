@@ -246,7 +246,7 @@ prettyImplicitPiTerm env term =
 
 prettyBranch
   :: Environment v
-  -> Telescope Syntax.Type Syntax.Term v
+  -> Telescope Binding Syntax.Type Syntax.Term v
   -> Doc ann
 prettyBranch env tele =
   case tele of
@@ -276,7 +276,7 @@ prettyDefinition env name def =
 
 prettyConstructorDefinitions
   :: Environment v
-  -> Telescope Syntax.Type Syntax.ConstructorDefinitions v
+  -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v
   -> Doc ann
 prettyConstructorDefinitions env tele =
   case tele of

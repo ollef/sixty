@@ -387,7 +387,7 @@ dependencies context value = do
     telescopeVars
       :: Context v
       -> Domain.Environment v'
-      -> Telescope Syntax.Type Syntax.Term v'
+      -> Telescope Binding Syntax.Type Syntax.Term v'
       -> StateT (IntMap Var (IntSet Var)) M (IntSet Var)
     telescopeVars context' env tele =
       case tele of

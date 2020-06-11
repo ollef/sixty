@@ -11,6 +11,7 @@ import Control.Exception.Lifted
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
 
+import Binding (Binding)
 import qualified Binding
 import Context (Context)
 import qualified Context
@@ -258,8 +259,8 @@ unifyBranches
       -> Domain.Environment v2
       -> IntSet Var
       -> Context v'
-      -> Telescope Syntax.Type Syntax.Term v1
-      -> Telescope Syntax.Type Syntax.Term v2
+      -> Telescope Binding Syntax.Type Syntax.Term v1
+      -> Telescope Binding Syntax.Type Syntax.Term v2
       -> M (Context v')
     unifyTele env1 env2 untouchables context tele1 tele2 =
       case (tele1, tele2) of
@@ -394,7 +395,7 @@ occursBranches outerContext flexibility outerUntouchables (Domain.Branches outer
       :: Context v
       -> IntSet Var
       -> Domain.Environment v1
-      -> Telescope Syntax.Type Syntax.Term v1
+      -> Telescope Binding Syntax.Type Syntax.Term v1
       -> M ()
     occursTele context untouchables env tele =
       case tele of

@@ -11,31 +11,30 @@ import Unsafe.Coerce
 import Data.Persist
 
 import Index
-import Binding (Binding)
 import Plicity
 
-data Telescope t k v
-  = Empty !(k v)
-  | Extend !Binding !(t v) !Plicity !(Scope (Telescope t k) v)
+data Telescope name type_ base v
+  = Empty !(base v)
+  | Extend !name !(type_ v) !Plicity !(Scope (Telescope name type_ base) v)
   deriving (Generic)
 
 deriving instance
-  (forall v'. Eq (t v'), forall v'. Eq (k v'))
-    => Eq (Telescope t k v)
+  (Eq n, forall v'. Eq (t v'), forall v'. Eq (k v'))
+    => Eq (Telescope n t k v)
 
 deriving instance
-  ((forall v'. Show (t v')), (forall v'. Show (k v')))
-    => Show (Telescope t k v)
+  (Show n, (forall v'. Show (t v')), (forall v'. Show (k v')))
+    => Show (Telescope n t k v)
 
 deriving instance
-  ((forall v'. Persist (t v')), (forall v'. Persist (k v')))
-    => Persist (Telescope t k v)
+  (Persist n, (forall v'. Persist (t v')), (forall v'. Persist (k v')))
+    => Persist (Telescope n t k v)
 
 deriving instance
-  ((forall v'. Hashable (t v')), (forall v'. Hashable (k v')))
-    => Hashable (Telescope t k v)
+  (Hashable n, (forall v'. Hashable (t v')), (forall v'. Hashable (k v')))
+    => Hashable (Telescope n t k v)
 
-hoist :: (forall v'. k v' -> k' v') -> Telescope t k v -> Telescope t k' v
+hoist :: (forall v'. k v' -> k' v') -> Telescope n t k v -> Telescope n t k' v
 hoist f tele =
   case tele of
     Empty k ->
@@ -45,8 +44,8 @@ hoist f tele =
       Extend name t plicity $ hoist f scope
 
 fold
-  :: (forall v'. Binding -> t v' -> Plicity -> Scope k v' -> k v')
-  -> Telescope t k v
+  :: (forall v'. n -> t v' -> Plicity -> Scope k v' -> k v')
+  -> Telescope n t k v
   -> k v
 fold f tele =
   case tele of
@@ -56,10 +55,10 @@ fold f tele =
     Extend name t plicity scope ->
       f name t plicity $ Syntax.Telescope.fold f scope
 
-fromVoid :: Telescope t k Void -> Telescope t k v
+fromVoid :: Telescope n t k Void -> Telescope n t k v
 fromVoid = unsafeCoerce
 
-length :: Telescope t k v -> Int
+length :: Telescope n t k v -> Int
 length tele =
   case tele of
     Empty _ ->

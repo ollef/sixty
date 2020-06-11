@@ -159,7 +159,7 @@ termOccurrences env maybeSpan term =
 
 dataDefinitionOccurrences
   :: Domain.Environment v
-  -> Telescope Syntax.Type Syntax.ConstructorDefinitions v
+  -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v
   -> M Intervals
 dataDefinitionOccurrences env tele =
   case tele of
@@ -187,7 +187,7 @@ branchesOccurrences env branches =
 constructorBranchOccurrences
   :: Domain.Environment v
   -> Name.Qualified
-  -> (Name.Constructor, ([Span.Relative], Telescope Syntax.Type Syntax.Term v))
+  -> (Name.Constructor, ([Span.Relative], Telescope Binding Syntax.Type Syntax.Term v))
   -> M Intervals
 constructorBranchOccurrences env constructorTypeName (constr, (spans, tele)) =
   pure (mconcat [Intervals.singleton span $ Intervals.Con (Name.QualifiedConstructor constructorTypeName constr) | span <- spans]) <>
@@ -203,7 +203,7 @@ literalBranchOccurrences env (lit, (spans, body)) =
 
 telescopeOccurrences
   :: Domain.Environment v
-  -> Telescope Syntax.Type Syntax.Term v
+  -> Telescope Binding Syntax.Type Syntax.Term v
   -> M Intervals
 telescopeOccurrences env tele =
   case tele of

@@ -5,6 +5,7 @@ import Protolude
 
 import Rock
 
+import Binding (Binding)
 import qualified Binding
 import qualified Builtin
 import Context (Context)
@@ -130,7 +131,7 @@ typeOfApplication context type_ spine =
 typeOfTelescope
   :: Context v'
   -> Domain.Environment v
-  -> Telescope Syntax.Type Syntax.Term v
+  -> Telescope Binding Syntax.Type Syntax.Term v
   -> M Domain.Type
 typeOfTelescope context env tele =
   case tele of

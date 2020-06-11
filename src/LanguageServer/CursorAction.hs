@@ -252,7 +252,7 @@ termAction k env term =
 dataDefinitionAction
   :: RelativeCallback a
   -> Environment v
-  -> Telescope Syntax.Type Syntax.ConstructorDefinitions v
+  -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v
   -> MaybeT M a
 dataDefinitionAction k env tele =
   case tele of
@@ -284,7 +284,7 @@ constructorBranchAction
   -> Environment v
   -> Name.Qualified
   -> Syntax.Term v
-  -> (Name.Constructor, ([Span.Relative], Telescope Syntax.Type Syntax.Term v))
+  -> (Name.Constructor, ([Span.Relative], Telescope Binding Syntax.Type Syntax.Term v))
   -> MaybeT M a
 constructorBranchAction k env typeName scrutinee (constr, (spans, tele)) =
   asum (foreach spans $ \span -> do
@@ -318,7 +318,7 @@ literalBranchAction k env (_, (_, body)) =
 teleAction
   :: RelativeCallback a
   -> Environment v
-  -> Telescope Syntax.Type Syntax.Term v
+  -> Telescope Binding Syntax.Type Syntax.Term v
   -> MaybeT M a
 teleAction k env tele =
   case tele of

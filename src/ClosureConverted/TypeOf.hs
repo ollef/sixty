@@ -6,7 +6,6 @@ import Protolude hiding (head)
 
 import Rock
 
-import qualified Binding
 import qualified Builtin
 import ClosureConverted.Context (Context)
 import qualified ClosureConverted.Context as Context
@@ -18,6 +17,7 @@ import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Environment
 import qualified Literal
 import Monad
+import Name (Name)
 import qualified Name
 import qualified Query
 import Syntax.Telescope (Telescope)
@@ -46,15 +46,15 @@ typeOfDefinition context definition = do
       Syntax.ParameterisedDataDefinition tele ->
         Evaluation.evaluate env $
           Telescope.fold
-            (\binding domain _ -> Syntax.Pi (Binding.toName binding) domain)
+            (\name domain _ -> Syntax.Pi name domain)
             (Telescope.hoist (const $ Syntax.Global $ Name.Lifted Builtin.TypeName 0) tele)
 
   Readback.readback (Context.toEnvironment context) typeValue
 
 typeOfFunction
   :: Context v
-  -> Telescope Syntax.Type Syntax.Term v
-  -> M (Telescope Syntax.Type Syntax.Type v)
+  -> Telescope Name Syntax.Type Syntax.Term v
+  -> M (Telescope Name Syntax.Type Syntax.Type v)
 typeOfFunction context tele =
   case tele of
     Telescope.Empty body -> do
@@ -85,7 +85,7 @@ typeOf context value =
       conType' <-
         Evaluation.evaluate (Context.toEnvironment context) $
           Telescope.fold
-            (\binding domain _ -> Syntax.Pi (Binding.toName binding) domain)
+            (\name domain _ -> Syntax.Pi name domain)
             (Telescope.fromVoid conType)
       typeOfApplication context conType' $ params <> args
 
@@ -149,7 +149,7 @@ typeOfApplication context outerType outerArgs =
       outerType' <-
         Evaluation.evaluate (Context.toEnvironment context) $
           Telescope.fold
-            (\binding domain _ -> Syntax.Pi (Binding.toName binding) domain)
+            (\name domain _ -> Syntax.Pi name domain)
             (Telescope.fromVoid tele)
       go outerType' outerArgs
 
@@ -172,7 +172,7 @@ typeOfApplication context outerType outerArgs =
 typeOfTelescope
   :: Context v'
   -> Domain.Environment v
-  -> Telescope Syntax.Type Syntax.Term v
+  -> Telescope Name Syntax.Type Syntax.Term v
   -> M Domain.Type
 typeOfTelescope context env tele =
   case tele of

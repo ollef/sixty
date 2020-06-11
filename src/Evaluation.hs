@@ -8,6 +8,7 @@ import Rock
 import qualified Binding
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
+import Binding (Binding)
 import qualified Data.Tsil as Tsil
 import qualified Domain
 import qualified Domain.Telescope as Domain (Telescope)
@@ -24,17 +25,17 @@ import qualified Syntax.Telescope as Telescope
 
 evaluateConstructorDefinitions
   :: Domain.Environment v
-  -> Telescope Syntax.Type Syntax.ConstructorDefinitions v
-  -> M (Domain.Telescope Domain.Type (OrderedHashMap Name.Constructor Domain.Type))
+  -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v
+  -> M (Domain.Telescope Binding Domain.Type (OrderedHashMap Name.Constructor Domain.Type))
 evaluateConstructorDefinitions env tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constrs) -> do
       constrs' <- OrderedHashMap.forMUnordered constrs $ evaluate env
       pure $ Domain.Telescope.Empty constrs'
 
-    Telescope.Extend name domain plicity target -> do
+    Telescope.Extend binding domain plicity target -> do
       domain' <- evaluate env domain
-      pure $ Domain.Telescope.Extend (Binding.toName name) domain' plicity $ \param -> do
+      pure $ Domain.Telescope.Extend binding domain' plicity $ \param -> do
         (env', _) <- Environment.extendValue env param
         evaluateConstructorDefinitions env' target
 
@@ -139,7 +140,7 @@ chooseConstructorBranch outerEnv qualifiedConstr@(Name.QualifiedConstructor _ co
       go outerEnv (dropTypeArgs constrTypeTele outerArgs) tele
   where
     dropTypeArgs
-      :: Telescope t t' v
+      :: Telescope n t t' v
       -> [(Plicity, value)]
       -> [(Plicity, value)]
     dropTypeArgs tele args =
@@ -157,7 +158,7 @@ chooseConstructorBranch outerEnv qualifiedConstr@(Name.QualifiedConstructor _ co
     go
       :: Domain.Environment v
       -> [(Plicity, Domain.Value)]
-      -> Telescope Syntax.Type Syntax.Term v
+      -> Telescope Binding Syntax.Type Syntax.Term v
       -> M Domain.Value
     go env args tele =
       case (args, tele) of

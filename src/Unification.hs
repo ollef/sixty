@@ -8,6 +8,7 @@ import Protolude hiding (catch, check, evaluate, force, throwIO)
 import Control.Exception.Lifted
 import Rock
 
+import Binding (Binding)
 import {-# source #-} qualified Elaboration
 import qualified Binding
 import qualified Builtin
@@ -365,8 +366,8 @@ unifyBranches
       :: Context v
       -> Domain.Environment v1
       -> Domain.Environment v2
-      -> Telescope Syntax.Type Syntax.Term v1
-      -> Telescope Syntax.Type Syntax.Term v2
+      -> Telescope Binding Syntax.Type Syntax.Term v1
+      -> Telescope Binding Syntax.Type Syntax.Term v2
       -> M ()
     unifyTele context env1 env2 tele1 tele2 =
       case (tele1, tele2) of
@@ -451,7 +452,7 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
     branchMatches
       :: Context v
       -> Domain.Environment v'
-      -> Telescope Syntax.Type Syntax.Term v'
+      -> Telescope Binding Syntax.Type Syntax.Term v'
       -> M Bool
     branchMatches context env tele =
       case tele of
@@ -718,8 +719,8 @@ checkInnerBranch
   -> Domain.Environment v
   -> Domain.Environment v'
   -> Flexibility
-  -> Telescope Syntax.Type Syntax.Term v'
-  -> M (Telescope Syntax.Type Syntax.Term v)
+  -> Telescope Binding Syntax.Type Syntax.Term v'
+  -> M (Telescope Binding Syntax.Type Syntax.Term v)
 checkInnerBranch outerContext occurs outerEnv innerEnv flexibility tele =
   case tele of
     Telescope.Empty term -> do
