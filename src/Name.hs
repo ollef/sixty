@@ -33,32 +33,11 @@ newtype Module = Module Text
 data Qualified = Qualified !Module !Name
   deriving (Eq, Ord, Show, Generic, Persist)
 
-instance Hashable Qualified where
-  hashWithSalt =
-    defaultHashWithSalt
-
-  hash (Qualified m n) =
-    hash m `hashWithSalt` n
-
 data QualifiedConstructor = QualifiedConstructor !Qualified !Constructor
   deriving (Eq, Ord, Show, Generic, Persist)
 
-instance Hashable QualifiedConstructor where
-  hashWithSalt =
-    defaultHashWithSalt
-
-  hash (QualifiedConstructor m n) =
-    hash m `hashWithSalt` n
-
 data Lifted = Lifted !Qualified !Int
   deriving (Eq, Ord, Show, Generic, Persist)
-
-instance Hashable Lifted where
-  hashWithSalt =
-    defaultHashWithSalt
-
-  hash (Lifted m n) =
-    hash m `hashWithSalt` n
 
 -------------------------------------------------------------------------------
 
@@ -101,6 +80,27 @@ instance Pretty Qualified where
     | otherwise =
       pretty module_ <> "." <> pretty name
 
+instance Hashable Qualified where
+  hashWithSalt =
+    defaultHashWithSalt
+
+  hash (Qualified m n) =
+    hash m `hashWithSalt` n
+
 instance Pretty QualifiedConstructor where
   pretty (QualifiedConstructor n c) =
     pretty n <> "." <> pretty c
+
+instance Hashable QualifiedConstructor where
+  hashWithSalt =
+    defaultHashWithSalt
+
+  hash (QualifiedConstructor m n) =
+    hash m `hashWithSalt` n
+
+instance Hashable Lifted where
+  hashWithSalt =
+    defaultHashWithSalt
+
+  hash (Lifted m n) =
+    hash m `hashWithSalt` n
