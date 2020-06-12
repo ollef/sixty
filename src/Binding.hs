@@ -40,8 +40,8 @@ spans binding =
     Unspanned _ ->
       []
 
-fromPresyntax :: Presyntax.Binding -> Binding
-fromPresyntax (Presyntax.Binding span_ name) =
+fromPresyntax :: Presyntax.SpannedName -> Binding
+fromPresyntax (Presyntax.SpannedName span_ name) =
   Spanned $ pure (span_, name)
 
 instance IsString Binding where

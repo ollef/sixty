@@ -153,7 +153,7 @@ inferDefinition context def =
 inferDataDefinition
   :: Context v
   -> Span.Relative
-  -> [(Presyntax.Binding, Presyntax.Type, Plicity)]
+  -> [(Presyntax.SpannedName, Presyntax.Type, Plicity)]
   -> [Presyntax.ConstructorDefinition]
   -> Tsil (Plicity, Var)
   -> M (Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v, Syntax.Type v)
@@ -178,7 +178,7 @@ inferDataDefinition context thisSpan preParams constrs paramVars =
       thisType' <- evaluate context thisType
 
       (context', var) <-
-        Context.extendPre context (Presyntax.Binding thisSpan thisName) thisType'
+        Context.extendPre context (Presyntax.SpannedName thisSpan thisName) thisType'
 
       lazyReturnType <-
         lazy $

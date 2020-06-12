@@ -31,7 +31,7 @@ data UnspannedTerm
   = Var !Name.Pre
   | Lit !Literal
   | Let !Name !(Maybe (Span.Relative, Type)) [(Span.Relative, Clause)] !Term
-  | Pi !Binding !Plicity !Type !Type
+  | Pi !SpannedName !Plicity !Type !Type
   | Fun !Type !Type
   | Lam !PlicitPattern !Term
   | App !Term !Term
@@ -43,7 +43,7 @@ data UnspannedTerm
 
 type Type = Term
 
-data Binding = Binding !Span.Relative !Name
+data SpannedName = SpannedName !Span.Relative !Name
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 data Pattern
@@ -84,9 +84,9 @@ lams :: Foldable f => f PlicitPattern -> Term -> Term
 lams vs body@(Term bodySpan _) =
   foldr (\pat -> Term (Span.add (plicitPatternSpan pat) bodySpan) . Lam pat) body vs
 
-pis :: Foldable f => Plicity -> f Binding -> Type -> Type -> Type
+pis :: Foldable f => Plicity -> f SpannedName -> Type -> Type -> Type
 pis plicity vs domain target@(Term (Span.Relative _ end) _) =
-  foldr (\binding@(Binding (Span.Relative start _) _) -> Term (Span.Relative start end) . Pi binding plicity domain) target vs
+  foldr (\spannedName@(SpannedName (Span.Relative start _) _) -> Term (Span.Relative start end) . Pi spannedName plicity domain) target vs
 
 function :: Term -> Term -> Term
 function domain@(Term span1 _) target@(Term span2 _) =
@@ -125,7 +125,7 @@ clause pats equalsSpan rhs@(Term rhsSpan _) =
 data Definition
   = TypeDeclaration !Span.Relative !Type
   | ConstantDefinition [(Span.Relative, Clause)]
-  | DataDefinition !Span.Relative !Boxity [(Binding, Type, Plicity)] [ConstructorDefinition]
+  | DataDefinition !Span.Relative !Boxity [(SpannedName, Type, Plicity)] [ConstructorDefinition]
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 data Clause = Clause

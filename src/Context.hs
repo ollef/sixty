@@ -138,10 +138,10 @@ emptyFrom context =
 
 extendPre
   :: Context v
-  -> Presyntax.Binding
+  -> Presyntax.SpannedName
   -> Domain.Type
   -> M (Context (Succ v), Var)
-extendPre context (Presyntax.Binding _ name) type_ = do
+extendPre context (Presyntax.SpannedName _ name) type_ = do
   var <- freshVar
   pure
     ( context

@@ -436,17 +436,13 @@ spannedModuleName :: Parser (Span.Relative, Name.Module)
 spannedModuleName =
   second Name.Module <$> spannedIdentifier
 
-spannedName :: Parser (Span.Relative, Name)
+spannedName :: Parser SpannedName
 spannedName =
-  second Name <$> spannedIdentifier
+  uncurry SpannedName . second Name <$> spannedIdentifier
 
 spannedConstructor :: Parser (Span.Relative, Name.Constructor)
 spannedConstructor =
   second Name.Constructor <$> spannedIdentifier
-
-binding :: Parser Binding
-binding =
-  uncurry Binding <$> spannedName
 
 -------------------------------------------------------------------------------
 -- Error recovery
@@ -531,8 +527,8 @@ plicitPattern =
       ImplicitPattern (Span.add span1 span2) $ HashMap.fromList pats
     patName =
       spannedName <**>
-        ((\pat (_, name_) -> (name_, pat)) <$ token Lexer.Equals <*> pattern_
-        <|> pure (\(span, name_@(Name n)) -> (name_, Pattern span $ ConOrVar span (Name.Pre n) mempty))
+        ((\pat (SpannedName _ name_) -> (name_, pat)) <$ token Lexer.Equals <*> pattern_
+        <|> pure (\(SpannedName span name_@(Name n)) -> (name_, Pattern span $ ConOrVar span (Name.Pre n) mempty))
         )
 
 -------------------------------------------------------------------------------
@@ -584,8 +580,8 @@ atomicTerm =
           continue $
             implicitPis <$>
               some
-                ( (,) <$ token Lexer.LeftParen <*> some binding <* token Lexer.Colon <*> term <* token Lexer.RightParen
-                <|> (\binding_@(Binding span_ _) -> ([binding_], Term span_ Wildcard)) <$> binding
+                ( (,) <$ token Lexer.LeftParen <*> some spannedName <* token Lexer.Colon <*> term <* token Lexer.RightParen
+                <|> (\spannedName_@(SpannedName span_ _) -> ([spannedName_], Term span_ Wildcard)) <$> spannedName
                 )
                 <* token Lexer.Dot <*> term
 
@@ -604,7 +600,7 @@ atomicTerm =
 
     letBinding :: Parser (Term -> Term)
     letBinding = do
-      Binding span name_@(Name nameText) <- binding
+      SpannedName span name_@(Name nameText) <- spannedName
       let_ span name_ . Just . (,) span <$ token Lexer.Colon <*> recoveringTerm <*>
         sameLevel (withIndentationBlock $ do
           span' <- token $ Lexer.Identifier nameText
@@ -620,14 +616,14 @@ plicitAtomicTerm =
   where
     implicitArgument =
       spannedName <**>
-        ((\t (_, n) -> (n, t)) <$ token Lexer.Equals <*> term
-        <|> pure (\(span, n@(Name text)) -> (n, Term span $ Var $ Name.Pre text))
+        ((\t (SpannedName _ n) -> (n, t)) <$ token Lexer.Equals <*> term
+        <|> pure (\(SpannedName span n@(Name text)) -> (n, Term span $ Var $ Name.Pre text))
         )
 
 term :: Parser Term
 term =
   pis Explicit <$>
-    try (token Lexer.LeftParen *> some binding <* token Lexer.Colon) <*>
+    try (token Lexer.LeftParen *> some spannedName <* token Lexer.Colon) <*>
     term <* token Lexer.RightParen <*
     token Lexer.RightArrow <*> term
   <|> atomicTerm <**> (foldl' (flip (.)) identity <$> many plicitAtomicTerm) <**> fun
@@ -649,7 +645,7 @@ definition =
   relativeTo $
     dataDefinition
     <|> do
-      (span, name_@(Name nameText)) <- spannedName
+      SpannedName span name_@(Name nameText) <- spannedName
       (,) name_ <$>
         (TypeDeclaration span <$ token Lexer.Colon <*> recoveringTerm
         <|> ConstantDefinition <$> clauses span nameText
@@ -677,7 +673,7 @@ dataDefinition =
       Boxed <$ token (Lexer.Identifier "boxed") <* uncheckedToken Lexer.Data
       <|> Unboxed <$ token Lexer.Data
 
-    mkDataDefinition boxity_ (span, name_) params constrs =
+    mkDataDefinition boxity_ (SpannedName span name_) params constrs =
       (name_, DataDefinition span boxity_ params constrs)
     parameters =
       parameters1 <|> pure []
@@ -687,14 +683,14 @@ dataDefinition =
       <|> (<>) <$> explicitParameter <*> parameters
 
     explicitParameter =
-      (\bindings type_ -> [(binding_, type_, Explicit) | binding_ <- bindings]) <$ token Lexer.LeftParen <*> some binding <* token Lexer.Colon <*> recoveringTerm <* token Lexer.RightParen
-      <|> (\binding_@(Binding span _) -> pure (binding_, Term span Presyntax.Wildcard, Explicit)) <$> binding
+      (\spannedNames type_ -> [(spannedName_, type_, Explicit) | spannedName_ <- spannedNames]) <$ token Lexer.LeftParen <*> some spannedName <* token Lexer.Colon <*> recoveringTerm <* token Lexer.RightParen
+      <|> (\spannedName_@(SpannedName span _) -> pure (spannedName_, Term span Presyntax.Wildcard, Explicit)) <$> spannedName
 
     implicitParameters =
       (<>) . concat <$ token Lexer.Forall <*>
         some
-          ((\bindings type_ -> [(binding_, type_, Implicit) | binding_ <- bindings]) <$ token Lexer.LeftParen <*> some binding <* token Lexer.Colon <*> term <* token Lexer.RightParen
-          <|> (\binding_@(Binding span _) -> [(binding_, Term span Wildcard, Implicit)]) <$> binding
+          ((\spannedNames type_ -> [(spannedName_, type_, Implicit) | spannedName_ <- spannedNames]) <$ token Lexer.LeftParen <*> some spannedName <* token Lexer.Colon <*> term <* token Lexer.RightParen
+          <|> (\spannedName_@(SpannedName span _) -> [(spannedName_, Term span Wildcard, Implicit)]) <$> spannedName
           ) <* token Lexer.Dot <*> parameters1
 
     gadtConstructors =
