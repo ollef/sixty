@@ -19,6 +19,8 @@ import Data.Persist
 
 import Binding (Binding)
 import qualified Binding
+import Bindings (Bindings)
+import qualified Bindings
 import Literal (Literal)
 import qualified Name
 import qualified Position
@@ -59,7 +61,17 @@ singleton span@(Span.Relative start end) item =
 binding :: Binding -> Var -> Intervals
 binding b var =
   case b of
-    Binding.Spanned spannedNames -> do
+    Binding.Spanned span _ -> do
+      singleton span (Var var)
+        <> Intervals mempty mempty (IntMap.singleton var $ pure span)
+
+    Binding.Unspanned _ ->
+      mempty
+
+bindings :: Bindings -> Var -> Intervals
+bindings b var =
+  case b of
+    Bindings.Spanned spannedNames -> do
       let
         spans =
           fst <$> spannedNames
@@ -67,7 +79,7 @@ binding b var =
       foldMap (\span -> singleton span $ Var var) spans
         <> Intervals mempty mempty (IntMap.singleton var spans)
 
-    Binding.Unspanned _ ->
+    Bindings.Unspanned _ ->
       mempty
 
 null :: Intervals -> Bool

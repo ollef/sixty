@@ -2,7 +2,7 @@ module Zonking where
 
 import Protolude
 
-import Binding (Binding)
+import Bindings (Bindings)
 import qualified Domain
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Environment
@@ -142,16 +142,16 @@ zonkBranches env metas branches =
 zonkTelescope
   :: Domain.Environment v
   -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
-  -> Telescope Binding Syntax.Type Syntax.Term v
-  -> M (Telescope Binding Syntax.Type Syntax.Term v)
+  -> Telescope Bindings Syntax.Type Syntax.Term v
+  -> M (Telescope Bindings Syntax.Type Syntax.Term v)
 zonkTelescope env metas tele =
   case tele of
     Telescope.Empty branch ->
       Telescope.Empty <$> zonkTerm env metas branch
 
-    Telescope.Extend binding type_ plicity tele' -> do
+    Telescope.Extend bindings type_ plicity tele' -> do
       (env', _) <- Environment.extend env
-      Telescope.Extend binding <$>
+      Telescope.Extend bindings <$>
         zonkTerm env metas type_ <*>
         pure plicity <*>
         zonkTelescope env' metas tele'

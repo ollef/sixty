@@ -5,16 +5,17 @@ module Syntax where
 import Protolude hiding (Type, IntMap)
 
 import Data.OrderedHashMap (OrderedHashMap)
-import Unsafe.Coerce
 import Data.Persist
+import Unsafe.Coerce
 
 import Binding (Binding)
+import Bindings (Bindings)
 import Boxity
 import Data.IntMap (IntMap)
 import Data.Tsil (Tsil)
-import Literal (Literal)
 import qualified Data.Tsil as Tsil
 import Index
+import Literal (Literal)
 import qualified Meta
 import qualified Name
 import Plicity
@@ -27,10 +28,10 @@ data Term v
   | Con !Name.QualifiedConstructor
   | Lit !Literal
   | Meta !Meta.Index
-  | Let !Binding !(Term v) !(Type v) !(Scope Term v)
+  | Let !Bindings !(Term v) !(Type v) !(Scope Term v)
   | Pi !Binding !(Type v) !Plicity !(Scope Type v)
   | Fun !(Type v) !Plicity !(Type v)
-  | Lam !Binding !(Type v) !Plicity !(Scope Term v)
+  | Lam !Bindings !(Type v) !Plicity !(Scope Term v)
   | App !(Term v) !Plicity !(Term v)
   | Case !(Term v) (Branches v) !(Maybe (Term v))
   | Spanned !Span.Relative !(Term v)
@@ -44,7 +45,7 @@ data Branches v
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 type ConstructorBranches v =
-  OrderedHashMap Name.Constructor ([Span.Relative], Telescope Binding Type Term v)
+  OrderedHashMap Name.Constructor ([Span.Relative], Telescope Bindings Type Term v)
 
 type LiteralBranches v =
   OrderedHashMap Literal ([Span.Relative], Term v)

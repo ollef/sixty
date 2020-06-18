@@ -11,8 +11,9 @@ import Control.Exception.Lifted
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
 
-import Binding (Binding)
 import qualified Binding
+import Bindings (Bindings)
+import qualified Bindings
 import Context (Context)
 import qualified Context
 import Data.IntSet (IntSet)
@@ -84,26 +85,26 @@ unify context flexibility untouchables value1 value2 = do
       value2''' <- force value2''
       unify context flexibility untouchables value1' value2'''
 
-    (Domain.Lam binding1 type1 plicity1 closure1, Domain.Lam _ type2 plicity2 closure2)
+    (Domain.Lam bindings1 type1 plicity1 closure1, Domain.Lam _ type2 plicity2 closure2)
       | plicity1 == plicity2 ->
-      unifyAbstraction (Binding.toName binding1) type1 closure1 type2 closure2
+      unifyAbstraction (Bindings.toName bindings1) type1 closure1 type2 closure2
 
-    (Domain.Pi name1 domain1 plicity1 targetClosure1, Domain.Pi _ domain2 plicity2 targetClosure2)
+    (Domain.Pi binding1 domain1 plicity1 targetClosure1, Domain.Pi _ domain2 plicity2 targetClosure2)
       | plicity1 == plicity2 ->
-      unifyAbstraction name1 domain1 targetClosure1 domain2 targetClosure2
+      unifyAbstraction (Binding.toName binding1) domain1 targetClosure1 domain2 targetClosure2
 
-    (Domain.Pi name1 domain1 plicity1 targetClosure1, Domain.Fun domain2 plicity2 target2)
+    (Domain.Pi binding1 domain1 plicity1 targetClosure1, Domain.Fun domain2 plicity2 target2)
       | plicity1 == plicity2 -> do
         context1 <- unify context flexibility untouchables domain2 domain1
-        (context2, var) <- Context.extend context1 name1 domain1
+        (context2, var) <- Context.extend context1 (Binding.toName binding1) domain1
         target1 <- Evaluation.evaluateClosure targetClosure1 $ Domain.var var
         context3 <- unify context2 flexibility (IntSet.insert var untouchables) target1 target2
         pure $ unextend context3
 
-    (Domain.Fun domain1 plicity1 target1, Domain.Pi name2 domain2 plicity2 targetClosure2)
+    (Domain.Fun domain1 plicity1 target1, Domain.Pi binding2 domain2 plicity2 targetClosure2)
       | plicity1 == plicity2 -> do
         context1 <- unify context flexibility untouchables domain2 domain1
-        (context2, var) <- Context.extend context1 name2 domain2
+        (context2, var) <- Context.extend context1 (Binding.toName binding2) domain2
         target2 <- Evaluation.evaluateClosure targetClosure2 $ Domain.var var
         context3 <- unify context2 flexibility (IntSet.insert var untouchables) target1 target2
         pure $ unextend context3
@@ -114,8 +115,8 @@ unify context flexibility untouchables value1 value2 = do
         unify context1 flexibility untouchables target1 target2
 
     -- Eta expand
-    (Domain.Lam binding1 type1 plicity1 closure1, v2) -> do
-      (context1, var) <- Context.extend context (Binding.toName binding1) type1
+    (Domain.Lam bindings1 type1 plicity1 closure1, v2) -> do
+      (context1, var) <- Context.extend context (Bindings.toName bindings1) type1
       let
         varValue =
           Domain.var var
@@ -126,8 +127,8 @@ unify context flexibility untouchables value1 value2 = do
       context2 <- unify context1 flexibility (IntSet.insert var untouchables) body1 body2
       pure $ unextend context2
 
-    (v1, Domain.Lam binding2 type2 plicity2 closure2) -> do
-      (context1, var) <- Context.extend context (Binding.toName binding2) type2
+    (v1, Domain.Lam bindings2 type2 plicity2 closure2) -> do
+      (context1, var) <- Context.extend context (Bindings.toName bindings2) type2
       let
         varValue =
           Domain.var var
@@ -259,17 +260,17 @@ unifyBranches
       -> Domain.Environment v2
       -> IntSet Var
       -> Context v'
-      -> Telescope Binding Syntax.Type Syntax.Term v1
-      -> Telescope Binding Syntax.Type Syntax.Term v2
+      -> Telescope Bindings Syntax.Type Syntax.Term v1
+      -> Telescope Bindings Syntax.Type Syntax.Term v2
       -> M (Context v')
     unifyTele env1 env2 untouchables context tele1 tele2 =
       case (tele1, tele2) of
-        (Telescope.Extend binding1 type1 plicity1 tele1', Telescope.Extend _binding2 type2 plicity2 tele2')
+        (Telescope.Extend bindings1 type1 plicity1 tele1', Telescope.Extend _bindings2 type2 plicity2 tele2')
           | plicity1 == plicity2 -> do
             type1' <- Evaluation.evaluate env1 type1
             type2' <- Evaluation.evaluate env2 type2
             context' <- unify context flexibility untouchables type1' type2'
-            (context'', var) <- Context.extend context' (Binding.toName binding1) type1'
+            (context'', var) <- Context.extend context' (Bindings.toName bindings1) type1'
             context''' <-
               unifyTele
                 (Environment.extendVar env1 var)
@@ -318,11 +319,11 @@ occurs context flexibility untouchables value = do
       occurs context Flexibility.Flexible untouchables (Domain.Neutral hd spine) `catch` \(_ :: Error) ->
         occursForce value''
 
-    Domain.Lam binding type_ _ closure ->
-      occursAbstraction (Binding.toName binding) type_ closure
+    Domain.Lam bindings type_ _ closure ->
+      occursAbstraction (Bindings.toName bindings) type_ closure
 
-    Domain.Pi name domain _ targetClosure ->
-      occursAbstraction name domain targetClosure
+    Domain.Pi binding domain _ targetClosure ->
+      occursAbstraction (Binding.toName binding) domain targetClosure
 
     Domain.Fun domain _ target -> do
       occurs context flexibility untouchables domain
@@ -395,14 +396,14 @@ occursBranches outerContext flexibility outerUntouchables (Domain.Branches outer
       :: Context v
       -> IntSet Var
       -> Domain.Environment v1
-      -> Telescope Binding Syntax.Type Syntax.Term v1
+      -> Telescope Bindings Syntax.Type Syntax.Term v1
       -> M ()
     occursTele context untouchables env tele =
       case tele of
-        Telescope.Extend binding type_ _plicity tele' -> do
+        Telescope.Extend bindings type_ _plicity tele' -> do
           type' <- Evaluation.evaluate env type_
           occurs context flexibility untouchables type'
-          (context'', var) <- Context.extend context (Binding.toName binding) type'
+          (context'', var) <- Context.extend context (Bindings.toName bindings) type'
           occursTele
             context''
             (IntSet.insert var untouchables)

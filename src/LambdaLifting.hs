@@ -9,6 +9,8 @@ import Rock
 
 import Binding (Binding)
 import qualified Binding
+import Bindings (Bindings)
+import qualified Bindings
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.IntSet (IntSet)
@@ -80,8 +82,8 @@ data InnerValue
   | Global !Name.Lifted
   | Con !Name.QualifiedConstructor [Value] [Value]
   | Lit !Literal
-  | Let !Binding !Var !Value !Type !Value
-  | Pi !Binding !Var !Type !Type
+  | Let !Name !Var !Value !Type !Value
+  | Pi !Name !Var !Type !Type
   | App !Value !Value
   | Case !Value !Branches !(Maybe Value)
   deriving Show
@@ -119,14 +121,14 @@ makeLit :: Literal -> Value
 makeLit lit =
   Value (Lit lit) mempty
 
-makeLet :: Binding -> Var -> Value -> Type -> Value -> Value
-makeLet binding var value type_ body =
-  Value (Let binding var value type_ body) $
+makeLet :: Name -> Var -> Value -> Type -> Value -> Value
+makeLet name var value type_ body =
+  Value (Let name var value type_ body) $
     occurrences value <>
     occurrences type_ <>
     IntSet.delete var (occurrences body)
 
-makePi :: Binding -> Var -> Type -> Value -> Value
+makePi :: Name -> Var -> Type -> Value -> Value
 makePi name var domain target =
   Value (Pi name var domain target) $
     occurrences domain <>
@@ -210,19 +212,19 @@ evaluate env term args =
     Syntax.Meta _ ->
       panic "LambdaLifting.evaluate meta"
 
-    Syntax.Let name value type_ body ->
+    Syntax.Let bindings value type_ body ->
       applyArgs $ do
         type' <- evaluate env type_ []
         (env', var) <- extend env type'
-        makeLet name var <$>
+        makeLet (Bindings.toName bindings) var <$>
           evaluate env value [] <*>
           pure type' <*>
           evaluate env' body []
 
-    Syntax.Pi name domain _plicity target -> do
+    Syntax.Pi binding domain _plicity target -> do
       domain' <- evaluate env domain []
       (env', var) <- extend env domain'
-      makePi name var domain' <$>
+      makePi (Binding.toName binding) var domain' <$>
         evaluate env' target []
 
     Syntax.Fun domain _plicity target -> do
@@ -309,7 +311,7 @@ makeConstructorFunction
 makeConstructorFunction con env type_ spine = do
   type' <- Evaluation.forceHead env type_
   case type' of
-    Domain.Pi name domain plicity targetClosure -> do
+    Domain.Pi binding domain plicity targetClosure -> do
       (env', var) <- Environment.extend env
       let
         arg =
@@ -317,7 +319,7 @@ makeConstructorFunction con env type_ spine = do
       target <- Evaluation.evaluateClosure targetClosure arg
       body <- makeConstructorFunction con env' target $ spine Tsil.:> (plicity, arg)
       domain' <- Readback.readback env domain
-      pure $ Syntax.Lam (Binding.Unspanned name) domain' plicity body
+      pure $ Syntax.Lam (Bindings.Unspanned $ Binding.toName binding) domain' plicity body
 
     Domain.Fun domain plicity target -> do
       (env', var) <- Environment.extend env
@@ -362,7 +364,7 @@ evaluateBranches env branches =
 
 evaluateTelescope
   :: Environment v
-  -> Telescope Binding Syntax.Type Syntax.Term v
+  -> Telescope Bindings Syntax.Type Syntax.Term v
   -> Lift ([(Name, Var, Type)], Value)
 evaluateTelescope env tele =
   case tele of
@@ -374,7 +376,7 @@ evaluateTelescope env tele =
       type' <- evaluate env type_ []
       (env', var) <- extend env type'
       (bindings, body) <- evaluateTelescope env' tele'
-      pure ((Binding.toName binding, var, type'):bindings, body)
+      pure ((Bindings.toName binding, var, type'):bindings, body)
 
 evaluateLambdaTelescope :: Environment v -> Syntax.Term v -> Lift ([(Name, Var, Type)], Value)
 evaluateLambdaTelescope env term =
@@ -383,7 +385,7 @@ evaluateLambdaTelescope env term =
       type' <- evaluate env type_ []
       (env', var) <- extend env type'
       (tele, body') <- evaluateLambdaTelescope env' body
-      pure ((Binding.toName binding, var, type'):tele, body')
+      pure ((Bindings.toName binding, var, type'):tele, body')
 
     Syntax.Spanned _ term' ->
       evaluateLambdaTelescope env term'
@@ -464,16 +466,16 @@ readback env (Value value _) =
     Lit lit ->
       LambdaLifted.Lit lit
 
-    Let binding var value' type_ body ->
+    Let name var value' type_ body ->
       LambdaLifted.Let
-        (Binding.toName binding)
+        name
         (readback env value')
         (readback env type_)
         (readback (Environment.extendVar env var) body)
 
-    Pi binding var domain target ->
+    Pi name var domain target ->
       LambdaLifted.Pi
-        (Binding.toName binding)
+        name
         (readback env domain)
         (readback (Environment.extendVar env var) target)
 

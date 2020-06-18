@@ -5,8 +5,9 @@ import Protolude
 
 import Rock
 
-import Binding (Binding)
 import qualified Binding
+import Bindings (Bindings)
+import qualified Bindings
 import qualified Builtin
 import Context (Context)
 import qualified Context
@@ -44,13 +45,16 @@ typeOf context value =
     Domain.Glued hd spine _ ->
       typeOf context $ Domain.Neutral hd spine
 
-    Domain.Lam binding type_ plicity closure -> do
-      (context', var) <- Context.extend context (Binding.toName binding) type_
+    Domain.Lam bindings type_ plicity closure -> do
+      let
+        name =
+          Bindings.toName bindings
+      (context', var) <- Context.extend context name type_
       body <- Evaluation.evaluateClosure closure (Domain.var var)
       bodyType <- typeOf context' body
       bodyType' <- Elaboration.readback context' bodyType
       pure $
-        Domain.Pi (Binding.toName binding) type_ plicity $
+        Domain.Pi (Binding.Unspanned name) type_ plicity $
         Domain.Closure (Context.toEnvironment context) bodyType'
 
     Domain.Pi {} ->
@@ -131,7 +135,7 @@ typeOfApplication context type_ spine =
 typeOfTelescope
   :: Context v'
   -> Domain.Environment v
-  -> Telescope Binding Syntax.Type Syntax.Term v
+  -> Telescope Bindings Syntax.Type Syntax.Term v
   -> M Domain.Type
 typeOfTelescope context env tele =
   case tele of
@@ -139,7 +143,7 @@ typeOfTelescope context env tele =
       branch' <- Evaluation.evaluate env branch
       typeOf context branch'
 
-    Telescope.Extend binding type_ _ tele' -> do
+    Telescope.Extend bindings type_ _ tele' -> do
       type' <- Evaluation.evaluate env type_
-      (context', var) <- Context.extend context (Binding.toName binding) type'
+      (context', var) <- Context.extend context (Bindings.toName bindings) type'
       typeOfTelescope context' (Environment.extendVar env var) tele'

@@ -15,7 +15,8 @@ import Data.IORef.Lifted
 import Rock
 
 import qualified Binding
-import Binding (Binding)
+import qualified Bindings
+import Bindings (Bindings)
 import qualified Builtin
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
@@ -210,15 +211,15 @@ extendDef context name value type_ = do
 
 extendUnindexedDef
   :: Context v
-  -> Binding
+  -> Bindings
   -> Domain.Value
   -> Domain.Type
   -> M (Context v, Var)
-extendUnindexedDef context binding value type_ = do
+extendUnindexedDef context bindings value type_ = do
   var <- freshVar
   let
     name =
-      Binding.toName binding
+      Bindings.toName bindings
   pure
     ( context
       { nameVars = HashMap.insert name var $ nameVars context
@@ -231,29 +232,29 @@ extendUnindexedDef context binding value type_ = do
 
 extendUnindexedDefs
   :: Context v
-  -> Tsil (Binding, Domain.Value, Domain.Type)
+  -> Tsil (Bindings, Domain.Value, Domain.Type)
   -> M (Context v)
 extendUnindexedDefs context defs =
   case defs of
     Tsil.Empty ->
       pure context
 
-    defs' Tsil.:> (binding, value, type_) -> do
+    defs' Tsil.:> (bindings, value, type_) -> do
       context' <- extendUnindexedDefs context defs'
-      (context'', _) <- extendUnindexedDef context' binding value type_
+      (context'', _) <- extendUnindexedDef context' bindings value type_
       pure context''
 
 extendBefore
   :: Context v
   -> Var
-  -> Binding
+  -> Bindings
   -> Domain.Type
   -> M (Context (Succ v), Var)
 extendBefore context beforeVar binding type_ = do
   var <- freshVar
   pure
     ( context
-      { varNames = IntMap.insert var (Binding.toName binding) $ varNames context
+      { varNames = IntMap.insert var (Bindings.toName binding) $ varNames context
       , indices = indices context Index.Map.:> var
       , types = IntMap.insert var type_ (types context)
       , boundVars =
@@ -318,11 +319,11 @@ dependencies context value = do
       value''' <- lift $ force value''
       dependencies context value'''
 
-    Domain.Lam binding type' _ closure ->
-      abstractionDependencies (Binding.toName binding) type' closure
+    Domain.Lam bindings type' _ closure ->
+      abstractionDependencies (Bindings.toName bindings) type' closure
 
-    Domain.Pi name type' _ closure ->
-      abstractionDependencies name type' closure
+    Domain.Pi binding type' _ closure ->
+      abstractionDependencies (Binding.toName binding) type' closure
 
     Domain.Fun domain _ target -> do
       domainVars <- dependencies context domain
@@ -387,7 +388,7 @@ dependencies context value = do
     telescopeVars
       :: Context v
       -> Domain.Environment v'
-      -> Telescope Binding Syntax.Type Syntax.Term v'
+      -> Telescope Bindings Syntax.Type Syntax.Term v'
       -> StateT (IntMap Var (IntSet Var)) M (IntSet Var)
     telescopeVars context' env tele =
       case tele of
@@ -398,7 +399,7 @@ dependencies context value = do
         Telescope.Extend binding domain _ tele' -> do
           domain' <- lift $ Evaluation.evaluate env domain
           domainVars <- dependencies context' domain'
-          (context'', var) <- lift $ extend context' (Binding.toName binding) domain'
+          (context'', var) <- lift $ extend context' (Bindings.toName binding) domain'
           let
             env' =
               Environment.extendVar env var

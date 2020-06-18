@@ -8,6 +8,7 @@ import Protolude hiding (moduleName)
 import Rock
 
 import Binding (Binding)
+import Bindings (Bindings)
 import Data.OrderedHashMap as OrderedHashMap
 import qualified Domain
 import Environment (Environment)
@@ -117,9 +118,9 @@ termOccurrences env maybeSpan term =
     Syntax.Meta _ ->
       mempty
 
-    Syntax.Let binding term' type_ body -> do
+    Syntax.Let bindings term' type_ body -> do
       (env', var) <- extend env
-      bindingOccurrences binding var <>
+      bindingsOccurrences bindings var <>
         termOccurrences env Nothing term' <>
         termOccurrences env Nothing type_ <>
         termOccurrences env' Nothing body
@@ -136,7 +137,7 @@ termOccurrences env maybeSpan term =
 
     Syntax.Lam binding type_ _ body -> do
       (env', var) <- extend env
-      bindingOccurrences binding var <>
+      bindingsOccurrences binding var <>
         termOccurrences env Nothing type_ <>
         termOccurrences env' Nothing body
 
@@ -187,7 +188,7 @@ branchesOccurrences env branches =
 constructorBranchOccurrences
   :: Domain.Environment v
   -> Name.Qualified
-  -> (Name.Constructor, ([Span.Relative], Telescope Binding Syntax.Type Syntax.Term v))
+  -> (Name.Constructor, ([Span.Relative], Telescope Bindings Syntax.Type Syntax.Term v))
   -> M Intervals
 constructorBranchOccurrences env constructorTypeName (constr, (spans, tele)) =
   pure (mconcat [Intervals.singleton span $ Intervals.Con (Name.QualifiedConstructor constructorTypeName constr) | span <- spans]) <>
@@ -203,16 +204,16 @@ literalBranchOccurrences env (lit, (spans, body)) =
 
 telescopeOccurrences
   :: Domain.Environment v
-  -> Telescope Binding Syntax.Type Syntax.Term v
+  -> Telescope Bindings Syntax.Type Syntax.Term v
   -> M Intervals
 telescopeOccurrences env tele =
   case tele of
     Telescope.Empty branch ->
       termOccurrences env Nothing branch
 
-    Telescope.Extend binding type_ _ tele' -> do
+    Telescope.Extend bindings type_ _ tele' -> do
       (env', var) <- extend env
-      bindingOccurrences binding var <>
+      bindingsOccurrences bindings var <>
         termOccurrences env Nothing type_ <>
         telescopeOccurrences env' tele'
 
@@ -222,3 +223,10 @@ bindingOccurrences
   -> M Intervals
 bindingOccurrences binding var =
   pure $ Intervals.binding binding var
+
+bindingsOccurrences
+  :: Bindings
+  -> Var
+  -> M Intervals
+bindingsOccurrences bindings var =
+  pure $ Intervals.bindings bindings var

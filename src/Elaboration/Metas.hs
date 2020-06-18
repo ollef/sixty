@@ -10,13 +10,14 @@ import Protolude hiding (Type, IntMap, IntSet, evaluate)
 
 import Data.Graph
 
-import Data.OrderedHashMap (OrderedHashMap)
-import qualified Data.OrderedHashMap as OrderedHashMap
 import Binding (Binding)
+import Bindings (Bindings)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
+import Data.OrderedHashMap (OrderedHashMap)
+import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Domain
@@ -152,10 +153,10 @@ data InnerValue
   | Con !Name.QualifiedConstructor
   | Lit !Literal
   | Meta !Meta.Index (Tsil Value)
-  | Let !Binding !Var !Value !Type !Value
+  | Let !Bindings !Var !Value !Type !Value
   | Pi !Binding !Var !Type !Plicity !Type
   | Fun !Type !Plicity !Type
-  | Lam !Binding !Var !Type !Plicity !Value
+  | Lam !Bindings !Var !Type !Plicity !Value
   | App !Value !Plicity !Value
   | Case !Value Branches !(Maybe Value)
   | Spanned !Span.Relative !InnerValue
@@ -202,7 +203,7 @@ unduplicable duplicableValue =
       makeLit lit
 
 data Branches
-  = ConstructorBranches !Name.Qualified (OrderedHashMap Name.Constructor ([Span.Relative], ([(Binding, Var, Type, Plicity)], Value)))
+  = ConstructorBranches !Name.Qualified (OrderedHashMap Name.Constructor ([Span.Relative], ([(Bindings, Var, Type, Plicity)], Value)))
   | LiteralBranches (OrderedHashMap Literal ([Span.Relative], Value))
   deriving Show
 
@@ -249,16 +250,16 @@ makeMeta index arguments =
     Occurrences (IntMap.singleton index (duplicableView <$> arguments)) <>
     foldMap occurrences arguments
 
-makeLet :: Binding -> Var -> Value -> Type -> Value -> Value
-makeLet name var value type_ body =
-  Value (Let name var value type_ body) $
+makeLet :: Bindings -> Var -> Value -> Type -> Value -> Value
+makeLet bindings var value type_ body =
+  Value (Let bindings var value type_ body) $
     occurrences value <>
     occurrences type_ <>
     occurrences body
 
 makePi :: Binding -> Var -> Type -> Plicity -> Value -> Value
-makePi name var domain plicity target =
-  Value (Pi name var domain plicity target) $
+makePi binding var domain plicity target =
+  Value (Pi binding var domain plicity target) $
     occurrences domain <>
     occurrences target
 
@@ -268,9 +269,9 @@ makeFun domain plicity target =
     occurrences domain <>
     occurrences target
 
-makeLam :: Binding -> Var -> Type -> Plicity -> Value -> Value
-makeLam name var type_ plicity body =
-  Value (Lam name var type_ plicity body) $
+makeLam :: Bindings -> Var -> Type -> Plicity -> Value -> Value
+makeLam bindings var type_ plicity body =
+  Value (Lam bindings var type_ plicity body) $
     occurrences type_ <>
     occurrences body
 
@@ -388,8 +389,8 @@ evaluateBranches env branches =
 
 evaluateTelescope
   :: Domain.Environment v
-  -> Telescope Binding Syntax.Type Syntax.Term v
-  -> M ([(Binding, Var, Type, Plicity)], Value)
+  -> Telescope Bindings Syntax.Type Syntax.Term v
+  -> M ([(Bindings, Var, Type, Plicity)], Value)
 evaluateTelescope env tele =
   case tele of
     Telescope.Empty body -> do
@@ -487,9 +488,9 @@ readbackBranches env metas branches =
 readbackTelescope
   :: Domain.Environment v
   -> (Meta.Index -> (Var, [Maybe var]))
-  -> [(Binding, Var, Type, Plicity)]
+  -> [(Bindings, Var, Type, Plicity)]
   -> Value
-  -> Telescope Binding Syntax.Type Syntax.Term v
+  -> Telescope Bindings Syntax.Type Syntax.Term v
 readbackTelescope env metas bindings body =
   case bindings of
     [] ->

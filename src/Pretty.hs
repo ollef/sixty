@@ -8,14 +8,16 @@ import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
-import qualified Data.Sequence as Seq
 import qualified Data.OrderedHashMap as OrderedHashMap
+import qualified Data.Sequence as Seq
 import Data.Text.Prettyprint.Doc
 import qualified Data.Text.Unsafe as Text
 import Rock
 
 import Binding (Binding)
 import qualified Binding
+import Bindings (Bindings)
+import qualified Bindings
 import qualified Boxity
 import Domain.Pattern (Pattern)
 import qualified Domain.Pattern as Pattern
@@ -41,13 +43,10 @@ data Environment v = Environment
   , importedAliases :: HashMap Name.Qualified (HashSet Name.Pre)
   }
 
-extend :: Environment v -> Binding -> (Environment (Succ v), Name.Pre)
-extend env binding =
+extend :: Environment v -> Name -> (Environment (Succ v), Name.Pre)
+extend env (Name name) =
   go (Name.Pre name : [Name.Pre $ name <> show (i :: Int) | i <- [0..]])
   where
-    Name name =
-      Binding.toName binding
-
     go (name':names)
       | name' `HashMap.member` usedNames env =
         go names
@@ -60,6 +59,14 @@ extend env binding =
         )
     go [] =
       panic "Pretty.extend"
+
+extendBinding :: Environment v -> Binding -> (Environment (Succ v), Name.Pre)
+extendBinding env binding =
+  extend env $ Binding.toName binding
+
+extendBindings :: Environment v -> Bindings -> (Environment (Succ v), Name.Pre)
+extendBindings env binding =
+  extend env $ Bindings.toName binding
 
 empty :: Environment Void
 empty = Environment
@@ -102,10 +109,10 @@ prettyTerm prec env term =
     Syntax.Meta index ->
       pretty index
 
-    Syntax.Let binding term' type_ body ->
+    Syntax.Let bindings term' type_ body ->
       prettyParen (prec > letPrec) $
         let
-          (env', name) = extend env binding
+          (env', name) = extendBindings env bindings
         in
         "let"
         <> line <> indent 2
@@ -121,7 +128,7 @@ prettyTerm prec env term =
     Syntax.Pi binding type_ plicity scope ->
       prettyParen (prec > funPrec) $
         let
-          (env', name) = extend env binding
+          (env', name) = extendBinding env binding
         in
         Plicity.prettyAnnotation plicity <> lparen <> pretty name <+> ":" <+> prettyTerm 0 env type_ <> rparen
         <+> "->" <+> prettyTerm funPrec env' scope
@@ -215,9 +222,9 @@ unambiguous env name =
 prettyLamTerm :: Environment v -> Syntax.Term v -> Doc ann
 prettyLamTerm env term =
   case term of
-    Syntax.Lam binding type_ plicity scope ->
+    Syntax.Lam bindings type_ plicity scope ->
       let
-        (env', name) = extend env binding
+        (env', name) = extendBindings env bindings
       in
       Plicity.prettyAnnotation plicity <> lparen <> pretty name <+> ":" <+> prettyTerm 0 env type_ <> rparen
       <> prettyLamTerm env' scope
@@ -233,7 +240,7 @@ prettyImplicitPiTerm env term =
   case term of
     Syntax.Pi binding type_ Implicit scope ->
       let
-        (env', name) = extend env binding
+        (env', name) = extendBinding env binding
       in
       lparen <> pretty name <+> ":" <+> prettyTerm 0 env type_ <> rparen
       <> prettyImplicitPiTerm env' scope
@@ -246,16 +253,16 @@ prettyImplicitPiTerm env term =
 
 prettyBranch
   :: Environment v
-  -> Telescope Binding Syntax.Type Syntax.Term v
+  -> Telescope Bindings Syntax.Type Syntax.Term v
   -> Doc ann
 prettyBranch env tele =
   case tele of
     Telescope.Empty body ->
       "->" <> line <> indent 2 (prettyTerm casePrec env body)
 
-    Telescope.Extend binding type_ plicity tele' ->
+    Telescope.Extend bindings type_ plicity tele' ->
       let
-        (env', name) = extend env binding
+        (env', name) = extendBindings env bindings
       in
       Plicity.prettyAnnotation plicity <> "(" <> pretty name <+> ":" <+> prettyTerm 0 env type_ <> ")" <+>
       prettyBranch env' tele'
@@ -291,7 +298,7 @@ prettyConstructorDefinitions env tele =
 
     Telescope.Extend binding type_ plicity tele' ->
       let
-        (env', name) = extend env binding
+        (env', name) = extendBinding env binding
       in
       Plicity.prettyAnnotation plicity <> "(" <> pretty name <+> ":" <+> prettyTerm 0 env type_ <> ")" <+>
       prettyConstructorDefinitions env' tele'

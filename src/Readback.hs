@@ -3,8 +3,7 @@ module Readback where
 
 import Protolude hiding (IntMap, Seq, head, force, evaluate)
 
-import Binding (Binding)
-import qualified Binding
+import Bindings (Bindings)
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Domain
 import qualified Environment
@@ -43,8 +42,8 @@ readback env value =
     Domain.Lam binding type_ plicity closure ->
       Syntax.Lam binding <$> readback env type_ <*> pure plicity <*> readbackClosure env closure
 
-    Domain.Pi name type_ plicity closure ->
-      Syntax.Pi (Binding.Unspanned name) <$> readback env type_ <*> pure plicity <*> readbackClosure env closure
+    Domain.Pi binding type_ plicity closure ->
+      Syntax.Pi binding <$> readback env type_ <*> pure plicity <*> readbackClosure env closure
 
     Domain.Fun domain plicity target ->
       Syntax.Fun <$> readback env domain <*> pure plicity <*> readback env target
@@ -110,8 +109,8 @@ readbackMaybeHead env head =
 readbackConstructorBranch
   :: Domain.Environment v
   -> Domain.Environment v'
-  -> Telescope Binding Syntax.Type Syntax.Term v'
-  -> M (Telescope Binding Syntax.Type Syntax.Term v)
+  -> Telescope Bindings Syntax.Type Syntax.Term v'
+  -> M (Telescope Bindings Syntax.Type Syntax.Term v)
 readbackConstructorBranch outerEnv innerEnv tele =
   case tele of
     Telescope.Empty term -> do

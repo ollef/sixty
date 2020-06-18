@@ -8,9 +8,10 @@ import Protolude hiding (catch, check, evaluate, force, throwIO)
 import Control.Exception.Lifted
 import Rock
 
-import Binding (Binding)
 import {-# source #-} qualified Elaboration
 import qualified Binding
+import Bindings (Bindings)
+import qualified Bindings
 import qualified Builtin
 import Context (Context)
 import qualified Context
@@ -122,25 +123,25 @@ unify context flexibility value1 value2 = do
       | otherwise ->
         can'tUnify
 
-    (Domain.Lam binding1 type1 plicity1 closure1, Domain.Lam _ type2 plicity2 closure2)
+    (Domain.Lam bindings1 type1 plicity1 closure1, Domain.Lam _ type2 plicity2 closure2)
       | plicity1 == plicity2 ->
-      unifyAbstraction (Binding.toName binding1) type1 closure1 type2 closure2
+      unifyAbstraction (Bindings.toName bindings1) type1 closure1 type2 closure2
 
-    (Domain.Pi name1 domain1 plicity1 targetClosure1, Domain.Pi _ domain2 plicity2 targetClosure2)
+    (Domain.Pi binding1 domain1 plicity1 targetClosure1, Domain.Pi _ domain2 plicity2 targetClosure2)
       | plicity1 == plicity2 ->
-      unifyAbstraction name1 domain1 targetClosure1 domain2 targetClosure2
+      unifyAbstraction (Binding.toName binding1) domain1 targetClosure1 domain2 targetClosure2
 
-    (Domain.Pi name1 domain1 plicity1 targetClosure1, Domain.Fun domain2 plicity2 target2)
+    (Domain.Pi binding1 domain1 plicity1 targetClosure1, Domain.Fun domain2 plicity2 target2)
       | plicity1 == plicity2 -> do
         unify context flexibility domain2 domain1
-        (context', var) <- Context.extend context name1 domain1
+        (context', var) <- Context.extend context (Binding.toName binding1) domain1
         target1 <- Evaluation.evaluateClosure targetClosure1 $ Domain.var var
         unify context' flexibility target1 target2
 
-    (Domain.Fun domain1 plicity1 target1, Domain.Pi name2 domain2 plicity2 targetClosure2)
+    (Domain.Fun domain1 plicity1 target1, Domain.Pi binding2 domain2 plicity2 targetClosure2)
       | plicity1 == plicity2 -> do
         unify context flexibility domain2 domain1
-        (context', var) <- Context.extend context name2 domain2
+        (context', var) <- Context.extend context (Binding.toName binding2) domain2
         target2 <- Evaluation.evaluateClosure targetClosure2 $ Domain.var var
         unify context' flexibility target1 target2
 
@@ -150,8 +151,8 @@ unify context flexibility value1 value2 = do
         unify context flexibility target1 target2
 
     -- Eta expand
-    (Domain.Lam name1 type1 plicity1 closure1, v2) -> do
-      (context', var) <- Context.extend context (Binding.toName name1) type1
+    (Domain.Lam bindings1 type1 plicity1 closure1, v2) -> do
+      (context', var) <- Context.extend context (Bindings.toName bindings1) type1
       let
         varValue =
           Domain.var var
@@ -161,8 +162,8 @@ unify context flexibility value1 value2 = do
 
       unify context' flexibility body1 body2
 
-    (v1, Domain.Lam name2 type2 plicity2 closure2) -> do
-      (context', var) <- Context.extend context (Binding.toName name2) type2
+    (v1, Domain.Lam bindings2 type2 plicity2 closure2) -> do
+      (context', var) <- Context.extend context (Bindings.toName bindings2) type2
       let
         varValue =
           Domain.var var
@@ -366,17 +367,17 @@ unifyBranches
       :: Context v
       -> Domain.Environment v1
       -> Domain.Environment v2
-      -> Telescope Binding Syntax.Type Syntax.Term v1
-      -> Telescope Binding Syntax.Type Syntax.Term v2
+      -> Telescope Bindings Syntax.Type Syntax.Term v1
+      -> Telescope Bindings Syntax.Type Syntax.Term v2
       -> M ()
     unifyTele context env1 env2 tele1 tele2 =
       case (tele1, tele2) of
-        (Telescope.Extend binding1 type1 plicity1 tele1', Telescope.Extend _binding2 type2 plicity2 tele2')
+        (Telescope.Extend bindings1 type1 plicity1 tele1', Telescope.Extend _bindings2 type2 plicity2 tele2')
           | plicity1 == plicity2 -> do
             type1' <- Evaluation.evaluate env1 type1
             type2' <- Evaluation.evaluate env2 type2
             unify context flexibility type1' type2'
-            (context', var) <- Context.extend context (Binding.toName binding1) type1'
+            (context', var) <- Context.extend context (Bindings.toName bindings1) type1'
             unifyTele
               context'
               (Environment.extendVar env1 var)
@@ -452,7 +453,7 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
     branchMatches
       :: Context v
       -> Domain.Environment v'
-      -> Telescope Binding Syntax.Type Syntax.Term v'
+      -> Telescope Bindings Syntax.Type Syntax.Term v'
       -> M Bool
     branchMatches context env tele =
       case tele of
@@ -494,9 +495,9 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
             _ ->
               pure False
 
-        Telescope.Extend binding type_ _ tele' -> do
+        Telescope.Extend bindings type_ _ tele' -> do
           type' <- Evaluation.evaluate env type_
-          (context', var) <- Context.extend context (Binding.toName binding) type'
+          (context', var) <- Context.extend context (Bindings.toName bindings) type'
           branchMatches context' (Environment.extendVar env var) tele'
 
 sameHeads :: Domain.Head -> Domain.Head -> Bool
@@ -650,7 +651,7 @@ addAndCheckLambdas outerContext meta vars term =
           type_
       let
         term' =
-          Syntax.Lam (Binding.Unspanned name) type' Explicit (Syntax.succ term)
+          Syntax.Lam (Bindings.Unspanned name) type' Explicit (Syntax.succ term)
       addAndCheckLambdas outerContext meta vars' term'
 
 checkInnerSolution
@@ -701,8 +702,8 @@ checkInnerSolution outerContext occurs env flexibility value = do
         <*> pure plicity
         <*> checkInnerClosure outerContext occurs env flexibility closure
 
-    Domain.Pi name type_ plicity closure ->
-      Syntax.Pi (Binding.Unspanned name)
+    Domain.Pi binding type_ plicity closure ->
+      Syntax.Pi binding
         <$> checkInnerSolution outerContext occurs env flexibility type_
         <*> pure plicity
         <*> checkInnerClosure outerContext occurs env flexibility closure
@@ -719,8 +720,8 @@ checkInnerBranch
   -> Domain.Environment v
   -> Domain.Environment v'
   -> Flexibility
-  -> Telescope Binding Syntax.Type Syntax.Term v'
-  -> M (Telescope Binding Syntax.Type Syntax.Term v)
+  -> Telescope Bindings Syntax.Type Syntax.Term v'
+  -> M (Telescope Bindings Syntax.Type Syntax.Term v)
 checkInnerBranch outerContext occurs outerEnv innerEnv flexibility tele =
   case tele of
     Telescope.Empty term -> do
@@ -728,7 +729,7 @@ checkInnerBranch outerContext occurs outerEnv innerEnv flexibility tele =
       term' <- checkInnerSolution outerContext occurs outerEnv flexibility value
       pure $ Telescope.Empty term'
 
-    Telescope.Extend name domain plicity tele' -> do
+    Telescope.Extend bindings domain plicity tele' -> do
       domain' <- Evaluation.evaluate innerEnv domain
       domain'' <- checkInnerSolution outerContext occurs outerEnv flexibility domain'
       (outerEnv', var) <- Environment.extend outerEnv
@@ -736,7 +737,7 @@ checkInnerBranch outerContext occurs outerEnv innerEnv flexibility tele =
         innerEnv' =
           Environment.extendVar innerEnv var
       tele'' <- checkInnerBranch outerContext occurs outerEnv' innerEnv' flexibility tele'
-      pure $ Telescope.Extend name domain'' plicity tele''
+      pure $ Telescope.Extend bindings domain'' plicity tele''
 
 checkInnerClosure
   :: Context v
@@ -870,7 +871,10 @@ pruneMeta context meta allowedArgs = do
               body <- go alloweds' context'' target
               pure $ Syntax.Lam "x" domain' plicity body
 
-            Domain.Pi name domain plicity targetClosure -> do
+            Domain.Pi binding domain plicity targetClosure -> do
+              let
+                name =
+                  Binding.toName binding
               (context'', v) <-
                 if allowed then
                   Context.extend context' name domain
@@ -891,6 +895,6 @@ pruneMeta context meta allowedArgs = do
                   (Context.toEnvironment context')
                   domain
               body <- go alloweds' context'' target
-              pure $ Syntax.Lam (Binding.Unspanned name) domain'' plicity body
+              pure $ Syntax.Lam (Bindings.Unspanned name) domain'' plicity body
 
             _ -> panic "pruneMeta wrong type"

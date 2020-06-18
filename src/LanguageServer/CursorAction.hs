@@ -15,6 +15,8 @@ import Rock
 
 import qualified Binding
 import Binding (Binding)
+import qualified Bindings
+import Bindings (Bindings)
 import Context (Context)
 import qualified Context
 import Data.IntMap (IntMap)
@@ -27,6 +29,7 @@ import qualified LanguageServer.LineColumns as LineColumns
 import Literal (Literal)
 import qualified Module
 import Monad
+import Name (Name)
 import qualified Name
 import qualified Occurrences
 import Plicity
@@ -124,27 +127,35 @@ data Environment v = Environment
   , _varSpans :: IntMap Var (NonEmpty Span.Relative)
   }
 
-extend :: Environment v -> Binding -> Syntax.Type v -> MaybeT M (Environment (Index.Succ v), Var)
-extend env binding type_ = do
+extendBinding :: Environment v -> Binding -> Syntax.Type v -> MaybeT M (Environment (Index.Succ v), Var)
+extendBinding env binding type_ =
+  extend env (Binding.toName binding) (Binding.spans binding) type_
+
+extendBindings :: Environment v -> Bindings -> Syntax.Type v -> MaybeT M (Environment (Index.Succ v), Var)
+extendBindings env bindings type_ =
+  extend env (Bindings.toName bindings) (Bindings.spans bindings) type_
+
+extend :: Environment v -> Name -> [Span.Relative] -> Syntax.Type v -> MaybeT M (Environment (Index.Succ v), Var)
+extend env name spans type_ = do
   type' <- lift $ Elaboration.evaluate (_context env) type_
-  (context', var) <- lift $ Context.extend (_context env) (Binding.toName binding) type'
+  (context', var) <- lift $ Context.extend (_context env) name type'
   pure
     ( env
       { _context = context'
-      , _varSpans = maybe identity (IntMap.insert var) (NonEmpty.nonEmpty $ Binding.spans binding) (_varSpans env)
+      , _varSpans = maybe identity (IntMap.insert var) (NonEmpty.nonEmpty spans) (_varSpans env)
       }
     , var
     )
 
-extendDef :: Environment v -> Binding -> Syntax.Term v -> Syntax.Type v -> MaybeT M (Environment (Index.Succ v), Var)
-extendDef env binding term type_ = do
+extendDef :: Environment v -> Bindings -> Syntax.Term v -> Syntax.Type v -> MaybeT M (Environment (Index.Succ v), Var)
+extendDef env bindings term type_ = do
   value <- lift $ Elaboration.evaluate (_context env) term
   type' <- lift $ Elaboration.evaluate (_context env) type_
-  (context', var) <- lift $ Context.extendDef (_context env) (Binding.toName binding) value type'
+  (context', var) <- lift $ Context.extendDef (_context env) (Bindings.toName bindings) value type'
   pure
     ( env
       { _context = context'
-      , _varSpans = maybe identity (IntMap.insert var) (NonEmpty.nonEmpty $ Binding.spans binding) (_varSpans env)
+      , _varSpans = maybe identity (IntMap.insert var) (NonEmpty.nonEmpty $ Bindings.spans bindings) (_varSpans env)
       }
     , var
     )
@@ -212,15 +223,15 @@ termAction k env term =
     Syntax.Meta _ ->
       empty
 
-    Syntax.Let binding term' type_ body -> do
-      (env', var) <- extendDef env binding term' type_
-      bindingAction k env' binding var <|>
+    Syntax.Let bindings term' type_ body -> do
+      (env', var) <- extendDef env bindings term' type_
+      bindingsAction k env' bindings var <|>
         termAction k env term' <|>
         termAction k env type_ <|>
         termAction k env' body
 
     Syntax.Pi binding domain _ target -> do
-      (env', var) <- extend env binding domain
+      (env', var) <- extendBinding env binding domain
       bindingAction k env' binding var <|>
         termAction k env domain <|>
         termAction k env' target
@@ -229,9 +240,9 @@ termAction k env term =
       termAction k env domain <|>
       termAction k env target
 
-    Syntax.Lam binding type_ _ body -> do
-      (env', var) <- extend env binding type_
-      bindingAction k env' binding var <|>
+    Syntax.Lam bindings type_ _ body -> do
+      (env', var) <- extendBindings env bindings type_
+      bindingsAction k env' bindings var <|>
         termAction k env type_ <|>
         termAction k env' body
 
@@ -260,7 +271,7 @@ dataDefinitionAction k env tele =
       asum $ termAction k env <$> OrderedHashMap.elems constrDefs
 
     Telescope.Extend binding type_ _ tele' -> do
-      (env', var) <- extend env binding type_
+      (env', var) <- extendBinding env binding type_
       bindingAction k env' binding var <|>
         termAction k env type_ <|>
         dataDefinitionAction k env' tele'
@@ -284,7 +295,7 @@ constructorBranchAction
   -> Environment v
   -> Name.Qualified
   -> Syntax.Term v
-  -> (Name.Constructor, ([Span.Relative], Telescope Binding Syntax.Type Syntax.Term v))
+  -> (Name.Constructor, ([Span.Relative], Telescope Bindings Syntax.Type Syntax.Term v))
   -> MaybeT M a
 constructorBranchAction k env typeName scrutinee (constr, (spans, tele)) =
   asum (foreach spans $ \span -> do
@@ -318,16 +329,16 @@ literalBranchAction k env (_, (_, body)) =
 teleAction
   :: RelativeCallback a
   -> Environment v
-  -> Telescope Binding Syntax.Type Syntax.Term v
+  -> Telescope Bindings Syntax.Type Syntax.Term v
   -> MaybeT M a
 teleAction k env tele =
   case tele of
     Telescope.Empty branch ->
       termAction k env branch
 
-    Telescope.Extend binding type_ _ tele' -> do
-      (env', var) <- extend env binding type_
-      bindingAction k env' binding var <|>
+    Telescope.Extend bindings type_ _ tele' -> do
+      (env', var) <- extendBindings env bindings type_
+      bindingsAction k env' bindings var <|>
         termAction k env type_ <|>
         teleAction k env' tele'
 
@@ -339,7 +350,27 @@ bindingAction
   -> MaybeT M a
 bindingAction k env binding var =
   case binding of
-    Binding.Spanned spannedNames ->
+    Binding.Spanned span _ ->
+      case Context.lookupVarIndex var $ _context env of
+        Nothing ->
+          empty
+
+        Just index -> do
+          guard $ span `Span.relativeContains` _actionPosition env
+          k PatternContext env (Syntax.Var index) span
+
+    Binding.Unspanned _ ->
+      empty
+
+bindingsAction
+  :: RelativeCallback a
+  -> Environment (Index.Succ v)
+  -> Bindings
+  -> Var
+  -> MaybeT M a
+bindingsAction k env binding var =
+  case binding of
+    Bindings.Spanned spannedNames ->
       case Context.lookupVarIndex var $ _context env of
         Nothing ->
           empty
@@ -349,5 +380,5 @@ bindingAction k env binding var =
             guard $ span `Span.relativeContains` _actionPosition env
             k PatternContext env (Syntax.Var index) span
 
-    Binding.Unspanned _ ->
+    Bindings.Unspanned _ ->
       empty

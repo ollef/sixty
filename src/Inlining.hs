@@ -6,6 +6,7 @@ module Inlining where
 import Protolude hiding (Type, IntMap, evaluate, empty)
 
 import Binding (Binding)
+import Bindings (Bindings)
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Environment
@@ -71,10 +72,10 @@ data Value
   | Con !Name.QualifiedConstructor
   | Lit !Literal
   | Meta !Meta.Index
-  | Let !Binding !Var !Value !Type !Value
+  | Let !Bindings !Var !Value !Type !Value
   | Pi !Binding !Var !Type !Plicity !Type
   | Fun !Type !Plicity !Type
-  | Lam !Binding !Var !Type !Plicity !Value
+  | Lam !Bindings !Var !Type !Plicity !Value
   | App !Value !Plicity !Value
   | Case !Value Branches !(Maybe Value)
   | Spanned !Span.Relative !Value
@@ -83,7 +84,7 @@ data Value
 type Environment = Environment.Environment Value
 
 data Branches
-  = ConstructorBranches !Name.Qualified (OrderedHashMap Name.Constructor ([Span.Relative], ([(Binding, Var, Type, Plicity)], Value)))
+  = ConstructorBranches !Name.Qualified (OrderedHashMap Name.Constructor ([Span.Relative], ([(Bindings, Var, Type, Plicity)], Value)))
   | LiteralBranches (OrderedHashMap Literal ([Span.Relative], Value))
   deriving Show
 
@@ -178,8 +179,8 @@ evaluateBranches dup env branches =
 evaluateTelescope
   :: Duplicable
   -> Environment v
-  -> Telescope Binding Syntax.Type Syntax.Term v
-  -> M ([(Binding, Var, Type, Plicity)], Value)
+  -> Telescope Bindings Syntax.Type Syntax.Term v
+  -> M ([(Bindings, Var, Type, Plicity)], Value)
 evaluateTelescope dup env tele =
   case tele of
     Telescope.Empty body -> do
@@ -264,9 +265,9 @@ readbackBranches env branches =
 
 readbackTelescope
   :: Environment v
-  -> [(Binding, Var, Type, Plicity)]
+  -> [(Bindings, Var, Type, Plicity)]
   -> Value
-  -> Telescope Binding Syntax.Type Syntax.Term v
+  -> Telescope Bindings Syntax.Type Syntax.Term v
 readbackTelescope env bindings body =
   case bindings of
     [] ->

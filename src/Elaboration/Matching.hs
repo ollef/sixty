@@ -18,6 +18,8 @@ import Rock
 import {-# source #-} qualified Elaboration
 import Binding (Binding)
 import qualified Binding
+import Bindings (Bindings)
+import qualified Bindings
 import qualified Builtin
 import Context (Context)
 import qualified Context
@@ -560,8 +562,9 @@ matchPrepatterns context values patterns type_ =
     (Presyntax.ImplicitPattern patSpan namedPats:patterns', (Implicit, value):values') -> do
       type' <- Context.forceHead context type_
       case type' of
-        Domain.Pi name domain Implicit targetClosure
-          | HashMap.member name namedPats -> do
+        Domain.Pi binding domain Implicit targetClosure
+          | let name = Binding.toName binding
+          , HashMap.member name namedPats -> do
             target <- Evaluation.evaluateClosure targetClosure value
             (matches, type'') <-
               matchPrepatterns
@@ -629,7 +632,7 @@ matchPrepatterns context values patterns type_ =
       (matches, type'') <- matchPrepatterns context values' patterns' target
       pure (Match value value Explicit pat domain : matches, type'')
 
-type PatternInstantiation = Tsil (Binding, Domain.Value, Domain.Value)
+type PatternInstantiation = Tsil (Bindings, Domain.Value, Domain.Value)
 
 expandAnnotations
   :: Context v
@@ -673,7 +676,7 @@ matchInstantiation context match =
     (Match value _ _ (Presyntax.Pattern span (Presyntax.ConOrVar _ prename@(Name.Pre name) [])) type_) -> do
       maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) prename
       if HashSet.null $ foldMap Scope.entryConstructors maybeScopeEntry then
-        pure $ pure (Binding.Spanned $ pure (span, Name name), value, type_)
+        pure $ pure (Bindings.Spanned $ pure (span, Name name), value, type_)
 
       else
         fail "No match instantiation"
@@ -842,12 +845,15 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
       -> Domain.Spine
       -> Domain.Type
       -> [[Presyntax.PlicitPattern]]
-      -> M (Telescope Binding Syntax.Type Syntax.Term v)
+      -> M (Telescope Bindings Syntax.Type Syntax.Term v)
     goConstrFields context constr conArgs type_ patterns =
       case type_ of
-        Domain.Pi piName domain plicity targetClosure -> do
+        Domain.Pi piBinding domain plicity targetClosure -> do
+          let
+            piName =
+              Binding.toName piBinding
           domain'' <- Elaboration.readback context domain
-          (name, patterns') <-
+          (bindings, patterns') <-
             case plicity of
               Explicit ->
                 SuggestedName.nextExplicit context patterns
@@ -856,9 +862,9 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
                 SuggestedName.nextImplicit context piName patterns
 
               Constraint ->
-                pure (Binding.Unspanned piName, patterns)
+                pure (Bindings.Unspanned piName, patterns)
 
-          (context' , fieldVar) <- Context.extendBefore context scrutineeVar name domain
+          (context' , fieldVar) <- Context.extendBefore context scrutineeVar bindings domain
           let
             fieldValue =
               Domain.var fieldVar
@@ -868,11 +874,11 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
 
           target <- Evaluation.evaluateClosure targetClosure fieldValue
           tele <- goConstrFields context' constr conArgs' target patterns'
-          pure $ Telescope.Extend name domain'' plicity tele
+          pure $ Telescope.Extend bindings domain'' plicity tele
 
         Domain.Fun domain plicity target -> do
           domain'' <- Elaboration.readback context domain
-          (name, patterns') <-
+          (bindings, patterns') <-
             case plicity of
              Explicit ->
                SuggestedName.nextExplicit context patterns
@@ -881,8 +887,8 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
                SuggestedName.nextImplicit context "x" patterns
 
              Constraint ->
-               pure (Binding.Unspanned "x", patterns)
-          (context' , fieldVar) <- Context.extendBefore context scrutineeVar name domain
+               pure (Bindings.Unspanned "x", patterns)
+          (context' , fieldVar) <- Context.extendBefore context scrutineeVar bindings domain
           let
             fieldValue =
               Domain.var fieldVar
@@ -891,7 +897,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
               conArgs Tsil.:> (plicity, fieldValue)
 
           tele <- goConstrFields context' constr conArgs' target patterns'
-          pure $ Telescope.Extend name domain'' plicity tele
+          pure $ Telescope.Extend bindings domain'' plicity tele
 
         _ -> do
           let
@@ -1112,13 +1118,13 @@ uninhabitedConstrType context fuel type_ =
     _ -> do
       type' <- Context.forceHead context type_
       case type' of
-        Domain.Pi name domain _ targetClosure -> do
+        Domain.Pi binding domain _ targetClosure -> do
           uninhabited <- uninhabitedType context (fuel - 1) mempty domain
           if uninhabited then
             pure True
 
           else do
-            (context', var) <- Context.extend context name domain
+            (context', var) <- Context.extend context (Binding.toName binding) domain
             target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
             uninhabitedConstrType context' fuel target
 

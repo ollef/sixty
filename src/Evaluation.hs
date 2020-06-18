@@ -5,10 +5,10 @@ import Protolude hiding (Seq, head, force, evaluate)
 
 import Rock
 
-import qualified Binding
+import Binding (Binding)
+import Bindings (Bindings)
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
-import Binding (Binding)
 import qualified Data.Tsil as Tsil
 import qualified Domain
 import qualified Domain.Telescope as Domain (Telescope)
@@ -86,7 +86,7 @@ evaluate env term =
 
     Syntax.Pi binding domain plicity target -> do
       domain' <- evaluate env domain
-      pure $ Domain.Pi (Binding.toName binding) domain' plicity (Domain.Closure env target)
+      pure $ Domain.Pi binding domain' plicity (Domain.Closure env target)
 
     Syntax.Fun domain plicity target -> do
       domain' <- evaluate env domain
@@ -158,7 +158,7 @@ chooseConstructorBranch outerEnv qualifiedConstr@(Name.QualifiedConstructor _ co
     go
       :: Domain.Environment v
       -> [(Plicity, Domain.Value)]
-      -> Telescope Binding Syntax.Type Syntax.Term v
+      -> Telescope Bindings Syntax.Type Syntax.Term v
       -> M Domain.Value
     go env args tele =
       case (args, tele) of

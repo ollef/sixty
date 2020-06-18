@@ -14,6 +14,8 @@ import Rock
 
 import Binding (Binding)
 import qualified Binding
+import Bindings (Bindings)
+import qualified Bindings
 import qualified Builtin
 import Context (Context)
 import qualified Context
@@ -295,12 +297,12 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
     goValue context' constrType = do
       constrType' <- Context.forceHead context constrType
       case constrType' of
-        Domain.Pi name domain plicity targetClosure -> do
+        Domain.Pi binding domain plicity targetClosure -> do
           domain' <- readback context' domain
-          (context'', var) <- Context.extend context' name domain
+          (context'', var) <- Context.extend context' (Binding.toName binding) domain
           target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
           target' <- goValue context'' target
-          pure $ Syntax.Pi (Binding.Unspanned name) domain' plicity target'
+          pure $ Syntax.Pi binding domain' plicity target'
 
         Domain.Fun domain plicity target -> do
           domain' <- readback context' domain
@@ -450,22 +452,22 @@ checkUnspanned context term expectedType = do
   expectedType' <- Context.forceHead context expectedType
   case (term, expectedType') of
     (Presyntax.Let name maybeType clauses body, _) -> do
-      (context', binding, boundTerm, typeTerm) <- elaborateLet context name maybeType clauses
+      (context', bindings, boundTerm, typeTerm) <- elaborateLet context name maybeType clauses
       body' <- check context' body expectedType
-      pure $ Syntax.Let binding boundTerm typeTerm body'
+      pure $ Syntax.Let bindings boundTerm typeTerm body'
 
     (Presyntax.Case scrutinee branches, _) -> do
       (scrutinee', scrutineeType) <-
         inferAndInsertMetas context UntilExplicit scrutinee $ pure Nothing
       Matching.elaborateCase context scrutinee' scrutineeType branches expectedType
 
-    (Presyntax.Lam (Presyntax.ExplicitPattern pat) body, Domain.Pi name domain Explicit targetClosure) ->
-      checkLambda context name domain Explicit pat targetClosure body
+    (Presyntax.Lam (Presyntax.ExplicitPattern pat) body, Domain.Pi binding domain Explicit targetClosure) ->
+      checkLambda context binding domain Explicit pat targetClosure body
 
     (Presyntax.Lam (Presyntax.ExplicitPattern pat) body, Domain.Fun domain Explicit target) -> do
       domain' <- readback context domain
       binding <- SuggestedName.patternBinding context pat "x"
-      (context', var) <- Context.extend context (Binding.toName binding) domain
+      (context', var) <- Context.extend context (Bindings.toName binding) domain
       body' <- Matching.elaborateSingle context' var Explicit pat body target
       pure $ Syntax.Lam binding domain' Explicit body'
 
@@ -473,8 +475,9 @@ checkUnspanned context term expectedType = do
       | HashMap.null namedPats ->
         check context body expectedType
 
-    (Presyntax.Lam (Presyntax.ImplicitPattern span namedPats) body, Domain.Pi name domain Implicit targetClosure)
-      | name `HashMap.member` namedPats -> do
+    (Presyntax.Lam (Presyntax.ImplicitPattern span namedPats) body, Domain.Pi binding domain Implicit targetClosure)
+      | let name = Binding.toName binding
+      , name `HashMap.member` namedPats -> do
         let
           pat =
             namedPats HashMap.! name
@@ -482,14 +485,17 @@ checkUnspanned context term expectedType = do
           body' =
             Presyntax.Term (Context.span context) $
               Presyntax.Lam (Presyntax.ImplicitPattern span (HashMap.delete name namedPats)) body
-        checkLambda context name domain Implicit pat targetClosure body'
+        checkLambda context binding domain Implicit pat targetClosure body'
 
-    (_, Domain.Pi name domain Implicit targetClosure) -> do
+    (_, Domain.Pi binding domain Implicit targetClosure) -> do
+      let
+        name =
+          Binding.toName binding
       (context', v) <- Context.extend context name domain
       target <- Evaluation.evaluateClosure targetClosure $ Domain.var v
       domain' <- readback context domain
       term' <- checkUnspanned context' term target
-      pure $ Syntax.Lam (Binding.Unspanned name) domain' Implicit term'
+      pure $ Syntax.Lam (Bindings.Unspanned name) domain' Implicit term'
 
     (Presyntax.App function argument, _) -> do
       let
@@ -554,9 +560,9 @@ inferUnspanned context term expectedTypeName =
       pure (Syntax.Lit lit, inferLiteral lit)
 
     Presyntax.Let name maybeType clauses body -> do
-      (context', binding, boundTerm, typeTerm) <- elaborateLet context name maybeType clauses
+      (context', bindings, boundTerm, typeTerm) <- elaborateLet context name maybeType clauses
       (body', type_) <- infer context' body expectedTypeName
-      pure (Syntax.Let binding boundTerm typeTerm body', type_)
+      pure (Syntax.Let bindings boundTerm typeTerm body', type_)
 
     Presyntax.Pi binding plicity domain target -> do
       domain' <- check context domain Builtin.Type
@@ -646,8 +652,9 @@ inferUnspanned context term expectedTypeName =
                 Syntax.apps function' metaArgs
             functionType'' <- Context.forceHead context functionType'
             case functionType'' of
-              Domain.Pi name domain Implicit targetClosure
-                | name `HashMap.member` arguments' -> do
+              Domain.Pi binding domain Implicit targetClosure
+                | let name = Binding.toName binding
+                , name `HashMap.member` arguments' -> do
                   argument' <- check context (arguments' HashMap.! name) domain
                   argument'' <- evaluate context argument'
                   target <- Evaluation.evaluateClosure targetClosure argument''
@@ -663,7 +670,7 @@ inferUnspanned context term expectedTypeName =
                   target' <- readback context' target
                   let
                     metaFunctionType =
-                      Domain.Pi name domain Implicit $
+                      Domain.Pi (Binding.Unspanned name) domain Implicit $
                       Domain.Closure (Context.toEnvironment context) target'
                   f <- Unification.tryUnify context functionType' metaFunctionType
                   argument' <- check context argument domain
@@ -774,14 +781,17 @@ inferenceFailed context = do
 
 checkLambda
   :: Context v
-  -> Name
+  -> Binding
   -> Domain.Type
   -> Plicity
   -> Presyntax.Pattern
   -> Domain.Closure
   -> Presyntax.Term
   -> M (Syntax.Term v)
-checkLambda context name domain plicity pat targetClosure body = do
+checkLambda context piBinding domain plicity pat targetClosure body = do
+  let
+    name =
+      Binding.toName piBinding
   (context', var) <- Context.extend context name domain
   domain' <- readback context domain
   target <-
@@ -809,7 +819,7 @@ inferLambda context name plicity pat body = do
   binding <- SuggestedName.patternBinding context pat name
   pure
     ( Syntax.Lam binding domain' plicity body'
-    , Domain.Pi name domain plicity
+    , Domain.Pi (Binding.Unspanned name) domain plicity
       $ Domain.Closure (Context.toEnvironment context) target'
     )
 
@@ -830,7 +840,7 @@ elaborateLet
   -> Name
   -> Maybe (Span.Relative, Presyntax.Type)
   -> [(Span.Relative, Presyntax.Clause)]
-  -> M (Context (Succ v), Binding, Syntax.Term v, Syntax.Type v)
+  -> M (Context (Succ v), Bindings, Syntax.Term v, Syntax.Type v)
 elaborateLet context name maybeType clauses = do
   let
     clauses' =
@@ -840,13 +850,13 @@ elaborateLet context name maybeType clauses = do
       Nothing -> do
         (boundTerm, typeValue) <- Clauses.infer context clauses'
         typeTerm <- readback context typeValue
-        pure (Binding.fromName (map fst clauses) name, boundTerm, typeTerm, typeValue)
+        pure (Bindings.fromName (map fst clauses) name, boundTerm, typeTerm, typeValue)
 
       Just (span, type_) -> do
         typeTerm <- check context type_ Builtin.Type
         typeValue <- evaluate context typeTerm
         boundTerm <- Clauses.check context clauses' typeValue
-        pure (Binding.fromName (span : map fst clauses) name, boundTerm, typeTerm, typeValue)
+        pure (Bindings.fromName (span : map fst clauses) name, boundTerm, typeTerm, typeValue)
 
   boundTerm' <- evaluate context boundTerm
   (context', _) <- Context.extendPreDef context name boundTerm' typeValue
@@ -922,8 +932,8 @@ getExpectedTypeName context type_ = do
       value' <- force value
       getExpectedTypeName context value'
 
-    Domain.Pi name domain _ targetClosure -> do
-      (context', var) <- Context.extend context name domain
+    Domain.Pi binding domain _ targetClosure -> do
+      (context', var) <- Context.extend context (Binding.toName binding) domain
       target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
       getExpectedTypeName context' target
 
@@ -983,8 +993,8 @@ insertMetas context until type_ = do
     (UntilExplicit, Domain.Pi _ domain Implicit targetClosure) ->
       instantiate domain Implicit targetClosure
 
-    (UntilImplicit stopAt, Domain.Pi name domain Implicit targetClosure)
-      | not $ stopAt name ->
+    (UntilImplicit stopAt, Domain.Pi binding domain Implicit targetClosure)
+      | not $ stopAt $ Binding.toName binding ->
         instantiate domain Implicit targetClosure
 
     (_, Domain.Pi _ domain Constraint targetClosure) -> do
@@ -1123,12 +1133,15 @@ checkMetaSolutions context metaVars =
           body <- addLambdas context'' target
           pure $ Syntax.Lam "x" domain' Explicit body
 
-        Domain.Pi name domain Explicit targetClosure -> do
+        Domain.Pi binding domain Explicit targetClosure -> do
+          let
+            name =
+              Binding.toName binding
           domain' <- readback context' domain
           (context'', var) <- Context.extend context' name domain
           target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
           body <- addLambdas context'' target
-          pure $ Syntax.Lam (Binding.Unspanned name) domain' Explicit body
+          pure $ Syntax.Lam (Bindings.Unspanned name) domain' Explicit body
 
         _ -> do
           typeTerm <- readback context' type_

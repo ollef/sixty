@@ -8,8 +8,8 @@ import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.HashSet as HashSet
 import Rock
 
-import Binding (Binding)
-import qualified Binding
+import Bindings (Bindings)
+import qualified Bindings
 import Context (Context)
 import qualified Context
 import Monad
@@ -23,12 +23,12 @@ import qualified Span
 nextExplicit
   :: Context v
   -> [[Presyntax.PlicitPattern]]
-  -> M (Binding, [[Presyntax.PlicitPattern]])
+  -> M (Bindings, [[Presyntax.PlicitPattern]])
 nextExplicit context clauses = do
   spannedNames <-
     concatMapM (concatMapM $ explicitNames context) $ maybeToList . headMay <$> clauses
   pure
-    ( maybe "x" Binding.Spanned $ NonEmpty.nonEmpty spannedNames
+    ( maybe "x" Bindings.Spanned $ NonEmpty.nonEmpty spannedNames
     , shiftExplicit <$> clauses
     )
 
@@ -57,12 +57,12 @@ nextImplicit
   :: Context v
   -> Name
   -> [[Presyntax.PlicitPattern]]
-  -> M (Binding, [[Presyntax.PlicitPattern]])
+  -> M (Bindings, [[Presyntax.PlicitPattern]])
 nextImplicit context piName clauses = do
   spannedNames <-
     concatMapM (concatMapM $ implicitNames context piName) $ maybeToList . headMay <$> clauses
   pure
-    ( maybe (Binding.Unspanned piName) Binding.Spanned $ NonEmpty.nonEmpty spannedNames
+    ( maybe (Bindings.Unspanned piName) Bindings.Spanned $ NonEmpty.nonEmpty spannedNames
     , shiftImplicit piName <$> clauses
     )
 
@@ -108,9 +108,9 @@ patternNames context pattern_ =
     _ ->
       pure []
 
-patternBinding :: Context v -> Presyntax.Pattern -> Name -> M Binding
+patternBinding :: Context v -> Presyntax.Pattern -> Name -> M Bindings
 patternBinding context pattern_ fallbackName = do
   spannedNames <- patternNames context pattern_
   pure $
-    maybe (Binding.Unspanned fallbackName) Binding.Spanned $
+    maybe (Bindings.Unspanned fallbackName) Bindings.Spanned $
     NonEmpty.nonEmpty spannedNames

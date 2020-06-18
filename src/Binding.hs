@@ -5,45 +5,35 @@ module Binding where
 
 import Protolude
 
-import Data.String
-import qualified Data.List.NonEmpty as NonEmpty
 import Data.Persist
 
+import qualified Presyntax
 import Name (Name)
 import qualified Span
-import qualified Presyntax
 
 data Binding
-  = Spanned !(NonEmpty (Span.Relative, Name))
+  = Spanned !Span.Relative !Name
   | Unspanned !Name
   deriving (Eq, Show, Generic, Persist, Hashable)
 
-fromName :: [Span.Relative] -> Name -> Binding
-fromName spans_ name =
-  maybe (Unspanned name) (Spanned . fmap (, name)) $ NonEmpty.nonEmpty spans_
-
 toName :: Binding -> Name
-toName binding =
-  case binding of
-    Spanned spannedNames ->
-      snd $ NonEmpty.head spannedNames
+toName bindings =
+  case bindings of
+    Spanned _ name ->
+      name
 
     Unspanned name ->
       name
 
+fromPresyntax :: Presyntax.SpannedName -> Binding
+fromPresyntax (Presyntax.SpannedName span name) =
+  Spanned span name
+
 spans :: Binding -> [Span.Relative]
 spans binding =
   case binding of
-    Spanned spannedNames ->
-      toList $ fst <$> spannedNames
+    Spanned span _ ->
+      [span]
 
     Unspanned _ ->
       []
-
-fromPresyntax :: Presyntax.SpannedName -> Binding
-fromPresyntax (Presyntax.SpannedName span_ name) =
-  Spanned $ pure (span_, name)
-
-instance IsString Binding where
-  fromString =
-    Unspanned . fromString

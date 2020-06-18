@@ -10,6 +10,8 @@ import qualified Data.HashMap.Lazy as HashMap
 import {-# SOURCE #-} qualified Elaboration
 import Binding (Binding)
 import qualified Binding
+import Bindings (Bindings)
+import qualified Bindings
 import Context (Context)
 import qualified Context
 import Data.Tsil (Tsil)
@@ -47,31 +49,32 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
   | otherwise = do
     expectedType' <- Context.forceHead context expectedType
     case expectedType' of
-      Domain.Pi name domain Explicit targetClosure
+      Domain.Pi _piBinding domain Explicit targetClosure
         | HashMap.null implicits -> do
-          (context', var) <- Context.extend context name domain
+          bindings <- nextExplicitBindings context clauses
+          (context', var) <- Context.extend context (Bindings.toName bindings) domain
           target <-
             Evaluation.evaluateClosure
               targetClosure
               (Domain.var var)
-          explicitFunCase context' (Binding.Unspanned name) var domain target
+          explicitFunCase context' bindings var domain target
 
       Domain.Fun domain Explicit target
         | HashMap.null implicits -> do
-          binding <- nextExplicitBinding context clauses
-          (context', var) <- Context.extend context (Binding.toName binding) domain
-          explicitFunCase context' binding var domain target
+          bindings <- nextExplicitBindings context clauses
+          (context', var) <- Context.extend context (Bindings.toName bindings) domain
+          explicitFunCase context' bindings var domain target
 
-      Domain.Pi piName domain Implicit targetClosure -> do
-        binding <- nextImplicitBinding context piName clauses
-        (context', var) <- Context.extend context (Binding.toName binding) domain
+      Domain.Pi piBinding domain Implicit targetClosure -> do
+        bindings <- nextImplicitBindings context piBinding clauses
+        (context', var) <- Context.extend context (Bindings.toName bindings) domain
         let
           value =
             Domain.var var
         target <- Evaluation.evaluateClosure targetClosure value
         domain'' <- Elaboration.readback context domain
-        body <- check context' (shiftImplicit (Binding.toName binding) value domain <$> clauses) target
-        pure $ Syntax.Lam binding domain'' Implicit body
+        body <- check context' (shiftImplicit piBinding value domain <$> clauses) target
+        pure $ Syntax.Lam bindings domain'' Implicit body
 
       _ -> do
         (term', type_) <- infer context clauses
@@ -81,11 +84,11 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
     implicits =
       foldMap clauseImplicits clauses
 
-    explicitFunCase context' binding var domain target = do
+    explicitFunCase context' bindings var domain target = do
       domain'' <- Elaboration.readback context domain
       clauses' <- mapM (shiftExplicit context (Domain.var var) domain) clauses
       body <- check context' clauses' target
-      pure $ Syntax.Lam binding domain'' Explicit body
+      pure $ Syntax.Lam bindings domain'' Explicit body
 
 infer
   :: Context v
@@ -111,38 +114,38 @@ infer context (fmap removeEmptyImplicits -> clauses)
       [] -> do
         domain <- Context.newMetaType context
         domain' <- Elaboration.readback context domain
-        binding <- nextExplicitBinding context clauses
+        bindings <- nextExplicitBindings context clauses
         let
           name =
-            Binding.toName binding
+            Bindings.toName bindings
         (context', var) <- Context.extend context name domain
         clauses' <- mapM (shiftExplicit context (Domain.var var) domain) clauses
         (body, target) <- infer context' clauses'
         target' <- Elaboration.readback context' target
 
         pure
-          ( Syntax.Lam binding domain' Explicit body
-          , Domain.Pi name domain Explicit
+          ( Syntax.Lam bindings domain' Explicit body
+          , Domain.Pi (Binding.Unspanned name) domain Explicit
             $ Domain.Closure (Context.toEnvironment context) target'
           )
 
       [(piName, _)] -> do
-        binding <- nextImplicitBinding context piName clauses
         let
-          name =
-            Binding.toName binding
+          piBinding =
+            Binding.Unspanned piName
+        bindings <- nextImplicitBindings context piBinding clauses
         domain <- Context.newMetaType context
         domain' <- Elaboration.readback context domain
-        (context', var) <- Context.extend context name domain
+        (context', var) <- Context.extend context piName domain
         let
           value =
             Domain.var var
-        (body, target) <- infer context' (shiftImplicit name value domain <$> clauses)
+        (body, target) <- infer context' (shiftImplicit (Binding.Unspanned piName) value domain <$> clauses)
         target' <- Elaboration.readback context' target
 
         pure
-          ( Syntax.Lam binding domain' Implicit body
-          , Domain.Pi name domain Implicit
+          ( Syntax.Lam bindings domain' Implicit body
+          , Domain.Pi piBinding domain Implicit
             $ Domain.Closure (Context.toEnvironment context) target'
           )
 
@@ -189,11 +192,12 @@ clauseImplicits clause =
     _ ->
       mempty
 
-shiftImplicit :: Name -> Domain.Value -> Domain.Type -> Clause -> Clause
-shiftImplicit name value type_ (Clause (Presyntax.Clause span patterns term) matches) =
+shiftImplicit :: Binding -> Domain.Value -> Domain.Type -> Clause -> Clause
+shiftImplicit binding value type_ (Clause (Presyntax.Clause span patterns term) matches) =
   case patterns of
     Presyntax.ImplicitPattern patSpan namedPats:patterns'
-      | HashMap.member name namedPats ->
+      | let name = Binding.toName binding
+      , HashMap.member name namedPats ->
         Clause
           (Presyntax.Clause
             span
@@ -235,12 +239,12 @@ shiftExplicit context value type_ clause@(Clause (Presyntax.Clause span patterns
         (Error.PlicityMismatch Error.Argument $ Error.Missing Explicit)
       pure clause
 
-nextExplicitBinding :: Context v -> [Clause] -> M Binding
-nextExplicitBinding context clauses = do
-  (binding, _) <- SuggestedName.nextExplicit context $ clausePatterns <$> clauses
-  pure binding
+nextExplicitBindings :: Context v -> [Clause] -> M Bindings
+nextExplicitBindings context clauses = do
+  (bindings, _) <- SuggestedName.nextExplicit context $ clausePatterns <$> clauses
+  pure bindings
 
-nextImplicitBinding :: Context v -> Name -> [Clause] -> M Binding
-nextImplicitBinding context piName clauses = do
-  (binding, _) <- SuggestedName.nextImplicit context piName $ clausePatterns <$> clauses
-  pure binding
+nextImplicitBindings :: Context v -> Binding -> [Clause] -> M Bindings
+nextImplicitBindings context piBinding clauses = do
+  (bindings, _) <- SuggestedName.nextImplicit context (Binding.toName piBinding) $ clausePatterns <$> clauses
+  pure bindings

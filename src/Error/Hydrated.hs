@@ -14,7 +14,6 @@ import qualified Data.Text.Unsafe as Text
 import Rock
 import qualified System.Directory as Directory
 
-import qualified Binding
 import Error (Error)
 import qualified Error
 import qualified Error.Parsing
@@ -309,7 +308,7 @@ prettyPrettyableTerm prec (Error.PrettyableTerm moduleName_ names term) = do
         name:names'' ->
           let
             (env'', _) =
-              Pretty.extend env' $ Binding.Unspanned name
+              Pretty.extend env' name
           in
           go names'' env''
 
@@ -327,7 +326,7 @@ prettyPrettyablePattern prec (plicity, Error.PrettyablePattern moduleName_ names
         name:names'' ->
           let
             (env'', _) =
-              Pretty.extend env' $ Binding.Unspanned name
+              Pretty.extend env' name
 
           in
           go names'' env''

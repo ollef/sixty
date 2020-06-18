@@ -6,6 +6,7 @@ module Domain.Showable where
 import Protolude hiding (Type, IntMap, force, to)
 
 import Binding (Binding)
+import Bindings (Bindings)
 import Data.Tsil (Tsil)
 import qualified Domain
 import qualified Environment
@@ -14,7 +15,6 @@ import Literal (Literal)
 import qualified Meta
 import Monad
 import qualified Name
-import Name (Name)
 import Plicity
 import qualified Syntax
 import Var (Var)
@@ -24,8 +24,8 @@ data Value
   | Con !Name.QualifiedConstructor (Tsil (Plicity, Value))
   | Lit !Literal
   | Glued !Head Spine !Value
-  | Lam !Binding !Type !Plicity !Closure
-  | Pi !Name !Type !Plicity !Closure
+  | Lam !Bindings !Type !Plicity !Closure
+  | Pi !Binding !Type !Plicity !Closure
   | Fun !Type !Plicity !Type
   deriving Show
 
@@ -67,11 +67,11 @@ to value =
     Domain.Glued hd spine value' ->
       Glued <$> headTo hd <*> mapM (mapM to) spine <*> lazyTo value'
 
-    Domain.Lam binding type_ plicity closure ->
-      Lam binding <$> to type_ <*> pure plicity <*> closureTo closure
+    Domain.Lam bindings type_ plicity closure ->
+      Lam bindings <$> to type_ <*> pure plicity <*> closureTo closure
 
-    Domain.Pi name type_ plicity closure ->
-      Pi name <$> to type_ <*> pure plicity <*> closureTo closure
+    Domain.Pi binding type_ plicity closure ->
+      Pi binding <$> to type_ <*> pure plicity <*> closureTo closure
 
     Domain.Fun domain plicity target ->
       Fun <$> to domain <*> pure plicity <*> to target
