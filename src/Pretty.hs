@@ -296,12 +296,35 @@ prettyConstructorDefinitions env tele =
           ]
         )
 
+    Telescope.Extend _ _ Implicit _ ->
+      "forall" <+> prettyConstructorDefinitionsImplicit env tele
+
     Telescope.Extend binding type_ plicity tele' ->
       let
         (env', name) = extendBinding env binding
       in
       Plicity.prettyAnnotation plicity <> "(" <> pretty name <+> ":" <+> prettyTerm 0 env type_ <> ")" <+>
       prettyConstructorDefinitions env' tele'
+
+
+prettyConstructorDefinitionsImplicit
+  :: Environment v
+  -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v
+  -> Doc ann
+prettyConstructorDefinitionsImplicit env tele =
+  case tele of
+    Telescope.Empty _ ->
+      prettyConstructorDefinitions env tele
+
+    Telescope.Extend binding type_ Implicit tele' ->
+      let
+        (env', name) = extendBinding env binding
+      in
+      lparen <> pretty name <+> ":" <+> prettyTerm 0 env type_ <> rparen
+      <> prettyConstructorDefinitionsImplicit env' tele'
+
+    Telescope.Extend _ _ _ _ ->
+      "." <+> prettyConstructorDefinitions env tele
 
 -------------------------------------------------------------------------------
 
