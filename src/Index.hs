@@ -1,5 +1,4 @@
 {-# language GeneralizedNewtypeDeriving #-}
-{-# language PatternSynonyms #-}
 module Index where
 
 import Protolude
@@ -18,6 +17,3 @@ newtype Index v = Index Int
 type Scope f v = f (Succ v)
 
 data Succ v
-
-pattern Zero :: Index (Succ v)
-pattern Zero = Index 0
