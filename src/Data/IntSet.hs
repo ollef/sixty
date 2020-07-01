@@ -20,6 +20,10 @@ null :: IntSet key -> Bool
 null (IntSet s) =
   Containers.null s
 
+size :: IntSet key -> Int
+size (IntSet s) =
+  Containers.size s
+
 singleton :: Coercible key Containers.Key => key -> IntSet key
 singleton key =
   IntSet $ Containers.singleton $ coerce key

@@ -101,6 +101,13 @@ instance Hashable QualifiedConstructor where
   hash (QualifiedConstructor m n) =
     hash m `hashWithSalt` n
 
+instance Pretty Lifted where
+  pretty (Lifted name 0) =
+    pretty name
+
+  pretty (Lifted name n) =
+    pretty name <> "$" <> pretty n
+
 instance Hashable Lifted where
   hashWithSalt =
     defaultHashWithSalt

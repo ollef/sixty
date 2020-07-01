@@ -3,11 +3,11 @@ module Environment where
 import Protolude hiding (IntMap)
 
 import Data.IntMap (IntMap)
+import qualified Data.IntMap as IntMap
 import Index
 import qualified Index.Map
 import qualified Index.Map as Index
 import Monad
-import qualified Data.IntMap as IntMap
 import qualified Scope
 import Var (Var)
 import qualified Var
@@ -76,6 +76,10 @@ lookupVarIndex var context =
 lookupIndexVar :: Index v -> Environment value v -> Var
 lookupIndexVar index env =
   Index.Map.index (indices env) index
+
+lookupIndexValue :: Index v -> Environment value v -> Maybe value
+lookupIndexValue index env =
+  lookupVarValue (lookupIndexVar index env) env
 
 lookupVarValue :: Var -> Environment value v -> Maybe value
 lookupVarValue v env =

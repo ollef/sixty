@@ -39,9 +39,13 @@ emptyFrom :: Context v -> Context Void
 emptyFrom context =
   empty $ scopeKey context
 
+lookupIndexVar :: Index v -> Context v -> Var
+lookupIndexVar index context =
+  Index.Map.index (indices context) index
+
 lookupVarType :: Var -> Context v -> Domain.Type
 lookupVarType var context =
-  fromMaybe (panic "Context.lookupVarType")
+  fromMaybe (panic $ "ClosureConverted.Context.lookupVarType " <> show var)
     $ IntMap.lookup var
     $ types context
 

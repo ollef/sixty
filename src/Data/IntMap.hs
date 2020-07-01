@@ -81,3 +81,11 @@ unionWith f m1 m2 =
 traverseWithKey :: (Coercible key Containers.Key, Applicative t) => (key -> value1 -> t value2) -> IntMap key value1 -> t (IntMap key value2)
 traverseWithKey f (IntMap m) =
   IntMap <$> Containers.traverseWithKey (coerce f) m
+
+keys :: (Coercible key Containers.Key) => IntMap key value -> [key]
+keys (IntMap m) =
+  coerce $ Containers.keys m
+
+elems :: IntMap key value -> [value]
+elems (IntMap m) =
+  Containers.elems m

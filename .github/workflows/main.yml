@@ -24,10 +24,10 @@ jobs:
       run: stack setup
 
     - name: Build dependencies
-      run: stack test --dependencies-only
+      run: stack test --dependencies-only --fast
 
     - name: Build
-      run: stack test --no-run-tests
+      run: stack test --no-run-tests --fast
 
     - name: Run tests
-      run: stack test
+      run: stack test --fast

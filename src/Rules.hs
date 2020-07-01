@@ -8,31 +8,31 @@
 {-# language TupleSections #-}
 module Rules where
 
-import Protolude hiding ((<.>), force, moduleName, try)
-
+import qualified CPSAssemblyToLLVM
+import qualified Builtin
+import qualified ClosureConversion
+import qualified ClosureConverted.Context
+import qualified ClosureConverted.Syntax
+import qualified ClosureConverted.TypeOf as ClosureConverted
+import qualified ClosureConvertedToAssembly
 import Control.Exception.Lifted
+import Core.Binding (Binding)
+import qualified Core.Evaluation as Evaluation
+import qualified Core.Syntax as Syntax
+import qualified AssemblyToCPSAssembly
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.IntMap as IntMap
 import qualified Data.List as List
 import qualified Data.OrderedHashMap as OrderedHashMap
+import qualified Data.OrderedHashSet as OrderedHashSet
 import qualified Data.Text as Text
 import qualified Data.Text.Unsafe as Text
-import Rock
-import System.FilePath
-
-import Core.Binding (Binding)
-import qualified Builtin
-import qualified ClosureConversion
-import qualified ClosureConverted.Context
-import qualified ClosureConverted.Syntax
-import qualified ClosureConverted.TypeOf as ClosureConverted
 import qualified Elaboration
 import qualified Environment
 import Error (Error)
 import qualified Error
-import qualified Core.Evaluation as Evaluation
 import qualified LambdaLifted.Syntax as LambdaLifted
 import qualified LambdaLifting
 import qualified Lexer
@@ -45,15 +45,18 @@ import qualified Parser
 import qualified Paths_sixty as Paths
 import Plicity
 import qualified Position
-import qualified Surface.Syntax as Surface
+import Protolude hiding ((<.>), force, moduleName, try)
 import Query
 import qualified Query.Mapped as Mapped
 import qualified Resolution
+import Rock
 import qualified Scope
 import qualified Span
-import qualified Core.Syntax as Syntax
+import qualified Surface.Syntax as Surface
+import System.FilePath
 import Telescope (Telescope)
 import qualified Telescope
+import Var (Var(Var))
 
 rules :: [FilePath] -> HashSet FilePath -> (FilePath -> IO Text) -> GenRules (Writer [Error] (Writer TaskKind Query)) Query
 rules sourceDirectories files readFile_ (Writer (Writer query)) =
@@ -174,6 +177,13 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
 
               firstCandidate:_ ->
                 firstCandidate
+
+    ModuleDefinitions module_ ->
+      noError $ do
+        maybeFile <- fetch $ ModuleFile module_
+        fmap (OrderedHashSet.fromList . fold) $ forM maybeFile $ \file -> do
+          (_, _, defs) <- fetch $ ParsedFile file
+          pure $ fst . snd <$> defs
 
     ModuleHeader module_ ->
       nonInput $ do
@@ -429,6 +439,16 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
               LambdaLifted.ConstantDefinition <$>
                 IntMap.lookup index liftedDefs
 
+    LambdaLiftedModuleDefinitions module_ ->
+      noError $ do
+        names <- fetch $ ModuleDefinitions module_
+        fmap (OrderedHashSet.fromList . concat) $ forM (toList names) $ \name -> do
+          let
+            qualifiedName =
+              Name.Qualified module_ name 
+          (_, extras) <- fetch $ LambdaLifted qualifiedName
+          pure $ Name.Lifted qualifiedName <$> 0 : IntMap.keys extras
+
     ClosureConverted name ->
       noError $ do
         maybeDef <- fetch $ LambdaLiftedDefinition name
@@ -503,6 +523,39 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
           _ ->
             pure Nothing
 
+
+    Assembly name ->
+      noError $ do
+        maybeDefinition <- fetch $ ClosureConverted name
+        fmap join $ forM maybeDefinition $ \definition ->
+          runM $ do
+            result <- ClosureConvertedToAssembly.generateDefinition name definition
+            Var fresh <- freshVar
+            pure $ (, fresh) <$> result
+
+    CPSAssembly name ->
+      noError $ do
+        maybeAssemblyDefinition <- fetch $ Assembly name
+        pure $ fold $ foreach maybeAssemblyDefinition $ \(assemblyDefinition, fresh) ->
+          AssemblyToCPSAssembly.convertDefinition fresh name assemblyDefinition
+
+    CPSAssemblyModule module_ ->
+      noError $ do
+        names <- fetch $ LambdaLiftedModuleDefinitions module_
+        closureConvertedDefinitions <- fmap concat $ forM (toList names) $ \name -> do
+          maybeClosureConverted <- fetch $ ClosureConverted name
+          pure $ toList $ (name, ) <$> maybeClosureConverted
+        moduleInit <- runM $ do
+          assemblyDefinition <- ClosureConvertedToAssembly.generateModuleInit closureConvertedDefinitions
+          Var fresh <- freshVar
+          pure $ AssemblyToCPSAssembly.convertDefinition fresh (ClosureConvertedToAssembly.moduleInitName module_) assemblyDefinition
+        cpsAssembly <- forM (toList names) $ fetch . CPSAssembly
+        pure $ moduleInit <> concat cpsAssembly
+
+    LLVMModule module_ ->
+      noError $ do
+        assemblyDefinitions <- fetch $ CPSAssemblyModule module_
+        pure $ CPSAssemblyToLLVM.assembleModule module_ assemblyDefinitions
   where
     input :: Functor m => m a -> m ((a, TaskKind), [Error])
     input = fmap ((, mempty) . (, Input))
