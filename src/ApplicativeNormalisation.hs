@@ -9,7 +9,6 @@ import ClosureConverted.Context (Context)
 import qualified ClosureConverted.Context as Context
 import qualified ClosureConverted.Domain
 import qualified ClosureConverted.Evaluation
-import Plicity
 import qualified ClosureConverted.Readback
 import qualified ClosureConverted.Syntax as ClosureConverted
 import qualified ClosureConverted.TypeOf
@@ -21,9 +20,80 @@ import Literal (Literal)
 import Monad
 import Name (Name)
 import qualified Name
+import Plicity
+import qualified Scope
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
 import Var (Var)
+
+normaliseDefinition :: Scope.KeyedName -> ClosureConverted.Definition -> M Applicative.Definition
+normaliseDefinition scopeKey def =
+  case def of
+    ClosureConverted.TypeDeclaration type_ ->
+      Applicative.TypeDeclaration <$> normaliseClosedTerm scopeKey type_
+
+    ClosureConverted.ConstantDefinition term ->
+      Applicative.ConstantDefinition <$> normaliseClosedTerm scopeKey term
+
+    ClosureConverted.FunctionDefinition tele ->
+      Applicative.FunctionDefinition <$> do
+        (tele', body) <- evaluateTelescope (Context.empty scopeKey) tele
+        pure $ readbackTelescope (Environment.empty scopeKey) tele' body
+
+    ClosureConverted.DataDefinition constructorDefs ->
+      Applicative.DataDefinition <$>
+        normaliseConstructorDefinitions
+          (Context.empty scopeKey)
+          (Environment.empty scopeKey)
+          constructorDefs
+
+    ClosureConverted.ParameterisedDataDefinition tele ->
+      Applicative.ParameterisedDataDefinition <$>
+        normaliseParameterisedDataDefinition
+          (Context.empty scopeKey)
+          (Environment.empty scopeKey)
+          tele
+
+normaliseClosedTerm :: Scope.KeyedName -> ClosureConverted.Term Void -> M (Applicative.Term Void)
+normaliseClosedTerm scopeKey =
+  normaliseTerm (Context.empty scopeKey) (Environment.empty scopeKey)
+
+normaliseTerm :: Context v -> Environment () v' -> ClosureConverted.Term v -> M (Applicative.Term v')
+normaliseTerm context env term = do
+  value <- evaluate context term
+  pure $ readback env value
+
+normaliseParameterisedDataDefinition
+  :: Context v
+  -> Environment () v'
+  -> Telescope Name ClosureConverted.Type ClosureConverted.ConstructorDefinitions v
+  -> M (Telescope Name Applicative.Type Applicative.ConstructorDefinitions v')
+normaliseParameterisedDataDefinition context env tele =
+  case tele of
+    Telescope.Empty constructorDefs ->
+      Telescope.Empty <$> normaliseConstructorDefinitions context env constructorDefs
+
+    Telescope.Extend name type_ plicity tele' -> do
+      typeValue <- ClosureConverted.Evaluation.evaluate (Context.toEnvironment context) type_
+      (context', var) <- Context.extend context typeValue
+      typeValue' <- evaluate context type_
+      let
+        type' =
+          readback env typeValue'
+      Telescope.Extend name type' plicity <$>
+        normaliseParameterisedDataDefinition context' (Environment.extendVar env var) tele'
+
+
+normaliseConstructorDefinitions
+  :: Context v
+  -> Environment () v'
+  -> ClosureConverted.ConstructorDefinitions v
+  -> M (Applicative.ConstructorDefinitions v')
+normaliseConstructorDefinitions context env (ClosureConverted.ConstructorDefinitions constructorDefs) =
+  Applicative.ConstructorDefinitions <$>
+    OrderedHashMap.forMUnordered constructorDefs (normaliseTerm context env)
+
+-------------------------------------------------------------------------------
 
 data Value
   = Operand !Operand
