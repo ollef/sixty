@@ -462,7 +462,8 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             panic "ClosureConvertedType: no type"
 
           Just def ->
-            fmap (first $ fromMaybe $ panic "ClosureConvertedType error") $ runElaborator (Scope.KeyedName Scope.Definition qualifiedName) $
+            fmap (first $ fromMaybe $ panic "ClosureConvertedType error") $
+            runElaborator (Scope.KeyedName Scope.Definition qualifiedName) $
               (, []) <$> ClosureConverted.typeOfDefinition (ClosureConverted.Context.empty $ Scope.KeyedName Scope.Definition qualifiedName) def
 
     ClosureConvertedConstructorType (Name.QualifiedConstructor dataTypeName constr) ->
