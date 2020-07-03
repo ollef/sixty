@@ -68,7 +68,7 @@ data Query a where
   KeyedNameSpan :: Scope.KeyedName -> Query (FilePath, Span.Absolute)
   Occurrences :: Scope.KeyedName -> Query Occurrences.Intervals
 
-  LambdaLifted :: Name.Qualified -> Query (Maybe (LambdaLifted.Definition, IntMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void)))
+  LambdaLifted :: Name.Qualified -> Query (LambdaLifted.Definition, IntMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void))
   LambdaLiftedDefinition :: Name.Lifted -> Query (Maybe LambdaLifted.Definition)
   ClosureConverted :: Name.Lifted -> Query (Maybe ClosureConverted.Definition)
   ClosureConvertedType :: Name.Lifted -> Query (ClosureConverted.Type Void)

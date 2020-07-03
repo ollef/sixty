@@ -70,8 +70,8 @@ cursorAction
   -> Position.LineColumn
   -> Callback a
   -> Task Query (Maybe a)
-cursorAction filePath (Position.LineColumn line column) k = do
-  result <- runM $ runMaybeT $ do
+cursorAction filePath (Position.LineColumn line column) k =
+  runM $ runMaybeT $ do
     (moduleName, moduleHeader, _) <- fetch $ Query.ParsedFile filePath
     spans <- fetch $ Query.ModuleSpanMap moduleName
     contents <- fetch $ Query.FileText filePath
@@ -113,13 +113,6 @@ cursorAction filePath (Position.LineColumn line column) k = do
         guard $ span `Span.contains` pos
         k (Import (Module._module import_)) $ toLineColumns span
       )
-
-  pure $ case result of
-    Left _ ->
-      Nothing
-
-    Right result' ->
-      result'
 
 data Environment v = Environment
   { _actionPosition :: !Position.Relative

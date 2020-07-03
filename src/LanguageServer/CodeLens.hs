@@ -22,7 +22,7 @@ import qualified Span
 
 codeLens :: FilePath -> Task Query [(Span.LineColumn, Doc ann)]
 codeLens filePath =
-  fmap fold $ runM $ do
+  runM $ do
     (moduleName, _, defs) <- fetch $ Query.ParsedFile filePath
 
     toLineColumns <- LineColumns.fromAbsolute moduleName

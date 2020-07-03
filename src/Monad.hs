@@ -6,11 +6,9 @@ import Protolude hiding (try, State)
 
 import Data.IORef.Lifted
 import Control.Monad.Trans.Control
-import Control.Exception.Lifted
 import Rock
 import System.IO.Unsafe (unsafeDupablePerformIO)
 
-import qualified Error
 import Query (Query)
 import Var
 
@@ -43,10 +41,10 @@ freshVar = do
   atomicModifyIORef ref $ \var@(Var i) ->
     (Var $ i + 1, var)
 
-runM :: M a -> Task Query (Either Error.Elaboration a)
+runM :: M a -> Task Query a
 runM r = do
   nextVarVar <- newIORef $ Var 0
-  try $ runReaderT r State
+  runReaderT r State
     { nextVar = nextVarVar
     }
 

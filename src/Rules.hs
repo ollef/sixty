@@ -8,8 +8,9 @@
 {-# language TupleSections #-}
 module Rules where
 
-import Protolude hiding ((<.>), force, moduleName)
+import Protolude hiding ((<.>), force, moduleName, try)
 
+import Control.Exception.Lifted
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
@@ -414,34 +415,29 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             )
 
     Occurrences scopeKey@(Scope.KeyedName key name) ->
-      nonInput $
-      fmap (first fold) $
-      runElaborator scopeKey $ do
-        intervals <- Occurrences.run $
-          Occurrences.definitionOccurrences
-            (Environment.empty scopeKey)
-            key
-            name
-        pure (intervals, mempty)
+      noError $ runM $ Occurrences.run $
+        Occurrences.definitionOccurrences
+          (Environment.empty scopeKey)
+          key
+          name
 
     LambdaLifted qualifiedName ->
-      nonInput $ do
+      noError $ do
         maybeDef <- fetch $ ElaboratedDefinition qualifiedName
         case maybeDef of
           Nothing -> do
             type_ <- fetch $ ElaboratedType qualifiedName
-            runElaborator (Scope.KeyedName Scope.Type qualifiedName) $
-              (, []) <$> LambdaLifting.liftDefinition qualifiedName (Syntax.TypeDeclaration type_)
+            runM $
+              LambdaLifting.liftDefinition qualifiedName (Syntax.TypeDeclaration type_)
 
           Just (def, _) ->
-            runElaborator (Scope.KeyedName Scope.Definition qualifiedName) $
-              (, []) <$> LambdaLifting.liftDefinition qualifiedName def
+            runM $
+              LambdaLifting.liftDefinition qualifiedName def
 
     LambdaLiftedDefinition (Name.Lifted qualifiedName index) ->
       noError $ do
-        maybeDef <- fetch $ LambdaLifted qualifiedName
-        pure $ do
-          (def, liftedDefs) <- maybeDef
+        (def, liftedDefs) <- fetch $ LambdaLifted qualifiedName
+        pure $
           case index of
             0 ->
               pure def
@@ -456,16 +452,15 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
         mapM ClosureConversion.convertDefinition maybeDef
 
     ClosureConvertedType name@(Name.Lifted qualifiedName _) ->
-      nonInput $ do
+      noError $ do
         maybeDef <- fetch $ ClosureConverted name
         case maybeDef of
           Nothing ->
             panic "ClosureConvertedType: no type"
 
           Just def ->
-            fmap (first $ fromMaybe $ panic "ClosureConvertedType error") $
-            runElaborator (Scope.KeyedName Scope.Definition qualifiedName) $
-              (, []) <$> ClosureConverted.typeOfDefinition (ClosureConverted.Context.empty $ Scope.KeyedName Scope.Definition qualifiedName) def
+            runM $
+              ClosureConverted.typeOfDefinition (ClosureConverted.Context.empty $ Scope.KeyedName Scope.Definition qualifiedName) def
 
     ClosureConvertedConstructorType (Name.QualifiedConstructor dataTypeName constr) ->
       noError $ do
@@ -502,16 +497,10 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             panic "ClosureConvertedConstructorType: none-datatype"
 
     Applicative name@(Name.Lifted qualifiedName _) ->
-      nonInput $ do
+      noError $ do
         maybeDef <- fetch $ ClosureConverted name
-        case maybeDef of
-          Nothing ->
-            pure (Nothing, [])
-
-          Just def ->
-            fmap (first $ Just . fromMaybe (panic "ApplicativeNormalisation error")) $
-            runElaborator (Scope.KeyedName Scope.Definition qualifiedName) $
-              (, []) <$> ApplicativeNormalisation.normaliseDefinition (Scope.KeyedName Scope.Definition qualifiedName) def
+        runM $ forM maybeDef $
+          ApplicativeNormalisation.normaliseDefinition (Scope.KeyedName Scope.Definition qualifiedName)
 
     ConstructorTag (Name.QualifiedConstructor dataTypeName constr) ->
       noError $ do
@@ -552,7 +541,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
       -> M (a, [Error])
       -> Task Query (Maybe a, [Error])
     runElaborator key m = do
-      eitherResult <- runM m
+      eitherResult <- try $ runM m
       pure $
         case eitherResult of
           Left err ->
