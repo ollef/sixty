@@ -14,6 +14,7 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.IntMap as IntMap
+import qualified Data.List as List
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Text as Text
 import qualified Data.Text.Unsafe as Text
@@ -511,6 +512,31 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             fmap (first $ Just . fromMaybe (panic "ApplicativeNormalisation error")) $
             runElaborator (Scope.KeyedName Scope.Definition qualifiedName) $
               (, []) <$> ApplicativeNormalisation.normaliseDefinition (Scope.KeyedName Scope.Definition qualifiedName) def
+
+    ConstructorTag (Name.QualifiedConstructor dataTypeName constr) ->
+      noError $ do
+        def <- fetch $ ElaboratedDefinition dataTypeName
+        case def of
+          Just (Syntax.DataDefinition _ tele, _) -> do
+            let
+              go :: Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v -> Maybe Int
+              go tele' =
+                case tele' of
+                  Telescope.Empty (Syntax.ConstructorDefinitions constrs)
+                    | OrderedHashMap.size constrs <= 1 ->
+                      Nothing
+
+                    | otherwise ->
+                      List.elemIndex constr $ OrderedHashMap.keys constrs
+
+                  Telescope.Extend _ _ _ tele'' ->
+                    go tele''
+
+            pure $ go tele
+
+          _ ->
+            pure Nothing
+
   where
     input :: Functor m => m a -> m ((a, TaskKind), [Error])
     input = fmap ((, mempty) . (, Input))

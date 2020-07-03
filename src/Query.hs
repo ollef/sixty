@@ -74,6 +74,7 @@ data Query a where
   ClosureConvertedType :: Name.Lifted -> Query (ClosureConverted.Type Void)
   ClosureConvertedConstructorType :: Name.QualifiedConstructor -> Query (Telescope Name ClosureConverted.Type ClosureConverted.Type Void)
   Applicative :: Name.Lifted -> Query (Maybe Applicative.Definition)
+  ConstructorTag :: Name.QualifiedConstructor -> Query (Maybe Int)
 
 fetchImportedName
   :: MonadFetch Query m
@@ -122,6 +123,7 @@ instance Hashable (Query a) where
       ClosureConvertedType a -> h 23 a
       ClosureConvertedConstructorType a -> h 24 a
       Applicative a -> h 25 a
+      ConstructorTag a -> h 26 a
     where
       {-# inline h #-}
       h :: Hashable a => Int -> a -> Int
@@ -167,6 +169,7 @@ instance Persist (Some Query) where
       23 -> Some . ClosureConvertedType <$> get
       24 -> Some . ClosureConvertedConstructorType <$> get
       25 -> Some . Applicative <$> get
+      26 -> Some . ConstructorTag <$> get
       _ -> fail "Persist (Some Query): no such tag"
 
   put (Some query) =
@@ -197,6 +200,7 @@ instance Persist (Some Query) where
       ClosureConvertedType a -> p 23 a
       ClosureConvertedConstructorType a -> p 24 a
       Applicative a -> p 25 a
+      ConstructorTag a -> p 26 a
       -- Don't forget to add a case to `get` above!
     where
       p :: Persist a => Word8 -> a -> Put ()
