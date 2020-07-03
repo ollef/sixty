@@ -16,9 +16,7 @@ import Span (LineColumn(LineColumns))
 
 fromKeyedName :: MonadFetch Query m => Scope.KeyedName -> m (Span.Relative -> Span.LineColumn)
 fromKeyedName keyedName@(Scope.KeyedName _ (Name.Qualified moduleName _)) = do
-  (_, Span.Absolute absolutePosition _) <-
-    fetch $ Query.KeyedNameSpan keyedName
-
+  (_, absolutePosition) <- fetch $ Query.KeyedNamePosition keyedName
   toLineColumns <- fromAbsolute moduleName
   pure $ toLineColumns . Span.absoluteFrom absolutePosition
 

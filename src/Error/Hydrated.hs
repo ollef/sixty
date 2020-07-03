@@ -51,14 +51,14 @@ headingAndBody error =
         )
 
     Error.DuplicateName keyedName@(Scope.KeyedName _ name) _span -> do
-      (filePath, oldSpan) <- fetch $ Query.KeyedNameSpan keyedName
+      (filePath, oldSpan) <- fetch $ Query.KeyedNamePosition keyedName
       text <- fetch $ Query.FileText filePath
       let
         (lineColumn, _) =
-          Span.lineColumn oldSpan text
+          Position.lineColumn oldSpan text
       pure
         ( "Duplicate name:" <+> Doc.pretty name
-        , Doc.pretty name <+> "has already been defined at" <+> Doc.pretty lineColumn <> "."
+        , Doc.pretty name <+> "has already been defined at" <+> Doc.pretty (Span.LineColumns lineColumn lineColumn) <> "."
         )
 
     Error.ImportNotFound _ import_ ->
@@ -264,7 +264,7 @@ fromError err = do
         pure (file, Right span)
 
       Error.Elaboration keyedName (Error.Spanned relativeSpan _) -> do
-        (file, Span.Absolute absolutePosition _) <- fetch $ Query.KeyedNameSpan keyedName
+        (file, absolutePosition) <- fetch $ Query.KeyedNamePosition keyedName
         pure (file, Right $ Span.absoluteFrom absolutePosition relativeSpan)
   text <- fetch $ Query.FileText filePath
   let

@@ -389,30 +389,14 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
           _ ->
             pure $ Telescope.Empty fail
 
-    KeyedNameSpan (Scope.KeyedName key (Name.Qualified module_ name)) ->
+    KeyedNamePosition (Scope.KeyedName key (Name.Qualified module_ name)) ->
       noError $ do
         positions <- fetch $ ModulePositionMap module_
         maybeFilePath <- fetch $ Query.ModuleFile module_
-        mdef <- fetch $ ParsedDefinition module_ $ Mapped.Query (key, name)
-        pure $ case maybeFilePath of
-          Nothing ->
-            ( "<no file>"
-            , Span.Absolute 0 0
-            )
-
-          Just filePath ->
-            ( filePath
-            , case (HashMap.lookup (key, name) positions, mdef) of
-              (Nothing, _) ->
-                Span.Absolute 0 0
-
-              (Just position, Just def)
-                | span:_ <- Presyntax.spans def ->
-                  Span.absoluteFrom position span
-
-              (Just position, _) ->
-                Span.Absolute position position
-            )
+        pure
+          ( fromMaybe "<no file>" maybeFilePath
+          , HashMap.lookupDefault 0 (key, name) positions
+          )
 
     Occurrences scopeKey@(Scope.KeyedName key name) ->
       noError $ runM $ Occurrences.run $

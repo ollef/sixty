@@ -65,7 +65,7 @@ data Query a where
   ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void)
   ElaboratedDefinition :: Name.Qualified -> Query (Maybe (Syntax.Definition, Syntax.Type Void))
   ConstructorType :: Name.QualifiedConstructor -> Query (Telescope Binding Syntax.Type Syntax.Type Void)
-  KeyedNameSpan :: Scope.KeyedName -> Query (FilePath, Span.Absolute)
+  KeyedNamePosition :: Scope.KeyedName -> Query (FilePath, Position.Absolute)
   Occurrences :: Scope.KeyedName -> Query Occurrences.Intervals
 
   LambdaLifted :: Name.Qualified -> Query (LambdaLifted.Definition, IntMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void))
@@ -115,7 +115,7 @@ instance Hashable (Query a) where
       ElaboratedType a -> h 15 a
       ElaboratedDefinition a -> h 16 a
       ConstructorType a -> h 17 a
-      KeyedNameSpan a -> h 18 a
+      KeyedNamePosition a -> h 18 a
       Occurrences a -> h 19 a
       LambdaLifted a -> h 20 a
       LambdaLiftedDefinition a -> h 21 a
@@ -161,7 +161,7 @@ instance Persist (Some Query) where
       15 -> Some . ElaboratedType <$> get
       16 -> Some . ElaboratedDefinition <$> get
       17 -> Some . ConstructorType <$> get
-      18 -> Some . KeyedNameSpan <$> get
+      18 -> Some . KeyedNamePosition <$> get
       19 -> Some . Occurrences <$> get
       20 -> Some . LambdaLifted <$> get
       21 -> Some . LambdaLiftedDefinition <$> get
@@ -192,7 +192,7 @@ instance Persist (Some Query) where
       ElaboratedType a -> p 15 a
       ElaboratedDefinition a -> p 16 a
       ConstructorType a -> p 17 a
-      KeyedNameSpan a -> p 18 a
+      KeyedNamePosition a -> p 18 a
       Occurrences a -> p 19 a
       LambdaLifted a -> p 20 a
       LambdaLiftedDefinition a -> p 21 a
