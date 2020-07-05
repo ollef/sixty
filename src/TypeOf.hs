@@ -1,7 +1,7 @@
 {-# language OverloadedStrings #-}
 module TypeOf where
 
-import Protolude
+import Protolude hiding (typeOf)
 
 import Rock
 

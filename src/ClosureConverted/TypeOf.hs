@@ -2,7 +2,7 @@
 {-# language RankNTypes #-}
 module ClosureConverted.TypeOf where
 
-import Protolude hiding (head)
+import Protolude hiding (head, typeOf)
 
 import Rock
 
