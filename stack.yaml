@@ -9,6 +9,7 @@ extra-deps:
   - dependent-sum
   - dependent-sum-template
 - dependent-hashmap-0.1.0.1
+- protolude-0.3.0
 - some-1.0.0.3
 - rock-0.3.0.0
 - git: https://github.com/fpco/ghc-prof-flamegraph.git
