@@ -1,7 +1,7 @@
 {-# language OverloadedStrings #-}
 module ApplicativeNormalisation where
 
-import Protolude hiding (evaluate, Type)
+import Protolude hiding (evaluate, Type, typeOf)
 
 import qualified Applicative.Syntax as Applicative
 import qualified Builtin
