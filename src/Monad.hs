@@ -23,7 +23,7 @@ data Lazy a = Lazy a
 {-# inline force #-}
 force :: Lazy a -> M a
 force (Lazy a) =
-  a `seq` pure a
+  liftIO $ evaluate a
 
 {-# noinline lazy #-}
 lazy :: M a -> M (Lazy a)
