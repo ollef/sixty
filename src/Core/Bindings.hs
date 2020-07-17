@@ -1,7 +1,7 @@
 {-# language DeriveAnyClass #-}
 {-# language DeriveGeneric #-}
 {-# language TupleSections #-}
-module Bindings where
+module Core.Bindings where
 
 import Protolude
 

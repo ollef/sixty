@@ -15,8 +15,8 @@ import Data.IORef.Lifted
 import Rock
 
 import qualified Core.Binding as Binding
-import qualified Bindings
-import Bindings (Bindings)
+import qualified Core.Bindings as Bindings
+import Core.Bindings (Bindings)
 import qualified Builtin
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap

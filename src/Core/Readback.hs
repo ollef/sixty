@@ -3,7 +3,7 @@ module Core.Readback where
 
 import Protolude hiding (IntMap, Seq, head, force, evaluate)
 
-import Bindings (Bindings)
+import Core.Bindings (Bindings)
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Core.Domain as Domain
 import qualified Environment

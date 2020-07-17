@@ -6,8 +6,8 @@ import Protolude hiding (typeOf)
 import Rock
 
 import qualified Core.Binding as Binding
-import Bindings (Bindings)
-import qualified Bindings
+import Core.Bindings (Bindings)
+import qualified Core.Bindings as Bindings
 import qualified Builtin
 import Context (Context)
 import qualified Context

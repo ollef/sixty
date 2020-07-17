@@ -8,8 +8,8 @@ import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.HashSet as HashSet
 import Rock
 
-import Bindings (Bindings)
-import qualified Bindings
+import Core.Bindings (Bindings)
+import qualified Core.Bindings as Bindings
 import Context (Context)
 import qualified Context
 import Monad

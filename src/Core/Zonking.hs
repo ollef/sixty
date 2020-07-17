@@ -2,7 +2,7 @@ module Core.Zonking where
 
 import Protolude
 
-import Bindings (Bindings)
+import Core.Bindings (Bindings)
 import qualified Core.Domain as Domain
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Environment

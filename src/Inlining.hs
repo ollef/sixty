@@ -6,7 +6,7 @@ module Inlining where
 import Protolude hiding (Type, IntMap, evaluate, empty)
 
 import Core.Binding (Binding)
-import Bindings (Bindings)
+import Core.Bindings (Bindings)
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Environment

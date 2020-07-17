@@ -15,8 +15,8 @@ import Rock
 
 import qualified Core.Binding as Binding
 import Core.Binding (Binding)
-import qualified Bindings
-import Bindings (Bindings)
+import qualified Core.Bindings as Bindings
+import Core.Bindings (Bindings)
 import Context (Context)
 import qualified Context
 import Data.IntMap (IntMap)

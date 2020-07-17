@@ -19,8 +19,8 @@ import Data.Persist
 
 import Core.Binding (Binding)
 import qualified Core.Binding as Binding
-import Bindings (Bindings)
-import qualified Bindings
+import Core.Bindings (Bindings)
+import qualified Core.Bindings as Bindings
 import Literal (Literal)
 import qualified Name
 import qualified Position

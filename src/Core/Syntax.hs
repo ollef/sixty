@@ -9,7 +9,7 @@ import Data.Persist
 import Unsafe.Coerce
 
 import Core.Binding (Binding)
-import Bindings (Bindings)
+import Core.Bindings (Bindings)
 import Boxity
 import Data.IntMap (IntMap)
 import Data.Tsil (Tsil)

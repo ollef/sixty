@@ -11,7 +11,7 @@ import Protolude hiding (Type, IntMap, IntSet, evaluate)
 import Data.Graph
 
 import Core.Binding (Binding)
-import Bindings (Bindings)
+import Core.Bindings (Bindings)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.IntSet (IntSet)
