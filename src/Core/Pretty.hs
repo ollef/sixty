@@ -1,6 +1,6 @@
 {-# language FlexibleContexts #-}
 {-# language OverloadedStrings #-}
-module Pretty where
+module Core.Pretty where
 
 import Protolude
 

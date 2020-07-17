@@ -15,7 +15,7 @@ import qualified Data.Text as Text
 import qualified Driver
 import qualified Error.Hydrated
 import qualified Name
-import qualified Pretty
+import qualified Core.Pretty as Pretty
 import qualified Project
 import qualified Query
 import qualified Core.Syntax as Syntax

@@ -22,7 +22,7 @@ import Name (Name)
 import qualified Name
 import Plicity
 import qualified Position
-import qualified Pretty
+import qualified Core.Pretty as Pretty
 import Query (Query)
 import qualified Query
 import qualified Scope
