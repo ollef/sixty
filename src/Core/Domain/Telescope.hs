@@ -1,5 +1,5 @@
 {-# language OverloadedStrings #-}
-module Domain.Telescope where
+module Core.Domain.Telescope where
 
 import Protolude
 
@@ -24,4 +24,4 @@ apply tele args =
         apply tele' args'
 
     _ ->
-      panic "Domain.Telescope.apply"
+      panic "Core.Domain.Telescope.apply"
