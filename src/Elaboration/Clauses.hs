@@ -21,12 +21,12 @@ import Elaboration.Context (Context)
 import qualified Elaboration.Context as Context
 import qualified Elaboration.Matching as Matching
 import qualified Elaboration.Matching.SuggestedName as SuggestedName
+import qualified Elaboration.Unification as Unification
 import qualified Error
 import Monad
 import Name (Name)
 import Plicity
 import qualified Surface.Syntax as Surface
-import qualified Unification
 
 check
   :: Context v

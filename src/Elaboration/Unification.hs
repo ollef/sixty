@@ -1,7 +1,7 @@
 {-# language DuplicateRecordFields #-}
 {-# language OverloadedStrings #-}
 {-# language ScopedTypeVariables #-}
-module Unification where
+module Elaboration.Unification where
 
 import Protolude hiding (catch, check, evaluate, force, throwIO)
 

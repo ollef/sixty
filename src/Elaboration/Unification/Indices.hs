@@ -22,6 +22,7 @@ import qualified Data.IntSet as IntSet
 import qualified Data.Tsil as Tsil
 import Elaboration.Context (Context)
 import qualified Elaboration.Context as Context
+import qualified Elaboration.Unification as Unification
 import qualified Environment
 import Flexibility (Flexibility)
 import qualified Flexibility
@@ -30,7 +31,6 @@ import qualified Index.Map
 import Monad
 import Telescope (Telescope)
 import qualified Telescope
-import qualified Unification
 import Var
 
 data Error
