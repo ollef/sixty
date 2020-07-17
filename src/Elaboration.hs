@@ -31,6 +31,7 @@ import qualified Elaboration.Context as Context
 import qualified Elaboration.Matching as Matching
 import Elaboration.Matching.SuggestedName as SuggestedName
 import qualified Elaboration.Metas as Metas
+import qualified Elaboration.Substitution as Substitution
 import qualified Environment
 import Error (Error)
 import qualified Error
@@ -48,7 +49,6 @@ import Plicity
 import qualified Query
 import qualified Scope
 import qualified Span
-import qualified Substitution
 import qualified Surface.Syntax as Surface
 import Telescope (Telescope)
 import qualified Telescope

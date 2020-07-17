@@ -202,7 +202,7 @@ readback env value =
           Syntax.Var i
 
         Nothing ->
-          panic "Substitution.readback: scoping error"
+          panic "Inlining.readback: scoping error"
 
     Global global ->
       Syntax.Global global

@@ -1,5 +1,5 @@
 {-# language ScopedTypeVariables #-}
-module Substitution where
+module Elaboration.Substitution where
 
 import Protolude
 
