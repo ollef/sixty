@@ -15,15 +15,15 @@ import qualified Context
 import Monad
 import Name (Name(Name))
 import qualified Name
-import qualified Presyntax
+import qualified Surface.Syntax as Surface
 import qualified Query
 import qualified Scope
 import qualified Span
 
 nextExplicit
   :: Context v
-  -> [[Presyntax.PlicitPattern]]
-  -> M (Bindings, [[Presyntax.PlicitPattern]])
+  -> [[Surface.PlicitPattern]]
+  -> M (Bindings, [[Surface.PlicitPattern]])
 nextExplicit context clauses = do
   spannedNames <-
     concatMapM (concatMapM $ explicitNames context) $ maybeToList . headMay <$> clauses
@@ -32,22 +32,22 @@ nextExplicit context clauses = do
     , shiftExplicit <$> clauses
     )
 
-explicitNames :: Context v -> Presyntax.PlicitPattern -> M [(Span.Relative, Name)]
+explicitNames :: Context v -> Surface.PlicitPattern -> M [(Span.Relative, Name)]
 explicitNames context pattern_ =
   case pattern_ of
-    Presyntax.ExplicitPattern pattern' ->
+    Surface.ExplicitPattern pattern' ->
       patternNames context pattern'
 
     _ ->
       pure []
 
-shiftExplicit :: [Presyntax.PlicitPattern] -> [Presyntax.PlicitPattern]
+shiftExplicit :: [Surface.PlicitPattern] -> [Surface.PlicitPattern]
 shiftExplicit patterns =
   case patterns of
-    Presyntax.ExplicitPattern _:patterns' ->
+    Surface.ExplicitPattern _:patterns' ->
       patterns'
 
-    Presyntax.ImplicitPattern _ _:patterns' ->
+    Surface.ImplicitPattern _ _:patterns' ->
       shiftExplicit patterns'
 
     [] ->
@@ -56,8 +56,8 @@ shiftExplicit patterns =
 nextImplicit
   :: Context v
   -> Name
-  -> [[Presyntax.PlicitPattern]]
-  -> M (Bindings, [[Presyntax.PlicitPattern]])
+  -> [[Surface.PlicitPattern]]
+  -> M (Bindings, [[Surface.PlicitPattern]])
 nextImplicit context piName clauses = do
   spannedNames <-
     concatMapM (concatMapM $ implicitNames context piName) $ maybeToList . headMay <$> clauses
@@ -66,20 +66,20 @@ nextImplicit context piName clauses = do
     , shiftImplicit piName <$> clauses
     )
 
-implicitNames :: Context v -> Name -> Presyntax.PlicitPattern -> M [(Span.Relative, Name)]
+implicitNames :: Context v -> Name -> Surface.PlicitPattern -> M [(Span.Relative, Name)]
 implicitNames context piName pattern_ =
   case pattern_ of
-    Presyntax.ImplicitPattern _ namedPats
+    Surface.ImplicitPattern _ namedPats
       | Just pattern' <- HashMap.lookup piName namedPats ->
         patternNames context pattern'
 
     _ ->
       pure []
 
-shiftImplicit :: Name -> [Presyntax.PlicitPattern] -> [Presyntax.PlicitPattern]
+shiftImplicit :: Name -> [Surface.PlicitPattern] -> [Surface.PlicitPattern]
 shiftImplicit name patterns =
   case patterns of
-    Presyntax.ImplicitPattern patSpan namedPats:patterns' ->
+    Surface.ImplicitPattern patSpan namedPats:patterns' ->
       let
         namedPats' =
           HashMap.delete name namedPats
@@ -89,15 +89,15 @@ shiftImplicit name patterns =
         patterns'
 
       else
-        Presyntax.ImplicitPattern patSpan namedPats':patterns'
+        Surface.ImplicitPattern patSpan namedPats':patterns'
 
     _ ->
       patterns
 
-patternNames :: Context v -> Presyntax.Pattern -> M [(Span.Relative, Name)]
+patternNames :: Context v -> Surface.Pattern -> M [(Span.Relative, Name)]
 patternNames context pattern_ =
   case pattern_ of
-    Presyntax.Pattern span (Presyntax.ConOrVar _ prename@(Name.Pre nameText) []) -> do
+    Surface.Pattern span (Surface.ConOrVar _ prename@(Name.Pre nameText) []) -> do
       maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) prename
       if HashSet.null $ foldMap Scope.entryConstructors maybeScopeEntry then
         pure [(span, Name nameText)]
@@ -108,7 +108,7 @@ patternNames context pattern_ =
     _ ->
       pure []
 
-patternBinding :: Context v -> Presyntax.Pattern -> Name -> M Bindings
+patternBinding :: Context v -> Surface.Pattern -> Name -> M Bindings
 patternBinding context pattern_ fallbackName = do
   spannedNames <- patternNames context pattern_
   pure $

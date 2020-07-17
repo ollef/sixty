@@ -12,12 +12,12 @@ import Monad
 import Name (Name)
 import qualified Name
 import Plicity
-import qualified Presyntax
+import qualified Surface.Syntax as Surface
 import qualified Core.Syntax as Syntax
 
 check
   :: Context v
-  -> Presyntax.Term
+  -> Surface.Term
   -> Domain.Type
   -> M (Syntax.Term v)
 

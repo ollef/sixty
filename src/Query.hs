@@ -38,7 +38,7 @@ import Name (Name)
 import qualified Name
 import qualified Occurrences.Intervals as Occurrences
 import qualified Position
-import qualified Presyntax
+import qualified Surface.Syntax as Surface
 import qualified Query.Mapped as Mapped
 import Scope (Scope)
 import qualified Scope
@@ -51,13 +51,13 @@ data Query a where
   InputFiles :: Query (HashSet FilePath)
   FileText :: FilePath -> Query Text
   ModuleFile :: Name.Module -> Query (Maybe FilePath)
-  ParsedFile :: FilePath -> Query (Name.Module, Module.Header, [(Position.Absolute, (Name, Presyntax.Definition))])
+  ParsedFile :: FilePath -> Query (Name.Module, Module.Header, [(Position.Absolute, (Name, Surface.Definition))])
   ModuleHeader :: Name.Module -> Query Module.Header
   ImportedNames :: Name.Module -> Mapped.Query Name.Pre Scope.Entry a -> Query a
   NameAliases :: Name.Module -> Query (HashMap Name.QualifiedConstructor (HashSet Name.Pre), HashMap Name.Qualified (HashSet Name.Pre))
   ModulePositionMap :: Name.Module -> Query (HashMap (Scope.Key, Name) Position.Absolute)
   ModuleSpanMap :: Name.Module -> Query (HashMap (Scope.Key, Name) Span.Absolute)
-  ParsedDefinition :: Name.Module -> Mapped.Query (Scope.Key, Name) Presyntax.Definition a -> Query a
+  ParsedDefinition :: Name.Module -> Mapped.Query (Scope.Key, Name) Surface.Definition a -> Query a
   Scopes :: Name.Module -> Query ((Scope, Scope, Scope.Visibility), Scope.Module)
   ResolvedName :: Scope.KeyedName -> Name.Pre -> Query (Maybe Scope.Entry)
   IsDefinitionVisible :: Scope.KeyedName -> Name.Qualified -> Query Bool

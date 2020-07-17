@@ -43,7 +43,7 @@ import Monad
 import Name (Name)
 import qualified Name
 import Plicity
-import qualified Presyntax
+import qualified Surface.Syntax as Surface
 import qualified Query
 import qualified Readback
 import qualified Scope
@@ -57,7 +57,7 @@ import Var (Var)
 
 inferTopLevelDefinition
   :: Scope.KeyedName
-  -> Presyntax.Definition
+  -> Surface.Definition
   -> M ((Syntax.Definition, Syntax.Type Void, Meta.Vars (Syntax.Term Void)), [Error])
 inferTopLevelDefinition key def = do
   context <- Context.empty key
@@ -69,7 +69,7 @@ inferTopLevelDefinition key def = do
 
 checkTopLevelDefinition
   :: Scope.KeyedName
-  -> Presyntax.Definition
+  -> Surface.Definition
   -> Domain.Type
   -> M ((Syntax.Definition, Meta.Vars (Syntax.Term Void)), [Error])
 checkTopLevelDefinition key def type_ = do
@@ -99,23 +99,23 @@ checkDefinitionMetaSolutions key def type_ metas = do
 
 checkDefinition
   :: Context Void
-  -> Presyntax.Definition
+  -> Surface.Definition
   -> Domain.Type
   -> M Syntax.Definition
 checkDefinition context def expectedType =
   case def of
-    Presyntax.TypeDeclaration _ type_ -> do
+    Surface.TypeDeclaration _ type_ -> do
       type' <- check context type_ expectedType
       pure $ Syntax.TypeDeclaration type'
 
-    Presyntax.ConstantDefinition clauses -> do
+    Surface.ConstantDefinition clauses -> do
       let
         clauses' =
           [ Clauses.Clause clause mempty | (_, clause) <- clauses]
       term' <- Clauses.check context clauses' expectedType
       pure $ Syntax.ConstantDefinition term'
 
-    Presyntax.DataDefinition span boxity params constrs -> do
+    Surface.DataDefinition span boxity params constrs -> do
       (tele, type_) <- inferDataDefinition context span params constrs mempty
       type' <- evaluate context type_
       success <- Context.try_ context $ Unification.unify context Flexibility.Rigid type' expectedType
@@ -130,22 +130,22 @@ checkDefinition context def expectedType =
 
 inferDefinition
   :: Context Void
-  -> Presyntax.Definition
+  -> Surface.Definition
   -> M (Syntax.Definition, Domain.Type)
 inferDefinition context def =
   case def of
-    Presyntax.TypeDeclaration _ type_ -> do
+    Surface.TypeDeclaration _ type_ -> do
       type' <- check context type_ Builtin.Type
       pure (Syntax.TypeDeclaration type', Builtin.Type)
 
-    Presyntax.ConstantDefinition clauses -> do
+    Surface.ConstantDefinition clauses -> do
       let
         clauses' =
           [ Clauses.Clause clause mempty | (_, clause) <- clauses]
       (term', type_) <- Clauses.infer context clauses'
       pure (Syntax.ConstantDefinition term', type_)
 
-    Presyntax.DataDefinition span boxity params constrs -> do
+    Surface.DataDefinition span boxity params constrs -> do
       (tele, type_) <- inferDataDefinition context span params constrs mempty
       type' <- evaluate context type_
       pure (Syntax.DataDefinition boxity tele, type')
@@ -155,8 +155,8 @@ inferDefinition context def =
 inferDataDefinition
   :: Context v
   -> Span.Relative
-  -> [(Presyntax.SpannedName, Presyntax.Type, Plicity)]
-  -> [Presyntax.ConstructorDefinition]
+  -> [(Surface.SpannedName, Surface.Type, Plicity)]
+  -> [Surface.ConstructorDefinition]
   -> Tsil (Plicity, Var)
   -> M (Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v, Syntax.Type v)
 inferDataDefinition context thisSpan preParams constrs paramVars =
@@ -180,7 +180,7 @@ inferDataDefinition context thisSpan preParams constrs paramVars =
       thisType' <- evaluate context thisType
 
       (context', var) <-
-        Context.extendPre context (Presyntax.SpannedName thisSpan thisName) thisType'
+        Context.extendPre context (Surface.SpannedName thisSpan thisName) thisType'
 
       lazyReturnType <-
         lazy $
@@ -189,12 +189,12 @@ inferDataDefinition context thisSpan preParams constrs paramVars =
           second Domain.var <$> paramVars
 
       constrs' <- forM constrs $ \case
-        Presyntax.GADTConstructors cs type_ -> do
+        Surface.GADTConstructors cs type_ -> do
           type' <- checkConstructorType context' type_ var paramVars
           type'' <- Substitution.let_ context this type'
           pure [(constr, type'') | (_, constr) <- cs]
 
-        Presyntax.ADTConstructor _ constr types -> do
+        Surface.ADTConstructor _ constr types -> do
           types' <- forM types $ \type_ ->
             check context' type_ Builtin.Type
 
@@ -218,7 +218,7 @@ inferDataDefinition context thisSpan preParams constrs paramVars =
           paramVars Tsil.:> (plicity, paramVar)
 
         binding' =
-          Binding.fromPresyntax binding
+          Binding.fromSurface binding
       (tele, dataType) <- inferDataDefinition context' thisSpan preParams' constrs paramVars'
       pure
         ( Telescope.Extend binding' type' plicity tele
@@ -253,11 +253,11 @@ varPis context env vars target =
 
 checkConstructorType
   :: Context v
-  -> Presyntax.Term
+  -> Surface.Term
   -> Var
   -> Tsil (Plicity, Var)
   -> M (Syntax.Term v)
-checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
+checkConstructorType context term@(Surface.Term span _) dataVar paramVars = do
   let
     context' =
       Context.spanned span context
@@ -403,14 +403,14 @@ checkConstructorType context term@(Presyntax.Term span _) dataVar paramVars = do
 
 check
   :: Context v
-  -> Presyntax.Term
+  -> Surface.Term
   -> Domain.Type
   -> M (Syntax.Term v)
-check context (Presyntax.Term span term) type_ =
+check context (Surface.Term span term) type_ =
   -- traceShow ("check", term) $
   Syntax.Spanned span <$> checkUnspanned (Context.spanned span context) term type_
 
--- check context (Presyntax.Term span term) type_ = do
+-- check context (Surface.Term span term) type_ = do
 --   putText $ "check "  <> show term
 --   result <- checkUnspanned (Context.spanned span context) term type_
 --   prettyType <- prettyValue context type_
@@ -424,14 +424,14 @@ check context (Presyntax.Term span term) type_ =
 
 infer
   :: Context v
-  -> Presyntax.Term
+  -> Surface.Term
   -> M (Maybe Name.Qualified)
   -> M (Syntax.Term v, Domain.Type)
-infer context (Presyntax.Term span term) expectedTypeName =
+infer context (Surface.Term span term) expectedTypeName =
   -- traceShow ("infer", term) $
   first (Syntax.Spanned span) <$> inferUnspanned (Context.spanned span context) term expectedTypeName
 
--- infer context (Presyntax.Term span term) expectedTypeName = do
+-- infer context (Surface.Term span term) expectedTypeName = do
 --   putText $ "infer "  <> show term
 --   (term', type_) <- inferUnspanned (Context.spanned span context) term expectedTypeName
 --   prettyType <- prettyValue context type_
@@ -445,37 +445,37 @@ infer context (Presyntax.Term span term) expectedTypeName =
 
 checkUnspanned
   :: Context v
-  -> Presyntax.UnspannedTerm
+  -> Surface.UnspannedTerm
   -> Domain.Type
   -> M (Syntax.Term v)
 checkUnspanned context term expectedType = do
   expectedType' <- Context.forceHead context expectedType
   case (term, expectedType') of
-    (Presyntax.Let name maybeType clauses body, _) -> do
+    (Surface.Let name maybeType clauses body, _) -> do
       (context', bindings, boundTerm, typeTerm) <- elaborateLet context name maybeType clauses
       body' <- check context' body expectedType
       pure $ Syntax.Let bindings boundTerm typeTerm body'
 
-    (Presyntax.Case scrutinee branches, _) -> do
+    (Surface.Case scrutinee branches, _) -> do
       (scrutinee', scrutineeType) <-
         inferAndInsertMetas context UntilExplicit scrutinee $ pure Nothing
       Matching.elaborateCase context scrutinee' scrutineeType branches expectedType
 
-    (Presyntax.Lam (Presyntax.ExplicitPattern pat) body, Domain.Pi binding domain Explicit targetClosure) ->
+    (Surface.Lam (Surface.ExplicitPattern pat) body, Domain.Pi binding domain Explicit targetClosure) ->
       checkLambda context binding domain Explicit pat targetClosure body
 
-    (Presyntax.Lam (Presyntax.ExplicitPattern pat) body, Domain.Fun domain Explicit target) -> do
+    (Surface.Lam (Surface.ExplicitPattern pat) body, Domain.Fun domain Explicit target) -> do
       domain' <- readback context domain
       binding <- SuggestedName.patternBinding context pat "x"
       (context', var) <- Context.extend context (Bindings.toName binding) domain
       body' <- Matching.elaborateSingle context' var Explicit pat body target
       pure $ Syntax.Lam binding domain' Explicit body'
 
-    (Presyntax.Lam (Presyntax.ImplicitPattern _ namedPats) body, _)
+    (Surface.Lam (Surface.ImplicitPattern _ namedPats) body, _)
       | HashMap.null namedPats ->
         check context body expectedType
 
-    (Presyntax.Lam (Presyntax.ImplicitPattern span namedPats) body, Domain.Pi binding domain Implicit targetClosure)
+    (Surface.Lam (Surface.ImplicitPattern span namedPats) body, Domain.Pi binding domain Implicit targetClosure)
       | let name = Binding.toName binding
       , name `HashMap.member` namedPats -> do
         let
@@ -483,8 +483,8 @@ checkUnspanned context term expectedType = do
             namedPats HashMap.! name
 
           body' =
-            Presyntax.Term (Context.span context) $
-              Presyntax.Lam (Presyntax.ImplicitPattern span (HashMap.delete name namedPats)) body
+            Surface.Term (Context.span context) $
+              Surface.Lam (Surface.ImplicitPattern span (HashMap.delete name namedPats)) body
         checkLambda context binding domain Implicit pat targetClosure body'
 
     (_, Domain.Pi binding domain Implicit targetClosure) -> do
@@ -497,7 +497,7 @@ checkUnspanned context term expectedType = do
       term' <- checkUnspanned context' term target
       pure $ Syntax.Lam (Bindings.Unspanned name) domain' Implicit term'
 
-    (Presyntax.App function argument, _) -> do
+    (Surface.App function argument, _) -> do
       let
         expectedTypeName =
           getExpectedTypeName context expectedType'
@@ -527,17 +527,17 @@ checkUnspanned context term expectedType = do
           argument' <- check context argument domain
           pure $ g $ Syntax.App (f function') Explicit argument'
 
-    (Presyntax.ImplicitApps function arguments, _)
+    (Surface.ImplicitApps function arguments, _)
       | HashMap.null arguments ->
         check context function expectedType
 
-    (Presyntax.Wildcard, _) -> do
+    (Surface.Wildcard, _) -> do
       term' <- Context.newMeta expectedType context
       readback context term'
 
-    (Presyntax.ParseError err, _) -> do
+    (Surface.ParseError err, _) -> do
       Context.reportParseError context err
-      checkUnspanned context Presyntax.Wildcard expectedType
+      checkUnspanned context Surface.Wildcard expectedType
 
     _ -> do
       let
@@ -548,23 +548,23 @@ checkUnspanned context term expectedType = do
 
 inferUnspanned
   :: Context v
-  -> Presyntax.UnspannedTerm
+  -> Surface.UnspannedTerm
   -> M (Maybe Name.Qualified)
   -> M (Syntax.Term v, Domain.Type)
 inferUnspanned context term expectedTypeName =
   case term of
-    Presyntax.Var name ->
+    Surface.Var name ->
       inferName context name expectedTypeName
 
-    Presyntax.Lit lit ->
+    Surface.Lit lit ->
       pure (Syntax.Lit lit, inferLiteral lit)
 
-    Presyntax.Let name maybeType clauses body -> do
+    Surface.Let name maybeType clauses body -> do
       (context', bindings, boundTerm, typeTerm) <- elaborateLet context name maybeType clauses
       (body', type_) <- infer context' body expectedTypeName
       pure (Syntax.Let bindings boundTerm typeTerm body', type_)
 
-    Presyntax.Pi binding plicity domain target -> do
+    Surface.Pi binding plicity domain target -> do
       domain' <- check context domain Builtin.Type
       domain'' <- evaluate context domain'
 
@@ -572,11 +572,11 @@ inferUnspanned context term expectedTypeName =
 
       target' <- check context' target Builtin.Type
       pure
-        ( Syntax.Pi (Binding.fromPresyntax binding) domain' plicity target'
+        ( Syntax.Pi (Binding.fromSurface binding) domain' plicity target'
         , Builtin.Type
         )
 
-    Presyntax.Fun domain target -> do
+    Surface.Fun domain target -> do
       domain' <- check context domain Builtin.Type
       target' <- check context target Builtin.Type
       pure
@@ -584,10 +584,10 @@ inferUnspanned context term expectedTypeName =
         , Builtin.Type
         )
 
-    Presyntax.Lam (Presyntax.ExplicitPattern pat) body ->
+    Surface.Lam (Surface.ExplicitPattern pat) body ->
       inferLambda context "x" Explicit pat body
 
-    Presyntax.Lam (Presyntax.ImplicitPattern span argumentNames) body ->
+    Surface.Lam (Surface.ImplicitPattern span argumentNames) body ->
       case HashMap.toList argumentNames of
         [] ->
           infer context body expectedTypeName
@@ -599,7 +599,7 @@ inferUnspanned context term expectedTypeName =
           Context.report (Context.spanned span context) Error.UnableToInferImplicitLambda
           inferenceFailed context
 
-    Presyntax.App function argument -> do
+    Surface.App function argument -> do
       (function', functionType) <-
         inferAndInsertMetas context UntilExplicit function expectedTypeName
       functionType' <- Context.forceHead context functionType
@@ -633,7 +633,7 @@ inferUnspanned context term expectedTypeName =
             , target
             )
 
-    Presyntax.ImplicitApps function arguments -> do
+    Surface.ImplicitApps function arguments -> do
       (function', functionType) <-
         inferAndInsertMetas context (UntilImplicit (`HashMap.member` arguments)) function expectedTypeName
       go function' arguments functionType
@@ -687,22 +687,22 @@ inferUnspanned context term expectedTypeName =
                     pfunctionType
                 inferenceFailed context
 
-    Presyntax.Case scrutinee branches -> do
+    Surface.Case scrutinee branches -> do
       (scrutinee', scrutineeType) <-
         inferAndInsertMetas context UntilExplicit scrutinee $ pure Nothing
       type_ <- Context.newMetaType context
       term' <- Matching.elaborateCase context scrutinee' scrutineeType branches type_
       pure (term', type_)
 
-    Presyntax.Wildcard -> do
+    Surface.Wildcard -> do
       type_ <- Context.newMetaType context
       term' <- Context.newMeta type_ context
       term'' <- readback context term'
       pure (term'', type_)
 
-    Presyntax.ParseError err -> do
+    Surface.ParseError err -> do
       Context.reportParseError context err
-      inferUnspanned context Presyntax.Wildcard expectedTypeName
+      inferUnspanned context Surface.Wildcard expectedTypeName
 
 inferName
   :: Context v
@@ -784,9 +784,9 @@ checkLambda
   -> Binding
   -> Domain.Type
   -> Plicity
-  -> Presyntax.Pattern
+  -> Surface.Pattern
   -> Domain.Closure
-  -> Presyntax.Term
+  -> Surface.Term
   -> M (Syntax.Term v)
 checkLambda context piBinding domain plicity pat targetClosure body = do
   let
@@ -806,8 +806,8 @@ inferLambda
   :: Context v
   -> Name
   -> Plicity
-  -> Presyntax.Pattern
-  -> Presyntax.Term
+  -> Surface.Pattern
+  -> Surface.Term
   -> M (Syntax.Term v, Domain.Type)
 inferLambda context name plicity pat body = do
   domain <- Context.newMetaType context
@@ -825,7 +825,7 @@ inferLambda context name plicity pat body = do
 
 checkApplication
   :: Context v
-  -> Presyntax.Term
+  -> Surface.Term
   -> Domain.Type
   -> Domain.Closure
   -> M (Syntax.Term v, Domain.Value)
@@ -838,8 +838,8 @@ checkApplication context argument domain targetClosure = do
 elaborateLet
   :: Context v
   -> Name
-  -> Maybe (Span.Relative, Presyntax.Type)
-  -> [(Span.Relative, Presyntax.Clause)]
+  -> Maybe (Span.Relative, Surface.Type)
+  -> [(Span.Relative, Surface.Clause)]
   -> M (Context (Succ v), Bindings, Syntax.Term v, Syntax.Type v)
 elaborateLet context name maybeType clauses = do
   let
@@ -954,10 +954,10 @@ data InsertUntil
 inferAndInsertMetas
   :: Context v
   -> InsertUntil
-  -> Presyntax.Term
+  -> Surface.Term
   -> M (Maybe Name.Qualified)
   -> M (Syntax.Term v, Domain.Type)
-inferAndInsertMetas context until (Presyntax.Term span term) expectedTypeName = do
+inferAndInsertMetas context until (Surface.Term span term) expectedTypeName = do
   (term', type_) <- inferUnspanned (Context.spanned span context) term expectedTypeName
   (args, type') <- insertMetasReturningSyntax context until type_
   pure (Syntax.Spanned span $ Syntax.apps term' args, type')

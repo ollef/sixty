@@ -27,8 +27,7 @@ import Name (Name(Name))
 import qualified Name
 import Plicity
 import qualified Position
-import Presyntax hiding (clause)
-import qualified Presyntax
+import qualified Surface.Syntax as Surface
 import qualified Span
 
 parseTokens :: Parser a -> [Token] -> Either Error.Parsing a
@@ -436,9 +435,9 @@ spannedModuleName :: Parser (Span.Relative, Name.Module)
 spannedModuleName =
   second Name.Module <$> spannedIdentifier
 
-spannedName :: Parser SpannedName
+spannedName :: Parser Surface.SpannedName
 spannedName =
-  uncurry SpannedName . second Name <$> spannedIdentifier
+  uncurry Surface.SpannedName . second Name <$> spannedIdentifier
 
 spannedConstructor :: Parser (Span.Relative, Name.Constructor)
 spannedConstructor =
@@ -478,7 +477,7 @@ skipToBaseLevel =
 -------------------------------------------------------------------------------
 -- Patterns
 
-atomicPattern :: Parser Pattern
+atomicPattern :: Parser Surface.Pattern
 atomicPattern =
   (<?> "pattern") $
     withIndentedTokenM \continue break span token_ ->
@@ -487,67 +486,67 @@ atomicPattern =
           continue $ pattern_ <* token Lexer.RightParen
 
         Lexer.QuestionMark ->
-          continue $ pure $ Pattern span $ ConOrVar span "?" mempty
+          continue $ pure $ Surface.Pattern span $ Surface.ConOrVar span "?" mempty
 
         Lexer.Underscore ->
-          continue $ pure $ Pattern span $ WildcardPattern
+          continue $ pure $ Surface.Pattern span $ Surface.WildcardPattern
 
         Lexer.Forced ->
-          continue $ (\term_@(Term termSpan _) -> Pattern termSpan $ Forced term_) <$> atomicTerm
+          continue $ (\term_@(Surface.Term termSpan _) -> Surface.Pattern termSpan $ Surface.Forced term_) <$> atomicTerm
 
         Lexer.Identifier name_ ->
-          continue $ pure $ Pattern span $ ConOrVar span (Name.Pre name_) mempty
+          continue $ pure $ Surface.Pattern span $ Surface.ConOrVar span (Name.Pre name_) mempty
 
         Lexer.Number int ->
-          continue $ pure $ Pattern span $ LitPattern $ Literal.Integer int
+          continue $ pure $ Surface.Pattern span $ Surface.LitPattern $ Literal.Integer int
 
         _ ->
           break
 
-pattern_ :: Parser Pattern
+pattern_ :: Parser Surface.Pattern
 pattern_ =
-  ( uncurry conOrVar <$> spannedPrename <*> many plicitPattern
+  ( uncurry Surface.conOrVar <$> spannedPrename <*> many plicitPattern
     <|> atomicPattern
   )
   <**>
-  ( flip anno <$ token Lexer.Colon <*> term
+  ( flip Surface.anno <$ token Lexer.Colon <*> term
     <|> pure identity
   ) <?> "pattern"
 
-plicitPattern :: Parser PlicitPattern
+plicitPattern :: Parser Surface.PlicitPattern
 plicitPattern =
   mkImplicitPattern <$>
     token Lexer.LeftImplicitBrace <*>
     sepBy patName (token $ Lexer.Operator ",") <*>
     token Lexer.RightImplicitBrace
-  <|> ExplicitPattern <$> atomicPattern
+  <|> Surface.ExplicitPattern <$> atomicPattern
   <?> "explicit or implicit pattern"
   where
     mkImplicitPattern span1 pats span2 =
-      ImplicitPattern (Span.add span1 span2) $ HashMap.fromList pats
+      Surface.ImplicitPattern (Span.add span1 span2) $ HashMap.fromList pats
     patName =
       spannedName <**>
-        ((\pat (SpannedName _ name_) -> (name_, pat)) <$ token Lexer.Equals <*> pattern_
-        <|> pure (\(SpannedName span name_@(Name n)) -> (name_, Pattern span $ ConOrVar span (Name.Pre n) mempty))
+        ((\pat (Surface.SpannedName _ name_) -> (name_, pat)) <$ token Lexer.Equals <*> pattern_
+        <|> pure (\(Surface.SpannedName span name_@(Name n)) -> (name_, Surface.Pattern span $ Surface.ConOrVar span (Name.Pre n) mempty))
         )
 
 -------------------------------------------------------------------------------
 -- Terms
 
-recoveringTerm :: Parser Term
+recoveringTerm :: Parser Surface.Term
 recoveringTerm =
   withRecovery
     (\errorInfo base inp' -> 
       case inp' of
         Token _ tokenSpan _:_ ->
-          recover (Term (Span.relativeTo base tokenSpan) . ParseError) errorInfo base inp'
+          recover (Surface.Term (Span.relativeTo base tokenSpan) . Surface.ParseError) errorInfo base inp'
 
         _ ->
           empty
     )
     term
 
-atomicTerm :: Parser Term
+atomicTerm :: Parser Surface.Term
 atomicTerm =
   (<?> "term") $
     withIndentedTokenM $ \continue break span token_ ->
@@ -560,69 +559,69 @@ atomicTerm =
             flip (foldr ($)) <$> blockOfMany letBinding <* token Lexer.In <*> term
 
         Lexer.Underscore ->
-          continue $ pure $ Term span Wildcard
+          continue $ pure $ Surface.Term span Surface.Wildcard
 
         Lexer.QuestionMark ->
-          continue $ pure $ Term span Wildcard
+          continue $ pure $ Surface.Term span Surface.Wildcard
 
         Lexer.Identifier ident ->
-          continue $ pure $ Term span $ Var $ Name.Pre ident
+          continue $ pure $ Surface.Term span $ Surface.Var $ Name.Pre ident
 
         Lexer.Case ->
           continue $
-            case_ span <$> term <*> token Lexer.Of <*> blockOfMany branch
+            Surface.case_ span <$> term <*> token Lexer.Of <*> blockOfMany branch
 
         Lexer.Lambda ->
           continue $
-            lams <$> some plicitPattern <* token Lexer.Dot <*> term
+            Surface.lams <$> some plicitPattern <* token Lexer.Dot <*> term
 
         Lexer.Forall ->
           continue $
             implicitPis <$>
               some
                 ( (,) <$ token Lexer.LeftParen <*> some spannedName <* token Lexer.Colon <*> term <* token Lexer.RightParen
-                <|> (\spannedName_@(SpannedName span_ _) -> ([spannedName_], Term span_ Wildcard)) <$> spannedName
+                <|> (\spannedName_@(Surface.SpannedName span_ _) -> ([spannedName_], Surface.Term span_ Surface.Wildcard)) <$> spannedName
                 )
                 <* token Lexer.Dot <*> term
 
         Lexer.Number int ->
-          continue $ pure $ Term span $ Lit $ Literal.Integer int
+          continue $ pure $ Surface.Term span $ Surface.Lit $ Literal.Integer int
 
         _ ->
           break
   where
     implicitPis vss target =
-      foldr (\(vs, domain) target' -> pis Implicit vs domain target') target vss
+      foldr (\(vs, domain) target' -> Surface.pis Implicit vs domain target') target vss
 
-    branch :: Parser (Pattern, Term)
+    branch :: Parser (Surface.Pattern, Surface.Term)
     branch =
       (,) <$> pattern_ <* token Lexer.RightArrow <*> term
 
-    letBinding :: Parser (Term -> Term)
+    letBinding :: Parser (Surface.Term -> Surface.Term)
     letBinding = do
-      SpannedName span name_@(Name nameText) <- spannedName
-      let_ span name_ . Just . (,) span <$ token Lexer.Colon <*> recoveringTerm <*>
+      Surface.SpannedName span name_@(Name nameText) <- spannedName
+      Surface.let_ span name_ . Just . (,) span <$ token Lexer.Colon <*> recoveringTerm <*>
         sameLevel (withIndentationBlock $ do
           span' <- token $ Lexer.Identifier nameText
           clauses span' nameText)
-        <|> let_ span name_ Nothing <$> clauses span nameText
+        <|> Surface.let_ span name_ Nothing <$> clauses span nameText
 
-plicitAtomicTerm :: Parser (Term -> Term)
+plicitAtomicTerm :: Parser (Surface.Term -> Surface.Term)
 plicitAtomicTerm =
-  (\args span fun -> implicitApp fun (HashMap.fromList args) span) <$ token Lexer.LeftImplicitBrace <*>
+  (\args span fun -> Surface.implicitApp fun (HashMap.fromList args) span) <$ token Lexer.LeftImplicitBrace <*>
     sepBy implicitArgument (token $ Lexer.Operator ",") <*>
     token Lexer.RightImplicitBrace
-  <|> flip app <$> atomicTerm
+  <|> flip Surface.app <$> atomicTerm
   where
     implicitArgument =
       spannedName <**>
-        ((\t (SpannedName _ n) -> (n, t)) <$ token Lexer.Equals <*> term
-        <|> pure (\(SpannedName span n@(Name text)) -> (n, Term span $ Var $ Name.Pre text))
+        ((\t (Surface.SpannedName _ n) -> (n, t)) <$ token Lexer.Equals <*> term
+        <|> pure (\(Surface.SpannedName span n@(Name text)) -> (n, Surface.Term span $ Surface.Var $ Name.Pre text))
         )
 
-term :: Parser Term
+term :: Parser Surface.Term
 term =
-  pis Explicit <$>
+  Surface.pis Explicit <$>
     try (token Lexer.LeftParen *> some spannedName <* token Lexer.Colon) <*>
     term <* token Lexer.RightParen <*
     token Lexer.RightArrow <*> term
@@ -630,13 +629,13 @@ term =
   <?> "term"
   where
     fun =
-      flip function <$ token Lexer.RightArrow <*> term
+      flip Surface.function <$ token Lexer.RightArrow <*> term
       <|> pure identity
 
 -------------------------------------------------------------------------------
 -- Definitions
 
-definition :: Parser (Either Error.Parsing (Position.Absolute, (Name, Definition)))
+definition :: Parser (Either Error.Parsing (Position.Absolute, (Name, Surface.Definition)))
 definition =
   withRecovery (recover Left) $
   fmap Right $
@@ -645,24 +644,24 @@ definition =
   relativeTo $
     dataDefinition
     <|> do
-      SpannedName span name_@(Name nameText) <- spannedName
+      Surface.SpannedName span name_@(Name nameText) <- spannedName
       (,) name_ <$>
-        (TypeDeclaration span <$ token Lexer.Colon <*> recoveringTerm
-        <|> ConstantDefinition <$> clauses span nameText
+        (Surface.TypeDeclaration span <$ token Lexer.Colon <*> recoveringTerm
+        <|> Surface.ConstantDefinition <$> clauses span nameText
         )
     <?> "definition"
 
-clauses :: Span.Relative -> Text -> Parser [(Span.Relative, Clause)]
+clauses :: Span.Relative -> Text -> Parser [(Span.Relative, Surface.Clause)]
 clauses firstSpan nameText =
   (:) <$>
     ((,) firstSpan <$> clause) <*>
     manySame ((,) <$> try (token (Lexer.Identifier nameText) <* notFollowedByToken Lexer.Colon) <*> clause)
 
-clause :: Parser Clause
+clause :: Parser Surface.Clause
 clause =
-  Presyntax.clause <$> many plicitPattern <*> token Lexer.Equals <*> recoveringTerm
+  Surface.clause <$> many plicitPattern <*> token Lexer.Equals <*> recoveringTerm
 
-dataDefinition :: Parser (Name, Definition)
+dataDefinition :: Parser (Name, Surface.Definition)
 dataDefinition =
   mkDataDefinition <$> boxity <*> spannedName <*> parameters <*>
     (token Lexer.Where *> blockOfMany gadtConstructors
@@ -673,8 +672,8 @@ dataDefinition =
       Boxed <$ token (Lexer.Identifier "boxed") <* uncheckedToken Lexer.Data
       <|> Unboxed <$ token Lexer.Data
 
-    mkDataDefinition boxity_ (SpannedName span name_) params constrs =
-      (name_, DataDefinition span boxity_ params constrs)
+    mkDataDefinition boxity_ (Surface.SpannedName span name_) params constrs =
+      (name_, Surface.DataDefinition span boxity_ params constrs)
     parameters =
       parameters1 <|> pure []
 
@@ -684,26 +683,26 @@ dataDefinition =
 
     explicitParameter =
       (\spannedNames type_ -> [(spannedName_, type_, Explicit) | spannedName_ <- spannedNames]) <$ token Lexer.LeftParen <*> some spannedName <* token Lexer.Colon <*> recoveringTerm <* token Lexer.RightParen
-      <|> (\spannedName_@(SpannedName span _) -> pure (spannedName_, Term span Presyntax.Wildcard, Explicit)) <$> spannedName
+      <|> (\spannedName_@(Surface.SpannedName span _) -> pure (spannedName_, Surface.Term span Surface.Wildcard, Explicit)) <$> spannedName
 
     implicitParameters =
       (<>) . concat <$ token Lexer.Forall <*>
         some
           ((\spannedNames type_ -> [(spannedName_, type_, Implicit) | spannedName_ <- spannedNames]) <$ token Lexer.LeftParen <*> some spannedName <* token Lexer.Colon <*> term <* token Lexer.RightParen
-          <|> (\spannedName_@(SpannedName span _) -> [(spannedName_, Term span Wildcard, Implicit)]) <$> spannedName
+          <|> (\spannedName_@(Surface.SpannedName span _) -> [(spannedName_, Surface.Term span Surface.Wildcard, Implicit)]) <$> spannedName
           ) <* token Lexer.Dot <*> parameters1
 
     gadtConstructors =
       withIndentationBlock $
-        GADTConstructors <$> some spannedConstructor <* token Lexer.Colon <*> recoveringTerm
+        Surface.GADTConstructors <$> some spannedConstructor <* token Lexer.Colon <*> recoveringTerm
 
     adtConstructor =
-      uncurry ADTConstructor <$> spannedConstructor <*> many atomicTerm
+      uncurry Surface.ADTConstructor <$> spannedConstructor <*> many atomicTerm
 
 -------------------------------------------------------------------------------
 -- Module
 
-module_ :: Parser ((Maybe (Span.Absolute, Name.Module), Module.Header), [Either Error.Parsing (Position.Absolute, (Name, Definition))])
+module_ :: Parser ((Maybe (Span.Absolute, Name.Module), Module.Header), [Either Error.Parsing (Position.Absolute, (Name, Surface.Definition))])
 module_ =
   (,) <$> moduleHeader <*> many definition
 

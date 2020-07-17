@@ -42,7 +42,7 @@ import Monad
 import Name (Name(Name))
 import qualified Name
 import Plicity
-import qualified Presyntax
+import qualified Surface.Syntax as Surface
 import qualified Query
 import qualified Readback
 import qualified Scope
@@ -139,10 +139,10 @@ emptyFrom context =
 
 extendPre
   :: Context v
-  -> Presyntax.SpannedName
+  -> Surface.SpannedName
   -> Domain.Type
   -> M (Context (Succ v), Var)
-extendPre context (Presyntax.SpannedName _ name) type_ = do
+extendPre context (Surface.SpannedName _ name) type_ = do
   var <- freshVar
   pure
     ( context

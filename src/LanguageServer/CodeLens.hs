@@ -14,7 +14,7 @@ import Monad
 import Name (Name(Name))
 import qualified Name
 import qualified Position
-import qualified Presyntax
+import qualified Surface.Syntax as Surface
 import Query (Query)
 import qualified Query
 import qualified Scope
@@ -45,15 +45,15 @@ codeLens filePath =
             ]
 
       case (previousDef, def) of
-        (Just (_, (previousName, Presyntax.TypeDeclaration {})), _)
+        (Just (_, (previousName, Surface.TypeDeclaration {})), _)
           | previousName == name ->
             pure []
 
-        (_, Presyntax.TypeDeclaration {}) ->
+        (_, Surface.TypeDeclaration {}) ->
           pure []
 
-        (_, Presyntax.ConstantDefinition {}) ->
+        (_, Surface.ConstantDefinition {}) ->
           go
 
-        (_, Presyntax.DataDefinition {}) ->
+        (_, Surface.DataDefinition {}) ->
           go

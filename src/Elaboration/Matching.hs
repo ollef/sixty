@@ -44,7 +44,7 @@ import Monad
 import Name (Name(Name))
 import qualified Name
 import Plicity
-import qualified Presyntax
+import qualified Surface.Syntax as Surface
 import qualified Query
 import qualified Readback
 import qualified Scope
@@ -73,10 +73,10 @@ type CoveredLiterals = IntMap Var (HashSet Literal)
 data Clause = Clause
   { _span :: !Span.Relative
   , _matches :: [Match]
-  , _rhs :: !Presyntax.Term
+  , _rhs :: !Surface.Term
   }
 
-data Match = Match !Domain.Value !Domain.Value !Plicity !Presyntax.Pattern !Domain.Type
+data Match = Match !Domain.Value !Domain.Value !Plicity !Surface.Pattern !Domain.Type
 
 -------------------------------------------------------------------------------
 
@@ -84,7 +84,7 @@ elaborateCase
   :: Context v
   -> Syntax.Term v
   -> Domain.Type
-  -> [(Presyntax.Pattern, Presyntax.Term)]
+  -> [(Surface.Pattern, Surface.Term)]
   -> Domain.Type
   -> M (Syntax.Term v)
 elaborateCase context scrutinee scrutineeType branches expectedType = do
@@ -110,7 +110,7 @@ elaborateCase context scrutinee scrutineeType branches expectedType = do
         , _matches = [Match scrutineeVarValue scrutineeVarValue Explicit pat scrutineeType]
         , _rhs = rhs'
         }
-      | (pat@(Presyntax.Pattern patSpan _), rhs'@(Presyntax.Term rhsSpan _)) <- branches
+      | (pat@(Surface.Pattern patSpan _), rhs'@(Surface.Term rhsSpan _)) <- branches
       ]
     , _usedClauses = usedClauses
     , _coveredConstructors = mempty
@@ -209,11 +209,11 @@ elaborateSingle
   :: Context v
   -> Var
   -> Plicity
-  -> Presyntax.Pattern
-  -> Presyntax.Term
+  -> Surface.Pattern
+  -> Surface.Term
   -> Domain.Type
   -> M (Syntax.Term v)
-elaborateSingle context scrutinee plicity pat@(Presyntax.Pattern patSpan _) rhs@(Presyntax.Term rhsSpan _) expectedType = do
+elaborateSingle context scrutinee plicity pat@(Surface.Pattern patSpan _) rhs@(Surface.Term rhsSpan _) expectedType = do
     let
       scrutineeValue =
         Domain.var scrutinee
@@ -294,7 +294,7 @@ elaborate context config = do
 checkForcedPattern :: Context v -> Match -> M ()
 checkForcedPattern context match =
   case match of
-    Match value1 _ _ (Presyntax.Pattern span (Presyntax.Forced term)) type_ -> do
+    Match value1 _ _ (Surface.Pattern span (Surface.Forced term)) type_ -> do
       let
         context' =
           Context.spanned span context
@@ -435,13 +435,13 @@ simplifyMatch
   -> CoveredLiterals
   -> Match
   -> MaybeT M [Match]
-simplifyMatch context coveredConstructors coveredLiterals (Match value forcedValue plicity pat@(Presyntax.Pattern span unspannedPattern) type_) = do
+simplifyMatch context coveredConstructors coveredLiterals (Match value forcedValue plicity pat@(Surface.Pattern span unspannedPattern) type_) = do
   forcedValue' <- lift $ Context.forceHead context forcedValue
   let
     match' =
       Match value forcedValue' plicity pat type_
   case (forcedValue', unspannedPattern) of
-    (Domain.Con constr args, Presyntax.ConOrVar _ name pats) -> do
+    (Domain.Con constr args, Surface.ConOrVar _ name pats) -> do
       maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
       case maybeScopeEntry of
         Just scopeEntry
@@ -468,14 +468,14 @@ simplifyMatch context coveredConstructors coveredLiterals (Match value forcedVal
         _ ->
           pure [match']
 
-    (Domain.Lit lit, Presyntax.LitPattern lit')
+    (Domain.Lit lit, Surface.LitPattern lit')
       | lit == lit' ->
         pure []
 
       | otherwise ->
         fail "Literal mismatch"
 
-    (Domain.Neutral (Domain.Var var) Tsil.Empty, Presyntax.ConOrVar _ name _)
+    (Domain.Neutral (Domain.Var var) Tsil.Empty, Surface.ConOrVar _ name _)
       | Just coveredConstrs <- IntMap.lookup var coveredConstructors -> do
         maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
         case maybeScopeEntry of
@@ -504,7 +504,7 @@ simplifyMatch context coveredConstructors coveredLiterals (Match value forcedVal
           _ ->
             pure [match']
 
-    (Domain.Neutral (Domain.Var var) Tsil.Empty, Presyntax.LitPattern lit)
+    (Domain.Neutral (Domain.Var var) Tsil.Empty, Surface.LitPattern lit)
       | Just coveredLits <- IntMap.lookup var coveredLiterals
       , HashSet.member lit coveredLits ->
         fail "Literal already covered"
@@ -534,7 +534,7 @@ instantiateConstructorType env tele spine =
 matchPrepatterns
   :: Context v
   -> [(Plicity, Domain.Value)]
-  -> [Presyntax.PlicitPattern]
+  -> [Surface.PlicitPattern]
   -> Domain.Type
   -> M ([Match], Domain.Type)
 matchPrepatterns context values patterns type_ =
@@ -542,7 +542,7 @@ matchPrepatterns context values patterns type_ =
     ([], []) ->
       pure ([], type_)
 
-    (Presyntax.ExplicitPattern pat:patterns', (Explicit, value):values') -> do
+    (Surface.ExplicitPattern pat:patterns', (Explicit, value):values') -> do
       type' <- Context.forceHead context type_
       case type' of
         Domain.Pi _ domain Explicit targetClosure -> do
@@ -555,11 +555,11 @@ matchPrepatterns context values patterns type_ =
         _ ->
           panic "matchPrepatterns explicit non-pi"
 
-    (Presyntax.ImplicitPattern _ namedPats:patterns', _)
+    (Surface.ImplicitPattern _ namedPats:patterns', _)
       | HashMap.null namedPats ->
         matchPrepatterns context values patterns' type_
 
-    (Presyntax.ImplicitPattern patSpan namedPats:patterns', (Implicit, value):values') -> do
+    (Surface.ImplicitPattern patSpan namedPats:patterns', (Implicit, value):values') -> do
       type' <- Context.forceHead context type_
       case type' of
         Domain.Pi binding domain Implicit targetClosure
@@ -570,7 +570,7 @@ matchPrepatterns context values patterns type_ =
               matchPrepatterns
                 context
                 values'
-                (Presyntax.ImplicitPattern patSpan (HashMap.delete name namedPats) : patterns')
+                (Surface.ImplicitPattern patSpan (HashMap.delete name namedPats) : patterns')
                 target
             pure (Match value value Implicit (namedPats HashMap.! name) domain : matches, type'')
 
@@ -601,7 +601,7 @@ matchPrepatterns context values patterns type_ =
           (matches, type'') <- matchPrepatterns context values' patterns target
           let
             pattern_ =
-              Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern
+              Surface.Pattern (Context.span context) Surface.WildcardPattern
           pure (Match value value Constraint pattern_ domain : matches, type'')
 
       case type' of
@@ -616,14 +616,14 @@ matchPrepatterns context values patterns type_ =
           panic "matchPrepatterns constraint non-pi"
 
     (pat:_, []) -> do
-      Context.report (Context.spanned (Presyntax.plicitPatternSpan pat) context) $ Error.PlicityMismatch Error.Field Error.Extra
+      Context.report (Context.spanned (Surface.plicitPatternSpan pat) context) $ Error.PlicityMismatch Error.Field Error.Extra
       pure ([], type_)
 
     ([], (Explicit, _):_) -> do
       Context.report context $ Error.PlicityMismatch Error.Field $ Error.Missing Explicit
-      matchPrepatterns context values [Presyntax.ExplicitPattern $ Presyntax.Pattern (Context.span context) Presyntax.WildcardPattern] type_
+      matchPrepatterns context values [Surface.ExplicitPattern $ Surface.Pattern (Context.span context) Surface.WildcardPattern] type_
 
-    (Presyntax.ImplicitPattern patSpan _:patterns', (Explicit, _):_) -> do
+    (Surface.ImplicitPattern patSpan _:patterns', (Explicit, _):_) -> do
       Context.report (Context.spanned patSpan context) $ Error.PlicityMismatch Error.Field (Error.Mismatch Explicit Implicit)
       matchPrepatterns context values patterns' type_
 
@@ -653,7 +653,7 @@ expandAnnotations context matches =
 
         Nothing ->
           case match of
-            Match value forcedValue plicity (Presyntax.Pattern span (Presyntax.Anno pat annoType)) type_ -> do
+            Match value forcedValue plicity (Surface.Pattern span (Surface.Anno pat annoType)) type_ -> do
               lift $ do
                 annoType' <- Elaboration.check context annoType Builtin.Type
                 annoType'' <- Elaboration.evaluate context annoType'
@@ -670,10 +670,10 @@ expandAnnotations context matches =
 matchInstantiation :: Context v -> Match -> MaybeT M PatternInstantiation
 matchInstantiation context match =
   case match of
-    (Match _ _ _ (Presyntax.Pattern _ Presyntax.WildcardPattern) _) ->
+    (Match _ _ _ (Surface.Pattern _ Surface.WildcardPattern) _) ->
       pure mempty
 
-    (Match value _ _ (Presyntax.Pattern span (Presyntax.ConOrVar _ prename@(Name.Pre name) [])) type_) -> do
+    (Match value _ _ (Surface.Pattern span (Surface.ConOrVar _ prename@(Name.Pre name) [])) type_) -> do
       maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) prename
       if HashSet.null $ foldMap Scope.entryConstructors maybeScopeEntry then
         pure $ pure (Bindings.Spanned $ pure (span, Name name), value, type_)
@@ -681,7 +681,7 @@ matchInstantiation context match =
       else
         fail "No match instantiation"
 
-    (Match _ _ _ (Presyntax.Pattern _ (Presyntax.Forced _)) _) ->
+    (Match _ _ _ (Surface.Pattern _ (Surface.Forced _)) _) ->
       pure mempty
 
     _ ->
@@ -710,7 +710,7 @@ splitConstructorOr context config matches k =
           scrutinee
           (Domain.Neutral (Domain.Var var) Tsil.Empty)
           _
-          (Presyntax.Pattern span (Presyntax.ConOrVar _ name _))
+          (Surface.Pattern span (Surface.ConOrVar _ name _))
           type_ -> do
             maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
             case maybeScopeEntry of
@@ -740,7 +740,7 @@ splitConstructorOr context config matches k =
           scrutinee
           (Domain.Neutral (Domain.Var var) Tsil.Empty)
           _
-          (Presyntax.Pattern span (Presyntax.LitPattern lit))
+          (Surface.Pattern span (Surface.LitPattern lit))
           type_ ->
             splitLiteral context config scrutinee var span lit type_
 
@@ -844,7 +844,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
       -> Name.QualifiedConstructor
       -> Domain.Spine
       -> Domain.Type
-      -> [[Presyntax.PlicitPattern]]
+      -> [[Surface.PlicitPattern]]
       -> M (Telescope Bindings Syntax.Type Syntax.Term v)
     goConstrFields context constr conArgs type_ patterns =
       case type_ of
@@ -910,13 +910,13 @@ findVarConstructorMatches
   :: Context v
   -> Var
   -> [Match]
-  -> M [(Name.QualifiedConstructor, [(Span.Relative, [Presyntax.PlicitPattern])])]
+  -> M [(Name.QualifiedConstructor, [(Span.Relative, [Surface.PlicitPattern])])]
 findVarConstructorMatches context var matches =
     case matches of
       [] ->
         pure []
 
-      Match _ (Domain.Neutral (Domain.Var var') Tsil.Empty) _ (Presyntax.Pattern _ (Presyntax.ConOrVar span name patterns)) type_:matches'
+      Match _ (Domain.Neutral (Domain.Var var') Tsil.Empty) _ (Surface.Pattern _ (Surface.ConOrVar span name patterns)) type_:matches'
         | var == var' -> do
           maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
           case maybeScopeEntry of
@@ -991,7 +991,7 @@ findVarLiteralMatches context var matches =
       [] ->
         pure []
 
-      Match _ (Domain.Neutral (Domain.Var var') Tsil.Empty) _ (Presyntax.Pattern span (Presyntax.LitPattern lit)) _:matches'
+      Match _ (Domain.Neutral (Domain.Var var') Tsil.Empty) _ (Surface.Pattern span (Surface.LitPattern lit)) _:matches'
         | var == var' ->
           ((lit, [span]) :) <$> findVarLiteralMatches context var matches'
 
@@ -1017,7 +1017,7 @@ splitEqualityOr context config matches k =
           _
           (Domain.Neutral (Domain.Var var) Tsil.Empty)
           _
-          (Presyntax.Pattern _ Presyntax.WildcardPattern)
+          (Surface.Pattern _ Surface.WildcardPattern)
           (Builtin.Equals type_ value1 value2) -> do
             result <- try $ Indices.unify context Flexibility.Rigid mempty value1 value2
             case result of

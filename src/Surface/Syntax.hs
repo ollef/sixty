@@ -1,7 +1,7 @@
 {-# language DeriveAnyClass #-}
 {-# language DeriveGeneric #-}
 {-# language LambdaCase #-}
-module Presyntax where
+module Surface.Syntax where
 
 import Protolude hiding (Type)
 

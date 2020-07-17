@@ -7,7 +7,7 @@ import Protolude
 
 import Data.Persist
 
-import qualified Presyntax
+import qualified Surface.Syntax as Surface
 import Name (Name)
 import qualified Span
 
@@ -25,8 +25,8 @@ toName bindings =
     Unspanned name ->
       name
 
-fromPresyntax :: Presyntax.SpannedName -> Binding
-fromPresyntax (Presyntax.SpannedName span name) =
+fromSurface :: Surface.SpannedName -> Binding
+fromSurface (Surface.SpannedName span name) =
   Spanned span name
 
 spans :: Binding -> [Span.Relative]

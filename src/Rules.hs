@@ -46,7 +46,7 @@ import qualified Parser
 import qualified Paths_sixty as Paths
 import Plicity
 import qualified Position
-import qualified Presyntax
+import qualified Surface.Syntax as Surface
 import Query
 import qualified Query.Mapped as Mapped
 import qualified Resolution
@@ -210,7 +210,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
         fmap fold $ forM maybeFilePath $ \filePath -> do
           (_, _, defs) <- fetch $ ParsedFile filePath
           pure $ HashMap.fromListWith (\_new old -> old)
-            [ ((Presyntax.key def, name), def)
+            [ ((Surface.key def, name), def)
             | (_, (name, def)) <- defs
             ]
 
@@ -231,10 +231,10 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                 []
 
               [(loc, (name, def))] ->
-                [((Presyntax.key def, name), Span.Absolute loc $ Position.Absolute $ Text.lengthWord16 text)]
+                [((Surface.key def, name), Span.Absolute loc $ Position.Absolute $ Text.lengthWord16 text)]
 
               (loc1, (name, def)):defs'@((loc2, _):_) ->
-                ((Presyntax.key def, name), Span.Absolute loc1 loc2) : go defs'
+                ((Surface.key def, name), Span.Absolute loc1 loc2) : go defs'
 
           pure $ HashMap.fromListWith (\_new old -> old) $ go defs
 

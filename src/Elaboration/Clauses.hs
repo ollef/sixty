@@ -24,7 +24,7 @@ import qualified Evaluation
 import Monad
 import Name (Name)
 import Plicity
-import qualified Presyntax
+import qualified Surface.Syntax as Surface
 import qualified Core.Syntax as Syntax
 import qualified Unification
 
@@ -42,7 +42,7 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
           , _matches = toList matches
           , _rhs = rhs
           }
-        | Clause (Presyntax.Clause span _ rhs) matches <- clauses
+        | Clause (Surface.Clause span _ rhs) matches <- clauses
         ]
     Matching.elaborateClauses context matchingClauses expectedType
 
@@ -103,7 +103,7 @@ infer context (fmap removeEmptyImplicits -> clauses)
           , _matches = toList matches
           , _rhs = rhs
           }
-        | Clause (Presyntax.Clause span _ rhs) matches <- clauses
+        | Clause (Surface.Clause span _ rhs) matches <- clauses
         ]
     expectedType <- Context.newMetaType context
     result <- Matching.elaborateClauses context matchingClauses expectedType
@@ -158,10 +158,10 @@ infer context (fmap removeEmptyImplicits -> clauses)
 
 -------------------------------------------------------------------------------
 
-data Clause = Clause !Presyntax.Clause (Tsil Matching.Match)
+data Clause = Clause !Surface.Clause (Tsil Matching.Match)
 
-clausePatterns :: Clause -> [Presyntax.PlicitPattern]
-clausePatterns (Clause (Presyntax.Clause _ patterns _) _) =
+clausePatterns :: Clause -> [Surface.PlicitPattern]
+clausePatterns (Clause (Surface.Clause _ patterns _) _) =
   patterns
 
 isEmpty :: Clause -> Bool
@@ -174,53 +174,53 @@ isEmpty clause =
       False
 
 removeEmptyImplicits :: Clause -> Clause
-removeEmptyImplicits clause@(Clause (Presyntax.Clause span patterns term) matches) =
+removeEmptyImplicits clause@(Clause (Surface.Clause span patterns term) matches) =
   case patterns of
-    Presyntax.ImplicitPattern _ namedPats:patterns'
+    Surface.ImplicitPattern _ namedPats:patterns'
       | HashMap.null namedPats ->
-        removeEmptyImplicits $ Clause (Presyntax.Clause span patterns' term) matches
+        removeEmptyImplicits $ Clause (Surface.Clause span patterns' term) matches
 
     _ ->
       clause
 
-clauseImplicits :: Clause -> HashMap Name Presyntax.Pattern
+clauseImplicits :: Clause -> HashMap Name Surface.Pattern
 clauseImplicits clause =
   case clausePatterns clause of
-    Presyntax.ImplicitPattern _ namedPats:_ ->
+    Surface.ImplicitPattern _ namedPats:_ ->
       namedPats
 
     _ ->
       mempty
 
 shiftImplicit :: Binding -> Domain.Value -> Domain.Type -> Clause -> Clause
-shiftImplicit binding value type_ (Clause (Presyntax.Clause span patterns term) matches) =
+shiftImplicit binding value type_ (Clause (Surface.Clause span patterns term) matches) =
   case patterns of
-    Presyntax.ImplicitPattern patSpan namedPats:patterns'
+    Surface.ImplicitPattern patSpan namedPats:patterns'
       | let name = Binding.toName binding
       , HashMap.member name namedPats ->
         Clause
-          (Presyntax.Clause
+          (Surface.Clause
             span
-            (Presyntax.ImplicitPattern patSpan (HashMap.delete name namedPats):patterns')
+            (Surface.ImplicitPattern patSpan (HashMap.delete name namedPats):patterns')
             term
           )
           (matches Tsil.:> Matching.Match value value Implicit (namedPats HashMap.! name) type_)
 
     _ ->
       Clause
-        (Presyntax.Clause span patterns term)
-        (matches Tsil.:> Matching.Match value value Implicit (Presyntax.Pattern span Presyntax.WildcardPattern) type_)
+        (Surface.Clause span patterns term)
+        (matches Tsil.:> Matching.Match value value Implicit (Surface.Pattern span Surface.WildcardPattern) type_)
 
 shiftExplicit :: Context v -> Domain.Value -> Domain.Type -> Clause -> M Clause
-shiftExplicit context value type_ clause@(Clause (Presyntax.Clause span patterns term) matches) =
+shiftExplicit context value type_ clause@(Clause (Surface.Clause span patterns term) matches) =
   case patterns of
-    Presyntax.ExplicitPattern pat:patterns' ->
+    Surface.ExplicitPattern pat:patterns' ->
       pure $
         Clause
-          (Presyntax.Clause span patterns' term)
+          (Surface.Clause span patterns' term)
           (matches Tsil.:> Matching.Match value value Explicit pat type_)
 
-    Presyntax.ImplicitPattern patSpan _:patterns' -> do
+    Surface.ImplicitPattern patSpan _:patterns' -> do
       Context.report
         (Context.spanned patSpan context)
         (Error.PlicityMismatch Error.Argument $ Error.Mismatch Explicit Implicit)
@@ -229,7 +229,7 @@ shiftExplicit context value type_ clause@(Clause (Presyntax.Clause span patterns
         value
         type_
         (Clause
-          (Presyntax.Clause span patterns' term)
+          (Surface.Clause span patterns' term)
           matches
         )
 

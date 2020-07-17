@@ -14,14 +14,14 @@ import qualified Module
 import Name (Name(Name))
 import qualified Name
 import qualified Position
-import qualified Presyntax
+import qualified Surface.Syntax as Surface
 import Scope (Scope)
 import qualified Scope
 import qualified Span
 
 moduleScopes
   :: Name.Module
-  -> [(Position.Absolute, (Name, Presyntax.Definition))]
+  -> [(Position.Absolute, (Name, Surface.Definition))]
   -> (((Scope, Scope, Scope.Visibility), Scope.Module), [Error])
 moduleScopes module_@(Name.Module moduleText) definitions =
   let
@@ -36,7 +36,7 @@ moduleScopes module_@(Name.Module moduleText) definitions =
     go (!privateScope, !publicScope, !visibility, !scopes, !errs) (position, (name@(Name nameText), def)) =
       let
         span
-          | s:_ <- Presyntax.spans def =
+          | s:_ <- Surface.spans def =
             Span.absoluteFrom position s
 
           | otherwise =
@@ -84,7 +84,7 @@ moduleScopes module_@(Name.Module moduleText) definitions =
               )
       in
       case def of
-        Presyntax.TypeDeclaration {} ->
+        Surface.TypeDeclaration {} ->
           case HashMap.lookup qualifiedName visibility of
             Just key ->
               ( privateScope
@@ -102,10 +102,10 @@ moduleScopes module_@(Name.Module moduleText) definitions =
               , errs
               )
 
-        Presyntax.ConstantDefinition {} ->
+        Surface.ConstantDefinition {} ->
           definitionCase
 
-        Presyntax.DataDefinition _ _ _ constrDefs ->
+        Surface.DataDefinition _ _ _ constrDefs ->
           let
             (privateScope'', publicScope'', visibility', scopes', errs') =
               definitionCase
@@ -126,10 +126,10 @@ moduleScopes module_@(Name.Module moduleText) definitions =
               , let
                   constrs =
                     case constrDef of
-                      Presyntax.GADTConstructors cs _ ->
+                      Surface.GADTConstructors cs _ ->
                         snd <$> cs
 
-                      Presyntax.ADTConstructor _ c _ ->
+                      Surface.ADTConstructor _ c _ ->
                         [c]
               , constr@(Name.Constructor text) <- constrs
               ]

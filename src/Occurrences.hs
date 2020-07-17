@@ -19,7 +19,7 @@ import qualified Monad
 import qualified Name
 import Occurrences.Intervals (Intervals)
 import qualified Occurrences.Intervals as Intervals
-import qualified Presyntax
+import qualified Surface.Syntax as Surface
 import qualified Query
 import Query (Query)
 import qualified Query.Mapped as Mapped
@@ -79,7 +79,7 @@ definitionOccurrences env key qualifiedName =
 definitionNameSpans :: MonadFetch Query m => Scope.Key -> Name.Qualified -> m [Span.Relative]
 definitionNameSpans key (Name.Qualified moduleName name) = do
   maybeParsedDefinition <- fetch $ Query.ParsedDefinition moduleName $ Mapped.Query (key, name)
-  pure $ foldMap Presyntax.spans maybeParsedDefinition
+  pure $ foldMap Surface.spans maybeParsedDefinition
 
 definitionConstructorSpans
   :: MonadFetch Query m
@@ -94,7 +94,7 @@ definitionConstructorSpans key qualifiedName@(Name.Qualified moduleName name) = 
         []
 
       Just parsedDefinition ->
-        second (Name.QualifiedConstructor qualifiedName) <$> Presyntax.constructorSpans parsedDefinition
+        second (Name.QualifiedConstructor qualifiedName) <$> Surface.constructorSpans parsedDefinition
 
 termOccurrences
   :: Domain.Environment v
