@@ -19,7 +19,7 @@ import qualified Name
 import Plicity
 import qualified Scope
 import qualified Span
-import qualified Syntax
+import qualified Core.Syntax as Syntax
 
 data Error
   = Parse FilePath !Error.Parsing

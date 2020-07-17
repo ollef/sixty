@@ -6,7 +6,7 @@ import qualified Data.Tsil as Tsil
 import qualified Domain
 import qualified Name
 import Plicity
-import qualified Syntax
+import qualified Core.Syntax as Syntax
 
 pattern Module :: Name.Module
 pattern Module =

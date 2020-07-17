@@ -16,7 +16,7 @@ import qualified Meta
 import Monad
 import qualified Name
 import Plicity
-import qualified Syntax
+import qualified Core.Syntax as Syntax
 import Var (Var)
 
 data Value

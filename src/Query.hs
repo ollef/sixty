@@ -43,7 +43,7 @@ import qualified Query.Mapped as Mapped
 import Scope (Scope)
 import qualified Scope
 import qualified Span
-import qualified Syntax
+import qualified Core.Syntax as Syntax
 import Syntax.Telescope (Telescope)
 
 data Query a where

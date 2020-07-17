@@ -19,7 +19,7 @@ import Monad
 import qualified Name
 import Plicity
 import qualified Query
-import qualified Syntax
+import qualified Core.Syntax as Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
 

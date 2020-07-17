@@ -9,7 +9,7 @@ import qualified Environment
 import qualified Index
 import qualified Inlining
 import Monad
-import qualified Syntax
+import qualified Core.Syntax as Syntax
 
 let_ :: Context v -> Syntax.Term v -> Syntax.Term (Index.Succ v) -> M (Syntax.Term v)
 let_ context term body = do

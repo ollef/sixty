@@ -32,7 +32,7 @@ import Plicity
 import qualified Query
 import qualified Readback
 import qualified Scope
-import qualified Syntax
+import qualified Core.Syntax as Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
 import Var (Var)

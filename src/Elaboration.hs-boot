@@ -13,7 +13,7 @@ import Name (Name)
 import qualified Name
 import Plicity
 import qualified Presyntax
-import qualified Syntax
+import qualified Core.Syntax as Syntax
 
 check
   :: Context v

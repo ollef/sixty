@@ -18,7 +18,7 @@ import qualified Name
 import qualified Pretty
 import qualified Project
 import qualified Query
-import qualified Syntax
+import qualified Core.Syntax as Syntax
 
 check :: [FilePath] -> Bool -> IO ()
 check argumentFiles printElaborated = do

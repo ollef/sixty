@@ -1,6 +1,6 @@
 {-# language DeriveAnyClass #-}
 {-# language DeriveGeneric #-}
-module Syntax where
+module Core.Syntax where
 
 import Protolude hiding (Type, IntMap)
 

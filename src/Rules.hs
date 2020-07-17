@@ -52,7 +52,7 @@ import qualified Query.Mapped as Mapped
 import qualified Resolution
 import qualified Scope
 import qualified Span
-import qualified Syntax
+import qualified Core.Syntax as Syntax
 import Syntax.Telescope (Telescope)
 import qualified Syntax.Telescope as Telescope
 

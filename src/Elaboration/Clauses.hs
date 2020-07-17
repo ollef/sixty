@@ -25,7 +25,7 @@ import Monad
 import Name (Name)
 import Plicity
 import qualified Presyntax
-import qualified Syntax
+import qualified Core.Syntax as Syntax
 import qualified Unification
 
 check
