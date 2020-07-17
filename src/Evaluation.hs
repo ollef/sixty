@@ -26,7 +26,7 @@ import qualified Syntax.Telescope as Telescope
 evaluateConstructorDefinitions
   :: Domain.Environment v
   -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v
-  -> M (Domain.Telescope Binding Domain.Type (OrderedHashMap Name.Constructor Domain.Type))
+  -> M (Domain.Telescope (OrderedHashMap Name.Constructor Domain.Type))
 evaluateConstructorDefinitions env tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constrs) -> do

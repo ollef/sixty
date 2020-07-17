@@ -6,12 +6,13 @@ import Protolude
 import qualified Core.Domain as Domain
 import Monad
 import Plicity
+import Binding (Binding)
 
-data Telescope name type_ base
+data Telescope base
   = Empty !base
-  | Extend !name !type_ !Plicity (Domain.Value -> M (Telescope name type_ base))
+  | Extend !Binding !Domain.Type !Plicity (Domain.Value -> M (Telescope base))
 
-apply :: Telescope n t k -> [(Plicity, Domain.Value)] -> M (Telescope n t k)
+apply :: Telescope k -> [(Plicity, Domain.Value)] -> M (Telescope k)
 apply tele args =
   case (tele, args) of
     (_, []) ->

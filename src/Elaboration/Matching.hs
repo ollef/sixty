@@ -790,7 +790,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
       :: Context v
       -> [(Plicity, Domain.Value)]
       -> Domain.Spine
-      -> Domain.Telescope Binding Domain.Type (OrderedHashMap Name.Constructor Domain.Type)
+      -> Domain.Telescope (OrderedHashMap Name.Constructor Domain.Type)
       -> M (Syntax.Type v)
     goParams context params conArgs dataTele =
       case (params, dataTele) of
