@@ -38,6 +38,7 @@ import qualified Data.Tsil as Tsil
 import Elaboration.Context (Context)
 import qualified Elaboration.Context as Context
 import qualified Elaboration.Matching.SuggestedName as SuggestedName
+import qualified Elaboration.Unification.Indices as Indices
 import qualified Environment
 import qualified Error
 import qualified Flexibility
@@ -53,7 +54,6 @@ import qualified Surface.Syntax as Surface
 import Telescope (Telescope)
 import qualified Telescope
 import qualified Unification
-import qualified Unification.Indices as Indices
 import Var
 
 data Config = Config

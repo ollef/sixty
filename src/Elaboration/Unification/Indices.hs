@@ -3,7 +3,7 @@
 {-# language OverloadedStrings #-}
 {-# language RankNTypes #-}
 {-# language ScopedTypeVariables #-}
-module Unification.Indices where
+module Elaboration.Unification.Indices where
 
 import Protolude hiding (catch, force, IntSet, throwIO)
 
