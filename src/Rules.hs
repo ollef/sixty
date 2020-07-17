@@ -33,7 +33,7 @@ import qualified Elaboration
 import qualified Environment
 import Error (Error)
 import qualified Error
-import qualified Evaluation
+import qualified Core.Evaluation as Evaluation
 import qualified LambdaLifted.Syntax as LambdaLifted
 import qualified LambdaLifting
 import qualified Lexer

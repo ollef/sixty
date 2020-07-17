@@ -16,7 +16,7 @@ import qualified Data.Tsil as Tsil
 import qualified Core.Domain as Domain
 import qualified Elaboration
 import qualified Environment
-import qualified Evaluation
+import qualified Core.Evaluation as Evaluation
 import qualified Meta
 import Monad
 import qualified Query

@@ -32,7 +32,7 @@ import qualified Environment
 import Error (Error)
 import qualified Error
 import qualified Error.Hydrated as Error
-import qualified Evaluation
+import qualified Core.Evaluation as Evaluation
 import qualified Flexibility
 import Index
 import qualified Inlining

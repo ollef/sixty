@@ -37,7 +37,7 @@ import qualified Core.Domain.Telescope as Domain.Telescope
 import qualified Elaboration.Matching.SuggestedName as SuggestedName
 import qualified Environment
 import qualified Error
-import qualified Evaluation
+import qualified Core.Evaluation as Evaluation
 import qualified Flexibility
 import Literal (Literal)
 import Monad

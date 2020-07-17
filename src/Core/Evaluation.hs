@@ -1,5 +1,5 @@
 {-# language OverloadedStrings #-}
-module Evaluation where
+module Core.Evaluation where
 
 import Protolude hiding (Seq, head, force, evaluate)
 

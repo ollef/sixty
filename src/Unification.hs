@@ -25,7 +25,7 @@ import qualified Core.Domain as Domain
 import Environment (Environment(Environment))
 import qualified Environment
 import qualified Error
-import qualified Evaluation
+import qualified Core.Evaluation as Evaluation
 import Extra
 import Flexibility (Flexibility)
 import qualified Flexibility

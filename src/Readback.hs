@@ -7,7 +7,7 @@ import Bindings (Bindings)
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Core.Domain as Domain
 import qualified Environment
-import qualified Evaluation
+import qualified Core.Evaluation as Evaluation
 import Index
 import Monad
 import qualified Core.Syntax as Syntax

@@ -20,7 +20,7 @@ import qualified Core.Domain as Domain
 import qualified Elaboration.Matching as Matching
 import qualified Elaboration.Matching.SuggestedName as SuggestedName
 import qualified Error
-import qualified Evaluation
+import qualified Core.Evaluation as Evaluation
 import Monad
 import Name (Name)
 import Plicity

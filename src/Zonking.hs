@@ -6,7 +6,7 @@ import Bindings (Bindings)
 import qualified Core.Domain as Domain
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Environment
-import qualified Evaluation
+import qualified Core.Evaluation as Evaluation
 import qualified Meta
 import Monad
 import qualified Readback

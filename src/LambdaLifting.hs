@@ -20,7 +20,7 @@ import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Tsil as Tsil
 import qualified Core.Domain as Domain
 import qualified Environment
-import qualified Evaluation
+import qualified Core.Evaluation as Evaluation
 import Extra (topoSortWith)
 import qualified Index
 import qualified LambdaLifted.Syntax as LambdaLifted

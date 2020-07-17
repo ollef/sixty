@@ -22,7 +22,7 @@ import qualified Core.Domain as Domain
 import qualified Elaboration
 import qualified Error
 import qualified Error.Hydrated as Error
-import qualified Evaluation
+import qualified Core.Evaluation as Evaluation
 import qualified LanguageServer.CursorAction as CursorAction
 import Monad
 import Name (Name(Name))

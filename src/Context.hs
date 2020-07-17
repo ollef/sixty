@@ -33,7 +33,7 @@ import qualified Environment
 import Error (Error)
 import qualified Error
 import qualified Error.Parsing as Error
-import qualified Evaluation
+import qualified Core.Evaluation as Evaluation
 import Index
 import qualified Index.Map
 import qualified Index.Map as Index

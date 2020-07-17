@@ -16,18 +16,18 @@ import Bindings (Bindings)
 import qualified Bindings
 import Context (Context)
 import qualified Context
+import qualified Core.Domain as Domain
+import qualified Core.Evaluation as Evaluation
+import qualified Core.Syntax as Syntax
 import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
 import qualified Data.Tsil as Tsil
-import qualified Core.Domain as Domain
 import qualified Environment
-import Evaluation
 import Flexibility (Flexibility)
 import qualified Flexibility
 import Index
 import qualified Index.Map
 import Monad
-import qualified Core.Syntax as Syntax
 import Telescope (Telescope)
 import qualified Telescope
 import qualified Unification
