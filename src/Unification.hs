@@ -15,17 +15,19 @@ import qualified Bindings
 import qualified Builtin
 import Context (Context)
 import qualified Context
+import qualified Core.Domain as Domain
+import qualified Core.Evaluation as Evaluation
+import qualified Core.Readback as Readback
+import qualified Core.Syntax as Syntax
 import Data.IntSeq (IntSeq)
 import qualified Data.IntSeq as IntSeq
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Tsil as Tsil
 import Data.Tsil (Tsil)
-import qualified Core.Domain as Domain
 import Environment (Environment(Environment))
 import qualified Environment
 import qualified Error
-import qualified Core.Evaluation as Evaluation
 import Extra
 import Flexibility (Flexibility)
 import qualified Flexibility
@@ -37,8 +39,6 @@ import Monad
 import qualified Name
 import Plicity
 import qualified Query
-import Readback (readback)
-import qualified Core.Syntax as Syntax
 import Telescope (Telescope)
 import qualified Telescope
 import Var

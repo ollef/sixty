@@ -45,7 +45,7 @@ import qualified Name
 import Plicity
 import qualified Surface.Syntax as Surface
 import qualified Query
-import qualified Readback
+import qualified Core.Readback as Readback
 import qualified Scope
 import qualified Span
 import qualified Substitution

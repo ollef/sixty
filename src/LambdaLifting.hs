@@ -30,7 +30,7 @@ import Name (Name)
 import qualified Name
 import Plicity
 import qualified Query
-import qualified Readback
+import qualified Core.Readback as Readback
 import qualified Scope
 import qualified Core.Syntax as Syntax
 import Telescope (Telescope)

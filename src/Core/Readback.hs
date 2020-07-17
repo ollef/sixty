@@ -1,5 +1,5 @@
 {-# language OverloadedStrings #-}
-module Readback where
+module Core.Readback where
 
 import Protolude hiding (IntMap, Seq, head, force, evaluate)
 
