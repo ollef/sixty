@@ -17,8 +17,8 @@ import qualified Data.List as List
 import qualified Data.Text.Unsafe as Text
 import Data.Persist
 
-import Binding (Binding)
-import qualified Binding
+import Core.Binding (Binding)
+import qualified Core.Binding as Binding
 import Bindings (Bindings)
 import qualified Bindings
 import Literal (Literal)

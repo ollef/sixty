@@ -9,7 +9,7 @@ import Control.Exception.Lifted
 import Rock
 
 import {-# source #-} qualified Elaboration
-import qualified Binding
+import qualified Core.Binding as Binding
 import Bindings (Bindings)
 import qualified Bindings
 import qualified Builtin

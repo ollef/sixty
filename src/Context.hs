@@ -14,7 +14,7 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef.Lifted
 import Rock
 
-import qualified Binding
+import qualified Core.Binding as Binding
 import qualified Bindings
 import Bindings (Bindings)
 import qualified Builtin

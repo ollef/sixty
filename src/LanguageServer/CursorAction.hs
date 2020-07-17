@@ -13,8 +13,8 @@ import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Rope.UTF16 as Rope
 import Rock
 
-import qualified Binding
-import Binding (Binding)
+import qualified Core.Binding as Binding
+import Core.Binding (Binding)
 import qualified Bindings
 import Bindings (Bindings)
 import Context (Context)

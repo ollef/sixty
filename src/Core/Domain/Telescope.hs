@@ -6,7 +6,7 @@ import Protolude
 import qualified Core.Domain as Domain
 import Monad
 import Plicity
-import Binding (Binding)
+import Core.Binding (Binding)
 
 data Telescope base
   = Empty !base

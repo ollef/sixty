@@ -8,7 +8,7 @@ import Data.OrderedHashMap (OrderedHashMap)
 import Data.Persist
 import Unsafe.Coerce
 
-import Binding (Binding)
+import Core.Binding (Binding)
 import Bindings (Bindings)
 import Boxity
 import Data.IntMap (IntMap)

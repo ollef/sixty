@@ -16,8 +16,8 @@ import qualified Data.Set as Set
 import Rock
 
 import {-# source #-} qualified Elaboration
-import Binding (Binding)
-import qualified Binding
+import Core.Binding (Binding)
+import qualified Core.Binding as Binding
 import Bindings (Bindings)
 import qualified Bindings
 import qualified Builtin

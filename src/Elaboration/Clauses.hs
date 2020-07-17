@@ -8,8 +8,8 @@ import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 
 import {-# SOURCE #-} qualified Elaboration
-import Binding (Binding)
-import qualified Binding
+import Core.Binding (Binding)
+import qualified Core.Binding as Binding
 import Bindings (Bindings)
 import qualified Bindings
 import Context (Context)

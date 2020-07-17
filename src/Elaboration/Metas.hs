@@ -10,7 +10,7 @@ import Protolude hiding (Type, IntMap, IntSet, evaluate)
 
 import Data.Graph
 
-import Binding (Binding)
+import Core.Binding (Binding)
 import Bindings (Bindings)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap

@@ -5,7 +5,7 @@ module Core.Domain.Showable where
 
 import Protolude hiding (Type, IntMap, force, to)
 
-import Binding (Binding)
+import Core.Binding (Binding)
 import Bindings (Bindings)
 import Data.Tsil (Tsil)
 import qualified Core.Domain as Domain

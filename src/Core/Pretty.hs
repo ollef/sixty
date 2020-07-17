@@ -14,8 +14,8 @@ import Data.Text.Prettyprint.Doc
 import qualified Data.Text.Unsafe as Text
 import Rock
 
-import Binding (Binding)
-import qualified Binding
+import Core.Binding (Binding)
+import qualified Core.Binding as Binding
 import Bindings (Bindings)
 import qualified Bindings
 import qualified Boxity

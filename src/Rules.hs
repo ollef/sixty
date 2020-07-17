@@ -23,7 +23,7 @@ import Rock
 import System.FilePath
 
 import qualified ApplicativeNormalisation
-import Binding (Binding)
+import Core.Binding (Binding)
 import qualified Builtin
 import qualified ClosureConversion
 import qualified ClosureConverted.Context

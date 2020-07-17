@@ -5,7 +5,7 @@ import Protolude hiding (Seq, head, force, evaluate)
 
 import Rock
 
-import Binding (Binding)
+import Core.Binding (Binding)
 import Bindings (Bindings)
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap

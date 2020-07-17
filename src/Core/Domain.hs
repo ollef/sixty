@@ -4,7 +4,7 @@ module Core.Domain where
 
 import Protolude hiding (Type, Seq, IntMap)
 
-import Binding (Binding)
+import Core.Binding (Binding)
 import Bindings (Bindings)
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil

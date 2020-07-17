@@ -7,7 +7,7 @@ import Protolude hiding (moduleName)
 
 import Rock
 
-import Binding (Binding)
+import Core.Binding (Binding)
 import Bindings (Bindings)
 import Data.OrderedHashMap as OrderedHashMap
 import qualified Core.Domain as Domain

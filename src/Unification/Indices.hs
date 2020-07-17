@@ -11,7 +11,7 @@ import Control.Exception.Lifted
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
 
-import qualified Binding
+import qualified Core.Binding as Binding
 import Bindings (Bindings)
 import qualified Bindings
 import Context (Context)

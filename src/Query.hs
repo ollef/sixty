@@ -27,7 +27,7 @@ import Data.Some (Some(Some))
 import Rock
 
 import qualified Applicative.Syntax as Applicative
-import Binding (Binding)
+import Core.Binding (Binding)
 import qualified ClosureConverted.Syntax as ClosureConverted
 import Extra
 import qualified FileSystem
