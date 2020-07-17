@@ -41,7 +41,7 @@ import qualified Span
 import qualified Core.Syntax as Syntax
 import Telescope (Telescope)
 import qualified Telescope
-import qualified TypeOf
+import qualified Core.TypeOf as TypeOf
 import qualified Var
 import Var (Var)
 

@@ -14,7 +14,7 @@ import qualified LanguageServer.CursorAction as CursorAction
 import qualified Position
 import Query (Query)
 import qualified Span
-import qualified TypeOf
+import qualified Core.TypeOf as TypeOf
 
 hover :: FilePath -> Position.LineColumn -> Task Query (Maybe (Span.LineColumn, Doc ann))
 hover filePath pos =

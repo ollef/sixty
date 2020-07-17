@@ -34,7 +34,7 @@ import Query (Query)
 import qualified Query.Mapped as Mapped
 import qualified Scope
 import qualified Core.Syntax as Syntax
-import qualified TypeOf
+import qualified Core.TypeOf as TypeOf
 import Var (Var)
 import qualified Var
 

@@ -1,5 +1,5 @@
 {-# language OverloadedStrings #-}
-module TypeOf where
+module Core.TypeOf where
 
 import Protolude hiding (typeOf)
 
