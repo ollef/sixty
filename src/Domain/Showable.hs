@@ -8,7 +8,7 @@ import Protolude hiding (Type, IntMap, force, to)
 import Binding (Binding)
 import Bindings (Bindings)
 import Data.Tsil (Tsil)
-import qualified Domain
+import qualified Core.Domain as Domain
 import qualified Environment
 import Index
 import Literal (Literal)

@@ -19,7 +19,7 @@ import qualified Context
 import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
 import qualified Data.Tsil as Tsil
-import qualified Domain
+import qualified Core.Domain as Domain
 import qualified Environment
 import Evaluation
 import Flexibility (Flexibility)

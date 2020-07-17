@@ -10,7 +10,7 @@ import Bindings (Bindings)
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Tsil as Tsil
-import qualified Domain
+import qualified Core.Domain as Domain
 import qualified Domain.Telescope as Domain (Telescope)
 import qualified Domain.Telescope
 import qualified Environment

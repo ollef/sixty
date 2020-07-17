@@ -23,7 +23,7 @@ import qualified Data.IntMap as IntMap
 import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
-import qualified Domain
+import qualified Core.Domain as Domain
 import qualified Elaboration.Clauses as Clauses
 import qualified Elaboration.Matching as Matching
 import Elaboration.Matching.SuggestedName as SuggestedName

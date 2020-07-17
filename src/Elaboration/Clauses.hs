@@ -16,7 +16,7 @@ import Context (Context)
 import qualified Context
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
-import qualified Domain
+import qualified Core.Domain as Domain
 import qualified Elaboration.Matching as Matching
 import qualified Elaboration.Matching.SuggestedName as SuggestedName
 import qualified Error

@@ -6,7 +6,7 @@ import Data.HashSet (HashSet)
 import Data.Text.Prettyprint.Doc (Doc)
 
 import Context (Context)
-import qualified Domain
+import qualified Core.Domain as Domain
 import Literal (Literal)
 import Monad
 import Name (Name)

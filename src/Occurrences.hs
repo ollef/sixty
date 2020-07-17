@@ -10,7 +10,7 @@ import Rock
 import Binding (Binding)
 import Bindings (Bindings)
 import Data.OrderedHashMap as OrderedHashMap
-import qualified Domain
+import qualified Core.Domain as Domain
 import Environment (Environment)
 import qualified Environment
 import qualified Index

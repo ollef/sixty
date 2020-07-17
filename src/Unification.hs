@@ -21,7 +21,7 @@ import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Tsil as Tsil
 import Data.Tsil (Tsil)
-import qualified Domain
+import qualified Core.Domain as Domain
 import Environment (Environment(Environment))
 import qualified Environment
 import qualified Error

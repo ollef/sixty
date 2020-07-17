@@ -13,7 +13,7 @@ import Context (Context)
 import qualified Context
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Tsil as Tsil
-import qualified Domain
+import qualified Core.Domain as Domain
 import qualified Elaboration
 import qualified Environment
 import qualified Evaluation

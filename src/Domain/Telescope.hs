@@ -3,7 +3,7 @@ module Domain.Telescope where
 
 import Protolude
 
-import qualified Domain
+import qualified Core.Domain as Domain
 import Monad
 import Plicity
 

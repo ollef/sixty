@@ -22,7 +22,7 @@ import qualified Context
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import qualified Data.OrderedHashMap as OrderedHashMap
-import qualified Domain
+import qualified Core.Domain as Domain
 import qualified Elaboration
 import qualified Index
 import qualified LanguageServer.LineColumns as LineColumns

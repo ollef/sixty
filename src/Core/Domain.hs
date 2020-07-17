@@ -1,6 +1,6 @@
 {-# language GADTs #-}
 {-# language LambdaCase #-}
-module Domain where
+module Core.Domain where
 
 import Protolude hiding (Type, Seq, IntMap)
 
@@ -48,7 +48,7 @@ data Branches where
   Branches :: Environment v -> Syntax.Branches v -> Maybe (Syntax.Term v) -> Branches
 
 var :: Var -> Value
-var v = Neutral (Domain.Var v) mempty
+var v = Neutral (Var v) mempty
 
 global :: Name.Qualified -> Value
 global g = Neutral (Global g) mempty

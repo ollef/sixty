@@ -3,7 +3,7 @@
 module Builtin where
 
 import qualified Data.Tsil as Tsil
-import qualified Domain
+import qualified Core.Domain as Domain
 import qualified Name
 import Plicity
 import qualified Core.Syntax as Syntax

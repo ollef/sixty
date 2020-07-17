@@ -18,7 +18,7 @@ import Context (Context)
 import qualified Context
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
-import qualified Domain
+import qualified Core.Domain as Domain
 import qualified Elaboration
 import qualified Error
 import qualified Error.Hydrated as Error
