@@ -19,8 +19,8 @@ import qualified Binding
 import Bindings (Bindings)
 import qualified Bindings
 import qualified Boxity
-import Domain.Pattern (Pattern)
-import qualified Domain.Pattern as Pattern
+import Core.Domain.Pattern (Pattern)
+import qualified Core.Domain.Pattern as Pattern
 import Index
 import Name (Name(Name))
 import qualified Name

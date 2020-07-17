@@ -30,8 +30,8 @@ import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Core.Domain as Domain
-import Domain.Pattern (Pattern)
-import qualified Domain.Pattern as Pattern
+import Core.Domain.Pattern (Pattern)
+import qualified Core.Domain.Pattern as Pattern
 import qualified Domain.Telescope as Domain (Telescope)
 import qualified Domain.Telescope
 import qualified Elaboration.Matching.SuggestedName as SuggestedName

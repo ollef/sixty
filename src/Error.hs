@@ -10,7 +10,7 @@ import Data.Persist
 import Data.Text.Prettyprint.Doc
 
 import Data.Tsil (Tsil)
-import Domain.Pattern (Pattern)
+import Core.Domain.Pattern (Pattern)
 import qualified Error.Parsing as Error
 import qualified Meta
 import qualified Module

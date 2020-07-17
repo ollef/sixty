@@ -27,7 +27,7 @@ import qualified Data.IntSet as IntSet
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Core.Domain as Domain
-import Domain.Pattern (Pattern)
+import Core.Domain.Pattern (Pattern)
 import Environment (Environment(Environment))
 import qualified Environment
 import Error (Error)

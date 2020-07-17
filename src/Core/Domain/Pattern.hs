@@ -1,6 +1,6 @@
 {-# language DeriveAnyClass #-}
 {-# language DeriveGeneric #-}
-module Domain.Pattern where
+module Core.Domain.Pattern where
 
 import Protolude
 
