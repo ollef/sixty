@@ -20,8 +20,8 @@ import Monad
 import Name (Name)
 import qualified Name
 import qualified Query
-import Syntax.Telescope (Telescope)
-import qualified Syntax.Telescope as Telescope
+import Telescope (Telescope)
+import qualified Telescope
 
 typeOfDefinition :: Context Void -> Syntax.Definition -> M (Syntax.Type Void)
 typeOfDefinition context definition = do

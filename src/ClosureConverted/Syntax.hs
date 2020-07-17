@@ -12,7 +12,7 @@ import Index
 import Literal (Literal)
 import Name (Name)
 import qualified Name
-import Syntax.Telescope (Telescope)
+import Telescope (Telescope)
 
 {-
 General idea:

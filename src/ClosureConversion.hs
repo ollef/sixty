@@ -11,8 +11,8 @@ import Name (Name)
 import qualified Name
 import Query (Query)
 import qualified Query
-import Syntax.Telescope (Telescope)
-import qualified Syntax.Telescope as Telescope
+import Telescope (Telescope)
+import qualified Telescope
 
 convertDefinition
   :: MonadFetch Query m

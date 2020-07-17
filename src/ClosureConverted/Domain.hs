@@ -9,7 +9,7 @@ import qualified ClosureConverted.Syntax as Syntax
 import qualified Environment
 import Literal (Literal)
 import qualified Name
-import Syntax.Telescope (Telescope)
+import Telescope (Telescope)
 import Index
 import Var (Var)
 

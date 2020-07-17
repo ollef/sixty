@@ -39,8 +39,8 @@ import Plicity
 import qualified Query
 import Readback (readback)
 import qualified Core.Syntax as Syntax
-import Syntax.Telescope (Telescope)
-import qualified Syntax.Telescope as Telescope
+import Telescope (Telescope)
+import qualified Telescope
 import Var
 
 tryUnify :: Context v -> Domain.Value -> Domain.Value -> M (Syntax.Term v -> Syntax.Term v)

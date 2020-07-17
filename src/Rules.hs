@@ -53,8 +53,8 @@ import qualified Resolution
 import qualified Scope
 import qualified Span
 import qualified Core.Syntax as Syntax
-import Syntax.Telescope (Telescope)
-import qualified Syntax.Telescope as Telescope
+import Telescope (Telescope)
+import qualified Telescope
 
 rules :: [FilePath] -> HashSet FilePath -> (FilePath -> IO Text) -> GenRules (Writer [Error] (Writer TaskKind Query)) Query
 rules sourceDirectories files readFile_ (Writer (Writer query)) =

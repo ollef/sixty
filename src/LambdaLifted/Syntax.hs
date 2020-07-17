@@ -11,7 +11,7 @@ import Data.OrderedHashMap (OrderedHashMap)
 import Literal (Literal)
 import Name (Name)
 import qualified Name
-import Syntax.Telescope (Telescope)
+import Telescope (Telescope)
 
 data Term v
   = Var !(Index v)

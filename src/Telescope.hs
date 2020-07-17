@@ -3,7 +3,7 @@
 {-# language QuantifiedConstraints #-}
 {-# language RankNTypes #-}
 {-# language StandaloneDeriving #-}
-module Syntax.Telescope where
+module Telescope where
 
 import Protolude
 
@@ -53,7 +53,7 @@ fold f tele =
       k
 
     Extend name t plicity scope ->
-      f name t plicity $ Syntax.Telescope.fold f scope
+      f name t plicity $ Telescope.fold f scope
 
 fromVoid :: Telescope n t k Void -> Telescope n t k v
 fromVoid = unsafeCoerce
@@ -65,4 +65,4 @@ length tele =
       0
 
     Extend _ _ _ tele' ->
-      1 + Syntax.Telescope.length tele'
+      1 + Telescope.length tele'

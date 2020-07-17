@@ -30,8 +30,8 @@ import qualified Query
 import qualified Query.Mapped as Mapped
 import qualified Scope
 import qualified Core.Syntax as Syntax
-import Syntax.Telescope (Telescope)
-import qualified Syntax.Telescope as Telescope
+import Telescope (Telescope)
+import qualified Telescope
 
 -------------------------------------------------------------------------------
 -- Pretty-printing environments

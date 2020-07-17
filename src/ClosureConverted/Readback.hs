@@ -12,8 +12,8 @@ import qualified Environment
 import Index
 import Monad
 import Name (Name)
-import Syntax.Telescope (Telescope)
-import qualified Syntax.Telescope as Telescope
+import Telescope (Telescope)
+import qualified Telescope
 
 readback :: Domain.Environment v -> Domain.Value -> M (Syntax.Term v)
 readback env value =

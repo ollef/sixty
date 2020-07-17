@@ -20,7 +20,7 @@ import qualified Meta
 import qualified Name
 import Plicity
 import qualified Span
-import Syntax.Telescope (Telescope)
+import Telescope (Telescope)
 
 data Term v
   = Var !(Index v)

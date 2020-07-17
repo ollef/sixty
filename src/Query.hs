@@ -44,7 +44,7 @@ import Scope (Scope)
 import qualified Scope
 import qualified Span
 import qualified Core.Syntax as Syntax
-import Syntax.Telescope (Telescope)
+import Telescope (Telescope)
 
 data Query a where
   SourceDirectories :: Query [FileSystem.Directory]

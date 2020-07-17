@@ -11,8 +11,8 @@ import qualified Evaluation
 import Index
 import Monad
 import qualified Core.Syntax as Syntax
-import Syntax.Telescope (Telescope)
-import qualified Syntax.Telescope as Telescope
+import Telescope (Telescope)
+import qualified Telescope
 
 -------------------------------------------------------------------------------
 

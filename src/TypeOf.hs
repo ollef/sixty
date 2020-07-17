@@ -21,8 +21,8 @@ import qualified Meta
 import Monad
 import qualified Query
 import qualified Core.Syntax as Syntax
-import Syntax.Telescope (Telescope)
-import qualified Syntax.Telescope as Telescope
+import Telescope (Telescope)
+import qualified Telescope
 
 typeOf :: Context v -> Domain.Value -> M Domain.Type
 typeOf context value =

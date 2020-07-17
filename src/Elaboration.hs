@@ -50,8 +50,8 @@ import qualified Scope
 import qualified Span
 import qualified Substitution
 import qualified Core.Syntax as Syntax
-import Syntax.Telescope (Telescope)
-import qualified Syntax.Telescope as Telescope
+import Telescope (Telescope)
+import qualified Telescope
 import qualified Unification
 import Var (Var)
 

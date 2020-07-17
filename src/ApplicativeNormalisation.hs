@@ -22,8 +22,8 @@ import Name (Name)
 import qualified Name
 import Plicity
 import qualified Scope
-import Syntax.Telescope (Telescope)
-import qualified Syntax.Telescope as Telescope
+import Telescope (Telescope)
+import qualified Telescope
 import Var (Var)
 
 normaliseDefinition :: Scope.KeyedName -> ClosureConverted.Definition -> M Applicative.Definition
