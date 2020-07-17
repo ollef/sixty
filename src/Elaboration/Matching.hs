@@ -16,40 +16,40 @@ import qualified Data.Set as Set
 import Rock
 
 import {-# source #-} qualified Elaboration
+import qualified Builtin
 import Core.Binding (Binding)
 import qualified Core.Binding as Binding
 import Core.Bindings (Bindings)
 import qualified Core.Bindings as Bindings
-import qualified Builtin
-import Context (Context)
-import qualified Context
+import qualified Core.Domain as Domain
+import Core.Domain.Pattern (Pattern)
+import qualified Core.Domain.Pattern as Pattern
+import qualified Core.Domain.Telescope as Domain (Telescope)
+import qualified Core.Domain.Telescope as Domain.Telescope
+import qualified Core.Evaluation as Evaluation
+import qualified Core.Readback as Readback
+import qualified Core.Syntax as Syntax
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
-import qualified Core.Domain as Domain
-import Core.Domain.Pattern (Pattern)
-import qualified Core.Domain.Pattern as Pattern
-import qualified Core.Domain.Telescope as Domain (Telescope)
-import qualified Core.Domain.Telescope as Domain.Telescope
+import Elaboration.Context (Context)
+import qualified Elaboration.Context as Context
 import qualified Elaboration.Matching.SuggestedName as SuggestedName
 import qualified Environment
 import qualified Error
-import qualified Core.Evaluation as Evaluation
 import qualified Flexibility
 import Literal (Literal)
 import Monad
 import Name (Name(Name))
 import qualified Name
 import Plicity
-import qualified Surface.Syntax as Surface
 import qualified Query
-import qualified Core.Readback as Readback
 import qualified Scope
 import qualified Span
-import qualified Core.Syntax as Syntax
+import qualified Surface.Syntax as Surface
 import Telescope (Telescope)
 import qualified Telescope
 import qualified Unification

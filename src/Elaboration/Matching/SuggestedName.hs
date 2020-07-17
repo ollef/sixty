@@ -10,8 +10,8 @@ import Rock
 
 import Core.Bindings (Bindings)
 import qualified Core.Bindings as Bindings
-import Context (Context)
-import qualified Context
+import Elaboration.Context (Context)
+import qualified Elaboration.Context as Context
 import Monad
 import Name (Name(Name))
 import qualified Name

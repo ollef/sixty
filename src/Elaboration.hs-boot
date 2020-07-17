@@ -5,15 +5,15 @@ import Protolude
 import Data.HashSet (HashSet)
 import Data.Text.Prettyprint.Doc (Doc)
 
-import Context (Context)
 import qualified Core.Domain as Domain
+import qualified Core.Syntax as Syntax
+import Elaboration.Context (Context)
 import Literal (Literal)
 import Monad
 import Name (Name)
 import qualified Name
 import Plicity
 import qualified Surface.Syntax as Surface
-import qualified Core.Syntax as Syntax
 
 check
   :: Context v

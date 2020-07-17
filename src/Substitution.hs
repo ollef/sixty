@@ -3,13 +3,13 @@ module Substitution where
 
 import Protolude
 
-import Context (Context)
-import qualified Context
+import qualified Core.Syntax as Syntax
+import Elaboration.Context (Context)
+import qualified Elaboration.Context as Context
 import qualified Environment
 import qualified Index
 import qualified Inlining
 import Monad
-import qualified Core.Syntax as Syntax
 
 let_ :: Context v -> Syntax.Term v -> Syntax.Term (Index.Succ v) -> M (Syntax.Term v)
 let_ context term body = do

@@ -12,19 +12,22 @@ import Data.IORef.Lifted
 import Data.Text.Prettyprint.Doc (Doc)
 import Rock
 
+import qualified Builtin
 import Core.Binding (Binding)
 import qualified Core.Binding as Binding
 import Core.Bindings (Bindings)
 import qualified Core.Bindings as Bindings
-import qualified Builtin
-import Context (Context)
-import qualified Context
+import qualified Core.Domain as Domain
+import qualified Core.Evaluation as Evaluation
+import qualified Core.Readback as Readback
+import qualified Core.Syntax as Syntax
 import qualified Data.IntMap as IntMap
 import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
-import qualified Core.Domain as Domain
 import qualified Elaboration.Clauses as Clauses
+import Elaboration.Context (Context)
+import qualified Elaboration.Context as Context
 import qualified Elaboration.Matching as Matching
 import Elaboration.Matching.SuggestedName as SuggestedName
 import qualified Elaboration.Metas as Metas
@@ -32,7 +35,6 @@ import qualified Environment
 import Error (Error)
 import qualified Error
 import qualified Error.Hydrated as Error
-import qualified Core.Evaluation as Evaluation
 import qualified Flexibility
 import Index
 import qualified Inlining
@@ -43,13 +45,11 @@ import Monad
 import Name (Name)
 import qualified Name
 import Plicity
-import qualified Surface.Syntax as Surface
 import qualified Query
-import qualified Core.Readback as Readback
 import qualified Scope
 import qualified Span
 import qualified Substitution
-import qualified Core.Syntax as Syntax
+import qualified Surface.Syntax as Surface
 import Telescope (Telescope)
 import qualified Telescope
 import qualified Unification

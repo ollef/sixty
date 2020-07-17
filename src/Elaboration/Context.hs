@@ -3,7 +3,7 @@
 {-# language OverloadedStrings #-}
 {-# language RankNTypes #-}
 {-# language TupleSections #-}
-module Context where
+module Elaboration.Context where
 
 import Protolude hiding (IntMap, IntSet, catch, force)
 
@@ -81,7 +81,7 @@ toPrettyableTerm context term = do
   term' <- zonk context term
   let
     Scope.KeyedName _ (Name.Qualified module_ _) =
-      Context.scopeKey context
+      scopeKey context
   pure $
     Error.PrettyableTerm
       module_
@@ -93,14 +93,14 @@ toPrettyableClosedTerm context term = do
   term' <- zonk (emptyFrom context) term
   let
     Scope.KeyedName _ (Name.Qualified module_ _) =
-      Context.scopeKey context
+      scopeKey context
   pure $ Error.PrettyableTerm module_ mempty (Syntax.coerce term')
 
 toPrettyablePattern :: Context v -> Pattern -> Error.PrettyablePattern
 toPrettyablePattern context = do
   let
     Scope.KeyedName _ (Name.Qualified module_ _) =
-      Context.scopeKey context
+      scopeKey context
   Error.PrettyablePattern
     module_
     ((`lookupVarName` context) <$> toList (indices context))
@@ -298,7 +298,7 @@ dependencies
   -> Domain.Value
   -> StateT (IntMap Var (IntSet Var)) M (IntSet Var)
 dependencies context value = do
-  value' <- lift $ Context.forceHeadGlue context value
+  value' <- lift $ forceHeadGlue context value
   case value' of
     Domain.Neutral hd spine -> do
       spineVars <- mapM (dependencies context . snd) spine
@@ -518,12 +518,12 @@ forceHead
 forceHead context value =
   case value of
     Domain.Neutral (Domain.Var var) spine
-      | Just headValue <- Context.lookupVarValue var context -> do
+      | Just headValue <- lookupVarValue var context -> do
         value' <- Evaluation.applySpine headValue spine
         forceHead context value'
 
     Domain.Neutral (Domain.Meta metaIndex) spine -> do
-      meta <- Context.lookupMeta metaIndex context
+      meta <- lookupMeta metaIndex context
 
       case meta of
         Meta.Solved headValue _ -> do
@@ -566,14 +566,14 @@ forceHeadGlue
 forceHeadGlue context value =
   case value of
     Domain.Neutral (Domain.Var var) spine
-      | Just headValue <- Context.lookupVarValue var context -> do
+      | Just headValue <- lookupVarValue var context -> do
         value' <- lazy $ do
           value' <- Evaluation.applySpine headValue spine
           forceHeadGlue context value'
         pure $ Domain.Glued (Domain.Var var) spine value'
 
     Domain.Neutral (Domain.Meta metaIndex) spine -> do
-      meta <- Context.lookupMeta metaIndex context
+      meta <- lookupMeta metaIndex context
 
       case meta of
         Meta.Solved headValue _ -> do
@@ -611,7 +611,7 @@ instantiateType
   -> [(Plicity, Domain.Value)]
   -> M Domain.Type
 instantiateType context type_ spine = do
-  type' <- Context.forceHead context type_
+  type' <- forceHead context type_
   case (type', spine) of
     (_, []) ->
       pure type'
@@ -645,7 +645,7 @@ reportParseError :: Context v -> Error.Parsing -> M ()
 reportParseError context err = do
   let
     Scope.KeyedName _ (Name.Qualified module_ _) =
-      Context.scopeKey context
+      scopeKey context
 
   maybeFilePath <- fetch $ Query.ModuleFile module_
   forM_ maybeFilePath $ \filePath -> do
@@ -676,13 +676,13 @@ zonk
   -> M (Syntax.Term v)
 zonk context term = do
   metaVars <- newIORef mempty
-  Zonking.zonkTerm (Context.toEnvironment context) (go metaVars) term
+  Zonking.zonkTerm (toEnvironment context) (go metaVars) term
   where
     go metaVars index = do
       indexMap <- readIORef metaVars
       case IntMap.lookup index indexMap of
         Nothing -> do
-          solution <- Context.lookupMeta index context
+          solution <- lookupMeta index context
           case solution of
             Meta.Unsolved _ _ -> do
               atomicModifyIORef metaVars $ \indexMap' ->
@@ -690,7 +690,7 @@ zonk context term = do
               pure Nothing
 
             Meta.Solved term' _ -> do
-              term'' <- Zonking.zonkTerm (Environment.empty $ Context.scopeKey context) (go metaVars) term'
+              term'' <- Zonking.zonkTerm (Environment.empty $ scopeKey context) (go metaVars) term'
               atomicModifyIORef metaVars $ \indexMap' ->
                 (IntMap.insert index (Just term'') indexMap', ())
               pure $ Just term''

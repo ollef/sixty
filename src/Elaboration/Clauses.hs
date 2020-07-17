@@ -12,20 +12,20 @@ import Core.Binding (Binding)
 import qualified Core.Binding as Binding
 import Core.Bindings (Bindings)
 import qualified Core.Bindings as Bindings
-import Context (Context)
-import qualified Context
+import qualified Core.Domain as Domain
+import qualified Core.Evaluation as Evaluation
+import qualified Core.Syntax as Syntax
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
-import qualified Core.Domain as Domain
+import Elaboration.Context (Context)
+import qualified Elaboration.Context as Context
 import qualified Elaboration.Matching as Matching
 import qualified Elaboration.Matching.SuggestedName as SuggestedName
 import qualified Error
-import qualified Core.Evaluation as Evaluation
 import Monad
 import Name (Name)
 import Plicity
 import qualified Surface.Syntax as Surface
-import qualified Core.Syntax as Syntax
 import qualified Unification
 
 check

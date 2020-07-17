@@ -7,7 +7,7 @@ import Protolude hiding (evaluate, moduleName)
 import Data.Text.Prettyprint.Doc (Doc, (<+>))
 import Rock
 
-import qualified Context
+import qualified Elaboration.Context as Context
 import qualified Elaboration
 import qualified Error.Hydrated as Error
 import qualified LanguageServer.CursorAction as CursorAction

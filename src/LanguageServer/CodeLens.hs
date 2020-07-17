@@ -7,7 +7,7 @@ import Data.Text.Prettyprint.Doc (Doc)
 import qualified Data.Text.Unsafe as Text
 import Rock
 
-import qualified Context
+import qualified Elaboration.Context as Context
 import qualified Error.Hydrated as Error
 import qualified LanguageServer.LineColumns as LineColumns
 import Monad

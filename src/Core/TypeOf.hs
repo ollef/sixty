@@ -9,8 +9,8 @@ import qualified Core.Binding as Binding
 import Core.Bindings (Bindings)
 import qualified Core.Bindings as Bindings
 import qualified Builtin
-import Context (Context)
-import qualified Context
+import Elaboration.Context (Context)
+import qualified Elaboration.Context as Context
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Tsil as Tsil
 import qualified Core.Domain as Domain

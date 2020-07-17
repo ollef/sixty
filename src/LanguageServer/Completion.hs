@@ -14,15 +14,17 @@ import Data.Text.Prettyprint.Doc ((<+>))
 import qualified Language.Haskell.LSP.Types as LSP
 import Rock
 
-import Context (Context)
-import qualified Context
+import qualified Core.Domain as Domain
+import qualified Core.Evaluation as Evaluation
+import qualified Core.Syntax as Syntax
+import qualified Core.TypeOf as TypeOf
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
-import qualified Core.Domain as Domain
 import qualified Elaboration
+import Elaboration.Context (Context)
+import qualified Elaboration.Context as Context
 import qualified Error
 import qualified Error.Hydrated as Error
-import qualified Core.Evaluation as Evaluation
 import qualified LanguageServer.CursorAction as CursorAction
 import Monad
 import Name (Name(Name))
@@ -33,8 +35,6 @@ import qualified Query
 import Query (Query)
 import qualified Query.Mapped as Mapped
 import qualified Scope
-import qualified Core.Syntax as Syntax
-import qualified Core.TypeOf as TypeOf
 import Var (Var)
 import qualified Var
 

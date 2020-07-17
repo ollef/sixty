@@ -17,13 +17,15 @@ import qualified Core.Binding as Binding
 import Core.Binding (Binding)
 import qualified Core.Bindings as Bindings
 import Core.Bindings (Bindings)
-import Context (Context)
-import qualified Context
+import qualified Core.Domain as Domain
+import qualified Core.Syntax as Syntax
+import qualified Core.TypeOf as TypeOf
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import qualified Data.OrderedHashMap as OrderedHashMap
-import qualified Core.Domain as Domain
 import qualified Elaboration
+import Elaboration.Context (Context)
+import qualified Elaboration.Context as Context
 import qualified Index
 import qualified LanguageServer.LineColumns as LineColumns
 import Literal (Literal)
@@ -38,10 +40,8 @@ import Query (Query)
 import qualified Query
 import qualified Scope
 import qualified Span
-import qualified Core.Syntax as Syntax
 import Telescope (Telescope)
 import qualified Telescope
-import qualified Core.TypeOf as TypeOf
 import qualified Var
 import Var (Var)
 

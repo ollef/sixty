@@ -14,14 +14,14 @@ import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Core.Binding as Binding
 import Core.Bindings (Bindings)
 import qualified Core.Bindings as Bindings
-import Context (Context)
-import qualified Context
 import qualified Core.Domain as Domain
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Syntax as Syntax
 import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
 import qualified Data.Tsil as Tsil
+import Elaboration.Context (Context)
+import qualified Elaboration.Context as Context
 import qualified Environment
 import Flexibility (Flexibility)
 import qualified Flexibility
