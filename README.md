@@ -6,7 +6,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 
 ## Roadmap
 
-- [x] Pre-syntax
+- [x] Surface syntax
 - [x] Core syntax
 - [x] Safe and fast phantom typed De Bruijn indices
 - [x] Evaluation
