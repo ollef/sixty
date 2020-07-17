@@ -1,7 +1,7 @@
 {-# language DuplicateRecordFields #-}
 {-# language GADTs #-}
 {-# language StandaloneDeriving #-}
-module Domain.Showable where
+module Core.Domain.Showable where
 
 import Protolude hiding (Type, IntMap, force, to)
 
