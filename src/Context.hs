@@ -51,7 +51,7 @@ import qualified Core.Syntax as Syntax
 import Telescope (Telescope)
 import qualified Telescope
 import Var
-import qualified Zonking
+import qualified Core.Zonking as Zonking
 
 data Context v = Context
   { scopeKey :: !Scope.KeyedName

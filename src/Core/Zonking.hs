@@ -1,4 +1,4 @@
-module Zonking where
+module Core.Zonking where
 
 import Protolude
 
