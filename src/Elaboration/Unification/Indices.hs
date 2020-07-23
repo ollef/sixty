@@ -90,11 +90,11 @@ unify context flexibility untouchables value1 value2 = do
 
     (Domain.Lam bindings1 type1 plicity1 closure1, Domain.Lam _ type2 plicity2 closure2)
       | plicity1 == plicity2 ->
-      unifyAbstraction (Bindings.toName bindings1) type1 closure1 type2 closure2
+        unifyAbstraction (Bindings.toName bindings1) type1 closure1 type2 closure2
 
     (Domain.Pi binding1 domain1 plicity1 targetClosure1, Domain.Pi _ domain2 plicity2 targetClosure2)
       | plicity1 == plicity2 ->
-      unifyAbstraction (Binding.toName binding1) domain1 targetClosure1 domain2 targetClosure2
+        unifyAbstraction (Binding.toName binding1) domain1 targetClosure1 domain2 targetClosure2
 
     (Domain.Pi binding1 domain1 plicity1 targetClosure1, Domain.Fun domain2 plicity2 target2)
       | plicity1 == plicity2 -> do
