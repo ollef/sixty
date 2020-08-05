@@ -1,0 +1,17 @@
+data Void where
+
+Not a = a -> Void
+
+data Bad = Bad (Not Bad)
+
+hmmm : Bad -> Not Bad
+hmmm (Bad n) = n
+
+why : Not Bad
+why bad = hmmm bad bad
+
+bad : Bad
+bad = Bad why
+
+ohno : Void
+ohno = why bad
