@@ -42,17 +42,8 @@ checkCommand :: ParserInfo (IO ())
 checkCommand =
   info
     (helper <*>
-      (Command.check <$>
-        many (strArgument
-        $ metavar "FILES..."
-        <> help
-          (toS $ Text.unlines
-            [ "Input source files, project files, or directories."
-            , "If no files are given, I will look for a 'sixten.json' file in the current directory and its parent directories."
-            ]
-          )
-        <> action "file"
-        )
+      (Command.check
+        <$> inputFiles
         <*> switch (
           long "print-elaborated"
           <> help "Print elaborated syntax after type checking"
@@ -65,21 +56,7 @@ checkCommand =
 
 watchCommand :: ParserInfo (IO ())
 watchCommand =
-  info
-    (helper <*>
-      (Command.watch <$>
-        many (strArgument
-        $ metavar "FILES..."
-        <> help
-          (toS $ Text.unlines
-            [ "Input source files, project files, or directories."
-            , "If no files are given, I will look for a 'sixten.json' file in the current directory and its parent directories."
-            ]
-          )
-        <> action "file"
-        )
-      )
-    )
+  info (helper <*> (Command.watch <$> inputFiles))
     $ fullDesc
     <> progDesc "Type check a Sixten program, watching for changes"
     <> header "sixten watch"
@@ -118,3 +95,16 @@ generateBenchmarkCommand =
     $ fullDesc
     <> progDesc "Type check a Sixten program, watching for changes"
     <> header "sixten watch"
+
+inputFiles :: Parser [FilePath]
+inputFiles =
+  many
+    $ strArgument
+    $ metavar "FILES..."
+    <> help
+      (toS $ Text.unlines
+        [ "Input source files, project files, or directories."
+        , "If no files are given, I will look for a 'sixten.json' file in the current directory and its parent directories."
+        ]
+      )
+    <> action "file"
