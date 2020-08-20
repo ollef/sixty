@@ -1,0 +1,21 @@
+data Nat = Z | S Nat
+
+data Singleton forall A. (a : A) where
+  Singleton : (x : A) -> Singleton x
+
+unsingleton : forall A (a : A). Singleton a -> A
+unsingleton (Singleton x) = x
+
+data Vector n A where
+  Nil : Vector Z A
+  Cons : forall n. A -> Vector n A -> Vector (S n) A
+
+length : forall n A. Vector n A -> Singleton n
+length @{n} _ = Singleton n
+
+length' : forall n A. Vector n A -> Singleton n
+length' Nil = Singleton Z
+length' (Cons x xs) = 
+  case length' xs of
+    Singleton n ->
+      Singleton (S n)
