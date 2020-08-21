@@ -235,8 +235,8 @@ unify context flexibility value1 value2 = do
       v2 <- force lazyValue2
       unify context flexibility' v1 v2
 
-    unifySpines flexibility' =
-      Tsil.zipWithM_ $ \(_, v1) (_, v2) -> unify context flexibility' v1 v2
+    unifySpines flexibility' spine1 spine2 =
+      zipWithM_ (\(_, v1) (_, v2) -> unify context flexibility' v1 v2) (toList spine1) (toList spine2)
 
     unifyAbstraction name type1 closure1 type2 closure2 = do
       unify context flexibility type1 type2
