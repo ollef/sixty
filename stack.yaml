@@ -1,16 +1,13 @@
-resolver: lts-15.5
+resolver: lts-16.12
 packages:
 - .
 extra-deps:
-- constraints-extras-0.3.0.2
-- git: https://github.com/WebGHC/dependent-sum.git
-  commit: 5158a7dc5e714ca82e94c76ceec838ad85b0efab
-  subdirs:
-  - dependent-sum
-  - dependent-sum-template
+- git: https://github.com/obsidiansystems/constraints-extras.git
+  commit: 72d39c08f7b08a3a756f9019ad972d26a36fbbaa
+- dependent-sum-0.7.1.0
+- dependent-sum-template-0.1.0.3
 - dependent-hashmap-0.1.0.1
 - protolude-0.3.0
-- some-1.0.0.3
 - rock-0.3.0.0
 - git: https://github.com/fpco/ghc-prof-flamegraph.git
   commit: 8edd3b4806adeb25a4d55bed51c3afcc8e7a8e14

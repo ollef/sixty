@@ -69,6 +69,7 @@ complete filePath (Position.LineColumn line column) =
               , _commitCharacters = Nothing
               , _command = Nothing
               , _xdata = Nothing
+              , _tags = mempty
               }
 
 questionMark :: FilePath -> Position.LineColumn -> Task Query (Maybe [LSP.CompletionItem])
@@ -153,6 +154,7 @@ questionMark filePath (Position.LineColumn line column) =
                   , _commitCharacters = Nothing
                   , _command = Nothing
                   , _xdata = Nothing
+                  , _tags = mempty
                   }
 
 getUsableNames :: CursorAction.ItemContext -> Context v -> IntMap Var value -> M [(Text, Syntax.Term v, LSP.CompletionItemKind)]

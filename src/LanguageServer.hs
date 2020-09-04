@@ -472,6 +472,7 @@ errorToDiagnostic err doc = LSP.Diagnostic
   , _source = Just diagnosticSource
   , _message = show doc
   , _relatedInformation = Nothing
+  , _tags = Nothing
   }
 
 spanToLocation :: FilePath -> Span.LineColumn -> LSP.Location
