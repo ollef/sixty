@@ -506,13 +506,22 @@ sameHeads head1 head2 =
     (Domain.Var var1, Domain.Var var2) ->
       var1 == var2
 
+    (Domain.Var _, _) ->
+      False
+
     (Domain.Global global1, Domain.Global global2) ->
       global1 == global2
+
+    (Domain.Global _, _) ->
+      False
 
     (Domain.Meta meta1, Domain.Meta meta2) ->
       meta1 == meta2
 
-    _ ->
+    (Domain.Meta _, _) ->
+      False
+
+    (Domain.Case {}, _) ->
       False
 
 instantiatedMetaType
