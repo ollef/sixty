@@ -2,8 +2,10 @@
 {-# language DeriveFunctor #-}
 {-# language DeriveGeneric #-}
 {-# language DeriveTraversable #-}
+{-# language TypeFamilies #-}
 module Data.Tsil where
 
+import GHC.Exts
 import qualified Prelude
 import Protolude
 
@@ -13,7 +15,7 @@ data Tsil a
   deriving (Eq, Functor, Ord, Traversable, Generic, Hashable)
 
 instance Show a => Show (Tsil a) where
-  show = show . toList
+  show = show . Protolude.toList
 
 instance Semigroup (Tsil a) where
   xs <> Empty = xs
@@ -36,8 +38,10 @@ instance Monad Tsil where
   Empty >>= _ = Empty
   xs :> x >>= f = (xs >>= f) <> f x
 
-fromList :: [a] -> Tsil a
-fromList = foldr (flip (:>)) Empty . reverse
+instance IsList (Tsil a) where
+  type Item (Tsil a) = a
+  fromList = foldr (flip (:>)) Empty . reverse
+  toList = Protolude.toList
 
 instance Foldable Tsil where
   foldMap _ Empty = mempty

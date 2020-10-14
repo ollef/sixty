@@ -104,18 +104,7 @@ evaluate env term =
 
     Syntax.Case scrutinee branches defaultBranch -> do
       scrutineeValue <- evaluate env scrutinee
-      case (scrutineeValue, branches) of
-        (Domain.Con constr args, Syntax.ConstructorBranches _ constructorBranches) ->
-          chooseConstructorBranch env constr (toList args) constructorBranches defaultBranch
-
-        (Domain.Lit lit, Syntax.LiteralBranches literalBranches) ->
-          chooseLiteralBranch env lit literalBranches defaultBranch
-
-        _ ->
-          pure $
-            Domain.Neutral
-            (Domain.Case scrutineeValue $ Domain.Branches env branches defaultBranch)
-            mempty
+      case_ scrutineeValue $ Domain.Branches env branches defaultBranch
 
     Syntax.Spanned _ term' ->
       evaluate env term'
@@ -200,15 +189,14 @@ apply fun plicity arg =
       | plicity == plicity' ->
       evaluateClosure closure arg
 
-    Domain.Neutral hd args ->
-      pure $ Domain.Neutral hd (args Tsil.:> (plicity, arg))
+    Domain.Neutral hd spine ->
+      pure $ Domain.Neutral hd $ spine Domain.:> Domain.App plicity arg
 
-    Domain.Glued hd args value -> do
+    Domain.Glued hd spine value -> do
       appliedValue <- lazy $ do
         value' <- force value
         apply value' plicity arg
-      pure $ Domain.Glued hd (args Tsil.:> (plicity, arg)) appliedValue
-
+      pure $ Domain.Glued hd (spine Domain.:> Domain.App plicity arg) appliedValue
 
     Domain.Con con args ->
       pure $ Domain.Con con $ args Tsil.:> (plicity, arg)
@@ -216,9 +204,39 @@ apply fun plicity arg =
     _ ->
       panic "applying non-function"
 
+case_ :: Domain.Value -> Domain.Branches -> M Domain.Value
+case_ scrutinee branches@(Domain.Branches env branches' defaultBranch) =
+  case (scrutinee, branches') of
+    (Domain.Con constr args, Syntax.ConstructorBranches _ constructorBranches) ->
+      chooseConstructorBranch env constr (toList args) constructorBranches defaultBranch
+
+    (Domain.Lit lit, Syntax.LiteralBranches literalBranches) ->
+      chooseLiteralBranch env lit literalBranches defaultBranch
+
+    (Domain.Neutral head spine, _) ->
+      pure $ Domain.Neutral head $ spine Domain.:> Domain.Case branches
+
+    (Domain.Glued hd spine value, _) -> do
+      casedValue <- lazy $ do
+        value' <- force value
+        case_ value' branches
+      pure $ Domain.Glued hd (spine Domain.:> Domain.Case branches) casedValue
+
+    _ ->
+      panic "casing non-constructor"
+
+applyElimination :: Domain.Value -> Domain.Elimination -> M Domain.Value
+applyElimination value elimination =
+  case elimination of
+    Domain.App plicity arg ->
+      apply value plicity arg
+
+    Domain.Case branches ->
+      case_ value branches
+
 applySpine :: Domain.Value -> Domain.Spine -> M Domain.Value
 applySpine =
-  foldM (\val (plicity, arg) -> apply val plicity arg)
+  Domain.foldlM applyElimination
 
 evaluateClosure :: Domain.Closure -> Domain.Value -> M Domain.Value
 evaluateClosure (Domain.Closure env body) argument = do
@@ -237,22 +255,6 @@ forceHead env value =
       | Just headValue <- Environment.lookupVarValue var env -> do
         value' <- applySpine headValue spine
         forceHead env value'
-
-    Domain.Neutral (Domain.Case scrutinee branches@(Domain.Branches branchEnv brs defaultBranch)) spine -> do
-      scrutinee' <- forceHead env scrutinee
-      case (scrutinee', brs) of
-        (Domain.Con constr constructorArgs, Syntax.ConstructorBranches _ constructorBranches) -> do
-          value' <- chooseConstructorBranch branchEnv constr (toList constructorArgs) constructorBranches defaultBranch
-          value'' <- forceHead env value'
-          applySpine value'' spine
-
-        (Domain.Lit lit, Syntax.LiteralBranches literalBranches) -> do
-          value' <- chooseLiteralBranch branchEnv lit literalBranches defaultBranch
-          value'' <- forceHead env value'
-          applySpine value'' spine
-
-        _ ->
-          pure $ Domain.Neutral (Domain.Case scrutinee' branches) spine
 
     Domain.Glued _ _ value' -> do
       value'' <- force value'

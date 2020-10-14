@@ -1,5 +1,6 @@
 {-# language OverloadedStrings #-}
 {-# language RankNTypes #-}
+{-# language ViewPatterns #-}
 module Elaboration.Matching where
 
 import Protolude hiding (IntMap, IntSet, force, try)
@@ -14,8 +15,8 @@ import qualified Data.IntSeq as IntSeq
 import Data.IORef.Lifted
 import qualified Data.Set as Set
 import Rock
-
 import {-# source #-} qualified Elaboration
+import GHC.Exts (fromList)
 import qualified Builtin
 import Core.Binding (Binding)
 import qualified Core.Binding as Binding
@@ -124,16 +125,13 @@ isPatternValue :: Context v -> Domain.Value -> M Bool
 isPatternValue context value = do
   value' <- Context.forceHead context value
   case value' of
-    Domain.Neutral (Domain.Var _) Tsil.Empty ->
+    Domain.Neutral (Domain.Var _) Domain.Empty ->
       pure True
 
-    Domain.Neutral (Domain.Var _) (_ Tsil.:> _) ->
+    Domain.Neutral (Domain.Var _) (_ Domain.:> _) ->
       pure False
 
     Domain.Neutral (Domain.Global _) _ ->
-      pure False
-
-    Domain.Neutral Domain.Case {} _ ->
       pure False
 
     Domain.Neutral (Domain.Meta _) _ ->
@@ -315,7 +313,7 @@ uncoveredScrutineePatterns
 uncoveredScrutineePatterns context coveredConstructors value = do
   value' <- Context.forceHead context value
   case value' of
-    Domain.Neutral (Domain.Var v) Tsil.Empty -> do
+    Domain.Neutral (Domain.Var v) Domain.Empty -> do
       let
         covered =
           IntMap.lookupDefault mempty v coveredConstructors
@@ -355,7 +353,7 @@ uncoveredScrutineePatterns context coveredConstructors value = do
             _ ->
               panic "uncoveredScrutineePatterns non-data"
 
-    Domain.Neutral (Domain.Var _) (_ Tsil.:> _) ->
+    Domain.Neutral (Domain.Var _) (_ Domain.:> _) ->
       pure []
 
     Domain.Neutral (Domain.Global _) _ ->
@@ -376,9 +374,6 @@ uncoveredScrutineePatterns context coveredConstructors value = do
       pure $ Pattern.Con constr <$> sequence spine''
 
     Domain.Neutral (Domain.Meta _) _ ->
-      pure []
-
-    Domain.Neutral Domain.Case {} _ ->
       pure []
 
     Domain.Glued _ _ value'' -> do
@@ -475,7 +470,7 @@ simplifyMatch context coveredConstructors coveredLiterals (Match value forcedVal
       | otherwise ->
         fail "Literal mismatch"
 
-    (Domain.Neutral (Domain.Var var) Tsil.Empty, Surface.ConOrVar _ name _)
+    (Domain.Neutral (Domain.Var var) Domain.Empty, Surface.ConOrVar _ name _)
       | Just coveredConstrs <- IntMap.lookup var coveredConstructors -> do
         maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
         case maybeScopeEntry of
@@ -504,7 +499,7 @@ simplifyMatch context coveredConstructors coveredLiterals (Match value forcedVal
           _ ->
             pure [match']
 
-    (Domain.Neutral (Domain.Var var) Tsil.Empty, Surface.LitPattern lit)
+    (Domain.Neutral (Domain.Var var) Domain.Empty, Surface.LitPattern lit)
       | Just coveredLits <- IntMap.lookup var coveredLiterals
       , HashSet.member lit coveredLits ->
         fail "Literal already covered"
@@ -708,7 +703,7 @@ splitConstructorOr context config matches k =
       case match of
         Match
           scrutinee
-          (Domain.Neutral (Domain.Var var) Tsil.Empty)
+          (Domain.Neutral (Domain.Var var) Domain.Empty)
           _
           (Surface.Pattern span (Surface.ConOrVar _ name _))
           type_ -> do
@@ -738,7 +733,7 @@ splitConstructorOr context config matches k =
 
         Match
           scrutinee
-          (Domain.Neutral (Domain.Var var) Tsil.Empty)
+          (Domain.Neutral (Domain.Var var) Domain.Empty)
           _
           (Surface.Pattern span (Surface.LitPattern lit))
           type_ ->
@@ -764,8 +759,9 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
       outerType' <- Context.forceHead outerContext outerType
       case outerType' of
         Domain.Neutral (Domain.Global typeName') spine
-          | typeName == typeName' ->
-            goParams (Context.spanned span outerContext) (toList spine) mempty tele'
+          | typeName == typeName'
+          , Just params <- Domain.appsView spine ->
+            goParams (Context.spanned span outerContext) (toList params) mempty tele'
 
         _ -> do
           typeType <- fetch $ Query.ElaboratedType typeName
@@ -779,7 +775,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
                 { Context.boundVars = IntSeq.delete scrutineeVar $ Context.boundVars outerContext
                 }
           (metas, _) <- Elaboration.insertMetas contextWithoutScrutineeVar Elaboration.UntilTheEnd typeType'
-          f <- Unification.tryUnify outerContext (Domain.Neutral (Domain.Global typeName) $ Tsil.fromList metas) outerType
+          f <- Unification.tryUnify outerContext (Domain.Neutral (Domain.Global typeName) $ Domain.Apps $ fromList metas) outerType
           result <- goParams (Context.spanned span outerContext) metas mempty tele'
           pure $ f result
 
@@ -789,7 +785,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
     goParams
       :: Context v
       -> [(Plicity, Domain.Value)]
-      -> Domain.Spine
+      -> Tsil (Plicity, Domain.Value)
       -> Domain.Telescope (OrderedHashMap Name.Constructor Domain.Type)
       -> M (Syntax.Type v)
     goParams context params conArgs dataTele =
@@ -842,7 +838,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
     goConstrFields
       :: Context v
       -> Name.QualifiedConstructor
-      -> Domain.Spine
+      -> Tsil (Plicity, Domain.Value)
       -> Domain.Type
       -> [[Surface.PlicitPattern]]
       -> M (Telescope Bindings Syntax.Type Syntax.Term v)
@@ -916,7 +912,7 @@ findVarConstructorMatches context var matches =
       [] ->
         pure []
 
-      Match _ (Domain.Neutral (Domain.Var var') Tsil.Empty) _ (Surface.Pattern _ (Surface.ConOrVar span name patterns)) type_:matches'
+      Match _ (Domain.Neutral (Domain.Var var') Domain.Empty) _ (Surface.Pattern _ (Surface.ConOrVar span name patterns)) type_:matches'
         | var == var' -> do
           maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
           case maybeScopeEntry of
@@ -991,7 +987,7 @@ findVarLiteralMatches context var matches =
       [] ->
         pure []
 
-      Match _ (Domain.Neutral (Domain.Var var') Tsil.Empty) _ (Surface.Pattern span (Surface.LitPattern lit)) _:matches'
+      Match _ (Domain.Neutral (Domain.Var var') Domain.Empty) _ (Surface.Pattern span (Surface.LitPattern lit)) _:matches'
         | var == var' ->
           ((lit, [span]) :) <$> findVarLiteralMatches context var matches'
 
@@ -1015,7 +1011,7 @@ splitEqualityOr context config matches k =
       case match of
         Match
           _
-          (Domain.Neutral (Domain.Var var) Tsil.Empty)
+          (Domain.Neutral (Domain.Var var) Domain.Empty)
           _
           (Surface.Pattern _ Surface.WildcardPattern)
           (Builtin.Equals type_ value1 value2) -> do
@@ -1042,11 +1038,11 @@ uninhabitedScrutinee :: Context v -> CoveredConstructors -> Domain.Value -> M Bo
 uninhabitedScrutinee context coveredConstructors value = do
   value' <- Context.forceHead context value
   case value' of
-    Domain.Neutral (Domain.Var var) spine -> do
+    Domain.Neutral (Domain.Var var) (Domain.appsView -> Just args) -> do
       let
         varType =
           Context.lookupVarType var context
-      type_ <- Context.instantiateType context varType $ toList spine
+      type_ <- Context.instantiateType context varType $ toList args
       uninhabitedType context 1 (IntMap.lookupDefault mempty var coveredConstructors) type_
 
     Domain.Con constr constructorArgs -> do
@@ -1079,12 +1075,12 @@ uninhabitedType context fuel coveredConstructors type_ = do
         Right _ ->
           False
 
-    Domain.Neutral (Domain.Global global) spine -> do
+    Domain.Neutral (Domain.Global global) (Domain.appsView -> Just args) -> do
       maybeDefinitions <- fetch $ Query.ElaboratedDefinition global
       case maybeDefinitions of
         Just (Syntax.DataDefinition _ tele, _) -> do
           tele' <- Evaluation.evaluateConstructorDefinitions (Environment.empty $ Context.scopeKey context) tele
-          tele'' <- Domain.Telescope.apply tele' $ toList spine
+          tele'' <- Domain.Telescope.apply tele' $ toList args
           case tele'' of
             Domain.Telescope.Empty constructors -> do
               let

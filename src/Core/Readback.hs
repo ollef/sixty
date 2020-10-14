@@ -21,7 +21,7 @@ readback env value =
   case value of
     Domain.Neutral head spine -> do
       head' <- readbackHead env head
-      readbackSpine head' spine
+      readbackSpine env head' spine
 
     Domain.Con con args ->
       Syntax.apps (Syntax.Con con) <$> mapM (mapM $ readback env) args
@@ -37,7 +37,7 @@ readback env value =
           readback env value''
 
         Just head' ->
-          readbackSpine head' spine
+          readbackSpine env head' spine
 
     Domain.Lam binding type_ plicity closure ->
       Syntax.Lam binding <$> readback env type_ <*> pure plicity <*> readbackClosure env closure
@@ -47,11 +47,32 @@ readback env value =
 
     Domain.Fun domain plicity target ->
       Syntax.Fun <$> readback env domain <*> pure plicity <*> readback env target
-  where
-    readbackSpine =
-      foldM $ \fun (plicity, arg) -> do
-        arg' <- readback env arg
-        pure $ Syntax.App fun plicity arg'
+
+readbackElimination :: Domain.Environment v -> Syntax.Term v -> Domain.Elimination -> M (Syntax.Term v)
+readbackElimination env eliminee elimination =
+  case elimination of
+    Domain.App plicity arg -> do
+      arg' <- readback env arg
+      pure $ Syntax.App eliminee plicity arg'
+
+    Domain.Case (Domain.Branches env' branches defaultBranch) -> do
+      branches' <- case branches of
+        Syntax.ConstructorBranches constructorTypeName constructorBranches ->
+          Syntax.ConstructorBranches constructorTypeName <$> OrderedHashMap.forMUnordered constructorBranches (mapM $ readbackConstructorBranch env env')
+
+        Syntax.LiteralBranches literalBranches ->
+          Syntax.LiteralBranches <$> OrderedHashMap.forMUnordered literalBranches (mapM $ \branch -> do
+            branchValue <- Evaluation.evaluate env' branch
+            readback env branchValue
+          )
+      defaultBranch' <- forM defaultBranch $ \branch -> do
+        branch' <- Evaluation.evaluate env' branch
+        readback env branch'
+      pure $ Syntax.Case eliminee branches' defaultBranch'
+
+readbackSpine :: Domain.Environment v -> Syntax.Term v -> Domain.Spine -> M (Syntax.Term v)
+readbackSpine =
+  Domain.foldlM . readbackElimination
 
 readbackClosure :: Domain.Environment v -> Domain.Closure -> M (Scope Syntax.Term v)
 readbackClosure env closure = do
@@ -89,22 +110,6 @@ readbackMaybeHead env head =
 
     Domain.Meta m ->
       pure $ Just $ Syntax.Meta m
-
-    Domain.Case scrutinee (Domain.Branches env' branches defaultBranch) -> do
-      scrutinee' <- readback env scrutinee
-      branches' <- case branches of
-        Syntax.ConstructorBranches constructorTypeName constructorBranches ->
-          Syntax.ConstructorBranches constructorTypeName <$> OrderedHashMap.forMUnordered constructorBranches (mapM $ readbackConstructorBranch env env')
-
-        Syntax.LiteralBranches literalBranches ->
-          Syntax.LiteralBranches <$> OrderedHashMap.forMUnordered literalBranches (mapM $ \branch -> do
-            branchValue <- Evaluation.evaluate env' branch
-            readback env branchValue
-          )
-      defaultBranch' <- forM defaultBranch $ \branch -> do
-        branch' <- Evaluation.evaluate env' branch
-        readback env branch'
-      pure $ Just $ Syntax.Case scrutinee' branches' defaultBranch'
 
 readbackConstructorBranch
   :: Domain.Environment v

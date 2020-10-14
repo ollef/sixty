@@ -301,9 +301,9 @@ dependencies context value = do
   value' <- lift $ forceHeadGlue context value
   case value' of
     Domain.Neutral hd spine -> do
-      spineVars <- mapM (dependencies context . snd) spine
       hdVars <- headVars hd
-      pure $ hdVars <> fold spineVars
+      elimVars <- Domain.mapM eliminationDependencies spine
+      pure $ hdVars <> fold elimVars
 
     Domain.Con _ args ->
       fold <$> mapM (dependencies context . snd) args
@@ -311,9 +311,8 @@ dependencies context value = do
     Domain.Lit _ ->
       pure mempty
 
-    Domain.Glued (Domain.Global _) spine _ -> do
-      spineVars <- mapM (dependencies context . snd) spine
-      pure $ fold spineVars
+    Domain.Glued (Domain.Global _) spine _ ->
+      fold <$> Domain.mapM eliminationDependencies spine
 
     Domain.Glued _ _ value'' -> do
       value''' <- lift $ force value''
@@ -331,6 +330,16 @@ dependencies context value = do
       pure $ domainVars <> targetVars
 
   where
+    eliminationDependencies elimination =
+      case elimination of
+        Domain.App _plicity arg ->
+          dependencies context arg
+
+        Domain.Case (Domain.Branches env branches defaultBranch) -> do
+          defaultBranchVars <- mapM (dependencies context <=< lift . Evaluation.evaluate env) defaultBranch
+          brVars <- branchVars context env branches
+          pure $ fold defaultBranchVars <> brVars
+
     abstractionDependencies name type' closure = do
       typeVars <- dependencies context type'
       (context', var) <- lift $ extend context name type'
@@ -362,12 +371,6 @@ dependencies context value = do
 
         Domain.Meta _ ->
           pure mempty
-
-        Domain.Case scrutinee (Domain.Branches env branches defaultBranch) -> do
-          scrutineeVars <- dependencies context scrutinee
-          defaultBranchVars <- mapM (dependencies context <=< lift . Evaluation.evaluate env) defaultBranch
-          brVars <- branchVars context env branches
-          pure $ scrutineeVars <> fold defaultBranchVars <> brVars
 
     branchVars
       :: Context v
@@ -443,7 +446,7 @@ newMeta :: Domain.Type -> Context v -> M Domain.Value
 newMeta type_ context = do
   closedType <- piBoundVars context type_
   i <- atomicModifyIORef (metas context) $ Meta.insert closedType (span context)
-  pure $ Domain.Neutral (Domain.Meta i) ((Explicit,) . Domain.var <$> IntSeq.toTsil (boundVars context))
+  pure $ Domain.Neutral (Domain.Meta i) $ Domain.Apps ((,) Explicit . Domain.var <$> IntSeq.toTsil (boundVars context))
 
 newMetaType :: Context v -> M Domain.Value
 newMetaType =
@@ -534,22 +537,6 @@ forceHead context value =
         Meta.Unsolved {} ->
           pure value
 
-    Domain.Neutral (Domain.Case scrutinee branches@(Domain.Branches branchEnv brs defaultBranch)) spine -> do
-      scrutinee' <- forceHead context scrutinee
-      case (scrutinee', brs) of
-        (Domain.Con constr constructorArgs, Syntax.ConstructorBranches _ constructorBranches) -> do
-          value' <- Evaluation.chooseConstructorBranch branchEnv constr (toList constructorArgs) constructorBranches defaultBranch
-          value'' <- forceHead context value'
-          Evaluation.applySpine value'' spine
-
-        (Domain.Lit lit, Syntax.LiteralBranches literalBranches) -> do
-          value' <- Evaluation.chooseLiteralBranch branchEnv lit literalBranches defaultBranch
-          value'' <- forceHead context value'
-          Evaluation.applySpine value'' spine
-
-        _ ->
-          pure $ Domain.Neutral (Domain.Case scrutinee' branches) spine
-
     Domain.Glued _ _ value' -> do
       value'' <- force value'
       forceHead context value''
@@ -585,22 +572,6 @@ forceHeadGlue context value =
 
         Meta.Unsolved {} ->
           pure value
-
-    Domain.Neutral (Domain.Case scrutinee branches@(Domain.Branches branchEnv brs defaultBranch)) spine -> do
-      scrutinee' <- forceHead context scrutinee
-      case (scrutinee', brs) of
-        (Domain.Con constr constructorArgs, Syntax.ConstructorBranches _ constructorBranches) -> do
-          value' <- Evaluation.chooseConstructorBranch branchEnv constr (toList constructorArgs) constructorBranches defaultBranch
-          value'' <- forceHeadGlue context value'
-          Evaluation.applySpine value'' spine
-
-        (Domain.Lit lit, Syntax.LiteralBranches literalBranches) -> do
-          value' <- Evaluation.chooseLiteralBranch branchEnv lit literalBranches defaultBranch
-          value'' <- forceHeadGlue context value'
-          Evaluation.applySpine value'' spine
-
-        _ ->
-          pure $ Domain.Neutral (Domain.Case scrutinee' branches) spine
 
     _ ->
       pure value

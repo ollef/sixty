@@ -18,7 +18,7 @@ pattern TypeName =
 
 pattern Type :: Domain.Value
 pattern Type =
-  Domain.Neutral (Domain.Global TypeName) Tsil.Empty
+  Domain.Neutral (Domain.Global TypeName) Domain.Empty
 
 type_ :: Syntax.Term v
 type_ =
@@ -40,7 +40,7 @@ pattern Equals
 pattern Equals k a b =
   Domain.Neutral
     (Domain.Global EqualsName)
-    (Tsil.Empty Tsil.:> (Implicit, k) Tsil.:> (Explicit, a) Tsil.:> (Explicit, b))
+    (Domain.Apps (Tsil.Empty Tsil.:> (Implicit, k) Tsil.:> (Explicit, a) Tsil.:> (Explicit, b)))
 
 equals
   :: Syntax.Type v
@@ -71,7 +71,7 @@ pattern IntName =
 
 pattern Int :: Domain.Value
 pattern Int =
-  Domain.Neutral (Domain.Global IntName) Tsil.Empty
+  Domain.Neutral (Domain.Global IntName) Domain.Empty
 
 int :: Syntax.Term v
 int =

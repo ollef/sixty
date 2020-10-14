@@ -12,33 +12,29 @@ import qualified Core.Domain as Domain
 import qualified Environment
 import Index
 import Literal (Literal)
-import qualified Meta
 import Monad
 import qualified Name
 import Plicity
 import qualified Core.Syntax as Syntax
-import Var (Var)
 
 data Value
-  = Neutral !Head Spine
+  = Neutral !Domain.Head Spine
   | Con !Name.QualifiedConstructor (Tsil (Plicity, Value))
   | Lit !Literal
-  | Glued !Head Spine !Value
+  | Glued !Domain.Head Spine !Value
   | Lam !Bindings !Type !Plicity !Closure
   | Pi !Binding !Type !Plicity !Closure
   | Fun !Type !Plicity !Type
   deriving Show
 
-data Head
-  = Var !Var
-  | Global !Name.Qualified
-  | Meta !Meta.Index
-  | Case !Value !Branches
-  deriving Show
-
 type Type = Value
 
-type Spine = Tsil (Plicity, Value)
+type Spine = Tsil Elimination
+
+data Elimination
+  = App Plicity Value
+  | Case !Branches
+  deriving Show
 
 type Environment = Environment.Environment Value
 
@@ -56,7 +52,7 @@ to :: Domain.Value -> M Value
 to value =
   case value of
     Domain.Neutral hd spine ->
-      Neutral <$> headTo hd <*> mapM (mapM to) spine
+      Neutral hd <$> Domain.mapM eliminationTo spine
 
     Domain.Con con args ->
       Con con <$> mapM (mapM to) args
@@ -65,7 +61,7 @@ to value =
       pure $ Lit lit
 
     Domain.Glued hd spine value' ->
-      Glued <$> headTo hd <*> mapM (mapM to) spine <*> lazyTo value'
+      Glued hd <$> Domain.mapM eliminationTo spine <*> lazyTo value'
 
     Domain.Lam bindings type_ plicity closure ->
       Lam bindings <$> to type_ <*> pure plicity <*> closureTo closure
@@ -76,20 +72,14 @@ to value =
     Domain.Fun domain plicity target ->
       Fun <$> to domain <*> pure plicity <*> to target
 
-headTo :: Domain.Head -> M Head
-headTo hd =
-  case hd of
-    Domain.Var var ->
-      pure $ Var var
+eliminationTo :: Domain.Elimination -> M Elimination
+eliminationTo elimination =
+  case elimination of
+    Domain.App plicity arg ->
+      App plicity <$> to arg
 
-    Domain.Global global ->
-      pure $ Global global
-
-    Domain.Meta meta ->
-      pure $ Meta meta
-
-    Domain.Case scrutinee branches ->
-      Case <$> to scrutinee <*> branchesTo branches
+    Domain.Case branches ->
+      Case <$> branchesTo branches
 
 lazyTo :: Lazy Domain.Value -> M Value
 lazyTo =
