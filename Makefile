@@ -19,10 +19,6 @@ profile-tests:
 ddump-simpl:
 	stack build --test --no-run-tests --ghc-options='-ddump-simpl -ddump-to-file'
 
-.PHONY: ghci
-ghci:
-	stack ghci --ghc-options=-fobject-code
-
 .PHONY: ghcid
 ghcid:
 	stack exec --package ghcid -- ghcid

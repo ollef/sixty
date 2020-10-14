@@ -6,6 +6,7 @@
 {-# language PatternSynonyms #-}
 {-# language RankNTypes #-}
 {-# language UnboxedTuples #-}
+{-# options_ghc -fobject-code #-}
 module Parser where
 
 import Protolude hiding (break, try, moduleName, Option)
