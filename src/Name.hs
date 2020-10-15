@@ -39,6 +39,9 @@ data QualifiedConstructor = QualifiedConstructor !Qualified !Constructor
 data Lifted = Lifted !Qualified !Int
   deriving (Eq, Ord, Show, Generic, Persist)
 
+unqualifyConstructor :: QualifiedConstructor -> Constructor
+unqualifyConstructor (QualifiedConstructor _ c) = c
+
 -------------------------------------------------------------------------------
 
 instance IsString Qualified where

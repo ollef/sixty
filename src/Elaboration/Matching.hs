@@ -1015,8 +1015,8 @@ splitEqualityOr context config matches k =
           _
           (Surface.Pattern _ Surface.WildcardPattern)
           (Builtin.Equals type_ value1 value2) -> do
-            result <- try $ Indices.unify context Flexibility.Rigid mempty value1 value2
-            case result of
+            unificationResult <- try $ Indices.unify context Flexibility.Rigid mempty value1 value2
+            case unificationResult of
               Left Indices.Nope ->
                 elaborate context config
                   { _clauses = drop 1 $ _clauses config
@@ -1027,7 +1027,15 @@ splitEqualityOr context config matches k =
 
               Right context' -> do
                 context'' <- Context.define context' var $ Builtin.Refl type_ value1 value2
-                elaborate context'' config
+                result <- elaborate context'' config
+                scrutinee <- Elaboration.readback context'' $ Domain.var var
+                pure $
+                  Syntax.Case scrutinee
+                  (Syntax.ConstructorBranches
+                    Builtin.EqualsName
+                    (OrderedHashMap.fromList [(Name.unqualifyConstructor Builtin.ReflName, ([], Telescope.Empty result))])
+                  )
+                  Nothing
 
         _ ->
           splitEqualityOr context config matches' k
