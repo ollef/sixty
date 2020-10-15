@@ -63,7 +63,7 @@ pattern Refl
 pattern Refl k a b =
   Domain.Con
     ReflName
-    (Tsil.Empty Tsil.:> (Implicit, k) Tsil.:> (Explicit, a) Tsil.:> (Explicit, b))
+    (Tsil.Empty Tsil.:> (Implicit, k) Tsil.:> (Implicit, a) Tsil.:> (Implicit, b))
 
 pattern IntName :: Name.Qualified
 pattern IntName =
