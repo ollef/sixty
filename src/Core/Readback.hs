@@ -19,9 +19,28 @@ import qualified Telescope
 readback :: Domain.Environment v -> Domain.Value -> M (Syntax.Term v)
 readback env value =
   case value of
-    Domain.Neutral head spine -> do
-      head' <- readbackHead env head
-      readbackSpine env head' spine
+    Domain.Neutral head spine ->
+      case head of
+        Domain.Var v ->
+          case (Environment.lookupVarIndex v env, Environment.lookupVarValue v env) of
+            (Just i, _) ->
+              readbackSpine env (Syntax.Var i) spine
+
+            -- This case can happen because of pruning and pattern matching elaboration:
+            -- 1. Pattern matching elaboration can give a value to a variable that previously didn't have one
+            -- 2. During pruning, we will remove variables from scope and try to readback.
+            (Nothing, Just varValue) -> do
+              head' <- readback env varValue
+              readbackSpine env head' spine
+
+            (Nothing, Nothing) ->
+              panic "readback neutral var"
+
+        Domain.Global g ->
+          readbackSpine env (Syntax.Global g) spine
+
+        Domain.Meta m ->
+          readbackSpine env (Syntax.Meta m) spine
 
     Domain.Con con args ->
       Syntax.apps (Syntax.Con con) <$> mapM (mapM $ readback env) args
@@ -30,14 +49,24 @@ readback env value =
       pure $ Syntax.Lit lit
 
     Domain.Glued head spine value' -> do
-      maybeHead <- readbackMaybeHead env head
-      case maybeHead of
-        Nothing -> do
-          value'' <- force value'
-          readback env value''
+      case head of
+        Domain.Var v ->
+          case Environment.lookupVarIndex v env of
+            Just i ->
+              readbackSpine env (Syntax.Var i) spine
 
-        Just head' ->
-          readbackSpine env head' spine
+            -- This can happen because of pruning, where we create fake glued
+            -- variables that throw exceptions when they're forced so we can
+            -- detect whether a variable that can't be used is used.
+            Nothing -> do
+              value'' <- force value'
+              readback env value''
+
+        Domain.Global g ->
+          readbackSpine env (Syntax.Global g) spine
+
+        Domain.Meta m ->
+          readbackSpine env (Syntax.Meta m) spine
 
     Domain.Lam binding type_ plicity closure ->
       Syntax.Lam binding <$> readback env type_ <*> pure plicity <*> readbackClosure env closure
@@ -79,37 +108,6 @@ readbackClosure env closure = do
   (env', v) <- Environment.extend env
   closure' <- Evaluation.evaluateClosure closure $ Domain.var v
   readback env' closure'
-
-readbackHead :: Domain.Environment v -> Domain.Head -> M (Syntax.Term v)
-readbackHead env head = do
-  maybeTerm <- readbackMaybeHead env head
-  case maybeTerm of
-    Nothing ->
-      panic "readbackHead: Nothing"
-
-    Just term ->
-      pure term
-
-readbackMaybeHead :: Domain.Environment v -> Domain.Head -> M (Maybe (Syntax.Term v))
-readbackMaybeHead env head =
-  case head of
-    Domain.Var v ->
-      case (Environment.lookupVarIndex v env, Environment.lookupVarValue v env) of
-        (Just i, _) ->
-          pure $ Just $ Syntax.Var i
-
-        (Nothing, Just value) -> do
-          term <- readback env value
-          pure $ Just term
-
-        (Nothing, Nothing) ->
-          pure Nothing
-
-    Domain.Global g ->
-      pure $ Just $ Syntax.Global g
-
-    Domain.Meta m ->
-      pure $ Just $ Syntax.Meta m
 
 readbackConstructorBranch
   :: Domain.Environment v
