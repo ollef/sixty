@@ -75,9 +75,40 @@ data Clause = Clause
   { _span :: !Span.Relative
   , _matches :: [Match]
   , _rhs :: !Surface.Term
+  , _patternInstantation :: PatternInstantiation
+  , _forcedPatterns :: Tsil ForcedPattern
   }
 
 data Match = Match !Domain.Value !Domain.Value !Plicity !Surface.Pattern !Domain.Type
+
+data ForcedPattern = ForcedPattern !Domain.Value !Span.Relative !Surface.Term !Domain.Type
+
+-------------------------------------------------------------------------------
+
+type PatternInstantiation = Tsil (Bindings, Domain.Value, Domain.Type)
+
+letBindPatternInstantiation :: Context v -> PatternInstantiation -> (forall v'. Context v' -> M (Syntax.Term v')) -> M (Syntax.Term v)
+letBindPatternInstantiation context inst k =
+  case inst of
+    Tsil.Empty ->
+      k context
+
+    inst' Tsil.:> (bindings, value, type_) -> do
+      (context', _) <- Context.extendPreDef context (Bindings.toName bindings) value type_
+      result <- letBindPatternInstantiation context' inst' k
+      term <- Elaboration.readback context value
+      type' <- Elaboration.readback context type_
+      pure $ Syntax.Let bindings term type' result
+
+extendWithPatternInstantation :: Context v -> PatternInstantiation -> (forall v'. Context v' -> M a) -> M a
+extendWithPatternInstantation context inst k =
+  case inst of
+    Tsil.Empty ->
+      k context
+
+    inst' Tsil.:> (bindings, value, type_) -> do
+      (context', _) <- Context.extendPreDef context (Bindings.toName bindings) value type_
+      extendWithPatternInstantation context' inst' k
 
 -------------------------------------------------------------------------------
 
@@ -110,6 +141,8 @@ elaborateCase context scrutinee scrutineeType branches expectedType = do
         { _span = Span.add patSpan rhsSpan
         , _matches = [Match scrutineeVarValue scrutineeVarValue Explicit pat scrutineeType]
         , _rhs = rhs'
+        , _patternInstantation = mempty
+        , _forcedPatterns = mempty
         }
       | (pat@(Surface.Pattern patSpan _), rhs'@(Surface.Term rhsSpan _)) <- branches
       ]
@@ -229,6 +262,8 @@ elaborateSingle context scrutinee plicity pat@(Surface.Pattern patSpan _) rhs@(S
           { _span = Span.add patSpan rhsSpan
           , _matches = [Match scrutineeValue scrutineeValue plicity pat scrutineeType]
           , _rhs = rhs
+          , _patternInstantation = mempty
+          , _forcedPatterns = mempty
           }
         ]
       , _usedClauses = usedClauses
@@ -246,7 +281,7 @@ elaborateWithCoverage context config = do
     allClauseSpans =
       Set.fromList
         [ span
-        | Clause span _ _ <- _clauses config
+        | Clause span _ _ _ _ <- _clauses config
         ]
   usedClauseSpans <- readIORef (_usedClauses config)
   forM_ (Set.difference allClauseSpans usedClauseSpans) $ \span ->
@@ -254,11 +289,8 @@ elaborateWithCoverage context config = do
   pure result
 
 elaborate :: Context v -> Config -> M (Syntax.Term v)
-elaborate context config = do
-  clauses <- catMaybes <$> mapM (simplifyClause context (_coveredConstructors config) (_coveredLiterals config)) (_clauses config)
-  let
-    config' = config { _clauses = clauses }
-  case clauses of
+elaborate context config =
+  case _clauses config of
     [] -> do
       exhaustive <- anyM (uninhabitedScrutinee context (_coveredConstructors config) . snd) $ _scrutinees config
       unless exhaustive $ do
@@ -269,41 +301,44 @@ elaborate context config = do
       targetType <- Elaboration.readback context $ _expectedType config
       pure $ Syntax.App (Syntax.Global Builtin.fail) Explicit targetType
 
-    firstClause:_ -> do
-      let
-        matches = _matches firstClause
+    clause:clauses -> do
+      maybeSimplifiedClause <- simplifyClause context (_coveredConstructors config) (_coveredLiterals config) clause
+      case maybeSimplifiedClause of
+        Nothing ->
+          elaborate context config { _clauses = clauses }
 
-      splitEqualityOr context config' matches $
-        splitConstructorOr context config' matches $ do
-          maybeInst <- solved context matches
-          case maybeInst of
-            Nothing -> do
-              Context.report context $ Error.IndeterminateIndexUnification $ _matchKind config
-              targetType <- Elaboration.readback context $ _expectedType config
-              pure $ Syntax.App (Syntax.Global Builtin.fail) Explicit targetType
+        Just clause' -> do
+          let
+            config' = config { _clauses = clause' : clauses }
+            matches = _matches clause'
 
-            Just inst -> do
-              letBindPatternInstantiation context inst $ \context' -> do
-                mapM_ (checkForcedPattern context') matches
-                result <- Elaboration.check context' (_rhs firstClause) (_expectedType config)
-                modifyIORef (_usedClauses config) $ Set.insert $ _span firstClause
-                pure result
+          solveFirstMatchOr context config' clause' $
+            splitEqualityOr context config' matches $
+            splitConstructorOr context config' matches $
+            letBindPatternInstantiation context (_patternInstantation clause') $ \context' -> do
+              mapM_ (checkForcedPattern context') $ _forcedPatterns clause'
+              case _matches clause' of
+                [] -> do
+                  result <- Elaboration.check context' (_rhs clause') (_expectedType config)
+                  modifyIORef (_usedClauses config) $ Set.insert $ _span clause'
+                  pure result
 
-checkForcedPattern :: Context v -> Match -> M ()
-checkForcedPattern context match =
-  case match of
-    Match value1 _ _ (Surface.Pattern span (Surface.Forced term)) type_ -> do
-      let
-        context' =
-          Context.spanned span context
+                _:_ -> do
+                  Context.report context' $ Error.IndeterminateIndexUnification $ _matchKind config
+                  targetType <- Elaboration.readback context' $ _expectedType config
+                  pure $ Syntax.App (Syntax.Global Builtin.fail) Explicit targetType
 
-      term' <- Elaboration.check context' term type_
-      value2 <- Elaboration.evaluate context term'
-      _ <- Context.try_ context' $ Unification.unify context' Flexibility.Rigid value1 value2
-      pure ()
 
-    _ ->
-      pure ()
+checkForcedPattern :: Context v -> ForcedPattern -> M ()
+checkForcedPattern context (ForcedPattern value1 span term type_) = do
+  let
+    context' =
+      Context.spanned span context
+
+  term' <- Elaboration.check context' term type_
+  value2 <- Elaboration.evaluate context term'
+  _ <- Context.try_ context' $ Unification.unify context' Flexibility.Rigid value1 value2
+  pure ()
 
 uncoveredScrutineePatterns
   :: Context v
@@ -408,21 +443,9 @@ uncoveredScrutineePatterns context coveredConstructors value = do
 -------------------------------------------------------------------------------
 
 simplifyClause :: Context v -> CoveredConstructors -> CoveredLiterals -> Clause -> M (Maybe Clause)
-simplifyClause context coveredConstructors coveredLiterals clause = do
-  maybeMatches <- runMaybeT $
-    concat <$> mapM (simplifyMatch context coveredConstructors coveredLiterals) (_matches clause)
-  case maybeMatches of
-    Nothing ->
-      pure Nothing
-
-    Just matches' -> do
-      maybeExpanded <- runMaybeT $ expandAnnotations context matches'
-      case maybeExpanded of
-        Nothing ->
-          pure $ Just clause { _matches = matches' }
-
-        Just expandedMatches ->
-          simplifyClause context coveredConstructors coveredLiterals clause { _matches = expandedMatches }
+simplifyClause context coveredConstructors coveredLiterals clause =
+  runMaybeT $
+    (\matches' -> clause { _matches = matches' }) . concat <$> mapM (simplifyMatch context coveredConstructors coveredLiterals) (_matches clause)
 
 simplifyMatch
   :: Context v
@@ -627,87 +650,78 @@ matchPrepatterns context values patterns type_ =
       (matches, type'') <- matchPrepatterns context values' patterns' target
       pure (Match value value Explicit pat domain : matches, type'')
 
-type PatternInstantiation = Tsil (Bindings, Domain.Value, Domain.Type)
+-------------------------------------------------------------------------------
 
-letBindPatternInstantiation :: Context v -> PatternInstantiation -> (forall v'. Context v' -> M (Syntax.Term v')) -> M (Syntax.Term v)
-letBindPatternInstantiation context inst k =
-  case inst of
-    Tsil.Empty ->
-      k context
-
-    inst' Tsil.:> (bindings, value, type_) -> do
-      (context', _) <- Context.extendPreDef context (Bindings.toName bindings) value type_
-      result <- letBindPatternInstantiation context' inst' k
-      term <- Elaboration.readback context value
-      type' <- Elaboration.readback context type_
-      pure $ Syntax.Let bindings term type' result
-
-extendWithPatternInstantation :: Context v -> PatternInstantiation -> (forall v'. Context v' -> MaybeT M a) -> MaybeT M a
-extendWithPatternInstantation context inst k =
-  case inst of
-    Tsil.Empty ->
-      k context
-
-    inst' Tsil.:> (bindings, value, type_) -> do
-      (context', _) <- lift $ Context.extendPreDef context (Bindings.toName bindings) value type_
-      extendWithPatternInstantation context' inst' k
-
-expandAnnotations
+solveFirstMatchOr
   :: Context v
-  -> [Match]
-  -> MaybeT M [Match]
-expandAnnotations context matches =
-  case matches of
+  -> Config
+  -> Clause
+  -> M (Syntax.Term v)
+  -> M (Syntax.Term v)
+solveFirstMatchOr context config clause k =
+  case _matches clause of
     [] ->
-      fail "expanded nothing"
+      k
 
-    match:matches' -> do
-      maybeInst <- lift $ runMaybeT $ matchInstantiation context match
-      case maybeInst of
-        Just inst ->
-          extendWithPatternInstantation context inst $ \context' -> do
-            matches'' <- expandAnnotations context' matches'
-            pure $ match : matches''
+    match:matches ->
+      case match of
+        -- Solved patterns
+        Match _ _ _ (Surface.Pattern _ Surface.WildcardPattern) _ ->
+          elaborate context config
+            { _clauses =
+              clause
+                { _matches = matches
+                }
+                : drop 1 (_clauses config)
+            }
 
-        Nothing ->
-          case match of
-            Match value forcedValue plicity (Surface.Pattern span (Surface.Anno pat annoType)) type_ -> do
-              lift $ do
-                annoType' <- Elaboration.check context annoType Builtin.Type
-                annoType'' <- Elaboration.evaluate context annoType'
-                let
-                  context' =
-                    Context.spanned span context
-                _ <- Context.try_ context' $ Unification.unify context' Flexibility.Rigid annoType'' type_
-                pure ()
-              pure $ Match value forcedValue plicity pat type_ : matches'
+        Match value _ _ (Surface.Pattern span (Surface.ConOrVar _ prename@(Name.Pre name) [])) type_ -> do
+          maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) prename
+          if HashSet.null $ foldMap Scope.entryConstructors maybeScopeEntry then
+            elaborate context config
+              { _clauses =
+                clause
+                  { _matches = matches
+                  , _patternInstantation =
+                    _patternInstantation clause Tsil.:> (Bindings.Spanned $ pure (span, Name name), value, type_)
+                  }
+                  : drop 1 (_clauses config)
+              }
+          else
+            k
 
-            _ ->
-              fail "couldn't create instantitation for prefix"
+        -- Forced patterns
+        Match value1 _ _ (Surface.Pattern span (Surface.Forced term)) type_ ->
+          elaborate context config
+            { _clauses =
+              clause
+                { _matches = matches
+                , _forcedPatterns =
+                  _forcedPatterns clause Tsil.:> ForcedPattern value1 span term type_
+                }
+                : drop 1 (_clauses config)
+            }
 
-matchInstantiation :: Context v -> Match -> MaybeT M PatternInstantiation
-matchInstantiation context match =
-  case match of
-    (Match _ _ _ (Surface.Pattern _ Surface.WildcardPattern) _) ->
-      pure mempty
+        -- Annotated patterns
+        Match value forcedValue plicity (Surface.Pattern span (Surface.Anno pat annoType)) type_ -> do
+          extendWithPatternInstantation context (_patternInstantation clause) $ \context' -> do
+            annoType' <- Elaboration.check context' annoType Builtin.Type
+            annoType'' <- Elaboration.evaluate context' annoType'
+            let
+              context'' =
+                Context.spanned span context'
+            _ <- Context.try_ context'' $ Unification.unify context'' Flexibility.Rigid annoType'' type_
+            pure ()
+          elaborate context config
+            { _clauses =
+              clause
+                { _matches = Match value forcedValue plicity pat type_ : matches
+                }
+                : drop 1 (_clauses config)
+            }
 
-    (Match value _ _ (Surface.Pattern span (Surface.ConOrVar _ prename@(Name.Pre name) [])) type_) -> do
-      maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) prename
-      if HashSet.null $ foldMap Scope.entryConstructors maybeScopeEntry then
-        pure $ pure (Bindings.Spanned $ pure (span, Name name), value, type_)
-
-      else
-        fail "No match instantiation"
-
-    (Match _ _ _ (Surface.Pattern _ (Surface.Forced _)) _) ->
-      pure mempty
-
-    _ ->
-      fail "No match instantitation"
-
-solved :: Context v -> [Match] -> M (Maybe PatternInstantiation)
-solved context =
-  runMaybeT . fmap mconcat . traverse (matchInstantiation context)
+        _ ->
+          k
 
 -------------------------------------------------------------------------------
 

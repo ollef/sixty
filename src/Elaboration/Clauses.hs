@@ -41,6 +41,8 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
           { _span = span
           , _matches = toList matches
           , _rhs = rhs
+          , _patternInstantation = mempty
+          , _forcedPatterns = mempty
           }
         | Clause (Surface.Clause span _ rhs) matches <- clauses
         ]
@@ -102,6 +104,8 @@ infer context (fmap removeEmptyImplicits -> clauses)
           { _span = span
           , _matches = toList matches
           , _rhs = rhs
+          , _patternInstantation = mempty
+          , _forcedPatterns = mempty
           }
         | Clause (Surface.Clause span _ rhs) matches <- clauses
         ]
