@@ -283,11 +283,11 @@ elaborate context config = do
               pure $ Syntax.App (Syntax.Global Builtin.fail) Explicit targetType
 
             Just inst -> do
-              context' <- Context.extendUnindexedDefs context inst
-              mapM_ (checkForcedPattern context') matches
-              result <- Elaboration.check context' (_rhs firstClause) (_expectedType config)
-              modifyIORef (_usedClauses config) $ Set.insert $ _span firstClause
-              pure result
+              letBindPatternInstantiation context inst $ \context' -> do
+                mapM_ (checkForcedPattern context') matches
+                result <- Elaboration.check context' (_rhs firstClause) (_expectedType config)
+                modifyIORef (_usedClauses config) $ Set.insert $ _span firstClause
+                pure result
 
 checkForcedPattern :: Context v -> Match -> M ()
 checkForcedPattern context match =
@@ -627,7 +627,30 @@ matchPrepatterns context values patterns type_ =
       (matches, type'') <- matchPrepatterns context values' patterns' target
       pure (Match value value Explicit pat domain : matches, type'')
 
-type PatternInstantiation = Tsil (Bindings, Domain.Value, Domain.Value)
+type PatternInstantiation = Tsil (Bindings, Domain.Value, Domain.Type)
+
+letBindPatternInstantiation :: Context v -> PatternInstantiation -> (forall v'. Context v' -> M (Syntax.Term v')) -> M (Syntax.Term v)
+letBindPatternInstantiation context inst k =
+  case inst of
+    Tsil.Empty ->
+      k context
+
+    inst' Tsil.:> (bindings, value, type_) -> do
+      (context', _) <- Context.extendPreDef context (Bindings.toName bindings) value type_
+      result <- letBindPatternInstantiation context' inst' k
+      term <- Elaboration.readback context value
+      type' <- Elaboration.readback context type_
+      pure $ Syntax.Let bindings term type' result
+
+extendWithPatternInstantation :: Context v -> PatternInstantiation -> (forall v'. Context v' -> MaybeT M a) -> MaybeT M a
+extendWithPatternInstantation context inst k =
+  case inst of
+    Tsil.Empty ->
+      k context
+
+    inst' Tsil.:> (bindings, value, type_) -> do
+      (context', _) <- lift $ Context.extendPreDef context (Bindings.toName bindings) value type_
+      extendWithPatternInstantation context' inst' k
 
 expandAnnotations
   :: Context v
@@ -641,10 +664,10 @@ expandAnnotations context matches =
     match:matches' -> do
       maybeInst <- lift $ runMaybeT $ matchInstantiation context match
       case maybeInst of
-        Just inst -> do
-          context' <- lift $ Context.extendUnindexedDefs context inst
-          matches'' <- expandAnnotations context' matches'
-          pure $ match : matches''
+        Just inst ->
+          extendWithPatternInstantation context inst $ \context' -> do
+            matches'' <- expandAnnotations context' matches'
+            pure $ match : matches''
 
         Nothing ->
           case match of

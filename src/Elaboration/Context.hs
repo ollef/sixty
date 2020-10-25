@@ -209,41 +209,6 @@ extendDef context name value type_ = do
     , var
     )
 
-extendUnindexedDef
-  :: Context v
-  -> Bindings
-  -> Domain.Value
-  -> Domain.Type
-  -> M (Context v, Var)
-extendUnindexedDef context bindings value type_ = do
-  var <- freshVar
-  let
-    name =
-      Bindings.toName bindings
-  pure
-    ( context
-      { nameVars = HashMap.insert name var $ nameVars context
-      , varNames = IntMap.insert var name $ varNames context
-      , values = IntMap.insert var value (values context)
-      , types = IntMap.insert var type_ (types context)
-      }
-    , var
-    )
-
-extendUnindexedDefs
-  :: Context v
-  -> Tsil (Bindings, Domain.Value, Domain.Type)
-  -> M (Context v)
-extendUnindexedDefs context defs =
-  case defs of
-    Tsil.Empty ->
-      pure context
-
-    defs' Tsil.:> (bindings, value, type_) -> do
-      context' <- extendUnindexedDefs context defs'
-      (context'', _) <- extendUnindexedDef context' bindings value type_
-      pure context''
-
 extendBefore
   :: Context v
   -> Var
