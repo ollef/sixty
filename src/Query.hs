@@ -26,7 +26,6 @@ import Data.Persist as Persist
 import Data.Some (Some(Some))
 import Rock
 
-import qualified Applicative.Syntax as Applicative
 import Core.Binding (Binding)
 import qualified ClosureConverted.Syntax as ClosureConverted
 import Extra
@@ -73,7 +72,6 @@ data Query a where
   ClosureConverted :: Name.Lifted -> Query (Maybe ClosureConverted.Definition)
   ClosureConvertedType :: Name.Lifted -> Query (ClosureConverted.Type Void)
   ClosureConvertedConstructorType :: Name.QualifiedConstructor -> Query (Telescope Name ClosureConverted.Type ClosureConverted.Type Void)
-  Applicative :: Name.Lifted -> Query (Maybe Applicative.Definition)
   ConstructorTag :: Name.QualifiedConstructor -> Query (Maybe Int)
 
 fetchImportedName
@@ -122,8 +120,7 @@ instance Hashable (Query a) where
       ClosureConverted a -> h 22 a
       ClosureConvertedType a -> h 23 a
       ClosureConvertedConstructorType a -> h 24 a
-      Applicative a -> h 25 a
-      ConstructorTag a -> h 26 a
+      ConstructorTag a -> h 25 a
     where
       {-# inline h #-}
       h :: Hashable a => Int -> a -> Int
@@ -168,8 +165,7 @@ instance Persist (Some Query) where
       22 -> Some . ClosureConverted <$> get
       23 -> Some . ClosureConvertedType <$> get
       24 -> Some . ClosureConvertedConstructorType <$> get
-      25 -> Some . Applicative <$> get
-      26 -> Some . ConstructorTag <$> get
+      25 -> Some . ConstructorTag <$> get
       _ -> fail "Persist (Some Query): no such tag"
 
   put (Some query) =
@@ -199,8 +195,7 @@ instance Persist (Some Query) where
       ClosureConverted a -> p 22 a
       ClosureConvertedType a -> p 23 a
       ClosureConvertedConstructorType a -> p 24 a
-      Applicative a -> p 25 a
-      ConstructorTag a -> p 26 a
+      ConstructorTag a -> p 25 a
       -- Don't forget to add a case to `get` above!
     where
       p :: Persist a => Word8 -> a -> Put ()

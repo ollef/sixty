@@ -22,7 +22,6 @@ import qualified Data.Text.Unsafe as Text
 import Rock
 import System.FilePath
 
-import qualified ApplicativeNormalisation
 import Core.Binding (Binding)
 import qualified Builtin
 import qualified ClosureConversion
@@ -479,12 +478,6 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
 
           _ ->
             panic "ClosureConvertedConstructorType: none-datatype"
-
-    Applicative name@(Name.Lifted qualifiedName _) ->
-      noError $ do
-        maybeDef <- fetch $ ClosureConverted name
-        runM $ forM maybeDef $
-          ApplicativeNormalisation.normaliseDefinition (Scope.KeyedName Scope.Definition qualifiedName)
 
     ConstructorTag (Name.QualifiedConstructor dataTypeName constr) ->
       noError $ do
