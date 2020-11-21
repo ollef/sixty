@@ -38,13 +38,14 @@ data Error
   deriving (Eq, Ord, Show, Exception)
 
 unify
-  :: Context v
+  :: Int
+  -> Context v
   -> Flexibility
   -> IntSet Var
   -> Domain.Value
   -> Domain.Value
   -> M (Context v)
-unify context flexibility untouchables value1 value2 = do
+unify glueFuel context flexibility untouchables value1 value2 = do
   value1' <- Context.forceHeadGlue context value1
   value2' <- Context.forceHeadGlue context value2
   case (value1', value2') of
@@ -55,13 +56,13 @@ unify context flexibility untouchables value1 value2 = do
           flexibility' =
             max (Domain.headFlexibility head1) flexibility
 
-        unifySpines context flexibility' untouchables spine1 spine2
+        unifySpines glueFuel context flexibility' untouchables spine1 spine2
 
     (Domain.Con con1 args1, Domain.Con con2 args2)
       | con1 == con2
       , map fst args1 == map fst args2 ->
         foldM
-          (\context' -> uncurry (unify context' flexibility untouchables `on` snd))
+          (\context' -> uncurry (unify glueFuel context' flexibility untouchables `on` snd))
           context
           (Tsil.zip args1 args2)
 
@@ -76,17 +77,28 @@ unify context flexibility untouchables value1 value2 = do
         throwIO Nope
 
     (Domain.Glued head1 spine1 value1'', Domain.Glued head2 spine2 value2'')
-      | head1 == head2 ->
-        unifySpines context Flexibility.Flexible untouchables spine1 spine2 `catch` \(_ :: Error) ->
-          unifyForce context flexibility value1'' value2''
+      | glueFuel > 0
+      , head1 == head2 ->
+        unifySpines (glueFuel - 1) context Flexibility.Flexible untouchables spine1 spine2 `catch` \(_ :: Error) ->
+          unifyForce (glueFuel - 1) context flexibility value1'' value2''
 
-    (Domain.Glued _ _ value1'', _) -> do
-      value1''' <- force value1''
-      unify context flexibility untouchables value1''' value2'
+    (Domain.Glued head1 spine1 _, Domain.Glued head2 spine2 _)
+      | glueFuel == 0
+      , head1 == head2
+      , Flexibility.Flexible <- flexibility ->
+        unifySpines glueFuel context Flexibility.Flexible untouchables spine1 spine2
 
-    (_, Domain.Glued _ _ value2'') -> do
-      value2''' <- force value2''
-      unify context flexibility untouchables value1' value2'''
+    (Domain.Glued _ _ value1'', _)
+      | glueFuel > 0
+      || flexibility == Flexibility.Rigid -> do
+        value1''' <- force value1''
+        unify glueFuel context flexibility untouchables value1''' value2'
+
+    (_, Domain.Glued _ _ value2'')
+      | glueFuel > 0
+      || flexibility == Flexibility.Rigid -> do
+        value2''' <- force value2''
+        unify glueFuel context flexibility untouchables value1' value2'''
 
     (Domain.Lam bindings1 type1 plicity1 closure1, Domain.Lam _ type2 plicity2 closure2)
       | plicity1 == plicity2 ->
@@ -98,24 +110,24 @@ unify context flexibility untouchables value1 value2 = do
 
     (Domain.Pi binding1 domain1 plicity1 targetClosure1, Domain.Fun domain2 plicity2 target2)
       | plicity1 == plicity2 -> do
-        context1 <- unify context flexibility untouchables domain2 domain1
+        context1 <- unify glueFuel context flexibility untouchables domain2 domain1
         (context2, var) <- Context.extend context1 (Binding.toName binding1) domain1
         target1 <- Evaluation.evaluateClosure targetClosure1 $ Domain.var var
-        context3 <- unify context2 flexibility (IntSet.insert var untouchables) target1 target2
+        context3 <- unify glueFuel context2 flexibility (IntSet.insert var untouchables) target1 target2
         pure $ unextend context3
 
     (Domain.Fun domain1 plicity1 target1, Domain.Pi binding2 domain2 plicity2 targetClosure2)
       | plicity1 == plicity2 -> do
-        context1 <- unify context flexibility untouchables domain2 domain1
+        context1 <- unify glueFuel context flexibility untouchables domain2 domain1
         (context2, var) <- Context.extend context1 (Binding.toName binding2) domain2
         target2 <- Evaluation.evaluateClosure targetClosure2 $ Domain.var var
-        context3 <- unify context2 flexibility (IntSet.insert var untouchables) target1 target2
+        context3 <- unify glueFuel context2 flexibility (IntSet.insert var untouchables) target1 target2
         pure $ unextend context3
 
     (Domain.Fun domain1 plicity1 target1, Domain.Fun domain2 plicity2 target2)
       | plicity1 == plicity2 -> do
-        context1 <- unify context flexibility untouchables domain2 domain1
-        unify context1 flexibility untouchables target1 target2
+        context1 <- unify glueFuel context flexibility untouchables domain2 domain1
+        unify glueFuel context1 flexibility untouchables target1 target2
 
     -- Eta expand
     (Domain.Lam bindings1 type1 plicity1 closure1, v2) -> do
@@ -127,7 +139,7 @@ unify context flexibility untouchables value1 value2 = do
       body1 <- Evaluation.evaluateClosure closure1 varValue
       body2 <- Evaluation.apply v2 plicity1 varValue
 
-      context2 <- unify context1 flexibility (IntSet.insert var untouchables) body1 body2
+      context2 <- unify glueFuel context1 flexibility (IntSet.insert var untouchables) body1 body2
       pure $ unextend context2
 
     (v1, Domain.Lam bindings2 type2 plicity2 closure2) -> do
@@ -139,7 +151,7 @@ unify context flexibility untouchables value1 value2 = do
       body1 <- Evaluation.apply v1 plicity2 varValue
       body2 <- Evaluation.evaluateClosure closure2 varValue
 
-      context2 <- unify context1 flexibility (IntSet.insert var untouchables) body1 body2
+      context2 <- unify glueFuel context1 flexibility (IntSet.insert var untouchables) body1 body2
       pure $ unextend context2
 
     -- Vars
@@ -155,13 +167,13 @@ unify context flexibility untouchables value1 value2 = do
       throwIO Dunno
 
   where
-    unifyForce context' flexibility' lazyValue1 lazyValue2 = do
+    unifyForce glueFuel' context' flexibility' lazyValue1 lazyValue2 = do
       v1 <- force lazyValue1
       v2 <- force lazyValue2
-      unify context' flexibility' untouchables v1 v2
+      unify glueFuel' context' flexibility' untouchables v1 v2
 
     unifyAbstraction name type1 closure1 type2 closure2 = do
-      context1 <- unify context flexibility untouchables type1 type2
+      context1 <- unify glueFuel context flexibility untouchables type1 type2
 
       (context2, var) <- Context.extend context1 name type1
       let
@@ -170,7 +182,7 @@ unify context flexibility untouchables value1 value2 = do
 
       body1 <- Evaluation.evaluateClosure closure1 varValue
       body2 <- Evaluation.evaluateClosure closure2 varValue
-      context3 <- unify context2 flexibility (IntSet.insert var untouchables) body1 body2
+      context3 <- unify glueFuel context2 flexibility (IntSet.insert var untouchables) body1 body2
       pure $ unextend context3
 
     solve var value
@@ -182,26 +194,27 @@ unify context flexibility untouchables value1 value2 = do
         Context.define context var value
 
 unifySpines
-  :: Context v
+  :: Int
+  -> Context v
   -> Flexibility
   -> IntSet Var
   -> Domain.Spine
   -> Domain.Spine
   -> M (Context v)
-unifySpines context flexibility untouchables spine1 spine2 =
+unifySpines glueFuel context flexibility untouchables spine1 spine2 =
   case (spine1, spine2) of
     (Domain.Empty, Domain.Empty) ->
       pure context
 
     (spine1' Domain.:> elimination1, spine2' Domain.:> elimination2) -> do
-      context' <- unifySpines context flexibility untouchables spine1' spine2'
+      context' <- unifySpines glueFuel context flexibility untouchables spine1' spine2'
       case (elimination1, elimination2) of
         (Domain.App plicity1 arg1, Domain.App plicity2 arg2)
           | plicity1 == plicity2 ->
-            unify context' flexibility untouchables arg1 arg2
+            unify glueFuel context' flexibility untouchables arg1 arg2
 
         (Domain.Case branches1, Domain.Case branches2) ->
-          unifyBranches context' flexibility untouchables branches1 branches2
+          unifyBranches glueFuel context' flexibility untouchables branches1 branches2
 
         _ ->
           throwIO Dunno
@@ -211,13 +224,15 @@ unifySpines context flexibility untouchables spine1 spine2 =
 
 unifyBranches
   :: forall v
-  . Context v
+  . Int
+  -> Context v
   -> Flexibility
   -> IntSet Var
   -> Domain.Branches
   -> Domain.Branches
   -> M (Context v)
 unifyBranches
+  glueFuel
   outerContext
   flexibility
   outerUntouchables
@@ -272,7 +287,7 @@ unifyBranches
     unifyTerms context term1 term2 = do
       term1' <- Evaluation.evaluate outerEnv1 term1
       term2' <- Evaluation.evaluate outerEnv2 term2
-      unify context flexibility outerUntouchables term1' term2'
+      unify glueFuel context flexibility outerUntouchables term1' term2'
 
     unifyTele
       :: Domain.Environment v1
@@ -288,7 +303,7 @@ unifyBranches
           | plicity1 == plicity2 -> do
             type1' <- Evaluation.evaluate env1 type1
             type2' <- Evaluation.evaluate env2 type2
-            context' <- unify context flexibility untouchables type1' type2'
+            context' <- unify glueFuel context flexibility untouchables type1' type2'
             (context'', var) <- Context.extend context' (Bindings.toName bindings1) type1'
             context''' <-
               unifyTele
@@ -303,7 +318,7 @@ unifyBranches
         (Telescope.Empty body1, Telescope.Empty body2) -> do
           body1' <- Evaluation.evaluate env1 body1
           body2' <- Evaluation.evaluate env2 body2
-          unify context flexibility untouchables body1' body2'
+          unify glueFuel context flexibility untouchables body1' body2'
 
         _ ->
           panic "unifyTele"

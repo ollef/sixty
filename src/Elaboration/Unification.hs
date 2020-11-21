@@ -47,7 +47,7 @@ import Var
 
 tryUnify :: Context v -> Domain.Value -> Domain.Value -> M (Syntax.Term v -> Syntax.Term v)
 tryUnify context value1 value2 = do
-  success <- Context.try_ context $ unify context Flexibility.Rigid value1 value2
+  success <- Context.try_ context $ unify defaultGlueFuel context Flexibility.Rigid value1 value2
   if success then
     pure identity
   else do
@@ -56,14 +56,17 @@ tryUnify context value1 value2 = do
 
 tryUnifyD :: Context v -> Domain.Value -> Domain.Value -> M (Domain.Value -> Domain.Value)
 tryUnifyD context value1 value2 = do
-  success <- Context.try_ context $ unify context Flexibility.Rigid value1 value2
+  success <- Context.try_ context $ unify defaultGlueFuel context Flexibility.Rigid value1 value2
   pure $ if success then
     identity
   else
     const $ Domain.Neutral (Domain.Global Builtin.fail) $ Domain.Apps $ pure (Explicit, value2)
 
-unify :: Context v -> Flexibility -> Domain.Value -> Domain.Value -> M ()
-unify context flexibility value1 value2 = do
+defaultGlueFuel :: Int
+defaultGlueFuel = 5
+
+unify :: Int -> Context v -> Flexibility -> Domain.Value -> Domain.Value -> M ()
+unify glueFuel context flexibility value1 value2 = do
   value1' <- Context.forceHeadGlue context value1
   value2' <- Context.forceHeadGlue context value2
   catchAndAdd $ case (value1', value2') of
@@ -80,7 +83,7 @@ unify context flexibility value1 value2 = do
             keep =
               Tsil.zipWith shouldKeepMetaArgument args1' args2'
           if and keep then
-            Tsil.zipWithM_ (unify context flexibility `on` snd) args1 args2
+            Tsil.zipWithM_ (unify glueFuel context flexibility `on` snd) args1 args2
 
           else
             pruneMeta context metaIndex1 keep
@@ -110,11 +113,11 @@ unify context flexibility value1 value2 = do
           flexibility' =
             max (Domain.headFlexibility head1) flexibility
 
-        unifySpines context flexibility' spine1 spine2
+        unifySpines glueFuel context flexibility' spine1 spine2
 
     (Domain.Con con1 args1, Domain.Con con2 args2)
       | con1 == con2 ->
-        Tsil.zipWithM_ (unify context flexibility `on` snd) args1 args2
+        Tsil.zipWithM_ (unify glueFuel context flexibility `on` snd) args1 args2
 
       | otherwise ->
         can'tUnify
@@ -136,22 +139,22 @@ unify context flexibility value1 value2 = do
 
     (Domain.Pi binding1 domain1 plicity1 targetClosure1, Domain.Fun domain2 plicity2 target2)
       | plicity1 == plicity2 -> do
-        unify context flexibility domain2 domain1
+        unify glueFuel context flexibility domain2 domain1
         (context', var) <- Context.extend context (Binding.toName binding1) domain1
         target1 <- Evaluation.evaluateClosure targetClosure1 $ Domain.var var
-        unify context' flexibility target1 target2
+        unify glueFuel context' flexibility target1 target2
 
     (Domain.Fun domain1 plicity1 target1, Domain.Pi binding2 domain2 plicity2 targetClosure2)
       | plicity1 == plicity2 -> do
-        unify context flexibility domain2 domain1
+        unify glueFuel context flexibility domain2 domain1
         (context', var) <- Context.extend context (Binding.toName binding2) domain2
         target2 <- Evaluation.evaluateClosure targetClosure2 $ Domain.var var
-        unify context' flexibility target1 target2
+        unify glueFuel context' flexibility target1 target2
 
     (Domain.Fun domain1 plicity1 target1, Domain.Fun domain2 plicity2 target2)
       | plicity1 == plicity2 -> do
-        unify context flexibility domain2 domain1
-        unify context flexibility target1 target2
+        unify glueFuel context flexibility domain2 domain1
+        unify glueFuel context flexibility target1 target2
 
     -- Eta expand
     (Domain.Lam bindings1 type1 plicity1 closure1, v2) -> do
@@ -163,7 +166,7 @@ unify context flexibility value1 value2 = do
       body1 <- Evaluation.evaluateClosure closure1 varValue
       body2 <- Evaluation.apply v2 plicity1 varValue
 
-      unify context' flexibility body1 body2
+      unify glueFuel context' flexibility body1 body2
 
     (v1, Domain.Lam bindings2 type2 plicity2 closure2) -> do
       (context', var) <- Context.extend context (Bindings.toName bindings2) type2
@@ -174,7 +177,7 @@ unify context flexibility value1 value2 = do
       body1 <- Evaluation.apply v1 plicity2 varValue
       body2 <- Evaluation.evaluateClosure closure2 varValue
 
-      unify context' flexibility body1 body2
+      unify glueFuel context' flexibility body1 body2
 
     -- Case inversion
     (Domain.Neutral (Domain.Meta meta) (spine@(Domain.Apps args) Domain.:> Domain.Case branches), _)
@@ -212,29 +215,40 @@ unify context flexibility value1 value2 = do
 
     -- Glued values
     (Domain.Glued head1 spine1 value1'', Domain.Glued head2 spine2 value2'')
-      | head1 == head2 ->
-        unifySpines context Flexibility.Flexible spine1 spine2 `catch` \(_ :: Error.Elaboration) ->
-          unifyForce flexibility value1'' value2''
+      | glueFuel > 0
+      , head1 == head2 ->
+        unifySpines (glueFuel - 1) context Flexibility.Flexible spine1 spine2 `catch` \(_ :: Error.Elaboration) ->
+          unifyForce (glueFuel - 1) flexibility value1'' value2''
 
-    (Domain.Glued _ _ value1'', _) -> do
-      value1''' <- force value1''
-      unify context flexibility value1''' value2'
+    (Domain.Glued head1 spine1 _, Domain.Glued head2 spine2 _)
+      | glueFuel == 0
+      , head1 == head2
+      , Flexibility.Flexible <- flexibility ->
+        unifySpines glueFuel context Flexibility.Flexible spine1 spine2
 
-    (_, Domain.Glued _ _ value2'') -> do
-      value2''' <- force value2''
-      unify context flexibility value1' value2'''
+    (Domain.Glued _ _ value1'', _)
+      | glueFuel > 0
+      || flexibility == Flexibility.Rigid -> do
+        value1''' <- force value1''
+        unify glueFuel context flexibility value1''' value2'
+
+    (_, Domain.Glued _ _ value2'')
+      | glueFuel > 0
+      || flexibility == Flexibility.Rigid -> do
+        value2''' <- force value2''
+        unify glueFuel context flexibility value1' value2'''
 
     _ ->
       can'tUnify
 
   where
-    unifyForce flexibility' lazyValue1 lazyValue2 = do
+    unifyForce glueFuel' flexibility' lazyValue1 lazyValue2 = do
       v1 <- force lazyValue1
       v2 <- force lazyValue2
-      unify context flexibility' v1 v2
+      unify glueFuel' context flexibility' v1 v2
 
     unifyAbstraction name type1 closure1 type2 closure2 = do
-      unify context flexibility type1 type2
+      unify glueFuel context flexibility type1 type2
 
       (context', var) <- Context.extend context name type1
       let
@@ -243,19 +257,19 @@ unify context flexibility value1 value2 = do
 
       body1 <- Evaluation.evaluateClosure closure1 varValue
       body2 <- Evaluation.evaluateClosure closure2 varValue
-      unify context' flexibility body1 body2
+      unify glueFuel context' flexibility body1 body2
 
     invertCase meta spine args matches =
       case matches of
         [Just (Left constr)] -> do
           metaType <- instantiatedMetaType context meta args
           appliedConstr <- fullyApplyToMetas context constr metaType
-          unify context flexibility (Domain.Neutral (Domain.Meta meta) spine) appliedConstr
-          unify context flexibility value1 value2
+          unify glueFuel context flexibility (Domain.Neutral (Domain.Meta meta) spine) appliedConstr
+          unify glueFuel context flexibility value1 value2
 
         [Just (Right lit)] -> do
-          unify context flexibility (Domain.Neutral (Domain.Meta meta) spine) $ Domain.Lit lit
-          unify context flexibility value1 value2
+          unify glueFuel context flexibility (Domain.Neutral (Domain.Meta meta) spine) $ Domain.Lit lit
+          unify glueFuel context flexibility value1 value2
 
         _ ->
           can'tUnify
@@ -298,21 +312,21 @@ unify context flexibility value1 value2 = do
     can'tUnify =
       throwIO $ Error.TypeMismatch mempty
 
-unifySpines :: Context v -> Flexibility -> Domain.Spine -> Domain.Spine -> M ()
-unifySpines context flexibility spine1 spine2 =
+unifySpines :: Int -> Context v -> Flexibility -> Domain.Spine -> Domain.Spine -> M ()
+unifySpines glueFuel context flexibility spine1 spine2 =
   case (spine1, spine2) of
     (Domain.Empty, Domain.Empty) ->
       pure ()
 
     (spine1' Domain.:> elimination1, spine2' Domain.:> elimination2) -> do
-      unifySpines context flexibility spine1' spine2'
+      unifySpines glueFuel context flexibility spine1' spine2'
       case (elimination1, elimination2) of
         (Domain.App plicity1 arg1, Domain.App plicity2 arg2)
           | plicity1 == plicity2 ->
-            unify context flexibility arg1 arg2
+            unify glueFuel context flexibility arg1 arg2
 
         (Domain.Case branches1, Domain.Case branches2) ->
-          unifyBranches context flexibility branches1 branches2
+          unifyBranches glueFuel context flexibility branches1 branches2
 
         _ ->
           throwIO $ Error.TypeMismatch mempty
@@ -321,12 +335,14 @@ unifySpines context flexibility spine1 spine2 =
       throwIO $ Error.TypeMismatch mempty
 
 unifyBranches
-  :: Context v
+  :: Int
+  -> Context v
   -> Flexibility
   -> Domain.Branches
   -> Domain.Branches
   -> M ()
 unifyBranches
+  glueFuel
   outerContext
   flexibility
   (Domain.Branches outerEnv1 branches1 defaultBranch1)
@@ -378,7 +394,7 @@ unifyBranches
     unifyTerms term1 term2 = do
       term1' <- Evaluation.evaluate outerEnv1 term1
       term2' <- Evaluation.evaluate outerEnv2 term2
-      unify outerContext flexibility term1' term2'
+      unify glueFuel outerContext flexibility term1' term2'
 
     unifyTele
       :: Context v
@@ -393,7 +409,7 @@ unifyBranches
           | plicity1 == plicity2 -> do
             type1' <- Evaluation.evaluate env1 type1
             type2' <- Evaluation.evaluate env2 type2
-            unify context flexibility type1' type2'
+            unify glueFuel context flexibility type1' type2'
             (context', var) <- Context.extend context (Bindings.toName bindings1) type1'
             unifyTele
               context'
@@ -405,7 +421,7 @@ unifyBranches
         (Telescope.Empty body1, Telescope.Empty body2) -> do
           body1' <- Evaluation.evaluate env1 body1
           body2' <- Evaluation.evaluate env2 body2
-          unify context flexibility body1' body2'
+          unify glueFuel context flexibility body1' body2'
 
         _ ->
           panic "unifyTele"

@@ -299,7 +299,7 @@ checkForcedPattern context match =
 
       term' <- Elaboration.check context' term type_
       value2 <- Elaboration.evaluate context term'
-      _ <- Context.try_ context' $ Unification.unify context' Flexibility.Rigid value1 value2
+      _ <- Context.try_ context' $ Unification.unify Unification.defaultGlueFuel context' Flexibility.Rigid value1 value2
       pure ()
 
     _ ->
@@ -453,7 +453,7 @@ simplifyMatch context coveredConstructors coveredLiterals (Match value forcedVal
               let
                 context' =
                   Context.spanned span context
-              _ <- Context.try_ context' $ Unification.unify context' Flexibility.Rigid type_ type'
+              _ <- Context.try_ context' $ Unification.unify Unification.defaultGlueFuel context' Flexibility.Rigid type_ type'
               pure matches'
             concat <$> mapM (simplifyMatch context coveredConstructors coveredLiterals) matches'
 
@@ -678,7 +678,7 @@ expandAnnotations context matches =
                 let
                   context' =
                     Context.spanned span context
-                _ <- Context.try_ context' $ Unification.unify context' Flexibility.Rigid annoType'' type_
+                _ <- Context.try_ context' $ Unification.unify Unification.defaultGlueFuel context' Flexibility.Rigid annoType'' type_
                 pure ()
               pure $ Match value forcedValue plicity pat type_ : matches'
 
@@ -1038,7 +1038,7 @@ splitEqualityOr context config matches k =
           _
           (Surface.Pattern _ Surface.WildcardPattern)
           (Builtin.Equals type_ value1 value2) -> do
-            unificationResult <- try $ Indices.unify context Flexibility.Rigid mempty value1 value2
+            unificationResult <- try $ Indices.unify Unification.defaultGlueFuel context Flexibility.Rigid mempty value1 value2
             case unificationResult of
               Left Indices.Nope ->
                 elaborate context config
@@ -1095,7 +1095,7 @@ uninhabitedType context fuel coveredConstructors type_ = do
   type' <- Context.forceHead context type_
   case type' of
     Builtin.Equals _ value1 value2 -> do
-      result <- try $ Indices.unify context Flexibility.Rigid mempty value1 value2
+      result <- try $ Indices.unify Unification.defaultGlueFuel context Flexibility.Rigid mempty value1 value2
       pure $ case result of
         Left Indices.Nope ->
           True

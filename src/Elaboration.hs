@@ -118,7 +118,7 @@ checkDefinition context def expectedType =
     Surface.DataDefinition span boxity params constrs -> do
       (tele, type_) <- inferDataDefinition context span params constrs mempty
       type' <- evaluate context type_
-      success <- Context.try_ context $ Unification.unify context Flexibility.Rigid type' expectedType
+      success <- Context.try_ context $ Unification.unify Unification.defaultGlueFuel context Flexibility.Rigid type' expectedType
       if success then
         pure $ Syntax.DataDefinition boxity tele
 
@@ -315,6 +315,7 @@ checkConstructorType context term@(Surface.Term span _) dataVar paramVars = do
 
         _ -> do
           Unification.unify
+            Unification.defaultGlueFuel
             context'
             Flexibility.Rigid
             constrType
@@ -1099,7 +1100,7 @@ subtypeWithoutRecovery context type1 type2 = do
           UntilExplicit
 
   (args, type1') <- insertMetasReturningSyntax context until type1
-  Unification.unify context Flexibility.Rigid type1' type2
+  Unification.unify Unification.defaultGlueFuel context Flexibility.Rigid type1' type2
   pure $ \term -> Syntax.apps term args
 
 -------------------------------------------------------------------------------
