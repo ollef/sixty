@@ -18,7 +18,7 @@ jobs:
           ${{ runner.OS }}-stack-
 
     - name: Add ~/.local/bin to PATH
-      run: echo ::add-path::$HOME/.local/bin
+      run: echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: Setup Stack
       run: stack setup
