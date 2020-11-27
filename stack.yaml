@@ -1,4 +1,4 @@
-resolver: lts-16.12
+resolver: nightly-2020-11-23
 packages:
 - .
 extra-deps:
@@ -7,7 +7,6 @@ extra-deps:
 - dependent-sum-0.7.1.0
 - dependent-sum-template-0.1.0.3
 - dependent-hashmap-0.1.0.1
-- protolude-0.3.0
 - rock-0.3.0.0
 - git: https://github.com/fpco/ghc-prof-flamegraph.git
   commit: 8edd3b4806adeb25a4d55bed51c3afcc8e7a8e14
