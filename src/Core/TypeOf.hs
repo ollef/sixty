@@ -138,8 +138,8 @@ typeOfApplication context type_ plicity arg = do
       panic "typeOfApplication: type or plicity mismatch"
 
 typeOfApplications :: Context v -> Domain.Type -> Tsil (Plicity, Domain.Value) -> M Domain.Type
-typeOfApplications context type_ =
-  foldlM (\type' -> uncurry $ typeOfApplication context type') type_
+typeOfApplications context =
+  foldlM $ uncurry . typeOfApplication context
 
 typeOfTelescope
   :: Context v'
