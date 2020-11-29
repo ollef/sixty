@@ -24,7 +24,7 @@ readback env value =
         Domain.Var var -> do
           let
             term =
-              Syntax.Var $ fromMaybe (panic "ClosureConverted.Readback var") $ Environment.lookupVarIndex var env
+              Syntax.Var $ fromMaybe (panic $ "ClosureConverted.Readback var " <> show var) $ Environment.lookupVarIndex var env
 
           ClosureConversion.applyArgs args' $ pure term
 
