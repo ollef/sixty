@@ -122,12 +122,12 @@ data Environment v = Environment
   }
 
 extendBinding :: Environment v -> Binding -> Syntax.Type v -> MaybeT M (Environment (Index.Succ v), Var)
-extendBinding env binding type_ =
-  extend env (Binding.toName binding) (Binding.spans binding) type_
+extendBinding env binding =
+  extend env (Binding.toName binding) (Binding.spans binding)
 
 extendBindings :: Environment v -> Bindings -> Syntax.Type v -> MaybeT M (Environment (Index.Succ v), Var)
-extendBindings env bindings type_ =
-  extend env (Bindings.toName bindings) (Bindings.spans bindings) type_
+extendBindings env bindings =
+  extend env (Bindings.toName bindings) (Bindings.spans bindings)
 
 extend :: Environment v -> Name -> [Span.Relative] -> Syntax.Type v -> MaybeT M (Environment (Index.Succ v), Var)
 extend env name spans type_ = do
