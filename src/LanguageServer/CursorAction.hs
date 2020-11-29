@@ -20,7 +20,7 @@ import qualified Core.Bindings as Bindings
 import Core.Bindings (Bindings)
 import qualified Core.Domain as Domain
 import qualified Core.Syntax as Syntax
-import qualified Core.TypeOf as TypeOf
+import qualified Core.TypeOf2 as TypeOf
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import qualified Data.OrderedHashMap as OrderedHashMap
@@ -294,8 +294,7 @@ constructorBranchAction
 constructorBranchAction k env typeName scrutinee (constr, (spans, tele)) =
   asum (foreach spans $ \span -> do
     guard $ any (`Span.relativeContains` _actionPosition env) spans
-    scrutinee' <- lift $ Elaboration.evaluate (_context env) scrutinee
-    scrutineeType <- lift $ TypeOf.typeOf (_context env) scrutinee'
+    scrutineeType <- lift $ TypeOf.valueTypeOf (_context env) scrutinee
     scrutineeType' <- lift $ Context.forceHead (_context env) scrutineeType
     case scrutineeType' of
       Domain.Neutral (Domain.Global headName) (Domain.appsView -> Just args)

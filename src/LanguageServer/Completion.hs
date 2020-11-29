@@ -17,7 +17,7 @@ import Rock
 import qualified Core.Domain as Domain
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Syntax as Syntax
-import qualified Core.TypeOf as TypeOf
+import qualified Core.TypeOf2 as TypeOf
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import qualified Elaboration
@@ -48,10 +48,8 @@ complete filePath (Position.LineColumn line column) =
       CursorAction.Term itemContext context varPositions _ -> do
         names <- lift $ getUsableNames itemContext context varPositions
         lift $ forM names $ \(name, term, kind) -> do
-          value <- Elaboration.evaluate context term
-          type_ <- TypeOf.typeOf context value
-          type' <- Elaboration.readback context type_
-          prettyType <- Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context type'
+          type_ <- TypeOf.typeOf context term
+          prettyType <- Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context type_
           pure
             LSP.CompletionItem
               { _label = name
@@ -80,25 +78,25 @@ questionMark filePath (Position.LineColumn line column) =
         empty
 
       CursorAction.Term itemContext context varPositions termUnderCursor -> do
-        valueUnderCursor <- lift $ Elaboration.evaluate context termUnderCursor
-        typeUnderCursor <- lift $ TypeOf.typeOf context valueUnderCursor
-        typeUnderCursor' <- lift $ Elaboration.readback context typeUnderCursor
-        prettyTypeUnderCursor <- lift $ Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context typeUnderCursor'
+        typeUnderCursor <- lift $ TypeOf.typeOf context termUnderCursor
+        typeUnderCursorValue <- lift $ Elaboration.evaluate context typeUnderCursor
+        prettyTypeUnderCursor <- lift $ Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context typeUnderCursor
         names <- lift $ getUsableNames itemContext context varPositions
 
         metasBefore <- readIORef $ Context.metas context
         lift $ fmap concat $ forM names $ \(name, term, kind) -> do
           writeIORef (Context.metas context) metasBefore
           value <- Elaboration.evaluate context term
-          type_ <- TypeOf.typeOf context value
+          type_ <- TypeOf.valueTypeOf context term
           (maxArgs, _) <- Elaboration.insertMetas context Elaboration.UntilTheEnd type_
           metasBefore' <- readIORef $ Context.metas context
           maybeArgs <- runMaybeT $ asum $ foreach (inits maxArgs) $ \args -> do
             writeIORef (Context.metas context) metasBefore'
             appliedValue <- lift $ foldM (\fun (plicity, arg) -> Evaluation.apply fun plicity arg) value args
-            appliedType <- lift $ TypeOf.typeOf context appliedValue
+            appliedTerm <- lift $ Elaboration.readback context appliedValue
+            appliedType <- lift $ TypeOf.valueTypeOf context appliedTerm
             _ <- MaybeT $
-              (Just <$> Elaboration.subtypeWithoutRecovery context appliedType typeUnderCursor)
+              (Just <$> Elaboration.subtypeWithoutRecovery context appliedType typeUnderCursorValue)
               `catch` \(_ :: Error.Elaboration) -> pure Nothing
             pure args
 
