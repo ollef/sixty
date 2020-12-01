@@ -55,10 +55,7 @@ readback env value =
             Just i ->
               readbackSpine env (Syntax.Var i) spine
 
-            -- This can happen
-            -- 1. because of evaluating let-bindings, whose binders 'disappear'
-            -- during evaluation.
-            -- 2. because of pruning, where we create fake glued
+            -- This can happen because of pruning, where we create fake glued
             -- variables that throw exceptions when they're forced so we can
             -- detect whether a variable that can't be used is used.
             Nothing -> do
