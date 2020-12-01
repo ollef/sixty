@@ -23,6 +23,7 @@ ghc-options:
   - -Wpartial-fields
   - -Wredundant-constraints
   - -Wtabs
+  - -Wunused-packages
   - -funbox-strict-fields
 
 default-extensions:
