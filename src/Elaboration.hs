@@ -858,8 +858,8 @@ elaborateLet context name maybeType clauses = do
         boundTerm <- Clauses.check context clauses' typeValue
         pure (Bindings.fromName (span : map fst clauses) name, boundTerm, typeTerm, typeValue)
 
-  boundTerm' <- evaluate context boundTerm
-  (context', _) <- Context.extendPreDef context name boundTerm' typeValue
+  boundValue <- evaluate context boundTerm
+  (context', _) <- Context.extendPreDef context name boundValue typeValue
   pure (context', binding, boundTerm, typeTerm)
 
 data ResolvedConstructor
