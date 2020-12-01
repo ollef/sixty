@@ -12,6 +12,16 @@ f as =
         Cons x xs ->
           as
 
+f' : forall a. List a -> List a
+f' as =
+  case as of
+    Nil ->
+      case as of
+        Nil -> as
+        Cons x xs -> as -- redundant match error expected
+    _ ->
+      as
+
 g : forall a. List a -> List a
 g as =
   case as of
@@ -20,6 +30,15 @@ g as =
       case as of
         Cons x xs ->
           as
+
+g' : forall a. List a -> List a
+g' as =
+  case as of
+    Nil ->
+      case as of
+        Nil -> as
+    _ ->
+      as
 
 h : Int -> Int
 h n =
@@ -31,6 +50,15 @@ h n =
         1 -> 1
         _ -> n
 
+h' : Int -> Int
+h' n =
+  case n of
+    0 ->
+      case n of
+        0 -> 0
+        _ -> n -- redundant match error expected
+    _ -> n
+
 i : Int -> Int
 i n =
   case n of
@@ -39,3 +67,11 @@ i n =
       case n of
         1 -> 1
         _ -> n
+
+i' : Int -> Int
+i' n =
+  case n of
+    0 ->
+      case n of
+        _ -> n
+    _ -> n
