@@ -48,7 +48,7 @@ readback env value =
     Domain.Lit lit ->
       pure $ Syntax.Lit lit
 
-    Domain.Glued head spine value' -> do
+    Domain.Glued head spine value' ->
       case head of
         Domain.Var v ->
           case Environment.lookupVarIndex v env of
