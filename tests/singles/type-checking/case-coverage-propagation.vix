@@ -1,0 +1,41 @@
+data List a where
+  Nil : List a
+  Cons : a -> List a -> List a
+
+f : forall a. List a -> List a
+f as =
+  case as of
+    Nil -> Nil
+    _ ->
+      case as of
+        Nil -> as -- redundant match error expected
+        Cons x xs ->
+          as
+
+g : forall a. List a -> List a
+g as =
+  case as of
+    Nil -> Nil
+    _ ->
+      case as of
+        Cons x xs ->
+          as
+
+h : Int -> Int
+h n =
+  case n of
+    0 -> 0
+    _ ->
+      case n of
+        0 -> 0 -- redundant match error expected
+        1 -> 1
+        _ -> n
+
+i : Int -> Int
+i n =
+  case n of
+    0 -> 0
+    _ ->
+      case n of
+        1 -> 1
+        _ -> n
