@@ -30,7 +30,6 @@ import qualified Core.Domain.Telescope as Domain.Telescope
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
-import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
@@ -62,14 +61,8 @@ data Config = Config
   , _scrutinees :: ![(Plicity, Domain.Value)]
   , _clauses :: [Clause]
   , _usedClauses :: !(IORef (Set Span.Relative))
-  , _coveredConstructors :: CoveredConstructors
-  , _coveredLiterals :: CoveredLiterals
   , _matchKind :: !Error.MatchKind
   }
-
-type CoveredConstructors = IntMap Var (HashSet Name.QualifiedConstructor)
-
-type CoveredLiterals = IntMap Var (HashSet Literal)
 
 data Clause = Clause
   { _span :: !Span.Relative
@@ -114,8 +107,6 @@ elaborateCase context scrutinee scrutineeType branches expectedType = do
       | (pat@(Surface.Pattern patSpan _), rhs'@(Surface.Term rhsSpan _)) <- branches
       ]
     , _usedClauses = usedClauses
-    , _coveredConstructors = mempty
-    , _coveredLiterals = mempty
     , _matchKind = Error.Branch
     }
   scrutineeType' <- Readback.readback (Context.toEnvironment context) scrutineeType
@@ -198,8 +189,6 @@ elaborateClauses context clauses expectedType = do
 
     , _clauses = clauses
     , _usedClauses = usedClauses
-    , _coveredConstructors = mempty
-    , _coveredLiterals = mempty
     , _matchKind = Error.Clause
     }
 
@@ -232,8 +221,6 @@ elaborateSingle context scrutinee plicity pat@(Surface.Pattern patSpan _) rhs@(S
           }
         ]
       , _usedClauses = usedClauses
-      , _coveredConstructors = mempty
-      , _coveredLiterals = mempty
       , _matchKind = Error.Lambda
       }
 
@@ -255,15 +242,15 @@ elaborateWithCoverage context config = do
 
 elaborate :: Context v -> Config -> M (Syntax.Term v)
 elaborate context config = do
-  clauses <- catMaybes <$> mapM (simplifyClause context (_coveredConstructors config) (_coveredLiterals config)) (_clauses config)
+  clauses <- catMaybes <$> mapM (simplifyClause context) (_clauses config)
   let
     config' = config { _clauses = clauses }
   case clauses of
     [] -> do
-      exhaustive <- anyM (uninhabitedScrutinee context (_coveredConstructors config) . snd) $ _scrutinees config
+      exhaustive <- anyM (uninhabitedScrutinee context . snd) $ _scrutinees config
       unless exhaustive $ do
         scrutinees <- forM (_scrutinees config) $ \(plicity, scrutinee) -> do
-          patterns <- uncoveredScrutineePatterns context (_coveredConstructors config) scrutinee
+          patterns <- uncoveredScrutineePatterns context scrutinee
           pure $ (,) plicity <$> (Context.toPrettyablePattern context <$> patterns)
         Context.report context $ Error.NonExhaustivePatterns $ sequence scrutinees
       targetType <- Elaboration.readback context $ _expectedType config
@@ -307,16 +294,15 @@ checkForcedPattern context match =
 
 uncoveredScrutineePatterns
   :: Context v
-  -> CoveredConstructors
   -> Domain.Value
   -> M [Pattern]
-uncoveredScrutineePatterns context coveredConstructors value = do
+uncoveredScrutineePatterns context value = do
   value' <- Context.forceHead context value
   case value' of
     Domain.Neutral (Domain.Var v) Domain.Empty -> do
       let
         covered =
-          IntMap.lookupDefault mempty v coveredConstructors
+          IntMap.lookupDefault mempty v $ Context.coveredConstructors context
 
         go :: Name.Qualified -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v -> [Pattern]
         go typeName tele =
@@ -369,7 +355,7 @@ uncoveredScrutineePatterns context coveredConstructors value = do
           dropTypeArgs constrTypeTele $ toList args
 
       spine'' <- forM spine' $ \(plicity, arg) -> do
-        patterns <- uncoveredScrutineePatterns context coveredConstructors arg
+        patterns <- uncoveredScrutineePatterns context arg
         pure $ (,) plicity <$> patterns
       pure $ Pattern.Con constr <$> sequence spine''
 
@@ -378,7 +364,7 @@ uncoveredScrutineePatterns context coveredConstructors value = do
 
     Domain.Glued _ _ value'' -> do
       value''' <- force value''
-      uncoveredScrutineePatterns context coveredConstructors value'''
+      uncoveredScrutineePatterns context value'''
 
     Domain.Lam {} ->
       pure []
@@ -407,10 +393,10 @@ uncoveredScrutineePatterns context coveredConstructors value = do
 
 -------------------------------------------------------------------------------
 
-simplifyClause :: Context v -> CoveredConstructors -> CoveredLiterals -> Clause -> M (Maybe Clause)
-simplifyClause context coveredConstructors coveredLiterals clause = do
+simplifyClause :: Context v -> Clause -> M (Maybe Clause)
+simplifyClause context clause = do
   maybeMatches <- runMaybeT $
-    concat <$> mapM (simplifyMatch context coveredConstructors coveredLiterals) (_matches clause)
+    concat <$> mapM (simplifyMatch context) (_matches clause)
   case maybeMatches of
     Nothing ->
       pure Nothing
@@ -422,15 +408,13 @@ simplifyClause context coveredConstructors coveredLiterals clause = do
           pure $ Just clause { _matches = matches' }
 
         Just expandedMatches ->
-          simplifyClause context coveredConstructors coveredLiterals clause { _matches = expandedMatches }
+          simplifyClause context clause { _matches = expandedMatches }
 
 simplifyMatch
   :: Context v
-  -> CoveredConstructors
-  -> CoveredLiterals
   -> Match
   -> MaybeT M [Match]
-simplifyMatch context coveredConstructors coveredLiterals (Match value forcedValue plicity pat@(Surface.Pattern span unspannedPattern) type_) = do
+simplifyMatch context (Match value forcedValue plicity pat@(Surface.Pattern span unspannedPattern) type_) = do
   forcedValue' <- lift $ Context.forceHead context forcedValue
   let
     match' =
@@ -455,7 +439,7 @@ simplifyMatch context coveredConstructors coveredLiterals (Match value forcedVal
                   Context.spanned span context
               _ <- Context.try_ context' $ Unification.unify context' Flexibility.Rigid type_ type'
               pure matches'
-            concat <$> mapM (simplifyMatch context coveredConstructors coveredLiterals) matches'
+            concat <$> mapM (simplifyMatch context) matches'
 
           | otherwise ->
             fail "Constructor mismatch"
@@ -471,7 +455,7 @@ simplifyMatch context coveredConstructors coveredLiterals (Match value forcedVal
         fail "Literal mismatch"
 
     (Domain.Neutral (Domain.Var var) Domain.Empty, Surface.ConOrVar _ name _)
-      | Just coveredConstrs <- IntMap.lookup var coveredConstructors -> do
+      | Just coveredConstrs <- IntMap.lookup var (Context.coveredConstructors context) -> do
         maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
         case maybeScopeEntry of
           Just scopeEntry -> do
@@ -500,7 +484,7 @@ simplifyMatch context coveredConstructors coveredLiterals (Match value forcedVal
             pure [match']
 
     (Domain.Neutral (Domain.Var var) Domain.Empty, Surface.LitPattern lit)
-      | Just coveredLits <- IntMap.lookup var coveredLiterals
+      | Just coveredLits <- IntMap.lookup var (Context.coveredLiterals context)
       , HashSet.member lit coveredLits ->
         fail "Literal already covered"
 
@@ -840,11 +824,12 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
               pure Nothing
 
             else
-              Just <$> elaborate context config
-                { _coveredConstructors =
+              Just <$> elaborate context
+                { Context.coveredConstructors =
                   IntMap.insertWith (<>) scrutineeVar (HashSet.fromMap $ void $ OrderedHashMap.toMap matchedConstructors) $
-                  _coveredConstructors config
+                  Context.coveredConstructors context
                 }
+                config
 
           scrutinee <- Elaboration.readback context scrutineeValue
 
@@ -990,11 +975,12 @@ splitLiteral context config scrutineeValue scrutineeVar span lit outerType = do
     pure (int, (spans, f result))
 
   defaultBranch <-
-    Just <$> elaborate context config
-      { _coveredLiterals =
+    Just <$> elaborate context
+      { Context.coveredLiterals =
         IntMap.insertWith (<>) scrutineeVar (HashSet.fromMap $ void $ OrderedHashMap.toMap matchedLiterals) $
-        _coveredLiterals config
+        Context.coveredLiterals context
       }
+      config
 
   scrutinee <- Elaboration.readback context scrutineeValue
 
@@ -1065,8 +1051,8 @@ splitEqualityOr context config matches k =
 
 -------------------------------------------------------------------------------
 
-uninhabitedScrutinee :: Context v -> CoveredConstructors -> Domain.Value -> M Bool
-uninhabitedScrutinee context coveredConstructors value = do
+uninhabitedScrutinee :: Context v -> Domain.Value -> M Bool
+uninhabitedScrutinee context value = do
   value' <- Context.forceHead context value
   case value' of
     Domain.Neutral (Domain.Var var) (Domain.appsView -> Just args) -> do
@@ -1074,13 +1060,13 @@ uninhabitedScrutinee context coveredConstructors value = do
         varType =
           Context.lookupVarType var context
       type_ <- Context.instantiateType context varType $ toList args
-      uninhabitedType context 1 (IntMap.lookupDefault mempty var coveredConstructors) type_
+      uninhabitedType context 1 (IntMap.lookupDefault mempty var $ Context.coveredConstructors context) type_
 
     Domain.Con constr constructorArgs -> do
       constrType <- fetch $ Query.ConstructorType constr
       let
         args = snd <$> drop (Telescope.length constrType) (toList constructorArgs)
-      anyM (uninhabitedScrutinee context coveredConstructors) args
+      anyM (uninhabitedScrutinee context) args
 
     _ ->
       pure False

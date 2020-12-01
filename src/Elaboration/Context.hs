@@ -14,10 +14,17 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef.Lifted
 import Rock
 
+import qualified Builtin
 import qualified Core.Binding as Binding
 import qualified Core.Bindings as Bindings
 import Core.Bindings (Bindings)
-import qualified Builtin
+import qualified Core.Domain as Domain
+import Core.Domain.Pattern (Pattern)
+import qualified Core.Evaluation as Evaluation
+import qualified Core.Readback as Readback
+import qualified Core.Syntax as Syntax
+import qualified Core.Zonking as Zonking
+import Data.HashSet (HashSet)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.IntSeq (IntSeq)
@@ -26,32 +33,27 @@ import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
-import qualified Core.Domain as Domain
-import Core.Domain.Pattern (Pattern)
 import Environment (Environment(Environment))
 import qualified Environment
 import Error (Error)
 import qualified Error
 import qualified Error.Parsing as Error
-import qualified Core.Evaluation as Evaluation
 import Index
 import qualified Index.Map
 import qualified Index.Map as Index
+import Literal (Literal)
 import qualified Meta
 import Monad
 import Name (Name(Name))
 import qualified Name
 import Plicity
-import qualified Surface.Syntax as Surface
 import qualified Query
-import qualified Core.Readback as Readback
 import qualified Scope
 import qualified Span
-import qualified Core.Syntax as Syntax
+import qualified Surface.Syntax as Surface
 import Telescope (Telescope)
 import qualified Telescope
 import Var
-import qualified Core.Zonking as Zonking
 
 data Context v = Context
   { scopeKey :: !Scope.KeyedName
@@ -63,8 +65,14 @@ data Context v = Context
   , types :: IntMap Var Domain.Type
   , boundVars :: IntSeq Var
   , metas :: !(IORef (Meta.Vars (Syntax.Term Void)))
+  , coveredConstructors :: CoveredConstructors
+  , coveredLiterals :: CoveredLiterals
   , errors :: !(IORef (Tsil Error))
   }
+
+type CoveredConstructors = IntMap Var (HashSet Name.QualifiedConstructor)
+
+type CoveredLiterals = IntMap Var (HashSet Literal)
 
 toEnvironment
   :: Context v
@@ -121,6 +129,8 @@ empty key = do
     , boundVars = mempty
     , metas = ms
     , errors = es
+    , coveredConstructors = mempty
+    , coveredLiterals = mempty
     }
 
 emptyFrom :: Context v -> Context Void
@@ -136,6 +146,8 @@ emptyFrom context =
     , boundVars = mempty
     , metas = metas context
     , errors = errors context
+    , coveredConstructors = mempty
+    , coveredLiterals = mempty
     }
 
 extendPre
