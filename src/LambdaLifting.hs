@@ -251,10 +251,8 @@ evaluate env term args =
         }
       pure $ makeApps (makeGlobal liftedName) $ makeVar env <$> argVars
 
-    Syntax.App function _plicity argument ->
-      makeApp <$>
-        evaluate env function args <*>
-        evaluate env argument []
+    Syntax.App function plicity argument ->
+      evaluate env function ((plicity, argument) : args)
 
     Syntax.Case scrutinee branches defaultBranch ->
       applyArgs $
