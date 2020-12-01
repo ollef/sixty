@@ -21,9 +21,7 @@ import qualified Data.IntervalMap.FingerTree as IntervalMap
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.Persist
-import Data.Tsil (Tsil)
 import Rock.Traces
-import GHC.Exts (fromList)
 
 instance (Persist k, Persist v, Coercible Int k) => Persist (IntMap k v) where
   put =
@@ -45,13 +43,6 @@ instance (Persist a, Eq a, Hashable a) => Persist (HashSet a) where
 
   get =
     HashSet.fromList <$> get
-
-instance Persist a => Persist (Tsil a) where
-  put =
-    put . toList
-
-  get =
-    fromList <$> get
 
 instance Persist k => Persist (IntervalMap.Interval k) where
   put (IntervalMap.Interval a b) =

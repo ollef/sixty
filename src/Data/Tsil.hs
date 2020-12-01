@@ -5,6 +5,7 @@
 {-# language TypeFamilies #-}
 module Data.Tsil where
 
+import Data.Persist
 import GHC.Exts
 import qualified Prelude
 import Protolude
@@ -12,7 +13,7 @@ import Protolude
 data Tsil a
   = Empty
   | Tsil a :> a
-  deriving (Eq, Functor, Ord, Traversable, Generic, Hashable)
+  deriving (Eq, Functor, Ord, Traversable, Generic, Hashable, Persist)
 
 instance Show a => Show (Tsil a) where
   show = show . Protolude.toList
