@@ -31,13 +31,7 @@ default-extensions:
 
 dependencies:
   - base >= 4.7 && < 5
-  - bytestring
-  - persist
-  - prettyprinter
   - protolude
-  - rock
-  - time
-  - unordered-containers
 
 library:
   source-dirs: src
@@ -45,6 +39,7 @@ library:
     - aeson
     - aeson-casing
     - ansi-terminal
+    - bytestring
     - constraints
     - constraints-extras
     - containers
@@ -64,14 +59,18 @@ library:
     - monad-control
     - mtl
     - parsers
+    - persist
+    - prettyprinter
     - random
+    - rock
     - rope-utf16-splay
     - stm
     - template-haskell
     - text
+    - time
     - transformers
     - transformers-base
-    - vector
+    - unordered-containers
 
 executables:
   sixty:
@@ -90,7 +89,10 @@ tests:
     dependencies:
       - directory
       - filepath
+      - prettyprinter
+      - rock
       - sixty
       - tasty
       - tasty-hunit
       - text
+      - unordered-containers
