@@ -22,6 +22,7 @@ data Context v = Context
   , indices :: Index.Map v Var
   , values :: IntMap Var Domain.Value
   , types :: IntMap Var Domain.Type
+  , glueableBefore :: !(Index (Succ v))
   }
 
 empty :: Scope.KeyedName -> Context Void
@@ -31,6 +32,7 @@ empty scopeKey_ =
     , indices = Index.Map.Empty
     , values = mempty
     , types = mempty
+    , glueableBefore = Index.zero
     }
 
 emptyFrom :: Context v -> Context Void
@@ -51,6 +53,7 @@ toEnvironment context =
     { scopeKey = scopeKey context
     , indices = indices context
     , values = values context
+    , glueableBefore = glueableBefore context
     }
 
 extend
@@ -63,6 +66,7 @@ extend context type_ = do
     ( context
       { indices = indices context Index.Map.:> var
       , types = IntMap.insert var type_ (types context)
+      , glueableBefore = Index.succ $ glueableBefore context
       }
     , var
     )

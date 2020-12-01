@@ -7,19 +7,20 @@ import Rock
 
 import Core.Binding (Binding)
 import Core.Bindings (Bindings)
-import Data.OrderedHashMap (OrderedHashMap)
-import qualified Data.OrderedHashMap as OrderedHashMap
-import qualified Data.Tsil as Tsil
 import qualified Core.Domain as Domain
 import qualified Core.Domain.Telescope as Domain (Telescope)
 import qualified Core.Domain.Telescope as Domain.Telescope
+import qualified Core.Syntax as Syntax
+import Data.OrderedHashMap (OrderedHashMap)
+import qualified Data.OrderedHashMap as OrderedHashMap
+import qualified Data.Tsil as Tsil
 import qualified Environment
+import qualified Index
 import Literal (Literal)
 import Monad
 import qualified Name
 import Plicity
 import qualified Query
-import qualified Core.Syntax as Syntax
 import Telescope (Telescope)
 import qualified Telescope
 
@@ -52,8 +53,12 @@ evaluate env term =
           Nothing ->
             Domain.var var
 
-          Just value ->
-            Domain.Glued (Domain.Var var) mempty $ eager value
+          Just value
+            | Index.succ index > Environment.glueableBefore env ->
+              Domain.Glued (Domain.Var var) mempty $ eager value
+
+            | otherwise ->
+              value
 
     Syntax.Global name -> do
       definitionVisible <- fetch $ Query.IsDefinitionVisible (Environment.scopeKey env) name

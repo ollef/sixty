@@ -101,4 +101,5 @@ environmentTo env = do
     { scopeKey = Environment.scopeKey env
     , indices = Environment.indices env
     , values = values'
+    , glueableBefore = Environment.glueableBefore env
     }

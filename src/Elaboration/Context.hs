@@ -74,6 +74,7 @@ toEnvironment context =
     { scopeKey = scopeKey context
     , indices = indices context
     , values = values context
+    , glueableBefore = Index.zero
     }
 
 toPrettyableTerm :: Context v -> Syntax.Term v -> M Error.PrettyableTerm
@@ -425,6 +426,7 @@ piBoundVars context type_ = do
         { scopeKey = scopeKey context
         , indices = Index.Map $ boundVars context
         , values = values context
+        , glueableBefore = Index $ IntSeq.size $ boundVars context
         }
       type_
 
@@ -446,6 +448,7 @@ piBoundVars context type_ = do
                 { scopeKey = scopeKey context
                 , indices = Index.Map vars'
                 , values = values context
+                , glueableBefore = Index $ IntSeq.size vars'
                 }
               varType
           let

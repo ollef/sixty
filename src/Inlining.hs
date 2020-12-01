@@ -61,6 +61,7 @@ inlineTerm env term = do
       { scopeKey = Environment.scopeKey env
       , indices = Environment.indices env
       , values = mempty
+      , glueableBefore = Environment.glueableBefore env
       }
     value
 

@@ -63,6 +63,12 @@ pattern as :> a <- IntSeq (FingerTree.viewr -> (IntSeq -> as) FingerTree.:> Inde
 
 {-# COMPLETE Empty, (:>) #-}
 
+size :: (Coercible a Data.IntMap.Key) => IntSeq a -> Int
+size (IntSeq ft) =
+  n
+  where
+    IndexMap n _ = FingerTree.measure ft
+
 singleton :: (Coercible a Data.IntMap.Key) => a -> IntSeq a
 singleton a =
   Empty :> a

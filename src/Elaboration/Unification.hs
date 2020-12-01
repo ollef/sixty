@@ -616,6 +616,7 @@ checkSolution outerContext meta vars value = do
         { scopeKey = Context.scopeKey outerContext
         , indices = Index.Map vars
         , values = Context.values outerContext
+        , glueableBefore = Index $ IntSeq.size vars
         }
       Flexibility.Rigid
       value
@@ -647,6 +648,7 @@ addAndCheckLambdas outerContext meta vars term =
             { scopeKey = Context.scopeKey outerContext
             , indices = Index.Map vars'
             , values = Context.values outerContext
+            , glueableBefore = Index $ IntSeq.size vars'
             }
           Flexibility.Rigid
           type_
