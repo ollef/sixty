@@ -9,16 +9,17 @@ import qualified Data.Tsil as Tsil
 import qualified Environment
 import Index
 import Literal (Literal)
+import Monad
 import Name (Name)
 import qualified Name
 import Telescope (Telescope)
 import Var (Var)
 
--- TODO gluing
 data Value
   = Neutral !Head Spine
   | Con !Name.QualifiedConstructor [Value] [Value]
   | Lit !Literal
+  | Glued !Head Spine !(Lazy Value)
   | Pi !Name !Type !Closure
   | Function !(Telescope Name Syntax.Type Syntax.Type Void)
 

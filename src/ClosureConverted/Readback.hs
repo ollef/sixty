@@ -19,24 +19,7 @@ readback :: Domain.Environment v -> Domain.Value -> M (Syntax.Term v)
 readback env value =
   case value of
     Domain.Neutral head spine ->
-      case head of
-        Domain.Global global -> do
-          case Domain.groupSpine spine of
-            Domain.GroupedApps args : groupedSpine -> do
-              args' <- mapM (readback env) args
-              globalApplication <- ClosureConversion.convertGlobal global args'
-              readbackGroupedSpine env globalApplication groupedSpine
-
-            groupedSpine -> do
-              global' <- ClosureConversion.convertGlobal global mempty
-              readbackGroupedSpine env global' groupedSpine
-
-        Domain.Var var -> do
-          let
-            term =
-              Syntax.Var $ fromMaybe (panic $ "ClosureConverted.Readback var " <> show var) $ Environment.lookupVarIndex var env
-
-          readbackGroupedSpine env term $ Domain.groupSpine spine
+      readbackNeutral env head spine
 
     Domain.Con con params args ->
       Syntax.Con con <$> mapM (readback env) params <*> mapM (readback env) args
@@ -44,11 +27,35 @@ readback env value =
     Domain.Lit lit ->
       pure $ Syntax.Lit lit
 
+    Domain.Glued head spine _ ->
+      readbackNeutral env head spine
+
     Domain.Pi name type_ closure ->
       Syntax.Pi name <$> readback env type_ <*> readbackClosure env closure
 
     Domain.Function tele ->
       pure $ Syntax.Function tele
+
+readbackNeutral :: Domain.Environment v -> Domain.Head -> Domain.Spine -> M (Syntax.Term v)
+readbackNeutral env head spine =
+  case head of
+    Domain.Global global -> do
+      case Domain.groupSpine spine of
+        Domain.GroupedApps args : groupedSpine -> do
+          args' <- mapM (readback env) args
+          globalApplication <- ClosureConversion.convertGlobal global args'
+          readbackGroupedSpine env globalApplication groupedSpine
+
+        groupedSpine -> do
+          global' <- ClosureConversion.convertGlobal global mempty
+          readbackGroupedSpine env global' groupedSpine
+
+    Domain.Var var -> do
+      let
+        term =
+          Syntax.Var $ fromMaybe (panic $ "ClosureConverted.Readback var " <> show var) $ Environment.lookupVarIndex var env
+
+      readbackGroupedSpine env term $ Domain.groupSpine spine
 
 readbackGroupedElimination :: Domain.Environment v -> Syntax.Term v -> Domain.GroupedElimination -> M (Syntax.Term v)
 readbackGroupedElimination env eliminee elimination =

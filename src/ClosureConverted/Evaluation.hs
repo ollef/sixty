@@ -2,7 +2,7 @@
 {-# language ViewPatterns #-}
 module ClosureConverted.Evaluation where
 
-import Protolude hiding (head, evaluate)
+import Protolude hiding (force, head, evaluate)
 
 import GHC.Exts (fromList)
 import Rock
@@ -12,6 +12,7 @@ import qualified ClosureConverted.Syntax as Syntax
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Tsil as Tsil
 import qualified Environment
+import qualified Index
 import Literal (Literal)
 import Monad
 import Name (Name)
@@ -27,13 +28,25 @@ evaluate env term =
       let
         var =
           Environment.lookupIndexVar index env
-      pure $ Domain.var var
+
+      pure $
+        case Environment.lookupVarValue var env of
+          Nothing ->
+            Domain.var var
+
+          Just value
+            | Index.succ index > Environment.glueableBefore env ->
+              Domain.Glued (Domain.Var var) mempty $ eager value
+
+            | otherwise ->
+              value
 
     Syntax.Global name -> do
       maybeDefinition <- fetchVisibleDefinition env name
       case maybeDefinition of
-        Just (Syntax.ConstantDefinition term') ->
-          evaluate (Environment.emptyFrom env) term'
+        Just (Syntax.ConstantDefinition term') -> do
+          value <- lazy $ evaluate (Environment.emptyFrom env) term'
+          pure $ Domain.Glued (Domain.Global name) mempty value
 
         _ ->
           pure $ Domain.global name
@@ -146,6 +159,12 @@ apply env fun args =
         _ ->
           pure neutral
 
+    Domain.Glued hd spine value -> do
+      appliedValue <- lazy $ do
+        value' <- force value
+        apply env value' args
+      pure $ Domain.Glued hd (spine <> (Domain.App <$> fromList args)) appliedValue
+
     Domain.Neutral hd spine ->
       pure $ Domain.Neutral hd $ spine <> (Domain.App <$> fromList args)
 
@@ -188,6 +207,12 @@ case_ scrutinee branches@(Domain.Branches env branches' defaultBranch) =
     (Domain.Neutral head spine, _) ->
       pure $ Domain.Neutral head $ spine Tsil.:> Domain.Case branches
 
+    (Domain.Glued hd spine value, _) -> do
+      casedValue <- lazy $ do
+        value' <- force value
+        case_ value' branches
+      pure $ Domain.Glued hd (spine Tsil.:> Domain.Case branches) casedValue
+
     _ ->
       panic "ClosureConverted.Evaluation: casing non-constructor"
 
@@ -204,3 +229,17 @@ fetchVisibleDefinition env name@(Name.Lifted baseName _) = do
 
   else
     pure Nothing
+
+-- | Evaluate the head of a value through glued values.
+forceHead
+  :: Domain.Environment v
+  -> Domain.Value
+  -> M Domain.Value
+forceHead env value =
+  case value of
+    Domain.Glued _ _ value' -> do
+      value'' <- force value'
+      forceHead env value''
+
+    _ ->
+      pure value

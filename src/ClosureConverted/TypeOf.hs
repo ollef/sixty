@@ -94,6 +94,9 @@ typeOf context value =
         Literal.Integer _ ->
           pure $ Domain.global $ Name.Lifted Builtin.IntName 0
 
+    Domain.Glued hd spine _ ->
+      typeOf context $ Domain.Neutral hd spine
+
     Domain.Pi {} ->
       pure $ Domain.global $ Name.Lifted Builtin.TypeName 0
 
