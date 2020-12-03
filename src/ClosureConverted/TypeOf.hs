@@ -78,7 +78,7 @@ typeOf context value =
   case value of
     Domain.Neutral head spine -> do
       headType <- typeOfHead context head
-      typeOfApplication context headType spine
+      typeOfSpineApplication context headType spine
 
     Domain.Con con params args -> do
       conType <- fetch $ Query.ClosureConvertedConstructorType con
@@ -87,7 +87,7 @@ typeOf context value =
           Telescope.fold
             (\name domain _ -> Syntax.Pi name domain)
             (Telescope.fromVoid conType)
-      typeOfApplication context conType' $ params <> args
+      typeOfApplications conType' $ params <> args
 
     Domain.Lit lit ->
       case lit of
@@ -111,9 +111,33 @@ typeOfHead context head =
 
     Domain.Global global -> do
       type_ <- fetch $ Query.ClosureConvertedType global
-      Evaluation.evaluate (Context.toEnvironment context) $ Syntax.fromVoid type_
+      type' <- Evaluation.evaluate (Context.toEnvironment context) $ Syntax.fromVoid type_
+      case type' of
+        Domain.Function tele ->
+          Evaluation.evaluate (Context.toEnvironment context) $
+            Telescope.fold
+              (\name domain _ -> Syntax.Pi name domain)
+              (Telescope.fromVoid tele)
 
-    Domain.Case _ (Domain.Branches env branches defaultBranch) ->
+        _ ->
+          pure type'
+
+typeOfSpineApplication
+  :: Foldable f
+  => Context v
+  -> Domain.Type
+  -> f Domain.Elimination
+  -> M Domain.Type
+typeOfSpineApplication =
+  foldlM . typeOfElimination
+
+typeOfElimination :: Context v -> Domain.Type -> Domain.Elimination -> M Domain.Type
+typeOfElimination context type_ elimination =
+  case elimination of
+    Domain.App arg ->
+      typeOfApplication type_ arg
+
+    Domain.Case (Domain.Branches env branches defaultBranch) ->
       case defaultBranch of
         Just term -> do
           value' <- Evaluation.evaluate env term
@@ -138,36 +162,25 @@ typeOfHead context head =
                 [] ->
                   panic "TODO closure converted type of branchless case"
 
+
 typeOfApplication
-  :: Context v
-  -> Domain.Type
-  -> [Domain.Value]
+  :: Domain.Type
+  -> Domain.Value
   -> M Domain.Type
-typeOfApplication context outerType outerArgs =
-  case (outerType, outerArgs) of
-    (Domain.Function tele, _:_) -> do
-      outerType' <-
-        Evaluation.evaluate (Context.toEnvironment context) $
-          Telescope.fold
-            (\name domain _ -> Syntax.Pi name domain)
-            (Telescope.fromVoid tele)
-      go outerType' outerArgs
+typeOfApplication type_ arg =
+  case type_ of
+    Domain.Pi _ _ closure ->
+      Evaluation.evaluateClosure closure arg
 
     _ ->
-      go outerType outerArgs
+      panic "ClosureConverted.TypeOf.typeOfApplication: non-function"
 
-  where
-    go type_ args =
-      case (type_, args) of
-        (_, []) ->
-          pure type_
-
-        (Domain.Pi _ _ closure, arg:args') -> do
-          target <- Evaluation.evaluateClosure closure arg
-          go target args'
-
-        _ ->
-          panic "ClosureConverted.typeOf applying non-pi"
+typeOfApplications
+  :: Domain.Type
+  -> [Domain.Value]
+  -> M Domain.Type
+typeOfApplications =
+  foldlM typeOfApplication
 
 typeOfTelescope
   :: Context v'
