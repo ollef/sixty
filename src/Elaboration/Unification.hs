@@ -73,7 +73,7 @@ unify context flexibility value1 value2 = do
         args1' <- mapM (Context.forceHead context . snd) args1
         args2' <- mapM (Context.forceHead context . snd) args2
         if metaIndex1 == metaIndex2 then do
-          -- If the same metavar is applied to two different lists of unknown
+          -- Intersection: If the same metavar is applied to two different lists of unknown
           -- variables its solution must not mention any variables at
           -- positions where the lists differ.
           let
