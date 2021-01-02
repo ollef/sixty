@@ -70,6 +70,7 @@ library:
     - time
     - transformers
     - transformers-base
+    - unboxed-ref
     - unordered-containers
 
 executables:

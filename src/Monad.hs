@@ -4,8 +4,9 @@ module Monad where
 
 import Protolude hiding (try, State)
 
-import Data.IORef.Lifted
 import Control.Monad.Trans.Control
+import Data.IORef.Unboxed (IORefU)
+import qualified Data.IORef.Unboxed as IORef.Unboxed
 import Rock
 import System.IO.Unsafe (unsafeDupablePerformIO)
 
@@ -15,7 +16,7 @@ import Var
 type M = ReaderT State (Task Query)
 
 newtype State = State
-  { nextVar :: IORef Var
+  { nextVar :: IORefU Int
   }
 
 data Lazy a = Lazy a
@@ -38,12 +39,12 @@ eager =
 freshVar :: M Var
 freshVar = do
   ref <- asks nextVar
-  atomicModifyIORef ref $ \var@(Var i) ->
-    (Var $ i + 1, var)
+  i <- liftIO $ IORef.Unboxed.atomicAddCounter_ ref 1
+  pure $ Var i
 
 runM :: M a -> Task Query a
 runM r = do
-  nextVarVar <- newIORef $ Var 0
+  nextVarVar <- liftIO $ IORef.Unboxed.newCounter 0
   runReaderT r State
     { nextVar = nextVarVar
     }
