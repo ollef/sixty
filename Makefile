@@ -21,7 +21,7 @@ install-profile:
 
 .PHONY: profile-tests
 profile-tests:
-	$(STACK_BUILD)
+	$(STACK_TEST) --profile
 	$(STACK) exec --package ghc-prof-flamegraph -- ghc-prof-flamegraph test-sixty.prof
 
 .PHONY: ddump-simpl
