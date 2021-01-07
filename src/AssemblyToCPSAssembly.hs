@@ -5,13 +5,13 @@ module AssemblyToCPSAssembly where
 
 import qualified Assembly
 import qualified CPSAssembly
-import Data.IntSet (IntSet)
-import qualified Data.IntSet as IntSet
+import Data.HashSet (HashSet)
+import qualified Data.HashSet as HashSet
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
+import qualified Literal
 import qualified Name
 import Protolude hiding (IntSet, IntMap, local, moduleName)
-import qualified Literal
 
 data ConverterState = ConverterState
   { _fresh :: !Int
@@ -53,16 +53,16 @@ freshFunctionName = do
   modify $ \s -> s { _nextDefinitionName = next + 1 }
   return $ Assembly.Name base next
 
-freshLocal :: Converter Assembly.Local
-freshLocal = do
+freshLocal :: Assembly.NameSuggestion -> Converter Assembly.Local
+freshLocal nameSuggestion = do
   fresh <- gets _fresh
   modify $ \s -> s { _fresh = fresh + 1 }
-  pure $ Assembly.Local fresh
+  pure $ Assembly.Local fresh nameSuggestion
 
 push :: Assembly.Operand -> Converter ()
 push operand = do
   stackPointer <- gets _stackPointer
-  newStackPointer <- freshLocal
+  newStackPointer <- freshLocal "stack"
   emitInstruction $
     CPSAssembly.Sub
       newStackPointer
@@ -78,9 +78,9 @@ pushLocal :: Assembly.Local -> Converter ()
 pushLocal =
   push . Assembly.LocalOperand
 
-pushLocals :: IntSet Assembly.Local -> Converter ()
+pushLocals :: HashSet Assembly.Local -> Converter ()
 pushLocals =
-  mapM_ pushLocal . IntSet.toList
+  mapM_ pushLocal . HashSet.toList
 
 pop :: Assembly.Local -> Converter ()
 pop local = do
@@ -89,7 +89,7 @@ pop local = do
     CPSAssembly.Load
       local
       (Assembly.LocalOperand stackPointer)
-  newStackPointer <- freshLocal
+  newStackPointer <- freshLocal "stack"
   emitInstruction $
     CPSAssembly.Add
       newStackPointer
@@ -98,9 +98,9 @@ pop local = do
   modify $ \s -> s { _stackPointer = newStackPointer }
   emitInstruction $ CPSAssembly.SetUndefined (Assembly.LocalOperand stackPointer) $ Assembly.Lit $ Literal.Integer wordSize
 
-popLocals :: IntSet Assembly.Local -> Converter ()
+popLocals :: HashSet Assembly.Local -> Converter ()
 popLocals =
-  mapM_ pop . reverse . IntSet.toList
+  mapM_ pop . reverse . HashSet.toList
 
 stackAllocate :: Assembly.Local -> Assembly.Operand -> Converter ()
 stackAllocate newStackPointerDestination size = do
@@ -113,7 +113,7 @@ stackAllocate newStackPointerDestination size = do
 stackDeallocate :: Assembly.Operand -> Converter ()
 stackDeallocate size = do
   stackPointer <- gets _stackPointer
-  newStackPointer <- freshLocal
+  newStackPointer <- freshLocal "stack"
   emitInstruction $ CPSAssembly.Add newStackPointer (Assembly.LocalOperand stackPointer) size
   modify $ \s -> s
     { _stackPointer = newStackPointer
@@ -128,52 +128,46 @@ convertDefinition
   -> Assembly.Definition Assembly.BasicBlock
   -> [(Assembly.Name, CPSAssembly.Definition)]
 convertDefinition fresh name definition =
-  case definition of
-    Assembly.ConstantDefinition arguments basicBlock -> do
-      let stackPointer = Assembly.Local fresh
-      toList $
-        _definitions $
-        flip execState ConverterState
-          { _fresh = fresh + 1
-          , _baseDefinitionName = name
-          , _nextDefinitionName = 1
-          , _finishDefinition =
-            \basicBlock' ->
-              ( Assembly.Name name 0
-              , Assembly.ConstantDefinition (stackPointer : arguments) basicBlock'
-              )
-          , _definitions = mempty
-          , _instructions = mempty
-          , _stackPointer = stackPointer
-          } $
-        unConverter $
+  toList $
+    _definitions $
+    flip execState ConverterState
+      { _fresh = fresh + 1
+      , _baseDefinitionName = name
+      , _nextDefinitionName = 1
+      , _finishDefinition = \ _ -> panic "convertDefinition"
+      , _definitions = mempty
+      , _instructions = mempty
+      , _stackPointer = stackPointer
+      } $ unConverter $ do
+      case definition of
+        Assembly.ConstantDefinition arguments basicBlock -> do
+          modify $ \s  -> s
+            { _finishDefinition =
+              \basicBlock' ->
+                ( Assembly.Name name 0
+                , Assembly.ConstantDefinition (stackPointer : arguments) basicBlock'
+                )
+            }
           convertBasicBlock mempty $ Assembly.basicBlockWithOccurrences basicBlock
 
-    Assembly.FunctionDefinition arguments basicBlock -> do
-      let stackPointer = Assembly.Local fresh
-      toList $
-        _definitions $
-        flip execState ConverterState
-          { _fresh = fresh + 1
-          , _baseDefinitionName = name
-          , _nextDefinitionName = 1
-          , _finishDefinition =
-            \basicBlock' ->
-              ( Assembly.Name name 0
-              , Assembly.FunctionDefinition (stackPointer : arguments) basicBlock'
-              )
-          , _definitions = mempty
-          , _instructions = mempty
-          , _stackPointer = stackPointer
-          } $
-        unConverter $
+        Assembly.FunctionDefinition arguments basicBlock -> do
+          modify $ \s  -> s
+            { _finishDefinition =
+              \basicBlock' ->
+                ( Assembly.Name name 0
+                , Assembly.FunctionDefinition (stackPointer : arguments) basicBlock'
+                )
+            }
           convertBasicBlock mempty $ Assembly.basicBlockWithOccurrences basicBlock
+  where
+    stackPointer =
+      Assembly.Local fresh "stack"
 
-convertBasicBlock :: IntSet Assembly.Local -> Assembly.BasicBlockWithOccurrences -> Converter ()
+convertBasicBlock :: HashSet Assembly.Local -> Assembly.BasicBlockWithOccurrences -> Converter ()
 convertBasicBlock liveLocals basicBlock =
   case basicBlock of
     Assembly.Nil -> do
-      continuation <- freshLocal
+      continuation <- freshLocal "continuation"
       pop continuation
       stackPointer <- gets _stackPointer
       terminate $ CPSAssembly.TailCall (Assembly.LocalOperand continuation) [Assembly.LocalOperand stackPointer]
@@ -187,7 +181,7 @@ convertBasicBlock liveLocals basicBlock =
       convertBasicBlock liveLocals basicBlock'
 
 convertInstruction
-  :: IntSet Assembly.Local
+  :: HashSet Assembly.Local
   -> Assembly.Instruction Assembly.BasicBlockWithOccurrences
   -> Converter ()
 convertInstruction liveLocals instr =
@@ -250,7 +244,7 @@ convertInstruction liveLocals instr =
           locals =
             liveLocals <> Assembly.basicBlockOccurrences basicBlock
           localsList =
-            IntSet.toList locals
+            HashSet.toList locals
         pure
           ( i
           , continuationFunctionName
@@ -263,7 +257,7 @@ convertInstruction liveLocals instr =
         branchTerminators =
           [ ( i
             , CPSAssembly.TailCall
-              (Assembly.GlobalFunction continuationFunctionName $ IntSet.size locals)
+              (Assembly.GlobalFunction continuationFunctionName $ HashSet.size locals)
               (Assembly.LocalOperand <$> stackPointer : localsList)
             )
           | (i, continuationFunctionName, locals, localsList, _) <- branches'
@@ -273,11 +267,11 @@ convertInstruction liveLocals instr =
         defaultLocals =
           liveLocals <> Assembly.basicBlockOccurrences default_
         defaultLocalsList =
-          IntSet.toList defaultLocals
+          HashSet.toList defaultLocals
       let defaultTerminator =
             CPSAssembly.TailCall
-              (Assembly.GlobalFunction defaultContinuationFunctionName $ IntSet.size defaultLocals)
-              (Assembly.LocalOperand <$> stackPointer : IntSet.toList defaultLocals)
+              (Assembly.GlobalFunction defaultContinuationFunctionName $ HashSet.size defaultLocals)
+              (Assembly.LocalOperand <$> stackPointer : HashSet.toList defaultLocals)
       terminate $ CPSAssembly.Switch scrutinee branchTerminators defaultTerminator
       forM_ branches' $ \(_, continuationFunctionName, _locals, localsList, basicBlock) -> do
         startDefinition $ \basicBlock' ->

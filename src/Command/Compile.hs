@@ -38,7 +38,7 @@ compile argumentFiles = do
         liftIO $ print cc
         assembly <- fetch $ Query.Assembly $ Name.Lifted name 0
         cpsAssembly <- fetch $ Query.CPSAssembly $ Name.Lifted name 0
-        liftIO $ putDoc $ pretty assembly <> line
+        liftIO $ putDoc $ pretty (fst <$> assembly) <> line
         putText ""
         liftIO $ putDoc $ pretty cpsAssembly <> line
         putText ""

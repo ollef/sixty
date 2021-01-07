@@ -1,32 +1,31 @@
 {-# language DeriveAnyClass #-}
 {-# language DeriveFunctor #-}
 {-# language DeriveGeneric #-}
+{-# language DerivingStrategies #-}
 {-# language GADTs #-}
+{-# language GeneralizedNewtypeDeriving #-}
 {-# language OverloadedStrings #-}
 module Assembly where
 
-import Protolude hiding (local, IntSet)
+import Protolude hiding (local, moduleName)
 
 import Data.Persist
 import Data.Text.Prettyprint.Doc
 
-import qualified Data.IntSet as IntSet
-import Data.IntSet (IntSet)
+import qualified Data.HashSet as HashSet
+import Data.HashSet (HashSet)
 import Literal (Literal)
 import qualified Name
 
-newtype Local = Local Int
-  deriving (Eq, Ord, Show, Generic, Persist, Hashable)
+data Local = Local !Int !NameSuggestion
+  deriving (Eq, Ord, Show, Generic, Hashable, Persist)
+
+newtype NameSuggestion = NameSuggestion Text
+  deriving stock (Show, Generic)
+  deriving newtype (IsString, Persist)
 
 data Name = Name !Name.Lifted !Int
   deriving (Eq, Show, Generic, Persist, Hashable)
-
-instance Pretty Name where
-  pretty (Name name 0) =
-    pretty name
-
-  pretty (Name name n) =
-    pretty name <> "$" <> pretty n
 
 data Operand
   = LocalOperand !Local
@@ -58,11 +57,33 @@ data Definition basicBlock
 type StackPointer = Local
 
 newtype BasicBlock = BasicBlock [Instruction BasicBlock]
-  deriving (Show, Generic, Persist, Hashable)
+  deriving stock (Show, Generic)
+  deriving newtype (Persist, Hashable)
+
+-------------------------------------------------------------------------------
+
+instance Pretty Name where
+  pretty (Name name 0) =
+    pretty name
+
+  pretty (Name name n) =
+    pretty name <> "$" <> pretty n
+
+instance Eq NameSuggestion where
+  _ == _ =
+    True
+
+instance Ord NameSuggestion where
+  compare _ _ =
+    EQ
+
+instance Hashable NameSuggestion where
+  hashWithSalt s _ =
+    hashWithSalt s ()
 
 instance Pretty Local where
-  pretty (Local i) =
-    "%" <> pretty i
+  pretty (Local i (NameSuggestion l)) =
+    "%" <> pretty l <> "$" <> pretty i
 
 instance Pretty Operand where
   pretty operand =
@@ -150,9 +171,23 @@ instance Pretty BasicBlock where
 
 -------------------------------------------------------------------------------
 
+nameText :: Assembly.Name -> Text
+nameText name =
+  case name of
+    Assembly.Name (Name.Lifted (Name.Qualified (Name.Module moduleName) (Name.Name name_)) 0) 0 ->
+      moduleName <> "." <> name_
+
+    Assembly.Name (Name.Lifted (Name.Qualified (Name.Module moduleName) (Name.Name name_)) 0) j ->
+      moduleName <> "." <> name_ <> "$" <> show j
+
+    Assembly.Name (Name.Lifted (Name.Qualified (Name.Module moduleName) (Name.Name name_)) i) j ->
+      moduleName <> "." <> name_ <> "$" <> show i <> "$" <> show j
+
+-------------------------------------------------------------------------------
+
 data BasicBlockWithOccurrences
   = Nil
-  | Cons (IntSet Local, IntSet Local) (Instruction BasicBlockWithOccurrences) BasicBlockWithOccurrences
+  | Cons (HashSet Local, HashSet Local) (Instruction BasicBlockWithOccurrences) BasicBlockWithOccurrences
 
 cons :: Instruction BasicBlockWithOccurrences -> BasicBlockWithOccurrences -> BasicBlockWithOccurrences
 cons instruction basicBlock =
@@ -169,14 +204,14 @@ basicBlockWithOccurrences (BasicBlock instructions) =
         (basicBlockWithOccurrences <$> instruction)
         (basicBlockWithOccurrences $ Assembly.BasicBlock instructions')
 
-basicBlockOccurrences :: BasicBlockWithOccurrences -> IntSet Local
+basicBlockOccurrences :: BasicBlockWithOccurrences -> HashSet Local
 basicBlockOccurrences basicBlock = do
   let
     (bound, free) =
       basicBlockLocals basicBlock
-  free `IntSet.difference` bound
+  free `HashSet.difference` bound
 
-basicBlockLocals :: BasicBlockWithOccurrences -> (IntSet Local, IntSet Local)
+basicBlockLocals :: BasicBlockWithOccurrences -> (HashSet Local, HashSet Local)
 basicBlockLocals basicBlock =
   case basicBlock of
     Nil ->
@@ -185,20 +220,20 @@ basicBlockLocals basicBlock =
     Cons locals _ _ ->
       locals
 
-instructionLocals :: Instruction BasicBlockWithOccurrences -> (IntSet Local, IntSet Local)
+instructionLocals :: Instruction BasicBlockWithOccurrences -> (HashSet Local, HashSet Local)
 instructionLocals instruction =
   case instruction of
     Copy o1 o2 o3 ->
       operandOccurrences o1 <> operandOccurrences o2 <> operandOccurrences o3
 
     Call l o os ->
-      (IntSet.singleton l, mempty) <> operandOccurrences o <> foldMap operandOccurrences os
+      (HashSet.singleton l, mempty) <> operandOccurrences o <> foldMap operandOccurrences os
 
     CallVoid o os ->
       operandOccurrences o <> foldMap operandOccurrences os
 
     Load l o ->
-      (IntSet.singleton l, mempty) <> operandOccurrences o
+      (HashSet.singleton l, mempty) <> operandOccurrences o
 
     Store o1 o2 ->
       operandOccurrences o1 <> operandOccurrences o2
@@ -207,28 +242,28 @@ instructionLocals instruction =
       operandOccurrences o
 
     Add l o1 o2 ->
-      (IntSet.singleton l, mempty) <> operandOccurrences o1 <> operandOccurrences o2
+      (HashSet.singleton l, mempty) <> operandOccurrences o1 <> operandOccurrences o2
 
     Sub l o1 o2 ->
-      (IntSet.singleton l, mempty) <> operandOccurrences o1 <> operandOccurrences o2
+      (HashSet.singleton l, mempty) <> operandOccurrences o1 <> operandOccurrences o2
 
     StackAllocate l o ->
-      (IntSet.singleton l, mempty) <> operandOccurrences o
+      (HashSet.singleton l, mempty) <> operandOccurrences o
 
     StackDeallocate o ->
       operandOccurrences o
 
     HeapAllocate l o ->
-      (IntSet.singleton l, mempty) <> operandOccurrences o
+      (HashSet.singleton l, mempty) <> operandOccurrences o
 
     Switch o brs d ->
       operandOccurrences o <> foldMap (basicBlockLocals . snd) brs <> basicBlockLocals d
 
-operandOccurrences :: Operand -> (IntSet Local, IntSet Local)
+operandOccurrences :: Operand -> (HashSet Local, HashSet Local)
 operandOccurrences operand =
   case operand of
     LocalOperand local ->
-      (mempty, IntSet.singleton local)
+      (mempty, HashSet.singleton local)
 
     GlobalConstant _ ->
       mempty

@@ -1,6 +1,7 @@
 {-# language FlexibleContexts #-}
 {-# language GeneralizedNewtypeDeriving #-}
 {-# language OverloadedStrings #-}
+
 module ClosureConvertedToAssembly where
 
 import Protolude hiding (IntMap, typeOf, moduleName)
@@ -23,7 +24,7 @@ import qualified Data.Tsil as Tsil
 import Index
 import qualified Literal
 import Monad
-import Name (Name)
+import Name (Name(Name))
 import qualified Name
 import Query (Query)
 import qualified Query
@@ -35,14 +36,16 @@ import Var (Var(Var))
 newtype Builder a = Builder (StateT BuilderState M a)
   deriving (Functor, Applicative, Monad, MonadIO, MonadFetch Query, MonadState BuilderState)
 
-newtype BuilderState = BuilderState
-  { _instructions :: Tsil (Assembly.Instruction Assembly.BasicBlock)
+data BuilderState = BuilderState
+  { _fresh :: !Int
+  , _instructions :: Tsil (Assembly.Instruction Assembly.BasicBlock)
   }
 
-runBuilder :: Builder a -> M (a, Assembly.BasicBlock)
+runBuilder :: Builder a -> M a
 runBuilder (Builder s) =
-  second (Assembly.BasicBlock . toList . _instructions) <$> runStateT s BuilderState
-    { _instructions = mempty
+  evalStateT s BuilderState
+    { _fresh = 0
+    , _instructions = mempty
     }
 
 emit :: Assembly.Instruction Assembly.BasicBlock -> Builder ()
@@ -78,6 +81,21 @@ data Return = Return
   , _returnType :: !Assembly.Operand
   }
 
+operandNameSuggestion :: Assembly.Operand -> Assembly.NameSuggestion
+operandNameSuggestion operand =
+  case operand of
+    Assembly.LocalOperand (Assembly.Local _ nameSuggestion) ->
+      nameSuggestion
+
+    Assembly.GlobalConstant global ->
+      Assembly.NameSuggestion $ Assembly.nameText global
+
+    Assembly.GlobalFunction global _ ->
+      Assembly.NameSuggestion $ Assembly.nameText global
+
+    Assembly.Lit _ ->
+      "literal"
+
 -------------------------------------------------------------------------------
 
 indexLocation :: Index v -> Environment v -> Assembly.Operand
@@ -92,9 +110,9 @@ globalConstantLocation :: Name.Lifted -> Assembly.Operand
 globalConstantLocation name =
   Assembly.GlobalConstant $ Assembly.Name name 0
 
-stackAllocate :: Assembly.Operand -> Builder Assembly.Operand
-stackAllocate size = do
-  return_ <- freshLocal
+stackAllocate :: Assembly.NameSuggestion -> Assembly.Operand -> Builder Assembly.Operand
+stackAllocate nameSuggestion size = do
+  return_ <- freshLocal nameSuggestion
   emit $ Assembly.StackAllocate return_ size
   pure $ Assembly.LocalOperand return_
 
@@ -102,13 +120,13 @@ stackDeallocate :: Assembly.Operand -> Builder ()
 stackDeallocate size =
   emit $ Assembly.StackDeallocate size
 
-globalAllocate :: Assembly.Operand -> Assembly.Operand -> Builder Assembly.Operand
+globalAllocate :: Assembly.NameSuggestion -> Assembly.Operand -> Assembly.Operand -> Builder Assembly.Operand
 globalAllocate =
   add
 
-heapAllocate :: Assembly.Operand -> Builder Assembly.Operand
-heapAllocate size = do
-  return_ <- freshLocal
+heapAllocate :: Assembly.NameSuggestion -> Assembly.Operand -> Builder Assembly.Operand
+heapAllocate nameSuggestion size = do
+  return_ <- freshLocal nameSuggestion
   emit $ Assembly.HeapAllocate return_ size
   pure $ Assembly.LocalOperand return_
 
@@ -121,15 +139,20 @@ typeOf env term = do
   generateTypedTerm env type_ pointerBytesOperand
 
 sizeOfType :: Assembly.Operand -> Builder Assembly.Operand
-sizeOfType =
-  load
+sizeOfType operand = do
+  let
+    Assembly.NameSuggestion nameSuggestion =
+      operandNameSuggestion operand
+
+  load (Assembly.NameSuggestion $ nameSuggestion <> "_size") operand
 
 -------------------------------------------------------------------------------
 
-freshLocal :: Builder Assembly.Local
-freshLocal = do
-  Var i <- Builder $ lift freshVar
-  pure $ Assembly.Local i
+freshLocal :: Assembly.NameSuggestion -> Builder Assembly.Local
+freshLocal nameSuggestion = do
+  fresh <- gets _fresh
+  modify $ \s -> s { _fresh = fresh + 1 }
+  pure $ Assembly.Local fresh nameSuggestion
 
 copy :: Assembly.Operand -> Assembly.Operand -> Assembly.Operand -> Builder ()
 copy destination source size =
@@ -139,9 +162,9 @@ call :: Name.Lifted -> [Assembly.Operand] -> Assembly.Operand -> Builder ()
 call global args returnLocation =
   emit $ Assembly.CallVoid (Assembly.GlobalFunction (Assembly.Name global 0) $ 1 + length args) (returnLocation : args)
 
-load :: Assembly.Operand -> Builder Assembly.Operand
-load pointer = do
-  destination <- freshLocal
+load :: Assembly.NameSuggestion -> Assembly.Operand -> Builder Assembly.Operand
+load nameSuggestion pointer = do
+  destination <- freshLocal nameSuggestion
   emit $ Assembly.Load destination pointer
   pure $ Assembly.LocalOperand destination
 
@@ -153,15 +176,15 @@ initGlobal :: Name.Lifted -> Assembly.Operand -> Builder ()
 initGlobal global value =
   emit $ Assembly.InitGlobal global value
 
-add :: Assembly.Operand -> Assembly.Operand -> Builder Assembly.Operand
-add i1 i2 = do
-  destination <- freshLocal
+add :: Assembly.NameSuggestion -> Assembly.Operand -> Assembly.Operand -> Builder Assembly.Operand
+add nameSuggestion i1 i2 = do
+  destination <- freshLocal nameSuggestion
   emit $ Assembly.Add destination i1 i2
   pure $ Assembly.LocalOperand destination
 
-sub :: Assembly.Operand -> Assembly.Operand -> Builder Assembly.Operand
-sub i1 i2 = do
-  destination <- freshLocal
+sub :: Assembly.NameSuggestion -> Assembly.Operand -> Assembly.Operand -> Builder Assembly.Operand
+sub nameSuggestion i1 i2 = do
+  destination <- freshLocal nameSuggestion
   emit $ Assembly.Sub destination i1 i2
   pure $ Assembly.LocalOperand destination
 
@@ -185,16 +208,15 @@ initDefinitionName :: Name.Lifted -> Name.Lifted
 initDefinitionName (Name.Lifted (Name.Qualified moduleName (Name.Name name)) m) =
   Name.Lifted (Name.Qualified moduleName $ Name.Name $ name <> "$init") m
 
-generateModuleInit :: [(Name.Lifted, Syntax.Definition)] -> M (Assembly.Definition Assembly.BasicBlock)
-generateModuleInit definitions = do
-  (arguments, instructions) <-
-    runBuilder $ do
-      globalPointer <- freshLocal
-      outGlobalPointer <- freshLocal
-      foldM_ (go $ Assembly.LocalOperand outGlobalPointer) (Assembly.LocalOperand globalPointer) definitions
-      pure [outGlobalPointer, globalPointer]
-
-  pure $ Assembly.FunctionDefinition arguments instructions
+generateModuleInit :: [(Name.Lifted, Syntax.Definition)] -> M (Assembly.Definition Assembly.BasicBlock, Int)
+generateModuleInit definitions =
+  runBuilder $ do
+    globalPointer <- freshLocal "globals"
+    outGlobalPointer <- freshLocal "globals_out"
+    foldM_ (go $ Assembly.LocalOperand outGlobalPointer) (Assembly.LocalOperand globalPointer) definitions
+    instructions <- gets _instructions
+    fresh <- gets _fresh
+    pure (Assembly.FunctionDefinition [outGlobalPointer, globalPointer] (Assembly.BasicBlock $ toList instructions), fresh)
   where
     go outGlobalPointer globalPointer (name, definition) =
       case definition of
@@ -203,7 +225,7 @@ generateModuleInit definitions = do
 
         Syntax.ConstantDefinition {} -> do
           call (initDefinitionName name) [globalPointer] outGlobalPointer
-          load outGlobalPointer
+          load "globals" outGlobalPointer
 
         Syntax.FunctionDefinition {} ->
           pure globalPointer
@@ -214,16 +236,16 @@ generateModuleInit definitions = do
         Syntax.ParameterisedDataDefinition {} ->
           pure globalPointer
 
-generateDefinition :: Name.Lifted -> Syntax.Definition -> M (Maybe (Assembly.Definition Assembly.BasicBlock))
-generateDefinition name@(Name.Lifted qualifiedName _) definition = do
-  case definition of
-    Syntax.TypeDeclaration _ ->
-      pure Nothing
+generateDefinition :: Name.Lifted -> Syntax.Definition -> M (Maybe (Assembly.Definition Assembly.BasicBlock, Int))
+generateDefinition name@(Name.Lifted qualifiedName _) definition =
+  runBuilder $
+    case definition of
+      Syntax.TypeDeclaration _ ->
+        pure Nothing
 
-    Syntax.ConstantDefinition term -> do
-      (args, instructions) <- runBuilder $ do
-        globalPointer <- freshLocal
-        outGlobalPointer <- freshLocal
+      Syntax.ConstantDefinition term -> do
+        globalPointer <- freshLocal "globals"
+        outGlobalPointer <- freshLocal "globals_out"
         let
           globalPointerOperand =
             Assembly.LocalOperand globalPointer
@@ -233,7 +255,7 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition = do
             emptyEnvironment $ Scope.KeyedName Scope.Definition qualifiedName
         (type_, deallocateType) <- typeOf env term
         typeSize <- sizeOfType type_
-        newGlobalPointer <- globalAllocate globalPointerOperand typeSize
+        newGlobalPointer <- globalAllocate "globals" globalPointerOperand typeSize
         storeTerm env term Return
           { _returnLocation = globalPointerOperand
           , _returnType = type_
@@ -241,24 +263,31 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition = do
         deallocateType
         initGlobal name globalPointerOperand
         store outGlobalPointerOperand newGlobalPointer
-        pure [outGlobalPointer, globalPointer]
-      pure $ Just $ Assembly.ConstantDefinition args instructions
+        instructions <- gets _instructions
+        fresh <- gets _fresh
+        pure $ Just
+          ( Assembly.ConstantDefinition [outGlobalPointer, globalPointer] $ Assembly.BasicBlock $ toList instructions
+          , fresh
+          )
 
-    Syntax.FunctionDefinition tele -> do
-      (args, instructions) <- runBuilder $ do
-        returnLocation <- freshLocal
+      Syntax.FunctionDefinition tele -> do
+        returnLocation <- freshLocal "return_location"
         let
           env =
             emptyEnvironment $ Scope.KeyedName Scope.Definition qualifiedName
         args <- generateFunction env returnLocation tele
-        return $ returnLocation : args
-      pure $ Just $ Assembly.FunctionDefinition args instructions
+        instructions <- gets _instructions
+        fresh <- gets _fresh
+        pure $ Just
+          ( Assembly.FunctionDefinition (returnLocation : args) $ Assembly.BasicBlock $ toList instructions
+          , fresh
+          )
 
-    Syntax.DataDefinition {} ->
-      panic "gd dd" -- TODO
+      Syntax.DataDefinition {} ->
+        panic "gd dd" -- TODO
 
-    Syntax.ParameterisedDataDefinition {} ->
-      panic "gd pd" -- TODO
+      Syntax.ParameterisedDataDefinition {} ->
+        panic "gd pd" -- TODO
 
 generateFunction
   :: Environment v
@@ -279,8 +308,8 @@ generateFunction env returnLocation tele =
       deallocateType
       pure []
 
-    Telescope.Extend _name type_ _plicity tele' -> do
-      termLocation <- freshLocal
+    Telescope.Extend (Name name) type_ _plicity tele' -> do
+      termLocation <- freshLocal $ Assembly.NameSuggestion name
       env' <- extend env type_ $ Assembly.LocalOperand termLocation
       args <- generateFunction env' returnLocation tele'
       pure $ termLocation : args
@@ -304,7 +333,7 @@ generateTypedTerm env term type_ = do
   let
     stackAllocateIt = do
       typeSize <- sizeOfType type_
-      termLocation <- stackAllocate typeSize
+      termLocation <- stackAllocate "term_location" typeSize
       let
         return_ =
           Return
@@ -394,7 +423,7 @@ storeTerm env term return_ =
             }
           deallocateArgType
           argTypeSize <- sizeOfType argType
-          add location argTypeSize
+          add "argument_offset" location argTypeSize
 
       boxity <- fetchBoxity typeName
       case boxity of
@@ -403,7 +432,7 @@ storeTerm env term return_ =
 
         Boxed -> do
           size <- boxedConstructorSize env con params
-          heapLocation <- heapAllocate size
+          heapLocation <- heapAllocate "constructor_heap_object" size
           foldM_ go heapLocation tagArgs
           store (_returnLocation return_) heapLocation
 

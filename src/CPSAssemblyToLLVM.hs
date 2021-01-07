@@ -11,8 +11,6 @@ import qualified Data.ByteString.Short as ShortByteString
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
-import Data.IntMap (IntMap)
-import qualified Data.IntMap as IntMap
 import Data.String (fromString)
 import Data.Text.Prettyprint.Doc
 import qualified Literal
@@ -29,9 +27,9 @@ import Protolude hiding (IntMap, cast, local, moduleName)
 type Assembler = State AssemblerState
 
 data AssemblerState = AssemblerState
-  { _locals :: IntMap Assembly.Local (LLVM.Operand, OperandType)
-  , _nextUnName :: !Word
+  { _locals :: HashMap Assembly.Local (LLVM.Operand, OperandType)
   , _usedGlobals :: HashMap LLVM.Name LLVM.Global
+  , _usedNames :: HashMap ShortByteString Int
   }
 
 data OperandType
@@ -80,19 +78,25 @@ bytePointer :: LLVM.Type
 bytePointer =
   LLVM.Type.ptr LLVM.Type.i8
 
-nextUnName :: Assembler LLVM.Name
-nextUnName = do
-  name <- gets _nextUnName
+freshName :: Assembly.NameSuggestion -> Assembler LLVM.Name
+freshName (Assembly.NameSuggestion nameSuggestion) = do
+  usedNames <- gets _usedNames
+  let
+    bsName =
+      ShortByteString.toShort $ toUtf8 nameSuggestion
+
+    i =
+      HashMap.lookupDefault 0 bsName usedNames
   modify $ \s -> s
-    { _nextUnName = name + 1
+    { _usedNames = HashMap.insert bsName (i + 1) usedNames
     }
-  pure $ LLVM.UnName name
+  pure $ LLVM.Name $ if i == 0 then bsName else bsName <> "$$" <> ShortByteString.toShort (toUtf8 (show i :: Text))
 
 activateLocal :: OperandType -> Assembly.Local -> Assembler LLVM.Name
-activateLocal type_ local = do
-  name <- nextUnName
+activateLocal type_ local@(Assembly.Local _ nameSuggestion) = do
+  name <- freshName nameSuggestion
   modify $ \s -> s
-    { _locals = IntMap.insert local (LLVM.LocalReference (llvmType type_) name, type_) $ _locals s
+    { _locals = HashMap.insert local (LLVM.LocalReference (llvmType type_) name, type_) $ _locals s
     }
   pure name
 
@@ -129,7 +133,7 @@ assembleDefinition name@(Assembly.Name liftedName@(Name.Lifted _ liftedNameNumbe
   second _usedGlobals $
   flip runState AssemblerState
     { _locals = mempty
-    , _nextUnName = 0
+    , _usedNames = mempty
     , _usedGlobals = mempty
     } $
     case definition of
@@ -179,20 +183,12 @@ assembleDefinition name@(Assembly.Name liftedName@(Name.Lifted _ liftedNameNumbe
           LLVM.Private
 
 assembleName :: Assembly.Name -> ShortByteString
-assembleName name =
-  case name of
-    Assembly.Name (Name.Lifted (Name.Qualified (Name.Module moduleName) (Name.Name name_)) 0) 0 ->
-      ShortByteString.toShort $ toUtf8 $ moduleName <> "." <> name_
-
-    Assembly.Name (Name.Lifted (Name.Qualified (Name.Module moduleName) (Name.Name name_)) 0) j ->
-      ShortByteString.toShort $ toUtf8 $ moduleName <> "." <> name_ <> "$" <> show j
-
-    Assembly.Name (Name.Lifted (Name.Qualified (Name.Module moduleName) (Name.Name name_)) i) j ->
-      ShortByteString.toShort $ toUtf8 $ moduleName <> "." <> name_ <> "$" <> show i <> "$" <> show j
+assembleName =
+  ShortByteString.toShort . toUtf8 . Assembly.nameText
 
 assembleBasicBlock :: CPSAssembly.BasicBlock -> Assembler [LLVM.BasicBlock]
 assembleBasicBlock (CPSAssembly.BasicBlock instructions terminator) = do
-  blockLabel <- nextUnName
+  blockLabel <- freshName "block"
   compiledInstructions <- mapM assembleInstruction instructions
   assembleTerminator blockLabel (concat compiledInstructions) terminator
 
@@ -202,10 +198,10 @@ assembleTerminator blockLabel instructions terminator =
     CPSAssembly.Switch scrutinee branches defaultBranch -> do
       (scrutinee', scrutineeInstructions) <- assembleOperand Word scrutinee
       branches' <- forM branches $ \(int, branchTerminator) -> do
-        branchLabel <- nextUnName
+        branchLabel <- freshName $ Assembly.NameSuggestion $ "branch_" <> show int
         blocks <- assembleTerminator branchLabel [] branchTerminator
         pure (int, branchLabel, blocks)
-      defaultLabel <- nextUnName
+      defaultLabel <- freshName "default"
       defaultBlocks <- assembleTerminator defaultLabel [] defaultBranch
       pure $
         [ LLVM.BasicBlock
@@ -252,8 +248,8 @@ assembleInstruction instruction =
       (destination', destinationInstructions) <- assembleOperand WordPointer destination
       (source', sourceInstructions) <- assembleOperand WordPointer source
       (size', sizeInstructions) <- assembleOperand Word size
-      destination'' <- nextUnName
-      source'' <- nextUnName
+      destination'' <- freshName "destination"
+      source'' <- freshName "source"
       let
         memcpyName =
           LLVM.Name $ "llvm.memcpy.p0i8.p0i8.i" <> fromString (show (wordBits :: Int))
@@ -367,7 +363,7 @@ assembleInstruction instruction =
     CPSAssembly.SetUndefined destination size -> do
       (destination', destinationInstructions) <- assembleOperand WordPointer destination
       (size', sizeInstructions) <- assembleOperand Word size
-      destination'' <- nextUnName
+      destination'' <- freshName "destination"
       let
         memsetResultType =
           LLVM.Type.void
@@ -481,13 +477,20 @@ assembleInstruction instruction =
 assembleOperand :: OperandType -> Assembly.Operand -> Assembler (LLVM.Operand, [LLVM.Named LLVM.Instruction])
 assembleOperand type_ operand =
   case operand of
-    Assembly.LocalOperand local -> do
+    Assembly.LocalOperand local@(Assembly.Local _ nameSuggestion) -> do
       locals <- gets _locals
-      cast type_ $ IntMap.lookupDefault (panic "assembleOperand: no such local") local locals
+      cast nameSuggestion type_ $ HashMap.lookupDefault (panic "assembleOperand: no such local") local locals
 
     Assembly.GlobalConstant global -> do
-      destination <- nextUnName
-      (castDestination, castInstructions) <- cast type_ (LLVM.LocalReference (llvmType WordPointer) destination, WordPointer)
+      let
+        globalNameText =
+          Assembly.nameText global
+
+        nameSuggestion =
+          Assembly.NameSuggestion globalNameText
+
+      destination <- freshName nameSuggestion
+      (castDestination, castInstructions) <- cast nameSuggestion type_ (LLVM.LocalReference (llvmType WordPointer) destination, WordPointer)
       let
         globalName =
           LLVM.Name $ assembleName global
@@ -516,7 +519,13 @@ assembleOperand type_ operand =
       let
         defType =
           FunctionPointer $ 1 + arity
-      let
+
+        globalNameText =
+          Assembly.nameText global
+
+        nameSuggestion =
+          Assembly.NameSuggestion globalNameText
+
         globalName =
           LLVM.Name $ assembleName global
 
@@ -530,7 +539,7 @@ assembleOperand type_ operand =
         , LLVM.Global.parameters = ([LLVM.Parameter wordPointer (LLVM.UnName parameter) [] | parameter <- [0..fromIntegral arity]], False)
         , LLVM.Global.alignment = alignment
         }
-      cast type_
+      cast nameSuggestion type_
         ( LLVM.ConstantOperand $
           LLVM.Constant.GlobalReference globalType globalName
         , defType
@@ -539,7 +548,7 @@ assembleOperand type_ operand =
     Assembly.Lit lit ->
       case lit of
         Literal.Integer int ->
-          cast type_
+          cast "literal" type_
             ( LLVM.ConstantOperand LLVM.Constant.Int
               { integerBits = wordBits
               , integerValue = int
@@ -547,36 +556,48 @@ assembleOperand type_ operand =
             , Word
             )
 
-cast :: OperandType -> (LLVM.Operand, OperandType) -> Assembler (LLVM.Operand, [LLVM.Named LLVM.Instruction])
-cast newType (operand, type_)
+cast :: Assembly.NameSuggestion -> OperandType -> (LLVM.Operand, OperandType) -> Assembler (LLVM.Operand, [LLVM.Named LLVM.Instruction])
+cast (Assembly.NameSuggestion nameSuggestion) newType (operand, type_)
   | type_ == newType =
     pure (operand, [])
 
-  | otherwise = do
-    newOperand <- nextUnName
-    pure
-      ( LLVM.LocalReference (llvmType newType) newOperand
-      , pure $
-        newOperand LLVM.:=
-        case (type_, newType) of
-          (Word, _) ->
-            LLVM.IntToPtr
-              { operand0 = operand
-              , type' = llvmType newType
-              , metadata = mempty
-              }
+  | otherwise =
+    case (type_, newType) of
+      (Word, _) -> do
+        newOperand <- freshName $ Assembly.NameSuggestion $ nameSuggestion <> "_pointer"
+        pure
+          ( LLVM.LocalReference (llvmType newType) newOperand
+          , [ newOperand LLVM.:=
+              LLVM.IntToPtr
+                { operand0 = operand
+                , type' = llvmType newType
+                , metadata = mempty
+                }
+            ]
+          )
 
-          (_, Word) ->
-            LLVM.PtrToInt
-              { operand0 = operand
-              , type' = llvmType newType
-              , metadata = mempty
-              }
+      (_, Word) -> do
+        newOperand <- freshName $ Assembly.NameSuggestion $ nameSuggestion <> "_integer"
+        pure
+          ( LLVM.LocalReference (llvmType newType) newOperand
+          , [ newOperand LLVM.:=
+              LLVM.PtrToInt
+                { operand0 = operand
+                , type' = llvmType newType
+                , metadata = mempty
+                }
+            ]
+          )
 
-          _ ->
-            LLVM.BitCast
-              { operand0 = operand
-              , type' = llvmType newType
-              , metadata = mempty
-              }
-      )
+      _ -> do
+        newOperand <- freshName $ Assembly.NameSuggestion $ nameSuggestion <> "_cast"
+        pure
+          ( LLVM.LocalReference (llvmType newType) newOperand
+          , [ newOperand LLVM.:=
+              LLVM.BitCast
+                { operand0 = operand
+                , type' = llvmType newType
+                , metadata = mempty
+                }
+            ]
+          )

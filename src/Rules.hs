@@ -56,7 +56,6 @@ import qualified Surface.Syntax as Surface
 import System.FilePath
 import Telescope (Telescope)
 import qualified Telescope
-import Var (Var(Var))
 
 rules :: [FilePath] -> HashSet FilePath -> (FilePath -> IO Text) -> GenRules (Writer [Error] (Writer TaskKind Query)) Query
 rules sourceDirectories files readFile_ (Writer (Writer query)) =
@@ -528,10 +527,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
       noError $ do
         maybeDefinition <- fetch $ ClosureConverted name
         fmap join $ forM maybeDefinition $ \definition ->
-          runM $ do
-            result <- ClosureConvertedToAssembly.generateDefinition name definition
-            Var fresh <- freshVar
-            pure $ (, fresh) <$> result
+          runM $ ClosureConvertedToAssembly.generateDefinition name definition
 
     CPSAssembly name ->
       noError $ do
@@ -546,8 +542,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
           maybeClosureConverted <- fetch $ ClosureConverted name
           pure $ toList $ (name, ) <$> maybeClosureConverted
         moduleInit <- runM $ do
-          assemblyDefinition <- ClosureConvertedToAssembly.generateModuleInit closureConvertedDefinitions
-          Var fresh <- freshVar
+          (assemblyDefinition, fresh) <- ClosureConvertedToAssembly.generateModuleInit closureConvertedDefinitions
           pure $ AssemblyToCPSAssembly.convertDefinition fresh (ClosureConvertedToAssembly.moduleInitName module_) assemblyDefinition
         cpsAssembly <- forM (toList names) $ fetch . CPSAssembly
         pure $ moduleInit <> concat cpsAssembly
