@@ -69,9 +69,9 @@ liftDefinition name def = do
 
       pure (LambdaLifted.ConstantDefinition def', _liftedDefinitions state)
 
-    Syntax.DataDefinition _ tele -> do
+    Syntax.DataDefinition boxity tele -> do
       (tele', state) <- runStateT (liftDataDefinition env tele) emptyState
-      pure (LambdaLifted.DataDefinition tele', _liftedDefinitions state)
+      pure (LambdaLifted.DataDefinition boxity tele', _liftedDefinitions state)
 
 -------------------------------------------------------------------------------
 

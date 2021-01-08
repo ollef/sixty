@@ -6,8 +6,9 @@ import Protolude hiding (Type, IntMap)
 
 import Data.Persist
 
-import Index
+import Boxity
 import Data.OrderedHashMap (OrderedHashMap)
+import Index
 import Literal (Literal)
 import Name (Name)
 import qualified Name
@@ -37,7 +38,7 @@ data Branches v
 data Definition
   = TypeDeclaration !(Type Void)
   | ConstantDefinition !(Telescope Name Type Term Void)
-  | DataDefinition !(Telescope Name Type ConstructorDefinitions Void)
+  | DataDefinition !Boxity !(Telescope Name Type ConstructorDefinitions Void)
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 newtype ConstructorDefinitions v =

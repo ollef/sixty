@@ -468,7 +468,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
       noError $ do
         def <- fetch $ ClosureConverted $ Name.Lifted dataTypeName 0
         case def of
-          Just (ClosureConverted.Syntax.DataDefinition (ClosureConverted.Syntax.ConstructorDefinitions constrs)) ->
+          Just (ClosureConverted.Syntax.DataDefinition _ (ClosureConverted.Syntax.ConstructorDefinitions constrs)) ->
             pure $
               Telescope.Empty $
               OrderedHashMap.lookupDefault
@@ -476,7 +476,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                 constr
                 constrs
 
-          Just (ClosureConverted.Syntax.ParameterisedDataDefinition tele) -> do
+          Just (ClosureConverted.Syntax.ParameterisedDataDefinition _ tele) -> do
             let
               go
                 :: Telescope Name ClosureConverted.Syntax.Type ClosureConverted.Syntax.ConstructorDefinitions v

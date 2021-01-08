@@ -7,6 +7,7 @@ import Protolude hiding (Type, IntMap)
 import Data.Persist
 import Unsafe.Coerce
 
+import Boxity
 import Data.OrderedHashMap (OrderedHashMap)
 import Index
 import Literal (Literal)
@@ -71,8 +72,8 @@ data Definition
   = TypeDeclaration !(Type Void)
   | ConstantDefinition !(Term Void)
   | FunctionDefinition !(Telescope Name Type Term Void)
-  | DataDefinition (ConstructorDefinitions Void)
-  | ParameterisedDataDefinition !(Telescope Name Type ConstructorDefinitions Void)
+  | DataDefinition !Boxity (ConstructorDefinitions Void)
+  | ParameterisedDataDefinition !Boxity !(Telescope Name Type ConstructorDefinitions Void)
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 newtype ConstructorDefinitions v =

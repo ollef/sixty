@@ -40,10 +40,10 @@ typeOfDefinition context definition = do
       Syntax.FunctionDefinition tele ->
         Domain.Function <$> typeOfFunction context tele
 
-      Syntax.DataDefinition _ ->
+      Syntax.DataDefinition _ _ ->
         pure $ Domain.global $ Name.Lifted Builtin.TypeName 0
 
-      Syntax.ParameterisedDataDefinition tele ->
+      Syntax.ParameterisedDataDefinition _ tele ->
         Evaluation.evaluate env $
           Telescope.fold
             (\name domain _ -> Syntax.Pi name domain)

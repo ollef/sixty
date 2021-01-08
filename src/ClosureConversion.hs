@@ -29,12 +29,12 @@ convertDefinition def =
     LambdaLifted.ConstantDefinition tele ->
       ClosureConverted.FunctionDefinition <$> convertTelescope tele
 
-    LambdaLifted.DataDefinition (Telescope.Empty (LambdaLifted.ConstructorDefinitions constrDefs)) ->
-      ClosureConverted.DataDefinition . ClosureConverted.ConstructorDefinitions <$>
+    LambdaLifted.DataDefinition boxity (Telescope.Empty (LambdaLifted.ConstructorDefinitions constrDefs)) ->
+      ClosureConverted.DataDefinition boxity . ClosureConverted.ConstructorDefinitions <$>
         OrderedHashMap.mapMUnordered convertTerm constrDefs
 
-    LambdaLifted.DataDefinition tele ->
-      ClosureConverted.ParameterisedDataDefinition <$> convertParameterisedDataDefinition tele
+    LambdaLifted.DataDefinition boxity tele ->
+      ClosureConverted.ParameterisedDataDefinition boxity <$> convertParameterisedDataDefinition tele
 
 convertParameterisedDataDefinition
   :: MonadFetch Query m
@@ -138,13 +138,13 @@ convertGlobal global args = do
     Just (LambdaLifted.ConstantDefinition (Telescope.Empty _)) ->
       nonFunctionCase
 
-    Just (LambdaLifted.DataDefinition (Telescope.Empty _)) ->
+    Just (LambdaLifted.DataDefinition _ (Telescope.Empty _)) ->
       nonFunctionCase
 
     Just (LambdaLifted.ConstantDefinition tele) ->
       functionCase tele
 
-    Just (LambdaLifted.DataDefinition tele) ->
+    Just (LambdaLifted.DataDefinition _ tele) ->
       functionCase tele
 
     Nothing ->
