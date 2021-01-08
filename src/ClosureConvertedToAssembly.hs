@@ -56,7 +56,7 @@ emit instruction =
 
 data Environment v = Environment
   { _context :: Context v
-  , _varLocations :: IntMap Var Assembly.Operand
+  , _varLocations :: IntMap Var Operand
   }
 
 emptyEnvironment :: Scope.KeyedName -> Environment Void
@@ -66,7 +66,7 @@ emptyEnvironment scopeKey =
     , _varLocations = mempty
     }
 
-extend :: Environment v -> Syntax.Type v -> Assembly.Operand -> Builder (Environment (Succ v))
+extend :: Environment v -> Syntax.Type v -> Operand -> Builder (Environment (Succ v))
 extend env type_ location =
   Builder $ lift $ do
     type' <- Evaluation.evaluate (Context.toEnvironment $ _context env) type_
@@ -96,9 +96,32 @@ operandNameSuggestion operand =
     Assembly.Lit _ ->
       "literal"
 
+data Operand
+  = Direct !Assembly.Operand -- ^ word sized
+  | Indirect !Assembly.Operand
+
+forceIndirect :: Operand -> Builder (Assembly.Operand, Builder ())
+forceIndirect operand =
+  case operand of
+    Direct directOperand -> do
+      operand' <- stackAllocate (operandNameSuggestion directOperand) pointerBytesOperand
+      pure (operand', stackDeallocate pointerBytesOperand)
+
+    Indirect indirectOperand ->
+      pure (indirectOperand, pure ())
+
+forceDirect :: Operand -> Builder Assembly.Operand
+forceDirect operand =
+  case operand of
+    Direct directOperand ->
+      pure directOperand
+
+    Indirect indirectOperand ->
+      load (operandNameSuggestion indirectOperand) indirectOperand
+
 -------------------------------------------------------------------------------
 
-indexLocation :: Index v -> Environment v -> Assembly.Operand
+indexLocation :: Index v -> Environment v -> Operand
 indexLocation index env = do
   let
     var =
@@ -106,9 +129,9 @@ indexLocation index env = do
   fromMaybe (panic "ClosureConvertedToAssembly.indexLocation") $
     IntMap.lookup var $ _varLocations env
 
-globalConstantLocation :: Name.Lifted -> Assembly.Operand
+globalConstantLocation :: Name.Lifted -> Operand
 globalConstantLocation name =
-  Assembly.GlobalConstant $ Assembly.Name name 0
+  Indirect $ Assembly.GlobalConstant $ Assembly.Name name 0
 
 stackAllocate :: Assembly.NameSuggestion -> Assembly.Operand -> Builder Assembly.Operand
 stackAllocate nameSuggestion size = do
@@ -130,21 +153,17 @@ heapAllocate nameSuggestion size = do
   emit $ Assembly.HeapAllocate return_ size
   pure $ Assembly.LocalOperand return_
 
-typeOf :: Environment v -> Syntax.Term v -> Builder (Assembly.Operand, Builder ())
+typeOf :: Environment v -> Syntax.Term v -> Builder Assembly.Operand
 typeOf env term = do
   type_ <- Builder $ lift $ do
     value <- Evaluation.evaluate (Context.toEnvironment $ _context env) term
     typeValue <- TypeOf.typeOf (_context env) value
     Readback.readback (Context.toEnvironment $ _context env) typeValue
-  generateTypedTerm env type_ pointerBytesOperand
+  generateType env type_
 
 sizeOfType :: Assembly.Operand -> Builder Assembly.Operand
-sizeOfType operand = do
-  let
-    Assembly.NameSuggestion nameSuggestion =
-      operandNameSuggestion operand
-
-  load (Assembly.NameSuggestion $ nameSuggestion <> "_size") operand
+sizeOfType =
+  pure
 
 -------------------------------------------------------------------------------
 
@@ -154,9 +173,15 @@ freshLocal nameSuggestion = do
   modify $ \s -> s { _fresh = fresh + 1 }
   pure $ Assembly.Local fresh nameSuggestion
 
-copy :: Assembly.Operand -> Assembly.Operand -> Assembly.Operand -> Builder ()
+copy :: Assembly.Operand -> Operand -> Assembly.Operand -> Builder ()
 copy destination source size =
-  emit $ Assembly.Copy destination source size
+  emit $
+    case source of
+      Indirect indirectSource ->
+        Assembly.Copy destination indirectSource size
+
+      Direct directSource ->
+        Assembly.Store destination directSource
 
 call :: Name.Lifted -> [Assembly.Operand] -> Assembly.Operand -> Builder ()
 call global args returnLocation =
@@ -253,14 +278,13 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition =
             Assembly.LocalOperand outGlobalPointer
           env =
             emptyEnvironment $ Scope.KeyedName Scope.Definition qualifiedName
-        (type_, deallocateType) <- typeOf env term
+        type_ <- typeOf env term
         typeSize <- sizeOfType type_
         newGlobalPointer <- globalAllocate "globals" globalPointerOperand typeSize
         storeTerm env term Return
           { _returnLocation = globalPointerOperand
           , _returnType = type_
           }
-        deallocateType
         initGlobal name globalPointerOperand
         store outGlobalPointerOperand newGlobalPointer
         instructions <- gets _instructions
@@ -297,7 +321,7 @@ generateFunction
 generateFunction env returnLocation tele =
   case tele of
     Telescope.Empty term -> do
-      (type_, deallocateType) <- typeOf env term
+      type_ <- typeOf env term
       let
         return_ =
           Return
@@ -305,30 +329,37 @@ generateFunction env returnLocation tele =
             , _returnType = type_
             }
       storeTerm env term return_
-      deallocateType
       pure []
 
     Telescope.Extend (Name name) type_ _plicity tele' -> do
       termLocation <- freshLocal $ Assembly.NameSuggestion name
-      env' <- extend env type_ $ Assembly.LocalOperand termLocation
+      env' <- extend env type_ $ Indirect $ Assembly.LocalOperand termLocation
       args <- generateFunction env' returnLocation tele'
       pure $ termLocation : args
 
 -------------------------------------------------------------------------------
 
+generateType :: Environment v -> Syntax.Type v -> Builder Assembly.Operand
+generateType env type_ = do
+  (type', deallocateType) <- generateTypedTerm env type_ pointerBytesOperand
+  directType <- forceDirect type'
+  deallocateType
+  pure directType
+
 generateTerm :: Environment v -> Syntax.Term v -> Builder (Return, Builder ())
 generateTerm env term = do
-  (type_, deallocateType) <- typeOf env term
-  (termLocation, deallocateTerm) <- generateTypedTerm env term type_
+  type_ <- typeOf env term
+  (termOperand, deallocateTermOperand) <- generateTypedTerm env term type_
+  (termLocation, deallocateTerm) <- forceIndirect termOperand
   let
     return_ =
       Return
         { _returnLocation = termLocation
         , _returnType = type_
         }
-  pure (return_, deallocateTerm >> deallocateType)
+  pure (return_, deallocateTerm >> deallocateTermOperand)
 
-generateTypedTerm :: Environment v -> Syntax.Term v -> Assembly.Operand -> Builder (Assembly.Operand, Builder ())
+generateTypedTerm :: Environment v -> Syntax.Term v -> Assembly.Operand -> Builder (Operand, Builder ())
 generateTypedTerm env term type_ = do
   let
     stackAllocateIt = do
@@ -341,7 +372,7 @@ generateTypedTerm env term type_ = do
             , _returnType = type_
             }
       storeTerm env term return_
-      pure (termLocation, stackDeallocate typeSize)
+      pure (Indirect termLocation, stackDeallocate typeSize)
 
   case term of
     Syntax.Var index ->
@@ -357,13 +388,12 @@ generateTypedTerm env term type_ = do
       stackAllocateIt
 
     Syntax.Let _name term' termType body -> do
-      (termType', deallocateType) <- generateTypedTerm env termType pointerBytesOperand
+      termType' <- generateType env termType
       (term'', deallocateTerm) <- generateTypedTerm env term' termType'
       env' <- extend env termType term''
       (result, deallocateBody) <- generateTypedTerm env' body type_
       deallocateTerm
-      deallocateType
-      pure (result, deallocateBody >> deallocateTerm >> deallocateType)
+      pure (result, deallocateBody >> deallocateTerm)
 
     Syntax.Function _ ->
       stackAllocateIt
@@ -416,12 +446,11 @@ storeTerm env term return_ =
               Syntax.Lit (Literal.Integer $ fromIntegral tag) : args
 
         go location arg = do
-          (argType, deallocateArgType) <- typeOf env arg
+          argType <- typeOf env arg
           storeTerm env arg Return
             { _returnType = argType
             , _returnLocation = location
             }
-          deallocateArgType
           argTypeSize <- sizeOfType argType
           add "argument_offset" location argTypeSize
 
@@ -440,12 +469,11 @@ storeTerm env term return_ =
       store (_returnLocation return_) (Assembly.Lit lit)
 
     Syntax.Let _name term' type_ body -> do
-      (type', deallocateType) <- generateTypedTerm env type_ pointerBytesOperand
+      type' <- generateType env type_
       (term'', deallocateTerm) <- generateTypedTerm env term' type'
       env' <- extend env type_ term''
       storeTerm env' body return_
       deallocateTerm
-      deallocateType
 
     Syntax.Function _ ->
       store (_returnLocation return_) pointerBytesOperand
