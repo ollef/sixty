@@ -232,14 +232,13 @@ fetchVisibleDefinition env name@(Name.Lifted baseName _) = do
 
 -- | Evaluate the head of a value through glued values.
 forceHead
-  :: Domain.Environment v
-  -> Domain.Value
+  :: Domain.Value
   -> M Domain.Value
-forceHead env value =
+forceHead value =
   case value of
     Domain.Glued _ _ value' -> do
       value'' <- force value'
-      forceHead env value''
+      forceHead value''
 
     _ ->
       pure value
