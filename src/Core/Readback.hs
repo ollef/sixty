@@ -55,9 +55,13 @@ readback env value =
             Just i ->
               readbackSpine env (Syntax.Var i) spine
 
-            -- This can happen because of pruning, where we create fake glued
+            -- This can happen
+            -- 1. because of pruning, where we create fake glued
             -- variables that throw exceptions when they're forced so we can
             -- detect whether a variable that can't be used is used.
+            -- 2. when reading back a glued variable in an environment that
+            -- doesn't bind the variable (e.g. the type of a let body in the
+            -- outer scope).
             Nothing -> do
               value'' <- force value'
               readback env value''
