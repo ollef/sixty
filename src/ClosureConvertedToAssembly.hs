@@ -97,7 +97,8 @@ operandNameSuggestion operand =
       "literal"
 
 data Operand
-  = Direct !Assembly.Operand -- ^ word sized
+  = Empty
+  | Direct !Assembly.Operand -- ^ word sized
   | Indirect !Assembly.Operand
 
 -------------------------------------------------------------------------------
@@ -156,13 +157,15 @@ freshLocal nameSuggestion = do
 
 copy :: Assembly.Operand -> Operand -> Assembly.Operand -> Builder ()
 copy destination source size =
-  emit $
-    case source of
-      Indirect indirectSource ->
-        Assembly.Copy destination indirectSource size
+  case source of
+    Empty ->
+      pure ()
 
-      Direct directSource ->
-        Assembly.Store destination directSource
+    Indirect indirectSource ->
+      emit $ Assembly.Copy destination indirectSource size
+
+    Direct directSource ->
+      emit $ Assembly.Store destination directSource
 
 call :: Name.Lifted -> [Assembly.Operand] -> Assembly.Operand -> Builder ()
 call global args returnLocation =
