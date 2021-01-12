@@ -40,6 +40,7 @@ import qualified Occurrences.Intervals as Occurrences
 import qualified Position
 import Protolude hiding (IntMap, put, get)
 import qualified Query.Mapped as Mapped
+import qualified Representation
 import Rock
 import Scope (Scope)
 import qualified Scope
@@ -77,6 +78,7 @@ data Query a where
   ClosureConverted :: Name.Lifted -> Query (Maybe ClosureConverted.Definition)
   ClosureConvertedType :: Name.Lifted -> Query (ClosureConverted.Type Void)
   ClosureConvertedConstructorType :: Name.QualifiedConstructor -> Query (Telescope Name ClosureConverted.Type ClosureConverted.Type Void)
+  ClosureConvertedSignature :: Name.Lifted -> Query (Maybe Representation.Signature)
   ConstructorTag :: Name.QualifiedConstructor -> Query (Maybe Int)
 
   Assembly :: Name.Lifted -> Query (Maybe (Assembly.Definition Assembly.BasicBlock, Int))
@@ -132,11 +134,12 @@ instance Hashable (Query a) where
       ClosureConverted a -> h 24 a
       ClosureConvertedType a -> h 25 a
       ClosureConvertedConstructorType a -> h 26 a
-      ConstructorTag a -> h 27 a
-      Assembly a -> h 28 a
-      CPSAssembly a -> h 29 a
-      CPSAssemblyModule a -> h 30 a
-      LLVMModule a -> h 31 a
+      ClosureConvertedSignature a -> h 27 a
+      ConstructorTag a -> h 28 a
+      Assembly a -> h 29 a
+      CPSAssembly a -> h 30 a
+      CPSAssemblyModule a -> h 31 a
+      LLVMModule a -> h 32 a
     where
       {-# inline h #-}
       h :: Hashable a => Int -> a -> Int
@@ -183,11 +186,12 @@ instance Persist (Some Query) where
       24 -> Some . ClosureConverted <$> get
       25 -> Some . ClosureConvertedType <$> get
       26 -> Some . ClosureConvertedConstructorType <$> get
-      27 -> Some . ConstructorTag <$> get
-      28 -> Some . Assembly <$> get
-      29 -> Some . CPSAssembly <$> get
-      30 -> Some . CPSAssemblyModule <$> get
-      31 -> Some . LLVMModule <$> get
+      27 -> Some . ClosureConvertedSignature <$> get
+      28 -> Some . ConstructorTag <$> get
+      29 -> Some . Assembly <$> get
+      30 -> Some . CPSAssembly <$> get
+      31 -> Some . CPSAssemblyModule <$> get
+      32 -> Some . LLVMModule <$> get
       _ -> fail "Persist (Some Query): no such tag"
 
   put (Some query) =
@@ -219,11 +223,12 @@ instance Persist (Some Query) where
       ClosureConverted a -> p 24 a
       ClosureConvertedType a -> p 25 a
       ClosureConvertedConstructorType a -> p 26 a
-      ConstructorTag a -> p 27 a
-      Assembly a -> p 28 a
-      CPSAssembly a -> p 29 a
-      CPSAssemblyModule a -> p 30 a
-      LLVMModule a -> p 31 a
+      ClosureConvertedSignature a -> p 27 a
+      ConstructorTag a -> p 28 a
+      Assembly a -> p 29 a
+      CPSAssembly a -> p 30 a
+      CPSAssemblyModule a -> p 31 a
+      LLVMModule a -> p 32 a
       -- Don't forget to add a case to `get` above!
     where
       p :: Persist a => Word8 -> a -> Put ()

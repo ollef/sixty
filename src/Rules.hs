@@ -8,10 +8,11 @@
 {-# language TupleSections #-}
 module Rules where
 
-import qualified CPSAssemblyToLLVM
+import qualified AssemblyToCPSAssembly
 import qualified Builtin
 import qualified ClosureConversion
 import qualified ClosureConverted.Context
+import qualified ClosureConverted.Representation
 import qualified ClosureConverted.Syntax
 import qualified ClosureConverted.TypeOf as ClosureConverted
 import qualified ClosureConvertedToAssembly
@@ -19,7 +20,7 @@ import Control.Exception.Lifted
 import Core.Binding (Binding)
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Syntax as Syntax
-import qualified AssemblyToCPSAssembly
+import qualified CPSAssemblyToLLVM
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
@@ -496,6 +497,16 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
 
           _ ->
             panic "ClosureConvertedConstructorType: none-datatype"
+
+    ClosureConvertedSignature name ->
+      noError $ do
+        maybeDefinition <- fetch $ ClosureConverted name
+        case maybeDefinition of
+          Nothing ->
+            pure Nothing
+
+          Just definition ->
+            runM $ ClosureConverted.Representation.signature name definition
 
     ConstructorTag (Name.QualifiedConstructor dataTypeName constr) ->
       noError $ do
