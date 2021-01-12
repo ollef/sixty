@@ -332,10 +332,10 @@ generateFunction env returnLocation tele =
       pure []
 
     Telescope.Extend (Name name) type_ _plicity tele' -> do
-      termLocation <- freshLocal $ Assembly.NameSuggestion name
-      env' <- extend env type_ $ Indirect $ Assembly.LocalOperand termLocation
+      argLocation <- freshLocal $ Assembly.NameSuggestion name
+      env' <- extend env type_ $ Indirect $ Assembly.LocalOperand argLocation
       args <- generateFunction env' returnLocation tele'
-      pure $ termLocation : args
+      pure $ argLocation : args
 
 -------------------------------------------------------------------------------
 
