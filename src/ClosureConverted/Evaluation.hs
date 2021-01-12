@@ -138,23 +138,6 @@ chooseLiteralBranch outerEnv lit branches defaultBranch =
     (Just branch, _) ->
       evaluate outerEnv branch
 
-applySpine :: Domain.Environment v -> Domain.Value -> Domain.Spine -> M Domain.Value
-applySpine env value spine =
-  applyGroupedSpine env value (Domain.groupSpine spine)
-
-applyGroupedSpine :: Domain.Environment v -> Domain.Value -> [Domain.GroupedElimination] -> M Domain.Value
-applyGroupedSpine env =
-  foldlM (applyGroupedElimination env)
-
-applyGroupedElimination :: Domain.Environment v -> Domain.Value -> Domain.GroupedElimination -> M Domain.Value
-applyGroupedElimination env value elimination =
-  case elimination of
-    Domain.GroupedApps args ->
-      apply env value args
-
-    Domain.GroupedCase branches ->
-      case_ value branches
-
 apply
   :: Domain.Environment v
   -> Domain.Value
