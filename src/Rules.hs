@@ -38,7 +38,6 @@ import qualified LambdaLifting
 import qualified Lexer
 import qualified Module
 import Monad
-import Name (Name)
 import qualified Name
 import qualified Occurrences
 import qualified Parser
@@ -479,8 +478,8 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
           Just (ClosureConverted.Syntax.ParameterisedDataDefinition _ tele) -> do
             let
               go
-                :: Telescope Name ClosureConverted.Syntax.Type ClosureConverted.Syntax.ConstructorDefinitions v
-                -> Telescope Name ClosureConverted.Syntax.Type ClosureConverted.Syntax.Type v
+                :: Telescope name ClosureConverted.Syntax.Type ClosureConverted.Syntax.ConstructorDefinitions v
+                -> Telescope name ClosureConverted.Syntax.Type ClosureConverted.Syntax.Type v
               go tele' =
                 case tele' of
                   Telescope.Empty (ClosureConverted.Syntax.ConstructorDefinitions constrs) ->

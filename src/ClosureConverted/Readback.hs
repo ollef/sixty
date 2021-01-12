@@ -11,7 +11,6 @@ import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Environment
 import Index
 import Monad
-import Name (Name)
 import qualified Name
 import Telescope (Telescope)
 import qualified Telescope
@@ -98,8 +97,8 @@ readbackGroupedSpine =
 readbackConstructorBranch
   :: Domain.Environment v
   -> Domain.Environment v'
-  -> Telescope Name Syntax.Type Syntax.Term v'
-  -> M (Telescope Name Syntax.Type Syntax.Term v)
+  -> Telescope name Syntax.Type Syntax.Term v'
+  -> M (Telescope name Syntax.Type Syntax.Term v)
 readbackConstructorBranch outerEnv innerEnv tele =
   case tele of
     Telescope.Empty term -> do

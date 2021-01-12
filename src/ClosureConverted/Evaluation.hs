@@ -15,7 +15,6 @@ import qualified Environment
 import qualified Index
 import Literal (Literal)
 import Monad
-import Name (Name)
 import qualified Name
 import qualified Query
 import Telescope (Telescope)
@@ -107,7 +106,7 @@ chooseConstructorBranch outerEnv (Name.QualifiedConstructor _ constr) outerArgs 
     go
       :: Domain.Environment v
       -> [Domain.Value]
-      -> Telescope Name Syntax.Type Syntax.Term v
+      -> Telescope name Syntax.Type Syntax.Term v
       -> M Domain.Value
     go env args tele =
       case (args, tele) of

@@ -17,7 +17,6 @@ import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Environment
 import qualified Literal
 import Monad
-import Name (Name)
 import qualified Name
 import qualified Query
 import Telescope (Telescope)
@@ -53,8 +52,8 @@ typeOfDefinition context definition = do
 
 typeOfFunction
   :: Context v
-  -> Telescope Name Syntax.Type Syntax.Term v
-  -> M (Telescope Name Syntax.Type Syntax.Type v)
+  -> Telescope name Syntax.Type Syntax.Term v
+  -> M (Telescope name Syntax.Type Syntax.Type v)
 typeOfFunction context tele =
   case tele of
     Telescope.Empty body -> do
@@ -188,7 +187,7 @@ typeOfApplications =
 typeOfTelescope
   :: Context v'
   -> Domain.Environment v
-  -> Telescope Name Syntax.Type Syntax.Term v
+  -> Telescope name Syntax.Type Syntax.Term v
   -> M Domain.Type
 typeOfTelescope context env tele =
   case tele of
