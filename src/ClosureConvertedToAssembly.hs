@@ -100,25 +100,6 @@ data Operand
   = Direct !Assembly.Operand -- ^ word sized
   | Indirect !Assembly.Operand
 
-forceIndirect :: Operand -> Builder (Assembly.Operand, Builder ())
-forceIndirect operand =
-  case operand of
-    Direct directOperand -> do
-      operand' <- stackAllocate (operandNameSuggestion directOperand) pointerBytesOperand
-      pure (operand', stackDeallocate pointerBytesOperand)
-
-    Indirect indirectOperand ->
-      pure (indirectOperand, pure ())
-
-forceDirect :: Operand -> Builder Assembly.Operand
-forceDirect operand =
-  case operand of
-    Direct directOperand ->
-      pure directOperand
-
-    Indirect indirectOperand ->
-      load (operandNameSuggestion indirectOperand) indirectOperand
-
 -------------------------------------------------------------------------------
 
 indexLocation :: Index v -> Environment v -> Operand
@@ -212,6 +193,33 @@ sub nameSuggestion i1 i2 = do
   destination <- freshLocal nameSuggestion
   emit $ Assembly.Sub destination i1 i2
   pure $ Assembly.LocalOperand destination
+
+-------------------------------------------------------------------------------
+
+forceIndirect :: Operand -> Builder (Assembly.Operand, Builder ())
+forceIndirect operand =
+  case operand of
+    Empty ->
+      pure (Assembly.Lit $ Literal.Integer 0, pure ())
+
+    Direct directOperand -> do
+      operand' <- stackAllocate (operandNameSuggestion directOperand) pointerBytesOperand
+      pure (operand', stackDeallocate pointerBytesOperand)
+
+    Indirect indirectOperand ->
+      pure (indirectOperand, pure ())
+
+forceDirect :: Operand -> Builder Assembly.Operand
+forceDirect operand =
+  case operand of
+    Empty ->
+      pure $ Assembly.Lit $ Literal.Integer 0
+
+    Direct directOperand ->
+      pure directOperand
+
+    Indirect indirectOperand ->
+      load (operandNameSuggestion indirectOperand) indirectOperand
 
 -------------------------------------------------------------------------------
 
