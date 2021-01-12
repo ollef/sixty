@@ -1,4 +1,5 @@
 {-# language OverloadedStrings #-}
+{-# language RankNTypes #-}
 {-# language ViewPatterns #-}
 module ClosureConverted.Evaluation where
 
@@ -207,6 +208,24 @@ applyFunction env tele args =
     (Telescope.Extend _ _ _ tele', arg:args') -> do
       (env', _) <- Environment.extendValue env arg
       applyFunction env' tele' args'
+
+    _ ->
+      pure Nothing
+
+applyTelescope
+  :: Domain.Environment v
+  -> Telescope name type_ term v
+  -> [Domain.Value]
+  -> (forall v'. Domain.Environment v' -> term v' -> M a)
+  -> M (Maybe a)
+applyTelescope env tele args k =
+  case (tele, args) of
+    (Telescope.Empty body, []) -> do
+      Just <$> k env body
+
+    (Telescope.Extend _ _ _ tele', arg:args') -> do
+      (env', _) <- Environment.extendValue env arg
+      applyTelescope env' tele' args' k
 
     _ ->
       pure Nothing
