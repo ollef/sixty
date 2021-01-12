@@ -78,11 +78,6 @@ extend env type_ location =
       , _varLocations = IntMap.insert var location $ _varLocations env
       }
 
-data Return = Return
-  { _returnLocation :: !Assembly.Operand
-  , _returnType :: !Assembly.Operand
-  }
-
 operandNameSuggestion :: Assembly.Operand -> Assembly.NameSuggestion
 operandNameSuggestion operand =
   case operand of
@@ -105,12 +100,12 @@ data Operand
 
 -------------------------------------------------------------------------------
 
-indexLocation :: Index v -> Environment v -> Operand
-indexLocation index env = do
+indexOperand :: Index v -> Environment v -> Operand
+indexOperand index env = do
   let
     var =
       Context.lookupIndexVar index $ _context env
-  fromMaybe (panic "ClosureConvertedToAssembly.indexLocation") $
+  fromMaybe (panic "ClosureConvertedToAssembly.indexOperand") $
     IntMap.lookup var $ _varLocations env
 
 globalConstantLocation :: Name.Lifted -> Operand
@@ -236,6 +231,14 @@ pointerBytesOperand :: Assembly.Operand
 pointerBytesOperand =
   Assembly.Lit $ Literal.Integer pointerBytes
 
+directTypeOperand :: Assembly.Operand
+directTypeOperand =
+  pointerBytesOperand
+
+emptyTypeOperand :: Assembly.Operand
+emptyTypeOperand =
+  Assembly.Lit $ Literal.Integer 0
+
 -------------------------------------------------------------------------------
 
 moduleInitName :: Name.Module -> Name.Lifted
@@ -296,10 +299,7 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition = do
         type_ <- typeOf env term
         typeSize <- sizeOfType type_
         newGlobalPointer <- globalAllocate "globals" globalPointerOperand typeSize
-        storeTerm env term Return
-          { _returnLocation = globalPointerOperand
-          , _returnType = type_
-          }
+        storeTerm env term globalPointerOperand type_
         initGlobal name globalPointerOperand
         store outGlobalPointerOperand newGlobalPointer
         instructions <- gets _instructions
@@ -341,13 +341,7 @@ generateFunction env returnLocation tele parameterRepresentations =
   case (tele, parameterRepresentations) of
     (Telescope.Empty term, []) -> do
       type_ <- typeOf env term
-      let
-        return_ =
-          Return
-            { _returnLocation = Assembly.LocalOperand returnLocation
-            , _returnType = type_
-            }
-      storeTerm env term return_
+      storeTerm env term (Assembly.LocalOperand returnLocation) type_
       pure []
 
     (Telescope.Extend (Name name) type_ _plicity tele', parameterRepresentation:parameterRepresentations') -> do
@@ -380,18 +374,23 @@ generateType env type_ = do
   deallocateType
   pure directType
 
-generateTerm :: Environment v -> Syntax.Term v -> Builder (Return, Builder ())
-generateTerm env term = do
-  type_ <- typeOf env term
-  (termOperand, deallocateTermOperand) <- generateTypedTerm env term type_
-  (termLocation, deallocateTerm) <- forceIndirect termOperand
-  let
-    return_ =
-      Return
-        { _returnLocation = termLocation
-        , _returnType = type_
-        }
-  pure (return_, deallocateTerm >> deallocateTermOperand)
+generateArgument :: Environment v -> Syntax.Term v -> Representation -> Builder ([Assembly.Operand], Builder ())
+generateArgument env term representation =
+  case representation of
+    Representation.Empty -> do
+      (_, deallocateTerm) <- generateTypedTerm env term emptyTypeOperand
+      pure ([], deallocateTerm)
+
+    Representation.Direct -> do
+      (term', deallocateTerm) <- generateTypedTerm env term directTypeOperand
+      directTerm <- forceDirect term'
+      pure ([directTerm], deallocateTerm)
+
+    Representation.Indirect -> do
+      type_ <- typeOf env term
+      (termOperand, deallocateTermOperand) <- generateTypedTerm env term type_
+      (termLocation, deallocateTerm) <- forceIndirect termOperand
+      pure ([termLocation], deallocateTerm >> deallocateTermOperand)
 
 generateTypedTerm :: Environment v -> Syntax.Term v -> Assembly.Operand -> Builder (Operand, Builder ())
 generateTypedTerm env term type_ = do
@@ -399,27 +398,21 @@ generateTypedTerm env term type_ = do
     stackAllocateIt = do
       typeSize <- sizeOfType type_
       termLocation <- stackAllocate "term_location" typeSize
-      let
-        return_ =
-          Return
-            { _returnLocation = termLocation
-            , _returnType = type_
-            }
-      storeTerm env term return_
+      storeTerm env term termLocation type_
       pure (Indirect termLocation, stackDeallocate typeSize)
 
   case term of
     Syntax.Var index ->
-      pure (indexLocation index env, pure ())
+      pure (indexOperand index env, pure ())
 
     Syntax.Global global ->
       pure (globalConstantLocation global, pure ())
 
     Syntax.Con {} ->
-      stackAllocateIt
+      stackAllocateIt -- TODO
 
     Syntax.Lit {} ->
-      stackAllocateIt
+      stackAllocateIt -- TODO
 
     Syntax.Let _name term' termType body -> do
       termType' <- generateType env termType
@@ -450,23 +443,24 @@ generateTypedTerm env term type_ = do
 storeTerm
   :: Environment v
   -> Syntax.Term v
-  -> Return
+  -> Assembly.Operand
+  -> Assembly.Operand
   -> Builder ()
-storeTerm env term return_ =
+storeTerm env term returnLocation returnType =
   case term of
     Syntax.Var index -> do
       let
-        varLocation =
-          indexLocation index env
-      returnTypeSize <- sizeOfType $ _returnType return_
-      copy (_returnLocation return_) varLocation returnTypeSize
+        varOperand =
+          indexOperand index env
+      returnTypeSize <- sizeOfType returnType
+      copy returnLocation varOperand returnTypeSize
 
     Syntax.Global global -> do
       let
         location =
           globalConstantLocation global
-      returnTypeSize <- sizeOfType $ _returnType return_
-      copy (_returnLocation return_) location returnTypeSize
+      returnTypeSize <- sizeOfType returnType
+      copy returnLocation location returnTypeSize
 
     Syntax.Con con@(Name.QualifiedConstructor typeName _) params args -> do
       maybeTag <- fetch $ Query.ConstructorTag con
@@ -481,36 +475,33 @@ storeTerm env term return_ =
 
         go location arg = do
           argType <- typeOf env arg
-          storeTerm env arg Return
-            { _returnType = argType
-            , _returnLocation = location
-            }
+          storeTerm env arg location argType
           argTypeSize <- sizeOfType argType
           add "argument_offset" location argTypeSize
 
       boxity <- fetchBoxity typeName
       case boxity of
         Unboxed ->
-          foldM_ go (_returnLocation return_) tagArgs
+          foldM_ go returnLocation tagArgs
 
         Boxed -> do
           size <- boxedConstructorSize env con params
           heapLocation <- heapAllocate "constructor_heap_object" size
           foldM_ go heapLocation tagArgs
-          store (_returnLocation return_) heapLocation
+          store returnLocation heapLocation
 
     Syntax.Lit lit ->
-      store (_returnLocation return_) (Assembly.Lit lit)
+      store returnLocation (Assembly.Lit lit)
 
     Syntax.Let _name term' type_ body -> do
       type' <- generateType env type_
       (term'', deallocateTerm) <- generateTypedTerm env term' type'
       env' <- extend env type_ term''
-      storeTerm env' body return_
+      storeTerm env' body returnLocation returnType
       deallocateTerm
 
     Syntax.Function _ ->
-      store (_returnLocation return_) pointerBytesOperand
+      store returnLocation pointerBytesOperand
 
     Syntax.Apply global arguments -> do
       maybeSignature <- fetch $ Query.ClosureConvertedSignature global
@@ -522,23 +513,12 @@ storeTerm env term return_ =
 
             _ ->
               panic $ "ClosureConvertedToAssembly: Applying signature-less function " <> show global
-      (arguments', deallocators) <- unzip <$> forM arguments (generateTerm env)
-      args'' <- forM (zip argumentRepresentations arguments') $ \(representation, argument) ->
-        case representation of
-          Representation.Empty ->
-            pure []
-
-          Representation.Direct ->
-            pure <$> forceDirect (Indirect $ _returnLocation argument)
-
-          Representation.Indirect ->
-            pure [_returnLocation argument]
-
-      call global (concat args'') $ _returnLocation return_
+      (arguments', deallocators) <- unzip <$> zipWithM (generateArgument env) arguments argumentRepresentations
+      call global (concat arguments') returnLocation
       sequence_ $ reverse deallocators
 
     Syntax.Pi {} ->
-      store (_returnLocation return_) pointerBytesOperand
+      store returnLocation pointerBytesOperand
 
     Syntax.Closure {} ->
       panic "st c" -- TODO
