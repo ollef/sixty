@@ -4,7 +4,7 @@
 
 module ClosureConvertedToAssembly where
 
-import Protolude hiding (IntMap, typeOf, moduleName)
+import Protolude hiding (IntMap, typeOf, local, moduleName)
 
 import Rock
 
@@ -28,6 +28,8 @@ import Name (Name(Name))
 import qualified Name
 import Query (Query)
 import qualified Query
+import Representation (Representation)
+import qualified Representation
 import qualified Scope
 import Telescope (Telescope)
 import qualified Telescope
@@ -273,13 +275,17 @@ generateModuleInit definitions =
           pure globalPointer
 
 generateDefinition :: Name.Lifted -> Syntax.Definition -> M (Maybe (Assembly.Definition Assembly.BasicBlock, Int))
-generateDefinition name@(Name.Lifted qualifiedName _) definition =
+generateDefinition name@(Name.Lifted qualifiedName _) definition = do
+  signature <- fetch $ Query.ClosureConvertedSignature name
+  let
+    env =
+      emptyEnvironment $ Scope.KeyedName Scope.Definition qualifiedName
   runBuilder $
-    case definition of
-      Syntax.TypeDeclaration _ ->
+    case (definition, signature) of
+      (Syntax.TypeDeclaration _, _) ->
         pure Nothing
 
-      Syntax.ConstantDefinition term -> do
+      (Syntax.ConstantDefinition term, Just (Representation.ConstantSignature representation)) -> do
         globalPointer <- freshLocal "globals"
         outGlobalPointer <- freshLocal "globals_out"
         let
@@ -287,8 +293,6 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition =
             Assembly.LocalOperand globalPointer
           outGlobalPointerOperand =
             Assembly.LocalOperand outGlobalPointer
-          env =
-            emptyEnvironment $ Scope.KeyedName Scope.Definition qualifiedName
         type_ <- typeOf env term
         typeSize <- sizeOfType type_
         newGlobalPointer <- globalAllocate "globals" globalPointerOperand typeSize
@@ -305,12 +309,12 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition =
           , fresh
           )
 
-      Syntax.FunctionDefinition tele -> do
+      (Syntax.ConstantDefinition {}, _) ->
+        panic "ClosureConvertedToAssembly: ConstantDefinition without ConstantSignature"
+
+      (Syntax.FunctionDefinition tele, Just (Representation.FunctionSignature parameterRepresentations returnRepresentation)) -> do
         returnLocation <- freshLocal "return_location"
-        let
-          env =
-            emptyEnvironment $ Scope.KeyedName Scope.Definition qualifiedName
-        args <- generateFunction env returnLocation tele
+        args <- generateFunction env returnLocation tele parameterRepresentations
         instructions <- gets _instructions
         fresh <- gets _fresh
         pure $ Just
@@ -318,20 +322,24 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition =
           , fresh
           )
 
-      Syntax.DataDefinition {} ->
+      (Syntax.FunctionDefinition {}, _) ->
+        panic "ClosureConvertedToAssembly: ConstantDefinition without FunctionSignature"
+
+      (Syntax.DataDefinition {}, _) ->
         panic "gd dd" -- TODO
 
-      Syntax.ParameterisedDataDefinition {} ->
+      (Syntax.ParameterisedDataDefinition {}, _) ->
         panic "gd pd" -- TODO
 
 generateFunction
   :: Environment v
   -> Assembly.Local
   -> Telescope Name Syntax.Type Syntax.Term v
+  -> [Representation]
   -> Builder [Assembly.Local]
-generateFunction env returnLocation tele =
-  case tele of
-    Telescope.Empty term -> do
+generateFunction env returnLocation tele parameterRepresentations =
+  case (tele, parameterRepresentations) of
+    (Telescope.Empty term, []) -> do
       type_ <- typeOf env term
       let
         return_ =
@@ -342,11 +350,26 @@ generateFunction env returnLocation tele =
       storeTerm env term return_
       pure []
 
-    Telescope.Extend (Name name) type_ _plicity tele' -> do
-      argLocation <- freshLocal $ Assembly.NameSuggestion name
-      env' <- extend env type_ $ Indirect $ Assembly.LocalOperand argLocation
-      args <- generateFunction env' returnLocation tele'
-      pure $ argLocation : args
+    (Telescope.Extend (Name name) type_ _plicity tele', parameterRepresentation:parameterRepresentations') -> do
+      (params, paramOperand) <-
+        case parameterRepresentation of
+          Representation.Empty ->
+            pure ([], Empty)
+
+          Representation.Direct -> do
+            local <- freshLocal $ Assembly.NameSuggestion name
+            pure ([local], Direct $ Assembly.LocalOperand local)
+
+          Representation.Indirect -> do
+            local <- freshLocal $ Assembly.NameSuggestion name
+            pure ([local], Indirect $ Assembly.LocalOperand local)
+
+      env' <- extend env type_ paramOperand
+      params' <- generateFunction env' returnLocation tele' parameterRepresentations'
+      pure $ params <> params'
+
+    _ ->
+      panic "ClosureConvertedToAssembly.generateFunction: mismatched function telescope and signature"
 
 -------------------------------------------------------------------------------
 
@@ -489,9 +512,29 @@ storeTerm env term return_ =
     Syntax.Function _ ->
       store (_returnLocation return_) pointerBytesOperand
 
-    Syntax.Apply global args -> do
-      (args', deallocators) <- unzip <$> forM args (generateTerm env)
-      call global (_returnLocation <$> args') $ _returnLocation return_
+    Syntax.Apply global arguments -> do
+      maybeSignature <- fetch $ Query.ClosureConvertedSignature global
+      let
+        argumentRepresentations =
+          case maybeSignature of
+            Just (Representation.FunctionSignature argumentRepresentations_ returnRepresentation) ->
+              argumentRepresentations_
+
+            _ ->
+              panic $ "ClosureConvertedToAssembly: Applying signature-less function " <> show global
+      (arguments', deallocators) <- unzip <$> forM arguments (generateTerm env)
+      args'' <- forM (zip argumentRepresentations arguments') $ \(representation, argument) ->
+        case representation of
+          Representation.Empty ->
+            pure []
+
+          Representation.Direct ->
+            pure <$> forceDirect (Indirect $ _returnLocation argument)
+
+          Representation.Indirect ->
+            pure [_returnLocation argument]
+
+      call global (concat args'') $ _returnLocation return_
       sequence_ $ reverse deallocators
 
     Syntax.Pi {} ->
