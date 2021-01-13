@@ -257,7 +257,7 @@ generateModuleInit definitions =
     foldM_ (go $ Assembly.LocalOperand outGlobalPointer) (Assembly.LocalOperand globalPointer) definitions
     instructions <- gets _instructions
     fresh <- gets _fresh
-    pure (Assembly.FunctionDefinition [outGlobalPointer, globalPointer] (Assembly.BasicBlock $ toList instructions), fresh)
+    pure (Assembly.FunctionDefinition [outGlobalPointer, globalPointer] (Assembly.BasicBlock (toList instructions) Assembly.VoidResult), fresh)
   where
     go outGlobalPointer globalPointer (name, definition) =
       case definition of
@@ -305,7 +305,7 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition = do
         instructions <- gets _instructions
         fresh <- gets _fresh
         pure $ Just
-          ( Assembly.ConstantDefinition [outGlobalPointer, globalPointer] $ Assembly.BasicBlock $ toList instructions
+          ( Assembly.ConstantDefinition [outGlobalPointer, globalPointer] $ Assembly.BasicBlock (toList instructions) Assembly.VoidResult
           , fresh
           )
 
@@ -318,7 +318,7 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition = do
         instructions <- gets _instructions
         fresh <- gets _fresh
         pure $ Just
-          ( Assembly.FunctionDefinition (returnLocation : args) $ Assembly.BasicBlock $ toList instructions
+          ( Assembly.FunctionDefinition (returnLocation : args) $ Assembly.BasicBlock (toList instructions) Assembly.VoidResult
           , fresh
           )
 

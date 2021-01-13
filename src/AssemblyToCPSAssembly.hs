@@ -166,15 +166,27 @@ convertDefinition fresh name definition =
 convertBasicBlock :: HashSet Assembly.Local -> Assembly.BasicBlockWithOccurrences -> Converter ()
 convertBasicBlock liveLocals basicBlock =
   case basicBlock of
-    Assembly.Nil -> do
+    Assembly.Nil result -> do
       continuation <- freshLocal "continuation"
       pop continuation
       stackPointer <- gets _stackPointer
-      terminate $ CPSAssembly.TailCall (Assembly.LocalOperand continuation) [Assembly.LocalOperand stackPointer]
+      terminate $ CPSAssembly.TailCall (Assembly.LocalOperand continuation) $
+        case result of
+          Assembly.VoidResult ->
+            [Assembly.LocalOperand stackPointer]
 
-    Assembly.Cons _ (Assembly.CallVoid function arguments) Assembly.Nil -> do
+          Assembly.Result operand ->
+            [Assembly.LocalOperand stackPointer, operand]
+
+    Assembly.Cons _ (Assembly.CallVoid function arguments) (Assembly.Nil result) -> do
       stackPointer <- gets _stackPointer
-      terminate $ CPSAssembly.TailCall function $ Assembly.LocalOperand stackPointer : arguments
+      terminate $ CPSAssembly.TailCall function $
+        case result of
+          Assembly.VoidResult ->
+            Assembly.LocalOperand stackPointer : arguments
+
+          Assembly.Result operand ->
+            Assembly.LocalOperand stackPointer : operand : arguments
 
     Assembly.Cons _ instruction basicBlock' -> do
       convertInstruction (liveLocals <> Assembly.basicBlockOccurrences basicBlock') instruction

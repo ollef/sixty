@@ -56,10 +56,14 @@ data Definition basicBlock
 
 type StackPointer = Local
 
-newtype BasicBlock = BasicBlock [Instruction BasicBlock]
-  deriving stock (Show, Generic)
-  deriving newtype (Persist, Hashable)
+data BasicBlock = BasicBlock [Instruction BasicBlock] !Result
+  deriving (Show, Generic, Persist, Hashable)
 
+data Result
+  = VoidResult
+  | Result !Operand
+  deriving (Show, Generic, Persist, Hashable)
+--
 -------------------------------------------------------------------------------
 
 instance Pretty Name where
@@ -166,8 +170,20 @@ instance (Pretty basicBlock) => Pretty (Definition basicBlock) where
           indent 2 (pretty basicBlock)
 
 instance Pretty BasicBlock where
-  pretty (BasicBlock instrs) =
-    vsep $ pretty <$> instrs
+  pretty (BasicBlock instrs result) =
+    vsep
+      [ vsep $ pretty <$> instrs
+      , pretty result
+      ]
+
+instance Pretty Result where
+  pretty result =
+    case result of
+      VoidResult ->
+        "void"
+
+      Result operand ->
+        "result" <+> pretty operand
 
 -------------------------------------------------------------------------------
 
@@ -186,7 +202,7 @@ nameText name =
 -------------------------------------------------------------------------------
 
 data BasicBlockWithOccurrences
-  = Nil
+  = Nil !Result
   | Cons (HashSet Local, HashSet Local) (Instruction BasicBlockWithOccurrences) BasicBlockWithOccurrences
 
 cons :: Instruction BasicBlockWithOccurrences -> BasicBlockWithOccurrences -> BasicBlockWithOccurrences
@@ -194,15 +210,15 @@ cons instruction basicBlock =
   Cons (instructionLocals instruction <> basicBlockLocals basicBlock ) instruction basicBlock
 
 basicBlockWithOccurrences :: BasicBlock -> BasicBlockWithOccurrences
-basicBlockWithOccurrences (BasicBlock instructions) =
+basicBlockWithOccurrences (BasicBlock instructions result) =
   case instructions of
     [] ->
-      Nil
+      Nil result
 
     instruction : instructions' ->
       cons
         (basicBlockWithOccurrences <$> instruction)
-        (basicBlockWithOccurrences $ Assembly.BasicBlock instructions')
+        (basicBlockWithOccurrences $ Assembly.BasicBlock instructions' result)
 
 basicBlockOccurrences :: BasicBlockWithOccurrences -> HashSet Local
 basicBlockOccurrences basicBlock = do
@@ -214,53 +230,62 @@ basicBlockOccurrences basicBlock = do
 basicBlockLocals :: BasicBlockWithOccurrences -> (HashSet Local, HashSet Local)
 basicBlockLocals basicBlock =
   case basicBlock of
-    Nil ->
-      mempty
+    Nil result ->
+      resultLocals result
 
     Cons locals _ _ ->
       locals
+
+resultLocals :: Result -> (HashSet Local, HashSet Local)
+resultLocals result =
+  case result of
+    VoidResult ->
+      mempty
+
+    Result operand ->
+      operandLocals operand
 
 instructionLocals :: Instruction BasicBlockWithOccurrences -> (HashSet Local, HashSet Local)
 instructionLocals instruction =
   case instruction of
     Copy o1 o2 o3 ->
-      operandOccurrences o1 <> operandOccurrences o2 <> operandOccurrences o3
+      operandLocals o1 <> operandLocals o2 <> operandLocals o3
 
     Call l o os ->
-      (HashSet.singleton l, mempty) <> operandOccurrences o <> foldMap operandOccurrences os
+      (HashSet.singleton l, mempty) <> operandLocals o <> foldMap operandLocals os
 
     CallVoid o os ->
-      operandOccurrences o <> foldMap operandOccurrences os
+      operandLocals o <> foldMap operandLocals os
 
     Load l o ->
-      (HashSet.singleton l, mempty) <> operandOccurrences o
+      (HashSet.singleton l, mempty) <> operandLocals o
 
     Store o1 o2 ->
-      operandOccurrences o1 <> operandOccurrences o2
+      operandLocals o1 <> operandLocals o2
 
     InitGlobal _ o ->
-      operandOccurrences o
+      operandLocals o
 
     Add l o1 o2 ->
-      (HashSet.singleton l, mempty) <> operandOccurrences o1 <> operandOccurrences o2
+      (HashSet.singleton l, mempty) <> operandLocals o1 <> operandLocals o2
 
     Sub l o1 o2 ->
-      (HashSet.singleton l, mempty) <> operandOccurrences o1 <> operandOccurrences o2
+      (HashSet.singleton l, mempty) <> operandLocals o1 <> operandLocals o2
 
     StackAllocate l o ->
-      (HashSet.singleton l, mempty) <> operandOccurrences o
+      (HashSet.singleton l, mempty) <> operandLocals o
 
     StackDeallocate o ->
-      operandOccurrences o
+      operandLocals o
 
     HeapAllocate l o ->
-      (HashSet.singleton l, mempty) <> operandOccurrences o
+      (HashSet.singleton l, mempty) <> operandLocals o
 
     Switch o brs d ->
-      operandOccurrences o <> foldMap (basicBlockLocals . snd) brs <> basicBlockLocals d
+      operandLocals o <> foldMap (basicBlockLocals . snd) brs <> basicBlockLocals d
 
-operandOccurrences :: Operand -> (HashSet Local, HashSet Local)
-operandOccurrences operand =
+operandLocals :: Operand -> (HashSet Local, HashSet Local)
+operandLocals operand =
   case operand of
     LocalOperand local ->
       (mempty, HashSet.singleton local)
