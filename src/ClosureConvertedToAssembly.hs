@@ -411,8 +411,8 @@ generateTypedTerm env term type_ = do
     Syntax.Con {} ->
       stackAllocateIt -- TODO
 
-    Syntax.Lit {} ->
-      stackAllocateIt -- TODO
+    Syntax.Lit lit ->
+      pure (Direct $ Assembly.Lit lit, pure ())
 
     Syntax.Let _name term' termType body -> do
       termType' <- generateType env termType
@@ -423,13 +423,13 @@ generateTypedTerm env term type_ = do
       pure (result, deallocateBody >> deallocateTerm)
 
     Syntax.Function _ ->
-      stackAllocateIt
+      pure (Direct pointerBytesOperand, pure ())
 
     Syntax.Apply {} ->
       stackAllocateIt
 
     Syntax.Pi {} ->
-      stackAllocateIt
+      pure (Direct pointerBytesOperand, pure ())
 
     Syntax.Closure {} ->
       stackAllocateIt
