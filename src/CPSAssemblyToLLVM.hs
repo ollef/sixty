@@ -500,6 +500,7 @@ assembleOperand type_ operand =
 
       use LLVM.globalVariableDefaults
         { LLVM.Global.name = globalName
+        , LLVM.Global.isConstant = True
         , LLVM.Global.type' = globalType
         }
       pure
