@@ -202,7 +202,10 @@ convertInstruction liveLocals instr =
       emitInstruction $ CPSAssembly.Copy o1 o2 o3
 
     Assembly.Call result function arguments -> do
-      pushLocals liveLocals
+      let
+        liveLocals' =
+          HashSet.delete result liveLocals
+      pushLocals liveLocals'
       continuationFunctionName <- freshFunctionName
       push $ Assembly.GlobalFunction continuationFunctionName 1
       stackPointer <- gets _stackPointer
@@ -211,7 +214,7 @@ convertInstruction liveLocals instr =
         ( continuationFunctionName
         , Assembly.FunctionDefinition [stackPointer, result] basicBlock
         )
-      popLocals liveLocals
+      popLocals liveLocals'
 
     Assembly.CallVoid function arguments -> do
       pushLocals liveLocals
