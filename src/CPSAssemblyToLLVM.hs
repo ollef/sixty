@@ -479,7 +479,7 @@ assembleOperand type_ operand =
   case operand of
     Assembly.LocalOperand local@(Assembly.Local _ nameSuggestion) -> do
       locals <- gets _locals
-      cast nameSuggestion type_ $ HashMap.lookupDefault (panic "assembleOperand: no such local") local locals
+      cast nameSuggestion type_ $ HashMap.lookupDefault (panic $ "assembleOperand: no such local " <> show local) local locals
 
     Assembly.GlobalConstant global -> do
       let
