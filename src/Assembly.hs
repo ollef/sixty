@@ -96,10 +96,10 @@ instance Pretty Operand where
         pretty local
 
       GlobalConstant global ->
-        "constant" <+> pretty global
+        "(constant" <+> pretty global <> ")"
 
       GlobalFunction global arity ->
-        "function(" <> pretty arity <> ")" <+> pretty global
+        "(function(" <> pretty arity <> ")" <+> pretty global <> ")"
 
       Lit lit ->
         pretty lit
