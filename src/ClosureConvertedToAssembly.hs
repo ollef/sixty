@@ -164,9 +164,19 @@ copy destination source size =
     Direct directSource ->
       emit $ Assembly.Store destination directSource
 
-call :: Name.Lifted -> [Assembly.Operand] -> Assembly.Operand -> Builder ()
-call global args returnLocation =
-  emit $ Assembly.CallVoid (Assembly.GlobalFunction (Assembly.Name global 0) $ 1 + length args) (returnLocation : args)
+callVoid :: Name.Lifted -> [Assembly.Operand] -> Builder ()
+callVoid global args =
+  emit $ Assembly.CallVoid (Assembly.GlobalFunction (Assembly.Name global 0) $ length args) args
+
+callDirect :: Assembly.NameSuggestion -> Name.Lifted -> [Assembly.Operand] -> Builder Assembly.Operand
+callDirect nameSuggestion global args = do
+  result <- freshLocal nameSuggestion
+  emit $ Assembly.Call result (Assembly.GlobalFunction (Assembly.Name global 0) $ length args) args
+  pure $ Assembly.LocalOperand result
+
+callIndirect :: Name.Lifted -> [Assembly.Operand] -> Assembly.Operand -> Builder ()
+callIndirect global args returnLocation =
+  callVoid global (returnLocation : args)
 
 load :: Assembly.NameSuggestion -> Assembly.Operand -> Builder Assembly.Operand
 load nameSuggestion pointer = do
@@ -253,20 +263,18 @@ generateModuleInit :: [(Name.Lifted, Syntax.Definition)] -> M (Assembly.Definiti
 generateModuleInit definitions =
   runBuilder $ do
     globalPointer <- freshLocal "globals"
-    outGlobalPointer <- freshLocal "globals_out"
-    foldM_ (go $ Assembly.LocalOperand outGlobalPointer) (Assembly.LocalOperand globalPointer) definitions
+    globalPointer' <- foldM go (Assembly.LocalOperand globalPointer) definitions
     instructions <- gets _instructions
     fresh <- gets _fresh
-    pure (Assembly.FunctionDefinition [outGlobalPointer, globalPointer] (Assembly.BasicBlock (toList instructions) Assembly.VoidResult), fresh)
+    pure (Assembly.FunctionDefinition [globalPointer] (Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointer'), fresh)
   where
-    go outGlobalPointer globalPointer (name, definition) =
+    go globalPointer (name, definition) =
       case definition of
         Syntax.TypeDeclaration _ ->
           pure globalPointer
 
-        Syntax.ConstantDefinition {} -> do
-          call (initDefinitionName name) [globalPointer] outGlobalPointer
-          load "globals" outGlobalPointer
+        Syntax.ConstantDefinition {} ->
+          callDirect "globals" (initDefinitionName name) [globalPointer]
 
         Syntax.FunctionDefinition {} ->
           pure globalPointer
@@ -290,22 +298,18 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition = do
 
       (Syntax.ConstantDefinition term, Just (Representation.ConstantSignature representation)) -> do
         globalPointer <- freshLocal "globals"
-        outGlobalPointer <- freshLocal "globals_out"
         let
           globalPointerOperand =
             Assembly.LocalOperand globalPointer
-          outGlobalPointerOperand =
-            Assembly.LocalOperand outGlobalPointer
         type_ <- typeOf env term
         typeSize <- sizeOfType type_
-        newGlobalPointer <- globalAllocate "globals" globalPointerOperand typeSize
+        globalPointer' <- globalAllocate "globals" globalPointerOperand typeSize
         storeTerm env term globalPointerOperand type_
         initGlobal name globalPointerOperand
-        store outGlobalPointerOperand newGlobalPointer
         instructions <- gets _instructions
         fresh <- gets _fresh
         pure $ Just
-          ( Assembly.ConstantDefinition [outGlobalPointer, globalPointer] $ Assembly.BasicBlock (toList instructions) Assembly.VoidResult
+          ( Assembly.ConstantDefinition [globalPointer] $ Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointer'
           , fresh
           )
 
@@ -313,12 +317,10 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition = do
         panic "ClosureConvertedToAssembly: ConstantDefinition without ConstantSignature"
 
       (Syntax.FunctionDefinition tele, Just (Representation.FunctionSignature parameterRepresentations returnRepresentation)) -> do
-        returnLocation <- freshLocal "return_location"
-        args <- generateFunction env returnLocation tele parameterRepresentations
-        instructions <- gets _instructions
+        functionDefinition <- generateFunction env returnRepresentation tele parameterRepresentations mempty
         fresh <- gets _fresh
         pure $ Just
-          ( Assembly.FunctionDefinition (returnLocation : args) $ Assembly.BasicBlock (toList instructions) Assembly.VoidResult
+          ( functionDefinition
           , fresh
           )
 
@@ -333,34 +335,60 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition = do
 
 generateFunction
   :: Environment v
-  -> Assembly.Local
+  -> Representation
   -> Telescope Name Syntax.Type Syntax.Term v
   -> [Representation]
-  -> Builder [Assembly.Local]
-generateFunction env returnLocation tele parameterRepresentations =
+  -> Tsil Assembly.Local
+  -> Builder (Assembly.Definition Assembly.BasicBlock)
+generateFunction env returnRepresentation tele parameterRepresentations params =
   case (tele, parameterRepresentations) of
-    (Telescope.Empty term, []) -> do
-      type_ <- typeOf env term
-      storeTerm env term (Assembly.LocalOperand returnLocation) type_
-      pure []
+    (Telescope.Empty term, []) ->
+      case returnRepresentation of
+        Representation.Empty -> do
+          (_, deallocateTerm) <- generateTypedTerm env term emptyTypeOperand
+          deallocateTerm
+          instructions <- gets _instructions
+          pure $
+            Assembly.FunctionDefinition
+              (toList params)
+              (Assembly.BasicBlock (toList instructions) Assembly.VoidResult)
+
+        Representation.Direct -> do
+          (result, deallocateTerm) <- generateTypedTerm env term directTypeOperand
+          directResult <- forceDirect result
+          deallocateTerm
+          instructions <- gets _instructions
+          pure $
+            Assembly.FunctionDefinition
+              (toList params)
+              (Assembly.BasicBlock (toList instructions) $ Assembly.Result directResult)
+
+        Representation.Indirect -> do
+          returnLocation <- freshLocal "return_location"
+          type_ <- typeOf env term
+          storeTerm env term (Assembly.LocalOperand returnLocation) type_
+          instructions <- gets _instructions
+          pure $
+            Assembly.FunctionDefinition
+              (returnLocation : toList params)
+              (Assembly.BasicBlock (toList instructions) Assembly.VoidResult)
 
     (Telescope.Extend (Name name) type_ _plicity tele', parameterRepresentation:parameterRepresentations') -> do
-      (params, paramOperand) <-
+      (params', paramOperand) <-
         case parameterRepresentation of
           Representation.Empty ->
-            pure ([], Empty)
+            pure (params, Empty)
 
           Representation.Direct -> do
             local <- freshLocal $ Assembly.NameSuggestion name
-            pure ([local], Direct $ Assembly.LocalOperand local)
+            pure (params Tsil.:> local, Direct $ Assembly.LocalOperand local)
 
           Representation.Indirect -> do
             local <- freshLocal $ Assembly.NameSuggestion name
-            pure ([local], Indirect $ Assembly.LocalOperand local)
+            pure (params Tsil.:>local, Indirect $ Assembly.LocalOperand local)
 
       env' <- extend env type_ paramOperand
-      params' <- generateFunction env' returnLocation tele' parameterRepresentations'
-      pure $ params <> params'
+      generateFunction env' returnRepresentation tele' parameterRepresentations' params'
 
     _ ->
       panic "ClosureConvertedToAssembly.generateFunction: mismatched function telescope and signature"
@@ -506,15 +534,25 @@ storeTerm env term returnLocation returnType =
     Syntax.Apply global arguments -> do
       maybeSignature <- fetch $ Query.ClosureConvertedSignature global
       let
-        argumentRepresentations =
+        (argumentRepresentations, returnRepresentation) =
           case maybeSignature of
-            Just (Representation.FunctionSignature argumentRepresentations_ returnRepresentation) ->
-              argumentRepresentations_
+            Just (Representation.FunctionSignature argumentRepresentations_ returnRepresentation_) ->
+              (argumentRepresentations_, returnRepresentation_)
 
             _ ->
               panic $ "ClosureConvertedToAssembly: Applying signature-less function " <> show global
       (arguments', deallocators) <- unzip <$> zipWithM (generateArgument env) arguments argumentRepresentations
-      call global (concat arguments') returnLocation
+      case returnRepresentation of
+        Representation.Empty ->
+          callVoid global (concat arguments')
+
+        Representation.Direct -> do
+          result <- callDirect "call_result" global (concat arguments')
+          store returnLocation result
+
+        Representation.Indirect -> do
+          callIndirect global (concat arguments') returnLocation
+
       sequence_ $ reverse deallocators
 
     Syntax.Pi {} ->
