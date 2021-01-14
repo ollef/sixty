@@ -26,16 +26,17 @@ import qualified Scope
 import Telescope (Telescope)
 import qualified Telescope
 
-signature :: Name.Lifted -> Syntax.Definition -> M (Maybe Representation.Signature)
+signature :: Name.Lifted -> Syntax.Definition -> M Representation.Signature
 signature (Name.Lifted name _) def = 
   case def of
-    Syntax.TypeDeclaration _ ->
-      pure Nothing
+    Syntax.TypeDeclaration type_ -> do
+      type' <- Evaluation.evaluate env type_
+      Representation.ConstantSignature <$> representation env type'
 
     Syntax.ConstantDefinition term -> do
       value <- Evaluation.evaluate env term
       type_ <- TypeOf.typeOf context value
-      Just . Representation.ConstantSignature <$> representation env type_
+      Representation.ConstantSignature <$> representation env type_
 
     Syntax.FunctionDefinition tele ->
       telescopeSignature context tele mempty $ \context' body parameterRepresentations -> do
@@ -45,22 +46,22 @@ signature (Name.Lifted name _) def =
         body' <- Evaluation.evaluate env' body
         type_ <- TypeOf.typeOf context' body'
         returnRepresentation <- representation env' type_
-        pure $ Just $ Representation.FunctionSignature parameterRepresentations returnRepresentation
+        pure $ Representation.FunctionSignature parameterRepresentations returnRepresentation
 
     Syntax.DataDefinition Unboxed constructorDefinitions ->
-      Just . Representation.ConstantSignature <$> unboxedDataRepresentation env constructorDefinitions
+      Representation.ConstantSignature <$> unboxedDataRepresentation env constructorDefinitions
 
     Syntax.DataDefinition Boxed _ ->
-      pure $ Just $ Representation.ConstantSignature Representation.Direct
+      pure $ Representation.ConstantSignature Representation.Direct
 
     Syntax.ParameterisedDataDefinition Unboxed tele ->
       telescopeSignature context tele mempty $ \context' constructorDefinitions parameterRepresentations -> do
         returnRepresentation <- unboxedDataRepresentation (Context.toEnvironment context') constructorDefinitions
-        pure $ Just $ Representation.FunctionSignature parameterRepresentations returnRepresentation
+        pure $ Representation.FunctionSignature parameterRepresentations returnRepresentation
 
     Syntax.ParameterisedDataDefinition Boxed tele ->
       telescopeSignature context tele mempty $ \_ _ parameterRepresentations ->
-        pure $ Just $ Representation.FunctionSignature parameterRepresentations Representation.Direct
+        pure $ Representation.FunctionSignature parameterRepresentations Representation.Direct
 
   where
     context =

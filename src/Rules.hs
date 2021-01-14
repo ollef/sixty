@@ -501,12 +501,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
     ClosureConvertedSignature name ->
       noError $ do
         maybeDefinition <- fetch $ ClosureConverted name
-        case maybeDefinition of
-          Nothing ->
-            pure Nothing
-
-          Just definition ->
-            runM $ ClosureConverted.Representation.signature name definition
+        mapM (runM . ClosureConverted.Representation.signature name) maybeDefinition
 
     ConstructorTag (Name.QualifiedConstructor dataTypeName constr) ->
       noError $ do
