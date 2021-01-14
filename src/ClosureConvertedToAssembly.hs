@@ -139,7 +139,7 @@ heapAllocate nameSuggestion size = do
   emit $ Assembly.HeapAllocate return_ size
   pure $ Assembly.LocalOperand return_
 
-typeOf :: Environment v -> Syntax.Term v -> Builder Assembly.Operand
+typeOf :: Environment v -> Syntax.Term v -> Builder Operand
 typeOf env term = do
   type_ <- Builder $ lift $ do
     value <- Evaluation.evaluate (Context.toEnvironment $ _context env) term
@@ -147,9 +147,9 @@ typeOf env term = do
     Readback.readback (Context.toEnvironment $ _context env) typeValue
   generateType env type_
 
-sizeOfType :: Assembly.Operand -> Builder Assembly.Operand
+sizeOfType :: Operand -> Builder Assembly.Operand
 sizeOfType =
-  pure
+  forceDirect
 
 -------------------------------------------------------------------------------
 
@@ -336,8 +336,8 @@ generateGlobal env name representation term = do
       Assembly.LocalOperand globalPointer
   case representation of
     Representation.Empty -> do
-      (_, deallocateTerm) <- generateTypedTerm env term emptyTypeOperand
-      deallocateTerm
+      (_, deallocateTerm) <- generateTypedTerm env term $ Direct emptyTypeOperand
+      sequence_ deallocateTerm
       instructions <- gets _instructions
       pure $
         Just $
@@ -348,9 +348,9 @@ generateGlobal env name representation term = do
 
     Representation.Direct -> do
       -- TODO store in globals for GC?
-      (result, deallocateTerm) <- generateTypedTerm env term directTypeOperand
+      (result, deallocateTerm) <- generateTypedTerm env term $ Direct directTypeOperand
       directResult <- forceDirect result
-      deallocateTerm
+      sequence_ deallocateTerm
       initGlobal name representation directResult
       instructions <- gets _instructions
       pure $
@@ -386,8 +386,8 @@ generateFunction env returnRepresentation tele parameterRepresentations params =
     (Telescope.Empty term, []) ->
       case returnRepresentation of
         Representation.Empty -> do
-          (_, deallocateTerm) <- generateTypedTerm env term emptyTypeOperand
-          deallocateTerm
+          (_, deallocateTerm) <- generateTypedTerm env term $ Direct emptyTypeOperand
+          sequence_ deallocateTerm
           instructions <- gets _instructions
           pure $
             Assembly.FunctionDefinition
@@ -395,9 +395,9 @@ generateFunction env returnRepresentation tele parameterRepresentations params =
               (Assembly.BasicBlock (toList instructions) Assembly.VoidResult)
 
         Representation.Direct -> do
-          (result, deallocateTerm) <- generateTypedTerm env term directTypeOperand
+          (result, deallocateTerm) <- generateTypedTerm env term $ Direct directTypeOperand
           directResult <- forceDirect result
-          deallocateTerm
+          sequence_ deallocateTerm
           instructions <- gets _instructions
           pure $
             Assembly.FunctionDefinition
@@ -436,70 +436,112 @@ generateFunction env returnRepresentation tele parameterRepresentations params =
 
 -------------------------------------------------------------------------------
 
-generateType :: Environment v -> Syntax.Type v -> Builder Assembly.Operand
+generateType :: Environment v -> Syntax.Type v -> Builder Operand
 generateType env type_ = do
-  (type', deallocateType) <- generateTypedTerm env type_ pointerBytesOperand
-  directType <- forceDirect type'
-  deallocateType
-  pure directType
+  (type', maybeDeallocateType) <- generateTypedTerm env type_ $ Direct pointerBytesOperand
+  case maybeDeallocateType of
+    Nothing ->
+      pure type'
 
-generateArgument :: Environment v -> Syntax.Term v -> Representation -> Builder ([Assembly.Operand], Builder ())
+    Just deallocateType -> do
+      directType <- forceDirect type'
+      deallocateType
+      pure $ Direct directType
+
+generateArgument :: Environment v -> Syntax.Term v -> Representation -> Builder (Builder ([Assembly.Operand], Builder ()), Builder ())
 generateArgument env term representation =
   case representation of
     Representation.Empty -> do
-      (_, deallocateTerm) <- generateTypedTerm env term emptyTypeOperand
-      pure ([], deallocateTerm)
+      (_, deallocateTerm) <- generateTypedTerm env term $ Direct emptyTypeOperand
+      pure
+        ( pure ([], pure ())
+        , sequence_ deallocateTerm
+        )
 
     Representation.Direct -> do
-      (term', deallocateTerm) <- generateTypedTerm env term directTypeOperand
-      directTerm <- forceDirect term'
-      pure ([directTerm], deallocateTerm)
+      (term', deallocateTerm) <- generateTypedTerm env term $ Direct directTypeOperand
+      pure
+        (do
+          directTerm <- forceDirect term'
+          pure ([directTerm], pure ())
+        , sequence_ deallocateTerm
+        )
 
     Representation.Indirect -> do
       type_ <- typeOf env term
       (termOperand, deallocateTermOperand) <- generateTypedTerm env term type_
-      (termLocation, deallocateTerm) <- forceIndirect termOperand
-      pure ([termLocation], deallocateTerm >> deallocateTermOperand)
+      pure
+        ( do
+          (termLocation, deallocateTerm) <- forceIndirect termOperand
+          pure ([termLocation], deallocateTerm)
+        , sequence_ deallocateTermOperand
+        )
 
-generateTypedTerm :: Environment v -> Syntax.Term v -> Assembly.Operand -> Builder (Operand, Builder ())
+generateTypedTerm :: Environment v -> Syntax.Term v -> Operand -> Builder (Operand, Maybe (Builder ()))
 generateTypedTerm env term type_ = do
   let
     stackAllocateIt = do
       typeSize <- sizeOfType type_
       termLocation <- stackAllocate "term_location" typeSize
       storeTerm env term termLocation type_
-      pure (Indirect termLocation, stackDeallocate typeSize)
+      pure (Indirect termLocation, Just $ stackDeallocate typeSize)
 
   case term of
     Syntax.Var index ->
-      pure (indexOperand index env, pure ())
+      pure (indexOperand index env, Nothing)
 
     Syntax.Global global -> do
       operand <- globalConstantOperand global
-      pure (operand, pure ())
+      pure (operand, Nothing)
 
     Syntax.Con {} ->
       stackAllocateIt -- TODO
 
     Syntax.Lit lit ->
-      pure (Direct $ Assembly.Lit lit, pure ())
+      pure (Direct $ Assembly.Lit lit, Nothing)
 
     Syntax.Let _name term' termType body -> do
       termType' <- generateType env termType
       (term'', deallocateTerm) <- generateTypedTerm env term' termType'
       env' <- extend env termType term''
       (result, deallocateBody) <- generateTypedTerm env' body type_
-      deallocateTerm
-      pure (result, deallocateBody >> deallocateTerm)
+      pure (result, (>>) <$> deallocateBody <*> deallocateTerm)
 
     Syntax.Function _ ->
-      pure (Direct pointerBytesOperand, pure ())
+      pure (Direct pointerBytesOperand, Nothing)
 
-    Syntax.Apply {} ->
-      stackAllocateIt
+    Syntax.Apply global arguments -> do
+      maybeSignature <- fetch $ Query.ClosureConvertedSignature global
+      let
+        (argumentRepresentations, returnRepresentation) =
+          case maybeSignature of
+            Just (Representation.FunctionSignature argumentRepresentations_ returnRepresentation_) ->
+              (argumentRepresentations_, returnRepresentation_)
+
+            _ ->
+              panic $ "ClosureConvertedToAssembly: Applying signature-less function " <> show global
+      case returnRepresentation of
+        Representation.Empty -> do
+          (argumentGenerators, outerDeallocators) <- unzip <$> zipWithM (generateArgument env) arguments argumentRepresentations
+          (arguments', innerDeallocators) <- unzip <$> sequence argumentGenerators
+          callVoid global (concat arguments')
+          sequence_ $ reverse innerDeallocators
+          sequence_ $ reverse outerDeallocators
+          pure (Empty, Nothing)
+
+        Representation.Direct -> do
+          (argumentGenerators, outerDeallocators) <- unzip <$> zipWithM (generateArgument env) arguments argumentRepresentations
+          (arguments', innerDeallocators) <- unzip <$> sequence argumentGenerators
+          result <- callDirect "call_result" global (concat arguments')
+          sequence_ $ reverse innerDeallocators
+          sequence_ $ reverse outerDeallocators
+          pure (Direct result, Nothing)
+
+        Representation.Indirect -> do
+          stackAllocateIt
 
     Syntax.Pi {} ->
-      pure (Direct pointerBytesOperand, pure ())
+      pure (Direct pointerBytesOperand, Nothing)
 
     Syntax.Closure {} ->
       stackAllocateIt
@@ -514,7 +556,7 @@ storeTerm
   :: Environment v
   -> Syntax.Term v
   -> Assembly.Operand
-  -> Assembly.Operand
+  -> Operand
   -> Builder ()
 storeTerm env term returnLocation returnType =
   case term of
@@ -566,7 +608,7 @@ storeTerm env term returnLocation returnType =
       (term'', deallocateTerm) <- generateTypedTerm env term' type'
       env' <- extend env type_ term''
       storeTerm env' body returnLocation returnType
-      deallocateTerm
+      sequence_ deallocateTerm
 
     Syntax.Function _ ->
       store returnLocation pointerBytesOperand
@@ -581,7 +623,8 @@ storeTerm env term returnLocation returnType =
 
             _ ->
               panic $ "ClosureConvertedToAssembly: Applying signature-less function " <> show global
-      (arguments', deallocators) <- unzip <$> zipWithM (generateArgument env) arguments argumentRepresentations
+      (argumentGenerators, outerDeallocators) <- unzip <$> zipWithM (generateArgument env) arguments argumentRepresentations
+      (arguments', innerDeallocators) <- unzip <$> sequence argumentGenerators
       case returnRepresentation of
         Representation.Empty ->
           callVoid global (concat arguments')
@@ -593,7 +636,8 @@ storeTerm env term returnLocation returnType =
         Representation.Indirect -> do
           callIndirect global (concat arguments') returnLocation
 
-      sequence_ $ reverse deallocators
+      sequence_ $ reverse innerDeallocators
+      sequence_ $ reverse outerDeallocators
 
     Syntax.Pi {} ->
       store returnLocation pointerBytesOperand
