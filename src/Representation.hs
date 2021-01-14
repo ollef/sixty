@@ -1,8 +1,10 @@
-{-# language DeriveGeneric #-}
 {-# language DeriveAnyClass #-}
+{-# language DeriveGeneric #-}
+{-# language OverloadedStrings #-}
 module Representation where
 
 import Data.Persist
+import Data.Text.Prettyprint.Doc
 import Protolude
 
 data Signature
@@ -24,6 +26,18 @@ instance Semigroup Representation where
 instance Monoid Representation where
   mempty =
     Empty
+
+instance Pretty Representation where
+  pretty representation =
+    case representation of
+      Empty ->
+        "empty"
+
+      Direct ->
+        "direct"
+
+      Indirect ->
+        "indirect"
 
 maxM :: Monad m => [m Representation] -> m Representation
 maxM [] = pure Empty
