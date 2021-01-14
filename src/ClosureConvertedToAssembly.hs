@@ -448,35 +448,6 @@ generateType env type_ = do
       deallocateType
       pure $ Direct directType
 
-generateArgument :: Environment v -> Syntax.Term v -> Representation -> Builder (Builder ([Assembly.Operand], Builder ()), Builder ())
-generateArgument env term representation =
-  case representation of
-    Representation.Empty -> do
-      (_, deallocateTerm) <- generateTypedTerm env term $ Direct emptyTypeOperand
-      pure
-        ( pure ([], pure ())
-        , sequence_ deallocateTerm
-        )
-
-    Representation.Direct -> do
-      (term', deallocateTerm) <- generateTypedTerm env term $ Direct directTypeOperand
-      pure
-        (do
-          directTerm <- forceDirect term'
-          pure ([directTerm], pure ())
-        , sequence_ deallocateTerm
-        )
-
-    Representation.Indirect -> do
-      type_ <- typeOf env term
-      (termOperand, deallocateTermOperand) <- generateTypedTerm env term type_
-      pure
-        ( do
-          (termLocation, deallocateTerm) <- forceIndirect termOperand
-          pure ([termLocation], deallocateTerm)
-        , sequence_ deallocateTermOperand
-        )
-
 generateTypedTerm :: Environment v -> Syntax.Term v -> Operand -> Builder (Operand, Maybe (Builder ()))
 generateTypedTerm env term type_ = do
   let
@@ -522,19 +493,15 @@ generateTypedTerm env term type_ = do
               panic $ "ClosureConvertedToAssembly: Applying signature-less function " <> show global
       case returnRepresentation of
         Representation.Empty -> do
-          (argumentGenerators, outerDeallocators) <- unzip <$> zipWithM (generateArgument env) arguments argumentRepresentations
-          (arguments', innerDeallocators) <- unzip <$> sequence argumentGenerators
-          callVoid global (concat arguments')
-          sequence_ $ reverse innerDeallocators
-          sequence_ $ reverse outerDeallocators
+          (arguments', deallocateArguments) <- generateArguments env $ zip arguments argumentRepresentations
+          callVoid global arguments'
+          deallocateArguments
           pure (Empty, Nothing)
 
         Representation.Direct -> do
-          (argumentGenerators, outerDeallocators) <- unzip <$> zipWithM (generateArgument env) arguments argumentRepresentations
-          (arguments', innerDeallocators) <- unzip <$> sequence argumentGenerators
-          result <- callDirect "call_result" global (concat arguments')
-          sequence_ $ reverse innerDeallocators
-          sequence_ $ reverse outerDeallocators
+          (arguments', deallocateArguments) <- generateArguments env $ zip arguments argumentRepresentations
+          result <- callDirect "call_result" global arguments'
+          deallocateArguments
           pure (Direct result, Nothing)
 
         Representation.Indirect -> do
@@ -623,21 +590,18 @@ storeTerm env term returnLocation returnType =
 
             _ ->
               panic $ "ClosureConvertedToAssembly: Applying signature-less function " <> show global
-      (argumentGenerators, outerDeallocators) <- unzip <$> zipWithM (generateArgument env) arguments argumentRepresentations
-      (arguments', innerDeallocators) <- unzip <$> sequence argumentGenerators
+      (arguments', deallocateArguments) <- generateArguments env (zip arguments argumentRepresentations)
       case returnRepresentation of
         Representation.Empty ->
-          callVoid global (concat arguments')
+          callVoid global arguments'
 
         Representation.Direct -> do
-          result <- callDirect "call_result" global (concat arguments')
+          result <- callDirect "call_result" global arguments'
           store returnLocation result
 
         Representation.Indirect -> do
-          callIndirect global (concat arguments') returnLocation
-
-      sequence_ $ reverse innerDeallocators
-      sequence_ $ reverse outerDeallocators
+          callIndirect global arguments' returnLocation
+      deallocateArguments
 
     Syntax.Pi {} ->
       store returnLocation pointerBytesOperand
@@ -651,6 +615,45 @@ storeTerm env term returnLocation returnType =
     Syntax.Case {} ->
       panic "st case" -- TODO
 
+generateArguments :: Environment v -> [(Syntax.Term v, Representation)] -> Builder ([Assembly.Operand], Builder ())
+generateArguments env arguments = do
+  (argumentGenerators, outerDeallocators) <- unzip <$> mapM (uncurry $ generateArgument env) arguments
+  (arguments', innerDeallocators) <- unzip <$> sequence argumentGenerators
+  pure
+    ( concat arguments'
+    , do
+      sequence_ $ reverse innerDeallocators
+      sequence_ $ reverse outerDeallocators
+    )
+
+generateArgument :: Environment v -> Syntax.Term v -> Representation -> Builder (Builder ([Assembly.Operand], Builder ()), Builder ())
+generateArgument env term representation =
+  case representation of
+    Representation.Empty -> do
+      (_, deallocateTerm) <- generateTypedTerm env term $ Direct emptyTypeOperand
+      pure
+        ( pure ([], pure ())
+        , sequence_ deallocateTerm
+        )
+
+    Representation.Direct -> do
+      (term', deallocateTerm) <- generateTypedTerm env term $ Direct directTypeOperand
+      pure
+        (do
+          directTerm <- forceDirect term'
+          pure ([directTerm], pure ())
+        , sequence_ deallocateTerm
+        )
+
+    Representation.Indirect -> do
+      type_ <- typeOf env term
+      (termOperand, deallocateTermOperand) <- generateTypedTerm env term type_
+      pure
+        ( do
+          (termLocation, deallocateTerm) <- forceIndirect termOperand
+          pure ([termLocation], deallocateTerm)
+        , sequence_ deallocateTermOperand
+        )
 -------------------------------------------------------------------------------
 
 fetchBoxity :: MonadFetch Query m => Name.Qualified -> m Boxity
