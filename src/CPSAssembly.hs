@@ -4,18 +4,19 @@
 module CPSAssembly where
 
 import Assembly (Local, Operand)
-import qualified Assembly 
+import qualified Assembly
 import Data.Persist
 import Data.Text.Prettyprint.Doc
 import qualified Name
 import Protolude
+import Representation (Representation)
 
 data Instruction
   = Copy !Operand !Operand !Operand
   | Load !Local !Operand
   | Store !Operand !Operand
   | SetUndefined !Operand !Operand
-  | InitGlobal !Name.Lifted !Operand
+  | InitGlobal !Name.Lifted !Representation !Operand
   | Add !Local !Operand !Operand
   | Sub !Local !Operand !Operand
   | HeapAllocate !Local !Operand
@@ -46,8 +47,8 @@ instance Pretty Instruction where
       SetUndefined dst size ->
         voidInstr "set undefined" [dst, size]
 
-      InitGlobal dst src ->
-        "init global" <+> hsep [pretty dst, pretty src]
+      InitGlobal dst representation src ->
+        "init" <+> pretty representation <+> "global" <+> hsep [pretty dst, pretty src]
 
       Add dst arg1 arg2 ->
         returningInstr dst "add" [arg1, arg2]

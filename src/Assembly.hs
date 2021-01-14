@@ -16,6 +16,7 @@ import qualified Data.HashSet as HashSet
 import Data.HashSet (HashSet)
 import Literal (Literal)
 import qualified Name
+import Representation (Representation)
 
 data Local = Local !Int !NameSuggestion
   deriving (Eq, Ord, Show, Generic, Hashable, Persist)
@@ -29,7 +30,7 @@ data Name = Name !Name.Lifted !Int
 
 data Operand
   = LocalOperand !Local
-  | GlobalConstant !Name
+  | GlobalConstant !Name !Representation
   | GlobalFunction !Name !Int
   | Lit !Literal
   deriving (Show, Generic, Persist, Hashable)
@@ -40,7 +41,7 @@ data Instruction basicBlock
   | CallVoid !Operand [Operand]
   | Load !Local !Operand
   | Store !Operand !Operand
-  | InitGlobal !Name.Lifted !Operand
+  | InitGlobal !Name.Lifted !Representation !Operand
   | Add !Local !Operand !Operand
   | Sub !Local !Operand !Operand
   | StackAllocate !Local !Operand
@@ -50,7 +51,7 @@ data Instruction basicBlock
   deriving (Show, Generic, Persist, Hashable, Functor)
 
 data Definition basicBlock
-  = ConstantDefinition [Local] basicBlock
+  = ConstantDefinition !Representation [Local] basicBlock
   | FunctionDefinition [Local] basicBlock
   deriving (Show, Generic, Persist, Hashable, Functor)
 
@@ -95,8 +96,8 @@ instance Pretty Operand where
       LocalOperand local ->
         pretty local
 
-      GlobalConstant global ->
-        "(constant" <+> pretty global <> ")"
+      GlobalConstant global representation ->
+        "(" <> pretty representation <+> "constant" <+> pretty global <> ")"
 
       GlobalFunction global arity ->
         "(function(" <> pretty arity <> ")" <+> pretty global <> ")"
@@ -122,8 +123,8 @@ instance Pretty basicBlock => Pretty (Instruction basicBlock) where
       Store dst src ->
         voidInstr "store" [dst, src]
 
-      InitGlobal dst src ->
-        "init global" <+> hsep [pretty dst, pretty src]
+      InitGlobal dst representation src ->
+        "init" <+> pretty representation <+> "global" <+> hsep [pretty dst, pretty src]
 
       Add dst arg1 arg2 ->
         returningInstr dst "add" [arg1, arg2]
@@ -161,8 +162,8 @@ instance Pretty basicBlock => Pretty (Instruction basicBlock) where
 instance (Pretty basicBlock) => Pretty (Definition basicBlock) where
   pretty definition =
     case definition of
-      ConstantDefinition constantParameters basicBlock ->
-        "constant" <+> tupled (pretty <$> constantParameters) <+> "=" <> line <>
+      ConstantDefinition representation constantParameters basicBlock ->
+        pretty representation <+> "constant" <+> tupled (pretty <$> constantParameters) <+> "=" <> line <>
           indent 2 (pretty basicBlock)
 
       FunctionDefinition args basicBlock ->
@@ -263,7 +264,7 @@ instructionLocals instruction =
     Store o1 o2 ->
       operandLocals o1 <> operandLocals o2
 
-    InitGlobal _ o ->
+    InitGlobal _ _ o ->
       operandLocals o
 
     Add l o1 o2 ->
@@ -290,7 +291,7 @@ operandLocals operand =
     LocalOperand local ->
       (mempty, HashSet.singleton local)
 
-    GlobalConstant _ ->
+    GlobalConstant _ _ ->
       mempty
 
     GlobalFunction _ _ ->

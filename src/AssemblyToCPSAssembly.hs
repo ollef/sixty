@@ -140,12 +140,12 @@ convertDefinition fresh name definition =
       , _stackPointer = stackPointer
       } $ unConverter $ do
       case definition of
-        Assembly.ConstantDefinition arguments basicBlock -> do
+        Assembly.ConstantDefinition representation arguments basicBlock -> do
           modify $ \s  -> s
             { _finishDefinition =
               \basicBlock' ->
                 ( Assembly.Name name 0
-                , Assembly.ConstantDefinition (stackPointer : arguments) basicBlock'
+                , Assembly.ConstantDefinition representation (stackPointer : arguments) basicBlock'
                 )
             }
           convertBasicBlock mempty $ Assembly.basicBlockWithOccurrences basicBlock
@@ -234,8 +234,8 @@ convertInstruction liveLocals instr =
     Assembly.Store o1 o2 ->
       emitInstruction $ CPSAssembly.Store o1 o2
 
-    Assembly.InitGlobal g o ->
-      emitInstruction $ CPSAssembly.InitGlobal g o
+    Assembly.InitGlobal g r o ->
+      emitInstruction $ CPSAssembly.InitGlobal g r o
 
     Assembly.Add l o1 o2 ->
       emitInstruction $ CPSAssembly.Add l o1 o2

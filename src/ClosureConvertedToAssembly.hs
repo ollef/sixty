@@ -1,6 +1,7 @@
 {-# language FlexibleContexts #-}
 {-# language GeneralizedNewtypeDeriving #-}
 {-# language OverloadedStrings #-}
+{-# language TupleSections #-}
 
 module ClosureConvertedToAssembly where
 
@@ -84,7 +85,7 @@ operandNameSuggestion operand =
     Assembly.LocalOperand (Assembly.Local _ nameSuggestion) ->
       nameSuggestion
 
-    Assembly.GlobalConstant global ->
+    Assembly.GlobalConstant global _ ->
       Assembly.NameSuggestion $ Assembly.nameText global
 
     Assembly.GlobalFunction global _ ->
@@ -108,9 +109,15 @@ indexOperand index env = do
   fromMaybe (panic "ClosureConvertedToAssembly.indexOperand") $
     IntMap.lookup var $ _varLocations env
 
-globalConstantLocation :: Name.Lifted -> Operand
-globalConstantLocation name =
-  Indirect $ Assembly.GlobalConstant $ Assembly.Name name 0
+globalConstantOperand :: Name.Lifted -> Builder Operand
+globalConstantOperand name = do
+  maybeSignature <- fetch $ Query.ClosureConvertedSignature name
+  pure $ case maybeSignature of
+    Just (Representation.ConstantSignature representation) ->
+      Indirect $ Assembly.GlobalConstant (Assembly.Name name 0) representation
+
+    _ ->
+      panic $ "ClosureConvertedToAssembly.globalConstantLocation: global without constant signature " <> show name
 
 stackAllocate :: Assembly.NameSuggestion -> Assembly.Operand -> Builder Assembly.Operand
 stackAllocate nameSuggestion size = do
@@ -188,9 +195,9 @@ store :: Assembly.Operand -> Assembly.Operand -> Builder ()
 store destination value =
   emit $ Assembly.Store destination value
 
-initGlobal :: Name.Lifted -> Assembly.Operand -> Builder ()
-initGlobal global value =
-  emit $ Assembly.InitGlobal global value
+initGlobal :: Name.Lifted -> Representation -> Assembly.Operand -> Builder ()
+initGlobal global representation value =
+  emit $ Assembly.InitGlobal global representation value
 
 add :: Assembly.NameSuggestion -> Assembly.Operand -> Assembly.Operand -> Builder Assembly.Operand
 add nameSuggestion i1 i2 = do
@@ -297,21 +304,9 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition = do
         pure Nothing
 
       (Syntax.ConstantDefinition term, Just (Representation.ConstantSignature representation)) -> do
-        globalPointer <- freshLocal "globals"
-        let
-          globalPointerOperand =
-            Assembly.LocalOperand globalPointer
-        type_ <- typeOf env term
-        typeSize <- sizeOfType type_
-        globalPointer' <- globalAllocate "globals" globalPointerOperand typeSize
-        storeTerm env term globalPointerOperand type_
-        initGlobal name globalPointerOperand
-        instructions <- gets _instructions
+        maybeDefinition <- generateGlobal env name representation term
         fresh <- gets _fresh
-        pure $ Just
-          ( Assembly.ConstantDefinition [globalPointer] $ Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointer'
-          , fresh
-          )
+        pure $ (, fresh) <$> maybeDefinition
 
       (Syntax.ConstantDefinition {}, _) ->
         panic "ClosureConvertedToAssembly: ConstantDefinition without ConstantSignature"
@@ -332,6 +327,52 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition = do
 
       (Syntax.ParameterisedDataDefinition {}, _) ->
         panic "gd pd" -- TODO
+
+generateGlobal :: Environment v -> Name.Lifted -> Representation -> Syntax.Term v -> Builder (Maybe (Assembly.Definition Assembly.BasicBlock))
+generateGlobal env name representation term = do
+  globalPointer <- freshLocal "globals"
+  let
+    globalPointerOperand =
+      Assembly.LocalOperand globalPointer
+  case representation of
+    Representation.Empty -> do
+      (_, deallocateTerm) <- generateTypedTerm env term emptyTypeOperand
+      deallocateTerm
+      instructions <- gets _instructions
+      pure $
+        Just $
+        Assembly.ConstantDefinition
+          representation
+          [globalPointer]
+          (Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointerOperand)
+
+    Representation.Direct -> do
+      -- TODO store in globals for GC?
+      (result, deallocateTerm) <- generateTypedTerm env term directTypeOperand
+      directResult <- forceDirect result
+      deallocateTerm
+      initGlobal name representation directResult
+      instructions <- gets _instructions
+      pure $
+        Just $
+        Assembly.ConstantDefinition
+          representation
+          [globalPointer]
+          (Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointerOperand)
+
+    Representation.Indirect -> do
+      type_ <- typeOf env term
+      typeSize <- sizeOfType type_
+      globalPointer' <- globalAllocate "globals" globalPointerOperand typeSize
+      storeTerm env term globalPointerOperand type_
+      initGlobal name representation globalPointerOperand
+      instructions <- gets _instructions
+      pure $
+        Just $
+        Assembly.ConstantDefinition
+          representation
+          [globalPointer]
+          (Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointer')
 
 generateFunction
   :: Environment v
@@ -433,8 +474,9 @@ generateTypedTerm env term type_ = do
     Syntax.Var index ->
       pure (indexOperand index env, pure ())
 
-    Syntax.Global global ->
-      pure (globalConstantLocation global, pure ())
+    Syntax.Global global -> do
+      operand <- globalConstantOperand global
+      pure (operand, pure ())
 
     Syntax.Con {} ->
       stackAllocateIt -- TODO
@@ -484,11 +526,9 @@ storeTerm env term returnLocation returnType =
       copy returnLocation varOperand returnTypeSize
 
     Syntax.Global global -> do
-      let
-        location =
-          globalConstantLocation global
+      operand <- globalConstantOperand global
       returnTypeSize <- sizeOfType returnType
-      copy returnLocation location returnTypeSize
+      copy returnLocation operand returnTypeSize
 
     Syntax.Con con@(Name.QualifiedConstructor typeName _) params args -> do
       maybeTag <- fetch $ Query.ConstructorTag con
