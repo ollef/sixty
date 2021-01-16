@@ -455,7 +455,9 @@ generateTypedTerm env term type_ = do
       typeSize <- sizeOfType type_
       termLocation <- stackAllocate "term_location" typeSize
       storeTerm env term termLocation type_
-      pure (Indirect termLocation, Just $ stackDeallocate typeSize)
+      pure (Indirect termLocation, Just $ do
+        typeSize' <- sizeOfType type_
+        stackDeallocate typeSize')
 
   case term of
     Syntax.Var index ->
