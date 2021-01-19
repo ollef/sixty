@@ -6,14 +6,15 @@ module Compiler where
 import qualified Data.Text.Lazy.IO as Lazy
 import Data.Text.Prettyprint.Doc
 import LLVM.Pretty (ppllvm)
+import qualified Name
 import qualified Paths_sixty as Paths
 import Protolude hiding (withAsync, wait, moduleName, (<.>))
 import Query (Query)
 import qualified Query
 import Rock
+import System.Directory
 import System.FilePath
 import System.Process
-import System.Directory
 
 compile :: FilePath -> FilePath -> Task Query ()
 compile assemblyDir outputExecutableFile = do
@@ -23,11 +24,11 @@ compile assemblyDir outputExecutableFile = do
   liftIO $ createDirectoryIfMissing True moduleAssemblyDir
   filePaths <- fetch Query.InputFiles
   moduleLLVMFiles <- forM (toList filePaths) $ \filePath -> do
-    (moduleName, _, _) <- fetch $ Query.ParsedFile filePath
+    (moduleName@(Name.Module moduleNameText), _, _) <- fetch $ Query.ParsedFile filePath
     llvmModule <- fetch $ Query.LLVMModule moduleName
     let
       llvmFileName =
-        moduleAssemblyDir </> takeBaseName filePath <.> "ll"
+        moduleAssemblyDir </> toS moduleNameText <.> "ll"
     liftIO $ Lazy.writeFile llvmFileName $ ppllvm llvmModule
     pure llvmFileName
 
