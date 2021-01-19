@@ -31,10 +31,19 @@ compile assemblyDir outputExecutableFile = do
     liftIO $ Lazy.writeFile llvmFileName $ ppllvm llvmModule
     pure llvmFileName
 
+  moduleInitLLVMFile <- do
+    llvmModule <- fetch Query.LLVMModuleInitModule
+    let
+      llvmFileName =
+        assemblyDir </> "module_init" <.> "ll"
+    liftIO $ Lazy.writeFile llvmFileName $ ppllvm llvmModule
+    pure llvmFileName
+
   builtinLLVMFile <- liftIO $ Paths.getDataFileName "rts/Sixten.Builtin.ll"
+  mainLLVMFile <- liftIO $ Paths.getDataFileName "rts/main.ll"
   initCFile <- liftIO $ Paths.getDataFileName "rts/init.c"
   let
     llvmFiles =
-      builtinLLVMFile : moduleLLVMFiles
+      mainLLVMFile : builtinLLVMFile : moduleInitLLVMFile : moduleLLVMFiles
   -- TODO configurable clang path
   liftIO $ callProcess "clang" $ ["-fPIC", "-o", outputExecutableFile, initCFile] <> llvmFiles

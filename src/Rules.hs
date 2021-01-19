@@ -556,6 +556,20 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
       noError $ do
         assemblyDefinitions <- fetch $ CPSAssemblyModule module_
         pure $ CPSAssemblyToLLVM.assembleModule module_ assemblyDefinitions
+
+    LLVMModuleInitModule ->
+      noError $ do
+        inputFiles <- fetch Query.InputFiles
+        moduleNames <- forM (toList inputFiles) $ \filePath -> do
+          (moduleName, _, _) <- fetch $ Query.ParsedFile filePath
+          pure moduleName
+
+        (assemblyDefinition, fresh) <- runM $ ClosureConvertedToAssembly.generateModuleInits moduleNames
+        let
+          cpsAssemblyDefinitions =
+            AssemblyToCPSAssembly.convertDefinition fresh (Name.Lifted "$module_init" 0) assemblyDefinition
+
+        pure $ CPSAssemblyToLLVM.assembleModule "module_init" cpsAssemblyDefinitions
   where
     input :: Functor m => m a -> m ((a, TaskKind), [Error])
     input = fmap ((, mempty) . (, Input))

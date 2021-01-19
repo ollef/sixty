@@ -85,6 +85,7 @@ data Query a where
   CPSAssembly :: Name.Lifted -> Query [(Assembly.Name, CPSAssembly.Definition)]
   CPSAssemblyModule :: Name.Module -> Query [(Assembly.Name, CPSAssembly.Definition)]
   LLVMModule :: Name.Module -> Query LLVM.Module
+  LLVMModuleInitModule :: Query LLVM.Module
 
 fetchImportedName
   :: MonadFetch Query m
@@ -140,6 +141,7 @@ instance Hashable (Query a) where
       CPSAssembly a -> h 30 a
       CPSAssemblyModule a -> h 31 a
       LLVMModule a -> h 32 a
+      LLVMModuleInitModule -> h 33 ()
     where
       {-# inline h #-}
       h :: Hashable a => Int -> a -> Int
@@ -192,6 +194,7 @@ instance Persist (Some Query) where
       30 -> Some . CPSAssembly <$> get
       31 -> Some . CPSAssemblyModule <$> get
       32 -> Some . LLVMModule <$> get
+      33 -> pure $ Some LLVMModuleInitModule
       _ -> fail "Persist (Some Query): no such tag"
 
   put (Some query) =
@@ -229,6 +232,7 @@ instance Persist (Some Query) where
       CPSAssembly a -> p 30 a
       CPSAssemblyModule a -> p 31 a
       LLVMModule a -> p 32 a
+      LLVMModuleInitModule -> p 33 ()
       -- Don't forget to add a case to `get` above!
     where
       p :: Persist a => Word8 -> a -> Put ()
