@@ -23,7 +23,7 @@ compile argumentFiles maybeAssemblyDir maybeOutputFile = do
     withAssemblyDirectory maybeAssemblyDir $ \assemblyDir ->
     withOutputFile maybeOutputFile $ \outputFile ->
       Driver.runTask sourceDirectories filePaths Error.Hydrated.pretty $
-        Compiler.compile argumentFiles assemblyDir outputFile
+        Compiler.compile assemblyDir outputFile
   endTime <- getCurrentTime
   let
     errorCount =

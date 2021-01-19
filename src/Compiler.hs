@@ -3,7 +3,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Compiler where
 
-import qualified Builtin
 import qualified Data.Text.Lazy.IO as Lazy
 import Data.Text.Prettyprint.Doc
 import LLVM.Pretty (ppllvm)
@@ -16,14 +15,14 @@ import System.FilePath
 import System.Process
 import System.Directory
 
-compile :: [FilePath] -> FilePath -> FilePath -> Task Query ()
-compile filePaths assemblyDir outputExecutableFile = do
-  builtinFile <- fromMaybe "Compiler: panic no builtin file" <$> fetch (Query.ModuleFile Builtin.Module)
+compile :: FilePath -> FilePath -> Task Query ()
+compile assemblyDir outputExecutableFile = do
   let
     moduleAssemblyDir =
       assemblyDir </> "module"
   liftIO $ createDirectoryIfMissing True moduleAssemblyDir
-  moduleLLVMFiles <- forM (builtinFile : filePaths) $ \filePath -> do
+  filePaths <- fetch Query.InputFiles
+  moduleLLVMFiles <- forM (toList filePaths) $ \filePath -> do
     (moduleName, _, _) <- fetch $ Query.ParsedFile filePath
     llvmModule <- fetch $ Query.LLVMModule moduleName
     let
