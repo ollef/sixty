@@ -12,6 +12,8 @@ extra-source-files:
 - README.md
 data-files:
 - builtin/Builtin.vix
+- rts/Sixten.Builtin.ll
+- rts/init.c
 
 ghc-options:
   - -Wall
@@ -63,11 +65,13 @@ library:
     - parsers
     - persist
     - prettyprinter
+    - process
     - random
     - rock
     - rope-utf16-splay
     - stm
     - template-haskell
+    - temporary
     - text
     - time
     - transformers

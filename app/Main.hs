@@ -65,7 +65,25 @@ watchCommand =
 
 compileCommand :: ParserInfo (IO ())
 compileCommand =
-  info (helper <*> (Command.compile <$> inputFiles))
+  info
+    (helper <*>
+      (Command.compile
+        <$> inputFiles
+        <*> optional (strOption
+          $ long "save-assembly"
+          <> metavar "DIR"
+          <> help "Save intermediate assembly files to DIR"
+          <> action "directory"
+          )
+        <*> optional (strOption
+          $ long "output"
+          <> short 'o'
+          <> metavar "FILE"
+          <> help "Write output executable to FILE"
+          <> action "file"
+          )
+      )
+    )
     $ fullDesc
     <> progDesc "Compile a Sixten program"
     <> header "sixten compile"

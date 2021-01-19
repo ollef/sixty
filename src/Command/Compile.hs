@@ -3,60 +3,28 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Command.Compile where
 
-import Protolude hiding (withAsync, wait, moduleName)
-
-import qualified Data.HashSet as HashSet
+import qualified Compiler
 import qualified Data.Text as Text
-import qualified Data.Text.Lazy.IO as Lazy
 import Data.Text.Prettyprint.Doc
-import Data.Text.Prettyprint.Doc.Render.Text (putDoc)
 import Data.Time.Clock
-import LLVM.Pretty (ppllvm)
-import Rock
-import System.FilePath
-
 import qualified Driver
 import qualified Error.Hydrated
-import qualified Name
 import qualified Project
-import qualified Query
+import Protolude hiding (withAsync, wait, moduleName)
+import System.Directory
+import System.IO
+import System.IO.Temp
 
-compile :: [FilePath] -> IO ()
-compile argumentFiles = do
+compile :: [FilePath] -> Maybe FilePath -> Maybe FilePath -> IO ()
+compile argumentFiles maybeAssemblyDir maybeOutputFile = do
   startTime <- getCurrentTime
   (sourceDirectories, filePaths) <- Project.filesFromArguments argumentFiles
-  ((), errs) <- Driver.runTask sourceDirectories filePaths Error.Hydrated.pretty $ do
-    forM_ filePaths $ \filePath -> do
-      (moduleName, _, defs) <- fetch $ Query.ParsedFile filePath
-      let
-        names =
-          HashSet.fromList $
-            Name.Qualified moduleName . fst . snd <$> defs
-      liftIO $ putDoc $ "module" <+> pretty moduleName <> line <> line
-      forM_ (toList names) $ \name -> do
-        cc <- fetch $ Query.ClosureConverted $ Name.Lifted name 0
-        liftIO $ print cc
-        assembly <- fetch $ Query.Assembly $ Name.Lifted name 0
-        cpsAssembly <- fetch $ Query.CPSAssembly $ Name.Lifted name 0
-        signature <- fetch $ Query.ClosureConvertedSignature $ Name.Lifted name 0
-        liftIO $ putDoc $ pretty (fst <$> assembly) <> line
-        putText ""
-        liftIO $ putDoc $ pretty cpsAssembly <> line
-        putText ""
-        print signature
-        putText ""
-      llvmModule <- fetch $ Query.LLVMModule moduleName
-      let
-        outputFileName =
-          replaceBaseName (replaceExtension filePath "ll") ("out" </> takeBaseName filePath)
-        prettyPrintedLLVMModule =
-          ppllvm llvmModule
-
-      putStrLn prettyPrintedLLVMModule
-      liftIO $ Lazy.writeFile outputFileName prettyPrintedLLVMModule
+  ((), errs) <-
+    withAssemblyDirectory maybeAssemblyDir $ \assemblyDir ->
+    withOutputFile maybeOutputFile $ \outputFile ->
+      Driver.runTask sourceDirectories filePaths Error.Hydrated.pretty $
+        Compiler.compile argumentFiles assemblyDir outputFile
   endTime <- getCurrentTime
-  forM_ errs $ \err ->
-    putDoc $ err <> line
   let
     errorCount =
       length errs
@@ -71,3 +39,25 @@ compile argumentFiles = do
     ]
   unless (null errs)
     exitFailure
+
+withOutputFile :: Maybe FilePath -> (FilePath -> IO a) -> IO a
+withOutputFile maybeOutputFile k' =
+  case maybeOutputFile of
+    Nothing ->
+      withTempFile "." "temp.exe" $ \outputFile outputFileHandle -> do
+        hClose outputFileHandle
+        k' outputFile
+
+    Just o -> do
+      o' <- makeAbsolute o
+      k' o'
+
+withAssemblyDirectory :: Maybe FilePath -> (FilePath -> IO a) -> IO a
+withAssemblyDirectory maybeAssemblyDir k =
+  case maybeAssemblyDir of
+    Nothing ->
+      withSystemTempDirectory "sixten" k
+
+    Just dir -> do
+      createDirectoryIfMissing True dir
+      k dir
