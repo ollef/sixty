@@ -298,26 +298,19 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition = do
   let
     env =
       emptyEnvironment $ Scope.KeyedName Scope.Definition qualifiedName
-  runBuilder $
-    case (definition, signature) of
+  runBuilder $ do
+    maybeResult <- case (definition, signature) of
       (Syntax.TypeDeclaration _, _) ->
         pure Nothing
 
-      (Syntax.ConstantDefinition term, Just (Representation.ConstantSignature representation)) -> do
-        maybeDefinition <- generateGlobal env name representation term
-        fresh <- gets _fresh
-        pure $ (, fresh) <$> maybeDefinition
+      (Syntax.ConstantDefinition term, Just (Representation.ConstantSignature representation)) ->
+        generateGlobal env name representation term
 
       (Syntax.ConstantDefinition {}, _) ->
         panic "ClosureConvertedToAssembly: ConstantDefinition without ConstantSignature"
 
       (Syntax.FunctionDefinition tele, Just (Representation.FunctionSignature parameterRepresentations returnRepresentation)) -> do
-        functionDefinition <- generateFunction env returnRepresentation tele parameterRepresentations mempty
-        fresh <- gets _fresh
-        pure $ Just
-          ( functionDefinition
-          , fresh
-          )
+        Just <$> generateFunction env returnRepresentation tele parameterRepresentations mempty
 
       (Syntax.FunctionDefinition {}, _) ->
         panic "ClosureConvertedToAssembly: ConstantDefinition without FunctionSignature"
@@ -327,6 +320,9 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition = do
 
       (Syntax.ParameterisedDataDefinition {}, _) ->
         panic "gd pd" -- TODO
+    fresh <- gets _fresh
+    pure $ (, fresh) <$> maybeResult
+
 
 generateGlobal :: Environment v -> Name.Lifted -> Representation -> Syntax.Term v -> Builder (Maybe (Assembly.Definition Assembly.BasicBlock))
 generateGlobal env name representation term = do
