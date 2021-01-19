@@ -8,6 +8,7 @@ import ClosureConverted.Context (Context)
 import qualified ClosureConverted.Context as Context
 import qualified ClosureConverted.Domain as Domain
 import qualified ClosureConverted.Evaluation as Evaluation
+import qualified ClosureConverted.Readback as Readback
 import qualified ClosureConverted.Syntax as Syntax
 import qualified ClosureConverted.TypeOf as TypeOf
 import qualified Data.OrderedHashMap as OrderedHashMap
@@ -17,7 +18,7 @@ import qualified Environment
 import Monad
 import qualified Name
 import Name (Name)
-import Protolude hiding (force)
+import Protolude hiding (empty, force)
 import qualified Query
 import Representation (Representation)
 import qualified Representation
@@ -208,3 +209,76 @@ constructorFieldRepresentation env type_ accumulatedRepresentation = do
 
     Domain.Function {} ->
       pure Representation.Empty
+
+-------------------------------------------------------------------------------
+compileData :: Environment v -> Boxity -> Syntax.ConstructorDefinitions v -> M (Syntax.Term v)
+compileData env boxity (Syntax.ConstructorDefinitions constructors) =
+  case boxity of
+    Boxed ->
+      pure $ Syntax.Global (Name.Lifted Builtin.IntName 0)
+
+    Unboxed ->
+      case OrderedHashMap.toList constructors of
+        [] ->
+          pure $ Syntax.Global (Name.Lifted Builtin.EmptyRepresentationName 0)
+
+        [(_, type_)] -> do
+          type' <- Evaluation.evaluate env type_
+          compileConstructorFields env type'
+
+        constructorsList -> do
+          compiledConstructorFields <- forM constructorsList $ \(_, type_) -> do
+            type' <- Evaluation.evaluate env type_
+            compileConstructorFields env type'
+          pure $
+            Syntax.Apply
+            (Name.Lifted Builtin.AddRepresentationName 0)
+            [ Syntax.Global (Name.Lifted Builtin.WordRepresentationName 0)
+            , foldr (\a b -> Syntax.Apply (Name.Lifted Builtin.MaxRepresentationName 0) [a, b])
+              (Syntax.Global $ Name.Lifted Builtin.EmptyRepresentationName 0)
+              compiledConstructorFields
+            ]
+
+compileParameterisedData
+  :: Environment v
+  -> Boxity
+  -> Telescope Name Syntax.Type Syntax.ConstructorDefinitions v
+  -> M (Telescope Name Syntax.Type Syntax.Term v)
+compileParameterisedData env boxity tele =
+  case tele of
+    Telescope.Empty constructors ->
+      Telescope.Empty <$> compileData env boxity constructors
+
+    Telescope.Extend name type_ plicity tele' -> do
+      (env', _) <- Environment.extend env
+      Telescope.Extend name type_ plicity <$> compileParameterisedData env' boxity tele'
+
+compileConstructorFields :: Environment v -> Domain.Type -> M (Syntax.Term v)
+compileConstructorFields env type_ = do
+  type' <- Evaluation.forceHead type_
+  case type' of
+    Domain.Pi name fieldType closure -> do
+      fieldType' <- Readback.readback env fieldType
+      (env', var) <- Environment.extend env
+      rest <- Evaluation.evaluateClosure closure $ Domain.var var
+      rest' <- compileConstructorFields env' rest
+      pure $ Syntax.Let name fieldType' (Syntax.Global $ Name.Lifted Builtin.TypeName 0) rest'
+
+    Domain.Neutral {} ->
+      empty
+
+    Domain.Con {} ->
+      empty
+
+    Domain.Lit {} ->
+      empty
+
+    Domain.Glued {} ->
+      empty
+
+    Domain.Function {} ->
+      empty
+
+  where
+    empty =
+      pure $ Syntax.Global (Name.Lifted Builtin.EmptyRepresentationName 0)

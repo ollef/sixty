@@ -15,6 +15,7 @@ import ClosureConverted.Context (Context)
 import qualified ClosureConverted.Context as Context
 import qualified ClosureConverted.Evaluation as Evaluation
 import qualified ClosureConverted.Readback as Readback
+import qualified ClosureConverted.Representation
 import qualified ClosureConverted.Syntax as Syntax
 import qualified ClosureConverted.TypeOf as TypeOf
 import qualified Core.Syntax
@@ -313,13 +314,22 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition = do
         Just <$> generateFunction env returnRepresentation tele parameterRepresentations mempty
 
       (Syntax.FunctionDefinition {}, _) ->
-        panic "ClosureConvertedToAssembly: ConstantDefinition without FunctionSignature"
+        panic "ClosureConvertedToAssembly: FunctionDefinition without FunctionSignature"
+
+      (Syntax.DataDefinition boxity constructors, Just (Representation.ConstantSignature representation)) -> do
+        term <- Builder $ lift $ ClosureConverted.Representation.compileData (Context.toEnvironment $ _context env) boxity constructors
+        generateGlobal env name representation term
 
       (Syntax.DataDefinition {}, _) ->
-        panic "gd dd" -- TODO
+        panic "ClosureConvertedToAssembly: DataDefinition without ConstantSignature"
 
-      (Syntax.ParameterisedDataDefinition {}, _) ->
-        panic "gd pd" -- TODO
+      (Syntax.ParameterisedDataDefinition boxity tele, Just (Representation.FunctionSignature parameterRepresentations returnRepresentation)) -> do
+        tele' <- Builder $ lift $ ClosureConverted.Representation.compileParameterisedData (Context.toEnvironment $ _context env) boxity tele
+        Just <$> generateFunction env returnRepresentation tele' parameterRepresentations mempty
+
+      (Syntax.ParameterisedDataDefinition {}, _) -> do
+        panic "ClosureConvertedToAssembly: DataDefinition without ConstantSignature"
+
     fresh <- gets _fresh
     pure $ (, fresh) <$> maybeResult
 
