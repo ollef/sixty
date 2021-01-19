@@ -288,7 +288,7 @@ generateModuleInit definitions =
           pure globalPointer
 
         Syntax.DataDefinition {} ->
-          panic "gm dd" -- TODO
+          callDirect "globals" (initDefinitionName name) [globalPointer]
 
         Syntax.ParameterisedDataDefinition {} ->
           pure globalPointer
