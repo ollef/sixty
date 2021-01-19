@@ -48,19 +48,11 @@ signature (Name.Lifted name _) def =
         returnRepresentation <- typeRepresentation env' type_
         pure $ Representation.FunctionSignature parameterRepresentations returnRepresentation
 
-    Syntax.DataDefinition Unboxed constructorDefinitions ->
-      Representation.ConstantSignature <$> unboxedDataRepresentation env constructorDefinitions
-
-    Syntax.DataDefinition Boxed _ ->
+    Syntax.DataDefinition {} ->
       pure $ Representation.ConstantSignature Representation.Direct
 
-    Syntax.ParameterisedDataDefinition Unboxed tele ->
-      telescopeSignature context tele mempty $ \context' constructorDefinitions parameterRepresentations -> do
-        returnRepresentation <- unboxedDataRepresentation (Context.toEnvironment context') constructorDefinitions
-        pure $ Representation.FunctionSignature parameterRepresentations returnRepresentation
-
-    Syntax.ParameterisedDataDefinition Boxed tele ->
-      telescopeSignature context tele mempty $ \_ _ parameterRepresentations ->
+    Syntax.ParameterisedDataDefinition _boxity tele ->
+      telescopeSignature context tele mempty $ \_ _ parameterRepresentations -> do
         pure $ Representation.FunctionSignature parameterRepresentations Representation.Direct
 
   where
