@@ -76,3 +76,19 @@ pattern Int =
 int :: Syntax.Term v
 int =
   Syntax.Global IntName
+
+pattern EmptyRepresentationName :: Name.Qualified
+pattern EmptyRepresentationName =
+  "Sixten.Builtin.EmptyRepresentation"
+
+pattern WordRepresentationName :: Name.Qualified
+pattern WordRepresentationName =
+  "Sixten.Builtin.WordRepresentationName"
+
+pattern AddRepresentationName :: Name.Qualified
+pattern AddRepresentationName =
+  "Sixten.Builtin.addRepresentation"
+
+pattern MaxRepresentationName :: Name.Qualified
+pattern MaxRepresentationName =
+  "Sixten.Builtin.maxRepresentation"
