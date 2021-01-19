@@ -31,12 +31,12 @@ signature (Name.Lifted name _) def =
   case def of
     Syntax.TypeDeclaration type_ -> do
       type' <- Evaluation.evaluate env type_
-      Representation.ConstantSignature <$> representation env type'
+      Representation.ConstantSignature <$> typeRepresentation env type'
 
     Syntax.ConstantDefinition term -> do
       value <- Evaluation.evaluate env term
       type_ <- TypeOf.typeOf context value
-      Representation.ConstantSignature <$> representation env type_
+      Representation.ConstantSignature <$> typeRepresentation env type_
 
     Syntax.FunctionDefinition tele ->
       telescopeSignature context tele mempty $ \context' body parameterRepresentations -> do
@@ -45,7 +45,7 @@ signature (Name.Lifted name _) def =
             Context.toEnvironment context'
         body' <- Evaluation.evaluate env' body
         type_ <- TypeOf.typeOf context' body'
-        returnRepresentation <- representation env' type_
+        returnRepresentation <- typeRepresentation env' type_
         pure $ Representation.FunctionSignature parameterRepresentations returnRepresentation
 
     Syntax.DataDefinition Unboxed constructorDefinitions ->
@@ -86,14 +86,14 @@ telescopeSignature context tele representations k =
         env =
           Context.toEnvironment context
       type' <- Evaluation.evaluate env type_
-      representation_ <- representation env type'
+      representation_ <- typeRepresentation env type'
       (context', _var) <- Context.extend context type'
       telescopeSignature context' tele' (representations Tsil.:> representation_) k
 
 type Environment = Environment.Environment Domain.Type
 
-representation :: Environment v -> Domain.Type -> M Representation
-representation env type_ =
+typeRepresentation :: Environment v -> Domain.Type -> M Representation
+typeRepresentation env type_ =
   case type_ of
     Domain.Neutral (Domain.Var _) _ ->
       pure Representation.Indirect
@@ -120,7 +120,7 @@ representation env type_ =
             Syntax.ConstantDefinition term -> do
               value <- Evaluation.evaluate (Environment.emptyFrom env) term
               type' <- Evaluation.apply env value args
-              representation env type'
+              typeRepresentation env type'
 
             Syntax.FunctionDefinition tele -> do
               maybeType' <- Evaluation.applyFunction env (Telescope.fromVoid tele) args
@@ -129,7 +129,7 @@ representation env type_ =
                   pure Representation.Direct -- a closure
 
                 Just type' ->
-                  representation env type'
+                  typeRepresentation env type'
 
             Syntax.DataDefinition Boxed _ ->
               pure Representation.Direct
@@ -155,7 +155,7 @@ representation env type_ =
 
     Domain.Glued _ _ type' -> do
       type'' <- force type'
-      representation env type''
+      typeRepresentation env type''
 
     Domain.Pi {} ->
       pure Representation.Direct
@@ -192,7 +192,7 @@ constructorFieldRepresentation env type_ accumulatedRepresentation = do
   type' <- Evaluation.forceHead type_
   case type' of
     Domain.Pi _ fieldType closure -> do
-      fieldRepresentation <- representation env fieldType
+      fieldRepresentation <- typeRepresentation env fieldType
       case accumulatedRepresentation <> fieldRepresentation of
         Representation.Indirect ->
           pure Representation.Indirect
