@@ -17,29 +17,33 @@ import System.IO
 import System.IO.Temp
 
 compile :: [FilePath] -> Maybe FilePath -> Maybe FilePath -> Maybe String -> IO ()
-compile argumentFiles maybeAssemblyDir maybeOutputFile maybeOptimisationLevel = do
+compile =
+  withCompiledExecutable $ const $ pure ()
+
+withCompiledExecutable :: (FilePath -> IO ()) -> [FilePath] -> Maybe FilePath -> Maybe FilePath -> Maybe String ->  IO ()
+withCompiledExecutable k argumentFiles maybeAssemblyDir maybeOutputFile maybeOptimisationLevel = do
   startTime <- getCurrentTime
   (sourceDirectories, filePaths) <- Project.filesFromArguments argumentFiles
-  ((), errs) <-
-    withAssemblyDirectory maybeAssemblyDir $ \assemblyDir ->
-    withOutputFile maybeOutputFile $ \outputFile ->
-      Driver.runTask sourceDirectories filePaths Error.Hydrated.pretty $
+  withAssemblyDirectory maybeAssemblyDir $ \assemblyDir ->
+    withOutputFile maybeOutputFile $ \outputFile -> do
+      ((), errs) <- Driver.runTask sourceDirectories filePaths Error.Hydrated.pretty $
         Compiler.compile assemblyDir (isJust maybeAssemblyDir) outputFile maybeOptimisationLevel
-  endTime <- getCurrentTime
-  let
-    errorCount =
-      length errs
-  putText $ Text.unwords
-    [ "Found"
-    , show errorCount
-    , case errorCount of
-      1 -> "error"
-      _ -> "errors"
-    , "in"
-    , show (diffUTCTime endTime startTime) <> "."
-    ]
-  unless (null errs)
-    exitFailure
+      endTime <- getCurrentTime
+      let
+        errorCount =
+          length errs
+      putText $ Text.unwords
+        [ "Found"
+        , show errorCount
+        , case errorCount of
+          1 -> "error"
+          _ -> "errors"
+        , "in"
+        , show (diffUTCTime endTime startTime) <> "."
+        ]
+      unless (null errs)
+        exitFailure
+      k outputFile
 
 withOutputFile :: Maybe FilePath -> (FilePath -> IO a) -> IO a
 withOutputFile maybeOutputFile k' =

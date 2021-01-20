@@ -11,6 +11,7 @@ import Options.Applicative
 import qualified Command.BenchmarkProjectGenerator
 import qualified Command.Check as Command
 import qualified Command.Compile as Command
+import qualified Command.Run as Command
 import qualified Command.Watch as Command
 import qualified LanguageServer
 
@@ -29,6 +30,7 @@ commands = subparser
   $ command "check" checkCommand
   <> command "watch" watchCommand
   <> command "compile" compileCommand
+  <> command "run" runCommand
   <> command "language-server" languageServerCommand
   <> command "generate-benchmark-project" generateBenchmarkCommand
 
@@ -87,8 +89,37 @@ compileCommand =
           )
       )
     )
-    $ fullDesc
-    <> progDesc "Compile a Sixten program"
+    $ progDesc "Compile a Sixten program"
+
+runCommand :: ParserInfo (IO ())
+runCommand =
+  info
+    (helper <*>
+      (Command.run
+        <$> inputFiles
+        <*> optional (strOption
+          $ long "save-assembly"
+          <> metavar "DIR"
+          <> help "Save intermediate assembly files to DIR"
+          <> action "directory"
+          )
+        <*> optional (strOption
+          $ long "output"
+          <> short 'o'
+          <> metavar "FILE"
+          <> help "Write output executable to FILE"
+          <> action "file"
+          )
+        <*> optional (strOption
+          $ long "optimise"
+          <> short 'O'
+          <> metavar "LEVEL"
+          <> help "Set the optimisation level to LEVEL"
+          <> completeWith ["0", "1", "2", "3"]
+          )
+      )
+    )
+    $ progDesc "Compile a Sixten program"
 
 generateBenchmarkCommand :: ParserInfo (IO ())
 generateBenchmarkCommand =
