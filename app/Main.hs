@@ -82,6 +82,13 @@ compileCommand =
           <> help "Write output executable to FILE"
           <> action "file"
           )
+        <*> optional (strOption
+          $ long "optimise"
+          <> short 'O'
+          <> metavar "LEVEL"
+          <> help "Set the optimisation level to LEVEL"
+          <> completeWith ["0", "1", "2", "3"]
+          )
       )
     )
     $ fullDesc

@@ -4,6 +4,7 @@
 module Command.Compile where
 
 import qualified Compiler
+import Data.String (String)
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
 import Data.Time.Clock
@@ -15,15 +16,15 @@ import System.Directory
 import System.IO
 import System.IO.Temp
 
-compile :: [FilePath] -> Maybe FilePath -> Maybe FilePath -> IO ()
-compile argumentFiles maybeAssemblyDir maybeOutputFile = do
+compile :: [FilePath] -> Maybe FilePath -> Maybe FilePath -> Maybe String -> IO ()
+compile argumentFiles maybeAssemblyDir maybeOutputFile maybeOptimisationLevel = do
   startTime <- getCurrentTime
   (sourceDirectories, filePaths) <- Project.filesFromArguments argumentFiles
   ((), errs) <-
     withAssemblyDirectory maybeAssemblyDir $ \assemblyDir ->
     withOutputFile maybeOutputFile $ \outputFile ->
       Driver.runTask sourceDirectories filePaths Error.Hydrated.pretty $
-        Compiler.compile assemblyDir outputFile
+        Compiler.compile assemblyDir outputFile maybeOptimisationLevel
   endTime <- getCurrentTime
   let
     errorCount =

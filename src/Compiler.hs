@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Compiler where
 
+import Data.String (String)
 import qualified Data.Text.Lazy.IO as Lazy
 import Data.Text.Prettyprint.Doc
 import LLVM.Pretty (ppllvm)
@@ -16,8 +17,8 @@ import System.Directory
 import System.FilePath
 import System.Process
 
-compile :: FilePath -> FilePath -> Task Query ()
-compile assemblyDir outputExecutableFile = do
+compile :: FilePath -> FilePath -> Maybe String -> Task Query ()
+compile assemblyDir outputExecutableFile maybeOptimisationLevel = do
   let
     moduleAssemblyDir =
       assemblyDir </> "module"
@@ -47,4 +48,7 @@ compile assemblyDir outputExecutableFile = do
     llvmFiles =
       mainLLVMFile : builtinLLVMFile : moduleInitLLVMFile : moduleLLVMFiles
   -- TODO configurable clang path
-  liftIO $ callProcess "clang" $ ["-fPIC", "-Wno-override-module", "-o", outputExecutableFile, initCFile] <> llvmFiles
+  let
+    optimisationLevel =
+      maybe [] (pure . ("-O" <>)) maybeOptimisationLevel
+  liftIO $ callProcess "clang" $ optimisationLevel <> ["-fPIC", "-Wno-override-module", "-o", outputExecutableFile, initCFile] <> llvmFiles
