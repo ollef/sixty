@@ -9,10 +9,11 @@ import qualified Data.Text as Text
 import Options.Applicative
 
 import qualified Command.BenchmarkProjectGenerator
-import qualified Command.Check as Command
-import qualified Command.Compile as Command
-import qualified Command.Run as Command
-import qualified Command.Watch as Command
+import qualified Command.Check as Command (check)
+import qualified Command.Compile as Command (compile)
+import qualified Command.Compile
+import qualified Command.Run as Command (run)
+import qualified Command.Watch as Command (watch)
 import qualified LanguageServer
 
 main :: IO ()
@@ -61,64 +62,41 @@ watchCommand =
     $ fullDesc
     <> progDesc "Type check a Sixten program, watching for changes"
 
+compileOptions :: Parser Command.Compile.Options
+compileOptions =
+  Command.Compile.Options
+    <$> inputFiles
+    <*> optional (strOption
+      $ long "save-assembly"
+      <> metavar "DIR"
+      <> help "Save intermediate assembly files to DIR"
+      <> action "directory"
+      )
+    <*> optional (strOption
+      $ long "output"
+      <> short 'o'
+      <> metavar "FILE"
+      <> help "Write output executable to FILE"
+      <> action "file"
+      )
+    <*> optional (strOption
+      $ long "optimise"
+      <> short 'O'
+      <> metavar "LEVEL"
+      <> help "Set the optimisation level to LEVEL"
+      <> completeWith ["0", "1", "2", "3"]
+      )
+
 compileCommand :: ParserInfo (IO ())
 compileCommand =
   info
-    (helper <*>
-      (Command.compile
-        <$> inputFiles
-        <*> optional (strOption
-          $ long "save-assembly"
-          <> metavar "DIR"
-          <> help "Save intermediate assembly files to DIR"
-          <> action "directory"
-          )
-        <*> optional (strOption
-          $ long "output"
-          <> short 'o'
-          <> metavar "FILE"
-          <> help "Write output executable to FILE"
-          <> action "file"
-          )
-        <*> optional (strOption
-          $ long "optimise"
-          <> short 'O'
-          <> metavar "LEVEL"
-          <> help "Set the optimisation level to LEVEL"
-          <> completeWith ["0", "1", "2", "3"]
-          )
-      )
-    )
+    (helper <*> (Command.compile <$> compileOptions))
     $ progDesc "Compile a Sixten program"
 
 runCommand :: ParserInfo (IO ())
 runCommand =
   info
-    (helper <*>
-      (Command.run
-        <$> inputFiles
-        <*> optional (strOption
-          $ long "save-assembly"
-          <> metavar "DIR"
-          <> help "Save intermediate assembly files to DIR"
-          <> action "directory"
-          )
-        <*> optional (strOption
-          $ long "output"
-          <> short 'o'
-          <> metavar "FILE"
-          <> help "Write output executable to FILE"
-          <> action "file"
-          )
-        <*> optional (strOption
-          $ long "optimise"
-          <> short 'O'
-          <> metavar "LEVEL"
-          <> help "Set the optimisation level to LEVEL"
-          <> completeWith ["0", "1", "2", "3"]
-          )
-      )
-    )
+    (helper <*> (Command.run <$> compileOptions))
     $ progDesc "Compile a Sixten program"
 
 generateBenchmarkCommand :: ParserInfo (IO ())

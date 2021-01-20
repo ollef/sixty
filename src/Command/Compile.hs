@@ -1,10 +1,10 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 module Command.Compile where
 
 import qualified Compiler
-import Data.String (String)
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
 import Data.Time.Clock
@@ -16,12 +16,19 @@ import System.Directory
 import System.IO
 import System.IO.Temp
 
-compile :: [FilePath] -> Maybe FilePath -> Maybe FilePath -> Maybe String -> IO ()
+data Options = Options
+  { argumentFiles :: [FilePath]
+  , maybeAssemblyDir :: Maybe FilePath
+  , maybeOutputFile :: Maybe FilePath
+  , maybeOptimisationLevel :: Maybe FilePath
+  }
+
+compile :: Options -> IO ()
 compile =
   withCompiledExecutable $ const $ pure ()
 
-withCompiledExecutable :: (FilePath -> IO ()) -> [FilePath] -> Maybe FilePath -> Maybe FilePath -> Maybe String ->  IO ()
-withCompiledExecutable k argumentFiles maybeAssemblyDir maybeOutputFile maybeOptimisationLevel = do
+withCompiledExecutable :: (FilePath -> IO ()) -> Options ->  IO ()
+withCompiledExecutable k Options {..} = do
   startTime <- getCurrentTime
   (sourceDirectories, filePaths) <- Project.filesFromArguments argumentFiles
   withAssemblyDirectory maybeAssemblyDir $ \assemblyDir ->
@@ -46,8 +53,8 @@ withCompiledExecutable k argumentFiles maybeAssemblyDir maybeOutputFile maybeOpt
       k outputFile
 
 withOutputFile :: Maybe FilePath -> (FilePath -> IO a) -> IO a
-withOutputFile maybeOutputFile k' =
-  case maybeOutputFile of
+withOutputFile maybeOutputFile_ k' =
+  case maybeOutputFile_ of
     Nothing ->
       withTempFile "." "temp.exe" $ \outputFile outputFileHandle -> do
         hClose outputFileHandle
@@ -58,8 +65,8 @@ withOutputFile maybeOutputFile k' =
       k' o'
 
 withAssemblyDirectory :: Maybe FilePath -> (FilePath -> IO a) -> IO a
-withAssemblyDirectory maybeAssemblyDir k =
-  case maybeAssemblyDir of
+withAssemblyDirectory maybeAssemblyDir_ k =
+  case maybeAssemblyDir_ of
     Nothing ->
       withSystemTempDirectory "sixten" k
 

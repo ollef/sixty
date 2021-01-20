@@ -1,10 +1,9 @@
 module Command.Run where
 
-import Command.Compile (withCompiledExecutable)
-import Data.String (String)
+import qualified Command.Compile
 import Protolude
 import System.Process
 
-run :: [FilePath] -> Maybe FilePath -> Maybe FilePath -> Maybe String -> IO ()
+run :: Command.Compile.Options -> IO ()
 run =
-  withCompiledExecutable $ \exe -> callProcess exe []
+  Command.Compile.withCompiledExecutable $ \exe -> callProcess exe []
