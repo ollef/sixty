@@ -24,7 +24,7 @@ compile argumentFiles maybeAssemblyDir maybeOutputFile maybeOptimisationLevel = 
     withAssemblyDirectory maybeAssemblyDir $ \assemblyDir ->
     withOutputFile maybeOutputFile $ \outputFile ->
       Driver.runTask sourceDirectories filePaths Error.Hydrated.pretty $
-        Compiler.compile assemblyDir outputFile maybeOptimisationLevel
+        Compiler.compile assemblyDir (isJust maybeAssemblyDir) outputFile maybeOptimisationLevel
   endTime <- getCurrentTime
   let
     errorCount =

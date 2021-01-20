@@ -17,8 +17,8 @@ import System.Directory
 import System.FilePath
 import System.Process
 
-compile :: FilePath -> FilePath -> Maybe String -> Task Query ()
-compile assemblyDir outputExecutableFile maybeOptimisationLevel = do
+compile :: FilePath -> Bool -> FilePath -> Maybe String -> Task Query ()
+compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel = do
   let
     moduleAssemblyDir =
       assemblyDir </> "module"
@@ -49,6 +49,20 @@ compile assemblyDir outputExecutableFile maybeOptimisationLevel = do
       mainLLVMFile : builtinLLVMFile : moduleInitLLVMFile : moduleLLVMFiles
   -- TODO configurable clang path
   let
-    optimisationLevel =
-      maybe [] (pure . ("-O" <>)) maybeOptimisationLevel
-  liftIO $ callProcess "clang" $ optimisationLevel <> ["-fPIC", "-Wno-override-module", "-o", outputExecutableFile, initCFile] <> llvmFiles
+    optimisationArgs =
+      maybe [] (\o -> ["-O" <> o]) maybeOptimisationLevel
+  liftIO $
+    if saveAssembly then do
+      let
+        linkedProgramName =
+          assemblyDir </> "program" <.> "ll"
+        optimisedProgramName =
+          assemblyDir </> "program-opt" <.> "ll"
+        initLLFile =
+          assemblyDir </> "init" <.> "ll"
+      callProcess "clang" $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-S", "-emit-llvm", "-o", initLLFile, initCFile]
+      callProcess "llvm-link" $ ["-S", "-o", linkedProgramName, initLLFile] <> llvmFiles
+      callProcess "opt" $ optimisationArgs <> ["-S", "-o", optimisedProgramName, linkedProgramName]
+      callProcess "clang" $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-o", outputExecutableFile, linkedProgramName]
+    else
+      callProcess "clang" $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-o", outputExecutableFile, initCFile] <> llvmFiles
