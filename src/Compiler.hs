@@ -47,4 +47,4 @@ compile assemblyDir outputExecutableFile = do
     llvmFiles =
       mainLLVMFile : builtinLLVMFile : moduleInitLLVMFile : moduleLLVMFiles
   -- TODO configurable clang path
-  liftIO $ callProcess "clang" $ ["-fPIC", "-o", outputExecutableFile, initCFile] <> llvmFiles
+  liftIO $ callProcess "clang" $ ["-fPIC", "-Wno-override-module", "-o", outputExecutableFile, initCFile] <> llvmFiles
