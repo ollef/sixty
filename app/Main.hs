@@ -23,7 +23,6 @@ optionsParser =
   info (helper <*> commands)
     $ fullDesc
     <> progDesc "Sixten compiler"
-    <> header "sixten"
 
 commands :: Parser (IO ())
 commands = subparser
@@ -38,7 +37,6 @@ languageServerCommand =
   info (pure LanguageServer.run)
     $ fullDesc
     <> progDesc "Start a language server"
-    <> header "sixten language-server"
 
 checkCommand :: ParserInfo (IO ())
 checkCommand =
@@ -54,14 +52,12 @@ checkCommand =
     )
     $ fullDesc
     <> progDesc "Type check a Sixten program"
-    <> header "sixten check"
 
 watchCommand :: ParserInfo (IO ())
 watchCommand =
   info (helper <*> (Command.watch <$> inputFiles))
     $ fullDesc
     <> progDesc "Type check a Sixten program, watching for changes"
-    <> header "sixten watch"
 
 compileCommand :: ParserInfo (IO ())
 compileCommand =
@@ -93,7 +89,6 @@ compileCommand =
     )
     $ fullDesc
     <> progDesc "Compile a Sixten program"
-    <> header "sixten compile"
 
 generateBenchmarkCommand :: ParserInfo (IO ())
 generateBenchmarkCommand =
@@ -128,7 +123,6 @@ generateBenchmarkCommand =
     )
     $ fullDesc
     <> progDesc "Type check a Sixten program, watching for changes"
-    <> header "sixten watch"
 
 inputFiles :: Parser [FilePath]
 inputFiles =
