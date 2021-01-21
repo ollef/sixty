@@ -25,6 +25,7 @@ import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import Index
 import qualified Literal
+import qualified Module
 import Monad
 import Name (Name(Name))
 import qualified Name
@@ -279,16 +280,21 @@ generateModuleInits moduleNames =
     go globalPointer moduleName =
       callDirect "globals" (moduleInitName moduleName) [globalPointer]
 
-generateModuleInit :: [(Name.Lifted, Syntax.Definition)] -> M (Assembly.Definition Assembly.BasicBlock, Int)
-generateModuleInit definitions =
+generateModuleInit :: Name.Module -> [(Name.Lifted, Syntax.Definition)] -> M (Assembly.Definition Assembly.BasicBlock, Int)
+generateModuleInit moduleName definitions =
   runBuilder $ do
     globalPointer <- freshLocal "globals"
-    globalPointer' <- foldM go (Assembly.LocalOperand globalPointer) definitions
+    moduleHeader <- fetch $ Query.ModuleHeader moduleName
+    globalPointer' <- foldM initImport (Assembly.LocalOperand globalPointer) $ Module._imports moduleHeader
+    globalPointer'' <- foldM initDefinition globalPointer' definitions
     instructions <- gets _instructions
     fresh <- gets _fresh
-    pure (Assembly.FunctionDefinition [globalPointer] $ Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointer', fresh)
+    pure (Assembly.FunctionDefinition [globalPointer] $ Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointer'', fresh)
   where
-    go globalPointer (name, definition) =
+    initImport globalPointer import_ =
+      callDirect "globals" (moduleInitName $ Module._module import_) [globalPointer]
+
+    initDefinition globalPointer (name, definition) =
       case definition of
         Syntax.TypeDeclaration _ ->
           pure globalPointer
