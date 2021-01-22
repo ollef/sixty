@@ -704,7 +704,8 @@ dataDefinition =
 
 module_ :: Parser ((Maybe (Span.Absolute, Name.Module), Module.Header), [Either Error.Parsing (Position.Absolute, (Name, Surface.Definition))])
 module_ =
-  (,) <$> moduleHeader <*> many definition
+  withIndentationBlock $
+    (,) <$> moduleHeader <*> manySame definition
 
 moduleHeader :: Parser (Maybe (Span.Absolute, Name.Module), Module.Header)
 moduleHeader =
@@ -713,7 +714,7 @@ moduleHeader =
     mkModuleHeader (mname, exposed) imports =
       (mname, Module.Header exposed imports)
     moduleExposing =
-      sameLevel $ withIndentationBlock ((\(span, name) exposed -> (Just (Span.absoluteFrom 0 span, name), exposed)) <$ token (Lexer.Identifier "module") <*> spannedModuleName <* token (Lexer.Identifier "exposing") <*> exposedNames)
+      sameLevel (withIndentationBlock $ (\(span, name) exposed -> (Just (Span.absoluteFrom 0 span, name), exposed)) <$ token (Lexer.Identifier "module") <*> spannedModuleName <* token (Lexer.Identifier "exposing") <*> exposedNames)
       <|> pure (Nothing, Module.AllExposed)
 
 import_ :: Parser Module.Import
