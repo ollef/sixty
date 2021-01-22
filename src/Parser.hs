@@ -335,10 +335,10 @@ withIndentedTokenM f =
 
 withIndentationBlock :: Parser a -> Parser a
 withIndentationBlock (Parser p) =
-  Parser \pos inp err _lineCol base ->
+  Parser \pos inp err lineCol base ->
     case inp of
       [] ->
-        Fail pos inp $ err <> failed "Unexpected EOF"
+        p pos inp err lineCol base
 
       Token tokenLineCol _ _:_ ->
         p pos inp err tokenLineCol base
