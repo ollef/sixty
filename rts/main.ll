@@ -12,7 +12,7 @@ define void @main() {
 
   %stack2_int = sub i64 %stack_int, 8
   %stack2 = inttoptr i64 %stack2_int to i64*
-  %cont_int = ptrtoint void (i64*)* @main_cont to i64
+  %cont_int = ptrtoint void (i64*, i64*)* @main_cont to i64
   store i64 %cont_int, i64* %stack2, align 8
 
   call void @print_int(i32 1)
@@ -21,7 +21,7 @@ define void @main() {
   ret void
 }
 
-define ghccc void @main_cont(i64* %stack) {
+define ghccc void @main_cont(i64* %stack, i64* %global_area) {
   call void @print_int(i32 610)
   ret void
 }
