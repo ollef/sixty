@@ -4,7 +4,7 @@ declare cc 10 void @.$module_init(i64*, i64*)
 
 declare void @print_int(i32)
 
-define void @main() {
+define i32 @main() {
   %stack = call i8* @init_stack()
   %stack_int = ptrtoint i8* %stack to i64
   %global_area = call i8* @init_global_area()
@@ -17,8 +17,8 @@ define void @main() {
 
   call void @print_int(i32 1)
 
-  tail call ghccc void @.$module_init(i64* %stack2, i64* %global_area_i64ptr)
-  ret void
+  call ghccc void @.$module_init(i64* %stack2, i64* %global_area_i64ptr)
+  ret i32 0
 }
 
 define ghccc void @main_cont(i64* %stack, i64* %global_area) {
