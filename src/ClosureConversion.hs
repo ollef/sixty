@@ -21,7 +21,7 @@ convertDefinition
 convertDefinition def =
   case def of
     LambdaLifted.TypeDeclaration type_ ->
-      ClosureConverted.TypeDeclaration <$> convertTerm type_
+      ClosureConverted.TypeDeclaration <$> convertTypeDeclaration type_
 
     LambdaLifted.ConstantDefinition (Telescope.Empty term) ->
       ClosureConverted.ConstantDefinition <$> convertTerm term
@@ -132,8 +132,13 @@ convertGlobal global args = do
               ClosureConverted.Closure global args
 
   case maybeDef of
-    Just (LambdaLifted.TypeDeclaration _) ->
-      nonFunctionCase
+    Just (LambdaLifted.TypeDeclaration type_) ->
+      case LambdaLifted.pisView identity type_ of
+        Telescope.Empty {} ->
+          nonFunctionCase
+
+        tele@Telescope.Extend {} ->
+          functionCase tele
 
     Just (LambdaLifted.ConstantDefinition (Telescope.Empty _)) ->
       nonFunctionCase
@@ -149,6 +154,15 @@ convertGlobal global args = do
 
     Nothing ->
       nonFunctionCase
+
+convertTypeDeclaration :: MonadFetch Query m => LambdaLifted.Type Void -> m (ClosureConverted.Type Void)
+convertTypeDeclaration type_ =
+  case LambdaLifted.pisView identity type_ of
+    Telescope.Empty _ ->
+      convertTerm type_
+
+    tele@Telescope.Extend {} ->
+      ClosureConverted.Function <$> Telescope.hoistA convertTerm convertTerm tele
 
 convertBranches
   :: MonadFetch Query m

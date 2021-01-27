@@ -28,8 +28,18 @@ import Telescope (Telescope)
 import qualified Telescope
 
 signature :: Name.Lifted -> Syntax.Definition -> M Representation.Signature
-signature (Name.Lifted name _) def = 
+signature (Name.Lifted name _) def =
   case def of
+    Syntax.TypeDeclaration (Syntax.Function tele) -> do
+      telescopeSignature context tele mempty $ \context' body parameterRepresentations -> do
+        let
+          env' =
+            Context.toEnvironment context'
+        body' <- Evaluation.evaluate env' body
+        type_ <- TypeOf.typeOf context' body'
+        returnRepresentation <- typeRepresentation env' type_
+        pure $ Representation.FunctionSignature parameterRepresentations returnRepresentation
+
     Syntax.TypeDeclaration type_ -> do
       type' <- Evaluation.evaluate env type_
       Representation.ConstantSignature <$> typeRepresentation env type'
