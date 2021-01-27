@@ -34,14 +34,14 @@ deriving instance
   (Hashable n, (forall v'. Hashable (t v')), (forall v'. Hashable (k v')))
     => Hashable (Telescope n t k v)
 
-hoist :: (forall v'. k v' -> k' v') -> Telescope n t k v -> Telescope n t k' v
-hoist f tele =
+hoist :: (forall v'. t v' -> t' v') -> (forall v'. k v' -> k' v') -> Telescope n t k v -> Telescope n t' k' v
+hoist f g tele =
   case tele of
     Empty k ->
-      Empty $ f k
+      Empty $ g k
 
     Extend name t plicity scope ->
-      Extend name t plicity $ hoist f scope
+      Extend name (f t) plicity $ hoist f g scope
 
 fold
   :: (forall v'. n -> t v' -> Plicity -> Scope k v' -> k v')

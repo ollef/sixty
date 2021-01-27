@@ -46,7 +46,7 @@ typeOfDefinition context definition = do
         Evaluation.evaluate env $
           Telescope.fold
             (\name domain _ -> Syntax.Pi name domain)
-            (Telescope.hoist (const $ Syntax.Global $ Name.Lifted Builtin.TypeName 0) tele)
+            (Telescope.hoist identity (const $ Syntax.Global $ Name.Lifted Builtin.TypeName 0) tele)
 
   Readback.readback (Context.toEnvironment context) typeValue
 
