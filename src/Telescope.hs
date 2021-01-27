@@ -43,6 +43,15 @@ hoist f g tele =
     Extend name t plicity scope ->
       Extend name (f t) plicity $ hoist f g scope
 
+hoistA :: Applicative f => (forall v'. t v' -> f (t' v')) -> (forall v'. k v' -> f (k' v')) -> Telescope n t k v -> f (Telescope n t' k' v)
+hoistA f g tele =
+  case tele of
+    Empty k ->
+      Empty <$> g k
+
+    Extend name t plicity scope ->
+      Extend name <$> f t <*> pure plicity <*> hoistA f g scope
+
 fold
   :: (forall v'. n -> t v' -> Plicity -> Scope k v' -> k v')
   -> Telescope n t k v
