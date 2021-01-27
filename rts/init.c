@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
@@ -20,6 +21,6 @@ char* init_global_area() {
   return address;
 }
 
-void print_int(int i) {
-  printf("%d\n", i);
+void print_int(int64_t i) {
+  printf("%" PRId64 "\n", i);
 }

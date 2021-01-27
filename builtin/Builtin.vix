@@ -1,4 +1,4 @@
-module Sixten.Builtin exposing (Type, Int)
+module Sixten.Builtin exposing (Type, Int, printInt)
 
 Type : Type
 
