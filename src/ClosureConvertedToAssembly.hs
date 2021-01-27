@@ -636,7 +636,7 @@ storeTerm env term returnLocation returnType =
       panic "st c" -- TODO
 
     Syntax.ApplyClosure {} ->
-      panic "st ac" -- TODO
+      panic $ "st ac " <> show term -- TODO
 
     Syntax.Case {} ->
       panic "st case" -- TODO
