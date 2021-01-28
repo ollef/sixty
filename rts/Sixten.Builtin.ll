@@ -47,12 +47,12 @@ define external ghccc void @Sixten.Builtin.printInt(i64* %stack, i64* %i) {
     call void @print_int(i64 %i_int)
 
     %continuation = load i64, i64* %stack, align 8
-    %continuation_pointer = inttoptr i64 %continuation to void (i64*, i64*)*
+    %continuation_pointer = inttoptr i64 %continuation to void (i64*)*
     store i64 undef, i64* %stack, align 8
 
     %stack_integer = ptrtoint i64* %stack to i64
     %stack2 = add i64 %stack_integer, 8
     %stack2_pointer = inttoptr i64 %stack2 to i64*
-    tail call ghccc void %continuation_pointer(i64* %stack2_pointer, i64* %i)
+    tail call ghccc void %continuation_pointer(i64* %stack2_pointer)
     ret void
 }

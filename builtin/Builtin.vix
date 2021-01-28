@@ -9,7 +9,9 @@ fail : (A : Type) -> A
 data Equals forall (A : Type). (a b : A) where
   Refl : Equals a b
 
-printInt : Int -> Int
+data Unit = Unit
+
+printInt : Int -> Unit
 
 EmptyRepresentation : Type
 WordRepresentation : Type
