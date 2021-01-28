@@ -546,11 +546,11 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
         closureConvertedDefinitions <- fmap concat $ forM (toList names) $ \name -> do
           maybeClosureConverted <- fetch $ ClosureConverted name
           pure $ toList $ (name, ) <$> maybeClosureConverted
-        moduleInit <- runM $ do
-          (assemblyDefinition, fresh) <- ClosureConvertedToAssembly.generateModuleInit module_ closureConvertedDefinitions
-          pure $ AssemblyToCPSAssembly.convertDefinition fresh (ClosureConvertedToAssembly.moduleInitName module_) assemblyDefinition
+        moduleInitDefs <- runM $ do
+          (assemblyDefinitions, fresh) <- ClosureConvertedToAssembly.generateModuleInit module_ closureConvertedDefinitions
+          pure $ AssemblyToCPSAssembly.convertDefinition fresh (ClosureConvertedToAssembly.moduleInitName module_) <$> assemblyDefinitions
         cpsAssembly <- forM (toList names) $ fetch . CPSAssembly
-        pure $ moduleInit <> concat cpsAssembly
+        pure $ concat moduleInitDefs <> concat cpsAssembly
 
     LLVMModule module_ ->
       noError $ do
