@@ -151,45 +151,68 @@ assembleDefinition name@(Assembly.Name liftedName@(Name.Lifted _ liftedNameNumbe
     , _usedGlobals = mempty
     } $
     case definition of
-     Assembly.ConstantDefinition representation parameters basicBlock -> do
-       parameters' <- mapM (activateLocal WordPointer) parameters
-       basicBlocks <- assembleBasicBlock basicBlock
-       let
-         type_ =
-           llvmType $ globalOperandType representation
-       pure
-         [ LLVM.globalVariableDefaults
-           { LLVM.Global.name = LLVM.Name $ assembleName name
-           , LLVM.Global.unnamedAddr = Just LLVM.GlobalAddr
-           , LLVM.Global.type' = type_
-           , LLVM.Global.initializer = Just LLVM.Constant.Undef { constantType = type_ }
-           , LLVM.Global.linkage = linkage
-           }
-         , LLVM.Global.functionDefaults
-           { LLVM.Global.callingConvention = LLVM.CallingConvention.GHC
-           , LLVM.Global.returnType = LLVM.VoidType
-           , LLVM.Global.name = LLVM.Name $ assembleName $ Assembly.Name (ClosureConvertedToAssembly.initDefinitionName liftedName) nameNumber
-           , LLVM.Global.parameters = ([LLVM.Parameter wordPointer parameter [] | parameter <- parameters'], False)
-           , LLVM.Global.alignment = alignment
-           , LLVM.Global.basicBlocks = basicBlocks
-           , LLVM.Global.linkage = LLVM.Private
-           }
-         ]
+      Assembly.KnownConstantDefinition representation literal -> do
+        let
+          type_ =
+            llvmType $ globalOperandType representation
 
-     Assembly.FunctionDefinition parameters basicBlock -> do
-       parameters' <- mapM (activateLocal WordPointer) parameters
-       basicBlocks <- assembleBasicBlock basicBlock
-       pure
-         [ LLVM.Global.functionDefaults
-           { LLVM.Global.callingConvention = LLVM.CallingConvention.GHC
-           , LLVM.Global.returnType = LLVM.VoidType
-           , LLVM.Global.name = LLVM.Name $ assembleName name
-           , LLVM.Global.parameters = ([LLVM.Parameter wordPointer parameter [] | parameter <- parameters'], False)
-           , LLVM.Global.alignment = alignment
-           , LLVM.Global.basicBlocks = basicBlocks
-           , LLVM.Global.linkage = linkage
-           }
-         ]
+          value =
+            case literal of
+              Literal.Integer int ->
+                LLVM.Constant.Int
+                  { integerBits = wordBits
+                  , integerValue = int
+                  }
+
+        pure
+          [ LLVM.globalVariableDefaults
+            { LLVM.Global.name = LLVM.Name $ assembleName name
+            , LLVM.Global.unnamedAddr = Just LLVM.GlobalAddr
+            , LLVM.Global.type' = type_
+            , LLVM.Global.initializer = Just value
+            , LLVM.Global.linkage = linkage
+            }
+          ]
+
+      Assembly.ConstantDefinition representation parameters basicBlock -> do
+        parameters' <- mapM (activateLocal WordPointer) parameters
+        basicBlocks <- assembleBasicBlock basicBlock
+        let
+          type_ =
+            llvmType $ globalOperandType representation
+        pure
+          [ LLVM.globalVariableDefaults
+            { LLVM.Global.name = LLVM.Name $ assembleName name
+            , LLVM.Global.unnamedAddr = Just LLVM.GlobalAddr
+            , LLVM.Global.type' = type_
+            , LLVM.Global.initializer = Just LLVM.Constant.Undef { constantType = type_ }
+            , LLVM.Global.linkage = linkage
+            }
+          , LLVM.Global.functionDefaults
+            { LLVM.Global.callingConvention = LLVM.CallingConvention.GHC
+            , LLVM.Global.returnType = LLVM.VoidType
+            , LLVM.Global.name = LLVM.Name $ assembleName $ Assembly.Name (ClosureConvertedToAssembly.initDefinitionName liftedName) nameNumber
+            , LLVM.Global.parameters = ([LLVM.Parameter wordPointer parameter [] | parameter <- parameters'], False)
+            , LLVM.Global.alignment = alignment
+            , LLVM.Global.basicBlocks = basicBlocks
+            , LLVM.Global.linkage = LLVM.Private
+            }
+          ]
+
+      Assembly.FunctionDefinition parameters basicBlock -> do
+        parameters' <- mapM (activateLocal WordPointer) parameters
+        basicBlocks <- assembleBasicBlock basicBlock
+        pure
+          [ LLVM.Global.functionDefaults
+            { LLVM.Global.callingConvention = LLVM.CallingConvention.GHC
+            , LLVM.Global.returnType = LLVM.VoidType
+            , LLVM.Global.name = LLVM.Name $ assembleName name
+            , LLVM.Global.parameters = ([LLVM.Parameter wordPointer parameter [] | parameter <- parameters'], False)
+            , LLVM.Global.alignment = alignment
+            , LLVM.Global.basicBlocks = basicBlocks
+            , LLVM.Global.linkage = linkage
+            }
+          ]
   where
     linkage =
       case (liftedNameNumber, nameNumber) of

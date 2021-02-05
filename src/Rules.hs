@@ -543,12 +543,12 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
     CPSAssemblyModule module_ ->
       noError $ do
         names <- fetch $ LambdaLiftedModuleDefinitions module_
-        closureConvertedDefinitions <- fmap concat $ forM (toList names) $ \name -> do
-          maybeClosureConverted <- fetch $ ClosureConverted name
-          pure $ toList $ (name, ) <$> maybeClosureConverted
+        assemblyDefinitions <- fmap concat $ forM (toList names) $ \name -> do
+          maybeAssembly <- fetch $ Assembly name
+          pure $ toList $ (name, ) . fst <$> maybeAssembly
         moduleInitDefs <- runM $ do
-          (assemblyDefinitions, fresh) <- ClosureConvertedToAssembly.generateModuleInit module_ closureConvertedDefinitions
-          pure $ AssemblyToCPSAssembly.convertDefinition fresh (ClosureConvertedToAssembly.moduleInitName module_) <$> assemblyDefinitions
+          (initDefinitions, fresh) <- ClosureConvertedToAssembly.generateModuleInit module_ assemblyDefinitions
+          pure $ AssemblyToCPSAssembly.convertDefinition fresh (ClosureConvertedToAssembly.moduleInitName module_) <$> initDefinitions
         cpsAssembly <- forM (toList names) $ fetch . CPSAssembly
         pure $ concat moduleInitDefs <> concat cpsAssembly
 

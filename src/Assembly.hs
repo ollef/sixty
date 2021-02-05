@@ -51,7 +51,8 @@ data Instruction basicBlock
   deriving (Show, Generic, Persist, Hashable, Functor)
 
 data Definition basicBlock
-  = ConstantDefinition !Representation [Local] basicBlock
+  = KnownConstantDefinition !Representation !Literal
+  | ConstantDefinition !Representation [Local] basicBlock
   | FunctionDefinition [Local] basicBlock
   deriving (Show, Generic, Persist, Hashable, Functor)
 
@@ -162,6 +163,10 @@ instance Pretty basicBlock => Pretty (Instruction basicBlock) where
 instance (Pretty basicBlock) => Pretty (Definition basicBlock) where
   pretty definition =
     case definition of
+      KnownConstantDefinition representation literal ->
+        "known" <+> pretty representation <+> "constant" <+> "=" <> line <>
+          indent 2 (pretty literal)
+
       ConstantDefinition representation constantParameters basicBlock ->
         pretty representation <+> "constant" <+> tupled (pretty <$> constantParameters) <+> "=" <> line <>
           indent 2 (pretty basicBlock)

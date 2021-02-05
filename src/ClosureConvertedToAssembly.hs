@@ -284,7 +284,7 @@ generateModuleInits moduleNames =
     go globalPointer moduleName =
       callDirect "globals" (moduleInitName moduleName) [globalPointer]
 
-generateModuleInit :: Name.Module -> [(Name.Lifted, Syntax.Definition)] -> M ([Assembly.Definition Assembly.BasicBlock], Int)
+generateModuleInit :: Name.Module -> [(Name.Lifted, Assembly.Definition Assembly.BasicBlock)] -> M ([Assembly.Definition Assembly.BasicBlock], Int)
 generateModuleInit moduleName definitions =
   runBuilder $ do
     globalPointer <- freshLocal "globals"
@@ -300,19 +300,13 @@ generateModuleInit moduleName definitions =
 
     initDefinition globalPointer (name, definition) =
       case definition of
-        Syntax.TypeDeclaration _ ->
+        Assembly.KnownConstantDefinition {} ->
           pure globalPointer
 
-        Syntax.ConstantDefinition {} ->
+        Assembly.ConstantDefinition {} ->
           callDirect "globals" (initDefinitionName name) [globalPointer]
 
-        Syntax.FunctionDefinition {} ->
-          pure globalPointer
-
-        Syntax.DataDefinition {} ->
-          callDirect "globals" (initDefinitionName name) [globalPointer]
-
-        Syntax.ParameterisedDataDefinition {} ->
+        Assembly.FunctionDefinition {} ->
           pure globalPointer
 
 generateDefinition :: Name.Lifted -> Syntax.Definition -> M (Maybe (Assembly.Definition Assembly.BasicBlock, Int))
@@ -355,52 +349,56 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition = do
     fresh <- gets _fresh
     pure $ (, fresh) <$> maybeResult
 
-
 generateGlobal :: Environment v -> Name.Lifted -> Representation -> Syntax.Term v -> Builder (Maybe (Assembly.Definition Assembly.BasicBlock))
 generateGlobal env name representation term = do
   globalPointer <- freshLocal "globals"
   let
     globalPointerOperand =
       Assembly.LocalOperand globalPointer
-  case representation of
-    Representation.Empty -> do
-      (_, deallocateTerm) <- generateTypedTerm env term $ Direct emptyTypeOperand
-      sequence_ deallocateTerm
-      instructions <- gets _instructions
-      pure $
-        Just $
-        Assembly.ConstantDefinition
-          representation
-          [globalPointer]
-          (Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointerOperand)
+  case term of
+    Syntax.Lit literal ->
+      pure $ Just $ Assembly.KnownConstantDefinition Representation.Direct literal
 
-    Representation.Direct -> do
-      -- TODO store in globals for GC?
-      (result, deallocateTerm) <- generateTypedTerm env term $ Direct directTypeOperand
-      directResult <- forceDirect result
-      sequence_ deallocateTerm
-      initGlobal name representation directResult
-      instructions <- gets _instructions
-      pure $
-        Just $
-        Assembly.ConstantDefinition
-          representation
-          [globalPointer]
-          (Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointerOperand)
+    _ ->
+      case representation of
+        Representation.Empty -> do
+          (_, deallocateTerm) <- generateTypedTerm env term $ Direct emptyTypeOperand
+          sequence_ deallocateTerm
+          instructions <- gets _instructions
+          pure $
+            Just $
+            Assembly.ConstantDefinition
+              representation
+              [globalPointer]
+              (Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointerOperand)
 
-    Representation.Indirect -> do
-      type_ <- typeOf env term
-      typeSize <- sizeOfType type_
-      globalPointer' <- globalAllocate "globals" globalPointerOperand typeSize
-      storeTerm env term globalPointerOperand type_
-      initGlobal name representation globalPointerOperand
-      instructions <- gets _instructions
-      pure $
-        Just $
-        Assembly.ConstantDefinition
-          representation
-          [globalPointer]
-          (Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointer')
+        Representation.Direct -> do
+          -- TODO store in globals for GC?
+          (result, deallocateTerm) <- generateTypedTerm env term $ Direct directTypeOperand
+          directResult <- forceDirect result
+          sequence_ deallocateTerm
+          initGlobal name representation directResult
+          instructions <- gets _instructions
+          pure $
+            Just $
+            Assembly.ConstantDefinition
+              representation
+              [globalPointer]
+              (Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointerOperand)
+
+        Representation.Indirect -> do
+          type_ <- typeOf env term
+          typeSize <- sizeOfType type_
+          globalPointer' <- globalAllocate "globals" globalPointerOperand typeSize
+          storeTerm env term globalPointerOperand type_
+          initGlobal name representation globalPointerOperand
+          instructions <- gets _instructions
+          pure $
+            Just $
+            Assembly.ConstantDefinition
+              representation
+              [globalPointer]
+              (Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointer')
 
 generateFunction
   :: Environment v

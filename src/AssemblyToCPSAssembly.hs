@@ -140,8 +140,14 @@ convertDefinition fresh name definition =
       , _stackPointer = stackPointer
       } $ unConverter $ do
       case definition of
+        Assembly.KnownConstantDefinition representation literal ->
+          modify $ \s -> s
+            { _definitions = _definitions s Tsil.:>
+              (Assembly.Name name 0, Assembly.KnownConstantDefinition representation literal)
+            }
+
         Assembly.ConstantDefinition representation arguments basicBlock -> do
-          modify $ \s  -> s
+          modify $ \s -> s
             { _finishDefinition =
               \basicBlock' ->
                 ( Assembly.Name name 0
@@ -151,7 +157,7 @@ convertDefinition fresh name definition =
           convertBasicBlock mempty $ Assembly.basicBlockWithOccurrences basicBlock
 
         Assembly.FunctionDefinition arguments basicBlock -> do
-          modify $ \s  -> s
+          modify $ \s -> s
             { _finishDefinition =
               \basicBlock' ->
                 ( Assembly.Name name 0
