@@ -69,7 +69,8 @@ unify context flexibility value1 value2 = do
   catchAndAdd $ case (value1', value2') of
     -- Both metas
     (Domain.Neutral (Domain.Meta metaIndex1) (Domain.Apps args1), Domain.Neutral (Domain.Meta metaIndex2) (Domain.Apps args2))
-      | Flexibility.Rigid <- flexibility -> do
+      | Flexibility.Rigid <- flexibility
+      , map fst args1 == map fst args2 -> do
         args1' <- mapM (Context.forceHead context . snd) args1
         args2' <- mapM (Context.forceHead context . snd) args2
         if metaIndex1 == metaIndex2 then do
@@ -113,7 +114,8 @@ unify context flexibility value1 value2 = do
         unifySpines context flexibility' spine1 spine2
 
     (Domain.Con con1 args1, Domain.Con con2 args2)
-      | con1 == con2 ->
+      | con1 == con2
+      , map fst args1 == map fst args2 ->
         Tsil.zipWithM_ (unify context flexibility `on` snd) args1 args2
 
       | otherwise ->
