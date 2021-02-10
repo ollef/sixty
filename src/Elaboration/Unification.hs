@@ -869,8 +869,9 @@ pruneMeta context meta allowedArgs = do
           v <- Context.newMeta type_ context'
           Readback.readback (Context.toEnvironment context') v
 
-        allowed:alloweds' ->
-          case type_ of
+        allowed:alloweds' -> do
+          type' <- Context.forceHead context type_
+          case type' of
             Domain.Fun domain plicity target -> do
               domain' <-
                 Readback.readback
