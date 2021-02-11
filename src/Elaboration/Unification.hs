@@ -22,6 +22,8 @@ import Data.IntSeq (IntSeq)
 import qualified Data.IntSeq as IntSeq
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
+import Data.Text.Prettyprint.Doc
+import Data.Text.Prettyprint.Doc.Render.Text
 import qualified Data.Tsil as Tsil
 import Data.Tsil (Tsil)
 import Elaboration.Context (Context)
@@ -29,6 +31,7 @@ import qualified Elaboration.Context as Context
 import Environment (Environment(Environment))
 import qualified Environment
 import qualified Error
+import Error.Hydrated (prettyPrettyableTerm)
 import Extra
 import Flexibility (Flexibility)
 import qualified Flexibility
@@ -64,6 +67,7 @@ tryUnifyD context value1 value2 = do
 
 unify :: Context v -> Flexibility -> Domain.Value -> Domain.Value -> M ()
 unify context flexibility value1 value2 = do
+  printIt
   value1' <- Context.forceHeadGlue context value1
   value2' <- Context.forceHeadGlue context value2
   catchAndAdd $ case (value1', value2') of
@@ -80,10 +84,12 @@ unify context flexibility value1 value2 = do
           let
             keep =
               Tsil.zipWith shouldKeepMetaArgument args1' args2'
+          putText $ "Keep " <> show keep
           if and keep then
             Tsil.zipWithM_ (unify context flexibility `on` snd) args1 args2
 
-          else
+          else do
+            putText "Pruning"
             pruneMeta context metaIndex1 keep
 
         else do
@@ -261,6 +267,13 @@ unify context flexibility value1 value2 = do
 
         _ ->
           can'tUnify
+
+    printIt = do
+      term1 <- Elaboration.readback context value1
+      term2 <- Elaboration.readback context value2
+      pterm1 <- Context.toPrettyableTerm context term1 >>= prettyPrettyableTerm 11
+      pterm2 <- Context.toPrettyableTerm context term2 >>= prettyPrettyableTerm 11
+      liftIO $ putDoc $ "unify " <> pterm1 <> " " <> pterm2 <> line
 
     catchAndAdd m =
       case flexibility of
@@ -819,7 +832,8 @@ checkHeadSolution occurs env hd =
   case hd of
     Domain.Var v ->
       case Environment.lookupVarIndex v env of
-        Nothing ->
+        Nothing -> do
+          putText "checkHeadSolution failed"
           throwIO $ Error.TypeMismatch mempty
 
         Just i ->
@@ -829,7 +843,8 @@ checkHeadSolution occurs env hd =
       pure $ Syntax.Global g
 
     Domain.Meta m
-      | m == occurs ->
+      | m == occurs -> do
+        putText "checkHeadSolution failed meta"
         throwIO $ Error.OccursCheck mempty
 
       | otherwise ->
@@ -846,7 +861,7 @@ pruneMeta context meta allowedArgs = do
   -- putText $ "pruneMeta " <> show allowedArgs
   case solution of
     Meta.Unsolved metaType _ -> do
-      -- putText $ show metaType
+      putText $ show metaType
       metaType' <-
         Evaluation.evaluate
           (Environment.empty $ Context.scopeKey context)
@@ -866,7 +881,9 @@ pruneMeta context meta allowedArgs = do
     go alloweds context' type_ =
       case alloweds of
         [] -> do
+          putText "newmeta"
           v <- Context.newMeta type_ context'
+          putText "reading bak []"
           Readback.readback (Context.toEnvironment context') v
 
         allowed:alloweds' -> do
@@ -882,7 +899,9 @@ pruneMeta context meta allowedArgs = do
                   Context.extend context' "x" domain
                 else do
                   fakeVar <- freshVar
-                  typeMismatch <- lazy $ throwIO $ Error.TypeMismatch mempty
+                  typeMismatch <- lazy $ do
+                    putText "pruneMeta lazy fail"
+                    throwIO $ Error.TypeMismatch mempty
                   Context.extendDef
                     context'
                     "x"
@@ -900,7 +919,9 @@ pruneMeta context meta allowedArgs = do
                   Context.extend context' name domain
                 else do
                   fakeVar <- freshVar
-                  typeMismatch <- lazy $ throwIO $ Error.TypeMismatch mempty
+                  typeMismatch <- lazy $ do
+                    putText "pruneMeta lazy pi fail"
+                    throwIO $ Error.TypeMismatch mempty
                   Context.extendDef
                     context'
                     name
@@ -910,10 +931,12 @@ pruneMeta context meta allowedArgs = do
                 Evaluation.evaluateClosure
                   targetClosure
                   (Domain.var v)
+              putText "reading back domain"
               domain'' <-
                 Readback.readback
                   (Context.toEnvironment context')
                   domain
+              putText "reading back domain done"
               body <- go alloweds' context'' target
               pure $ Syntax.Lam (Bindings.Unspanned name) domain'' plicity body
 

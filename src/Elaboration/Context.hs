@@ -200,6 +200,7 @@ extendPreDef context name value type_ = do
       , indices = indices context Index.Map.:> var
       , values = IntMap.insert var value (values context)
       , types = IntMap.insert var type_ (types context)
+      , boundVars = boundVars context IntSeq.:> var
       }
     , var
     )
@@ -218,6 +219,7 @@ extendDef context name value type_ = do
       , indices = indices context Index.Map.:> var
       , values = IntMap.insert var value (values context)
       , types = IntMap.insert var type_ (types context)
+      , boundVars = boundVars context IntSeq.:> var
       }
     , var
     )
@@ -250,7 +252,6 @@ defineWellOrdered :: Context v -> Var -> Domain.Value -> Context v
 defineWellOrdered context var value =
   context
     { values = IntMap.insert var value $ values context
-    , boundVars = IntSeq.delete var $ boundVars context
     }
 
 define :: Context v -> Var -> Domain.Value -> M (Context v)
@@ -289,12 +290,10 @@ dependencies context value = do
     Domain.Lit _ ->
       pure mempty
 
-    Domain.Glued (Domain.Global _) spine _ ->
-      fold <$> Domain.mapM eliminationDependencies spine
-
-    Domain.Glued _ _ value'' -> do
-      value''' <- lift $ force value''
-      dependencies context value'''
+    Domain.Glued hd spine _ -> do
+      hdVars <- headVars hd
+      elimVars <- Domain.mapM eliminationDependencies spine
+      pure $ hdVars <> fold elimVars
 
     Domain.Lam bindings type' _ closure ->
       abstractionDependencies (Bindings.toName bindings) type' closure
@@ -327,22 +326,22 @@ dependencies context value = do
 
     headVars hd =
       case hd of
-        Domain.Var v
-          | v `IntSeq.member` boundVars context -> do
-            cache <- get
-            typeDeps <- case IntMap.lookup v cache of
-              Nothing -> do
-                typeDeps <- dependencies context $ lookupVarType v context
-                modify $ IntMap.insert v typeDeps
-                pure typeDeps
+        Domain.Var v -> do
+          cache <- get
+          deps <- case IntMap.lookup v cache of
+            Nothing -> do
+              typeDeps <- dependencies context $ lookupVarType v context
+              valueDeps <- mapM (dependencies context) $ lookupVarValue v context
+              let
+                deps =
+                  typeDeps <> fold valueDeps
+              modify $ IntMap.insert v deps
+              pure deps
 
-              Just typeDeps ->
-                pure typeDeps
+            Just typeDeps ->
+              pure typeDeps
 
-            pure $ typeDeps <> IntSet.singleton v
-
-          | otherwise ->
-            pure $ IntSet.singleton v
+          pure $ deps <> IntSet.singleton v
 
         Domain.Global _ ->
           pure mempty
@@ -416,22 +415,22 @@ lookupVarType var context =
     $ IntMap.lookup var
     $ types context
 
-lookupVarValue :: Var -> Context v -> Maybe Domain.Type
+lookupVarValue :: Var -> Context v -> Maybe Domain.Value
 lookupVarValue var context =
   IntMap.lookup var (values context)
 
 newMeta :: Domain.Type -> Context v -> M Domain.Value
 newMeta type_ context = do
-  closedType <- piBoundVars context type_
+  closedType <- bindVars context type_
   i <- atomicModifyIORef (metas context) $ Meta.insert closedType (span context)
-  pure $ Domain.Neutral (Domain.Meta i) $ Domain.Apps ((,) Explicit . Domain.var <$> IntSeq.toTsil (boundVars context))
+  pure $ Domain.Neutral (Domain.Meta i) $ Domain.Apps ((,) Explicit . Domain.var <$> Tsil.filter (\var -> isNothing $ lookupVarValue var context) (IntSeq.toTsil (boundVars context)))
 
 newMetaType :: Context v -> M Domain.Value
 newMetaType =
   newMeta Builtin.Type
 
-piBoundVars :: Context v -> Domain.Type -> M (Syntax.Type Void)
-piBoundVars context type_ = do
+bindVars :: Context v -> Domain.Type -> M (Syntax.Type Void)
+bindVars context type_ = do
   type' <-
     Readback.readback
       Environment
@@ -442,10 +441,10 @@ piBoundVars context type_ = do
         }
       type_
 
-  pis (boundVars context) type'
+  go (boundVars context) type'
   where
-    pis :: IntSeq Var -> Syntax.Type v -> M (Syntax.Type v')
-    pis vars_ term =
+    go :: IntSeq Var -> Syntax.Type v -> M (Syntax.Type v')
+    go vars_ term =
       case vars_ of
         IntSeq.Empty ->
           pure $ Syntax.coerce term
@@ -454,18 +453,26 @@ piBoundVars context type_ = do
           let
             varType =
               lookupVarType var context
-          varType' <-
-            Readback.readback
+
+            env =
               Environment
                 { scopeKey = scopeKey context
                 , indices = Index.Map vars'
                 , values = values context
                 , glueableBefore = Index $ IntSeq.size vars'
                 }
-              varType
-          let
-            term' = Syntax.Pi (Binding.Unspanned $ lookupVarName var context) varType' Explicit $ Syntax.succ term
-          pis vars' term'
+          varType' <- Readback.readback env varType
+          case lookupVarValue var context of
+            Nothing -> do
+              let
+                term' = Syntax.Pi (Binding.Unspanned $ lookupVarName var context) varType' Explicit $ Syntax.succ term
+              go vars' term'
+
+            Just varValue -> do
+              varValue' <- Readback.readback env varValue
+              let
+                term' = Syntax.Let (Bindings.Unspanned $ lookupVarName var context) varValue' varType' $ Syntax.succ term
+              go vars' term'
 
 lookupMeta
   :: Meta.Index

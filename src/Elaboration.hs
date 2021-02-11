@@ -146,6 +146,7 @@ inferDefinition context def =
       pure (Syntax.ConstantDefinition term', type_)
 
     Surface.DataDefinition span boxity params constrs -> do
+      putText $ "Checking data " <> show constrs
       (tele, type_) <- inferDataDefinition context span params constrs mempty
       type' <- evaluate context type_
       pure (Syntax.DataDefinition boxity tele, type')
@@ -262,11 +263,11 @@ checkConstructorType context term@(Surface.Term span _) dataVar paramVars = do
     context' =
       Context.spanned span context
   constrType <- check context' term Builtin.Type
-  maybeConstrType'' <- Context.try context' $ goTerm context' constrType
+  maybeConstrType' <- Context.try context' $ goTerm context' constrType
   pure $
     fromMaybe
       (Syntax.App (Syntax.Global Builtin.fail) Explicit Builtin.type_)
-      maybeConstrType''
+      maybeConstrType'
   where
     goTerm :: Context v -> Syntax.Term v -> M (Syntax.Term v)
     goTerm context' constrType =
@@ -286,8 +287,11 @@ checkConstructorType context term@(Surface.Term span _) dataVar paramVars = do
           pure $ Syntax.Fun domain plicity target'
 
         (Syntax.appsView -> (hd@(Syntax.varView -> Just headIndex), indices))
-          | Context.lookupIndexVar headIndex context' == dataVar ->
-            termIndexEqualities context' (toList indices) (toList paramVars) hd mempty
+          | Context.lookupIndexVar headIndex context' == dataVar -> do
+            putText "lol"
+            result <- termIndexEqualities context' (toList indices) (toList paramVars) hd mempty
+            putText "lol2"
+            pure result
 
         _ -> do
           constrType' <- evaluate context' constrType
@@ -310,10 +314,12 @@ checkConstructorType context term@(Surface.Term span _) dataVar paramVars = do
           pure $ Syntax.Fun domain' plicity target'
 
         Domain.Neutral (Domain.Var headVar) (Domain.appsView -> Just indices)
-          | headVar == dataVar ->
+          | headVar == dataVar -> do
+            putText "checkConstructorType 1"
             valueIndexEqualities context' (toList indices) (toList paramVars)
 
         _ -> do
+          putText "checkConstructorType 2"
           Unification.unify
             context'
             Flexibility.Rigid
