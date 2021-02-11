@@ -17,6 +17,8 @@ import qualified Core.Bindings as Bindings
 import qualified Core.Domain as Domain
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Syntax as Syntax
+import qualified Data.IntMap as IntMap
+import qualified Data.IntSeq as IntSeq
 import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
 import qualified Data.Tsil as Tsil
@@ -309,10 +311,15 @@ unifyBranches
           panic "unifyTele"
 
 unextend :: Context (Succ v) -> Context v
-unextend context' =
-  case Context.indices context' of
-    indices Index.Map.:> _ ->
-      context' { Context.indices = indices }
+unextend context =
+  case (Context.indices context, Context.boundVars context) of
+    (indices Index.Map.:> var, boundVars IntSeq.:> _) ->
+      context
+        { Context.varNames = IntMap.delete var $ Context.varNames context
+        , Context.indices = indices
+        , Context.types = IntMap.delete var $ Context.types context
+        , Context.boundVars = boundVars
+        }
 
     _ ->
       panic "Unification.Indices.unextend"
