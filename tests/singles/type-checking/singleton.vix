@@ -15,7 +15,7 @@ length @{n} _ = Singleton n
 
 length' : forall n A. Vector n A -> Singleton n
 length' Nil = Singleton Z
-length' (Cons x xs) = 
+length' (Cons x xs) =
   case length' xs of
     Singleton n ->
       Singleton (S n)
