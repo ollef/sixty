@@ -1,0 +1,13 @@
+data Maybe a = Nothing | Just a
+
+x : Maybe (forall a. a -> a)
+x = Just \x. x
+
+data Equals forall T. (x y : T) where
+  Refl : Equals x x
+
+g : ((g : forall a. a -> a) -> Equals @{T = forall a. a -> a} g g -> Int) -> Int
+g f = f (\x. x) Refl
+
+h : ((g : forall a. a -> a) -> Equals g g -> Int) -> Int
+h f = f (\x. x) Refl
