@@ -19,6 +19,7 @@ import Core.Bindings (Bindings)
 import qualified Core.Bindings as Bindings
 import qualified Core.Domain as Domain
 import qualified Core.Evaluation as Evaluation
+import qualified Elaboration.Meta as Meta
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
 import qualified Data.IntMap as IntMap
@@ -58,7 +59,7 @@ import Var (Var)
 inferTopLevelDefinition
   :: Scope.KeyedName
   -> Surface.Definition
-  -> M ((Syntax.Definition, Syntax.Type Void, Meta.Vars (Syntax.Term Void)), [Error])
+  -> M ((Syntax.Definition, Syntax.Type Void, Meta.Vars), [Error])
 inferTopLevelDefinition key def = do
   context <- Context.empty key
   (def', typeValue) <- inferDefinition context def
@@ -71,7 +72,7 @@ checkTopLevelDefinition
   :: Scope.KeyedName
   -> Surface.Definition
   -> Domain.Type
-  -> M ((Syntax.Definition, Meta.Vars (Syntax.Term Void)), [Error])
+  -> M ((Syntax.Definition, Meta.Vars), [Error])
 checkTopLevelDefinition key def type_ = do
   context <- Context.empty key
   def' <- checkDefinition context def type_
@@ -83,7 +84,7 @@ checkDefinitionMetaSolutions
   :: Scope.KeyedName
   -> Syntax.Definition
   -> Syntax.Type Void
-  -> Meta.Vars (Syntax.Term Void)
+  -> Meta.Vars
   -> M ((Syntax.Definition, Syntax.Type Void), [Error])
 checkDefinitionMetaSolutions key def type_ metas = do
   context <- Context.empty key
@@ -1107,7 +1108,7 @@ subtypeWithoutRecovery context type1 type2 = do
 
 checkMetaSolutions
   :: Context Void
-  -> Meta.Vars (Syntax.Term Void)
+  -> Meta.Vars
   -> M Syntax.MetaSolutions
 checkMetaSolutions context metaVars =
   flip IntMap.traverseWithKey (Meta.vars metaVars) $ \index var ->

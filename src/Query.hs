@@ -17,6 +17,7 @@ import qualified Assembly
 import qualified ClosureConverted.Syntax as ClosureConverted
 import Control.Monad.Fail
 import Core.Binding (Binding)
+import qualified Elaboration.Meta
 import qualified Core.Syntax as Syntax
 import qualified CPSAssembly
 import Data.Constraint.Extras.TH
@@ -32,7 +33,6 @@ import Extra
 import qualified FileSystem
 import qualified LambdaLifted.Syntax as LambdaLifted
 import qualified LLVM.AST as LLVM
-import qualified Meta
 import qualified Module
 import Name (Name)
 import qualified Name
@@ -64,7 +64,7 @@ data Query a where
   Scopes :: Name.Module -> Query ((Scope, Scope, Scope.Visibility), Scope.Module)
   ResolvedName :: Scope.KeyedName -> Name.Pre -> Query (Maybe Scope.Entry)
   IsDefinitionVisible :: Scope.KeyedName -> Name.Qualified -> Query Bool
-  ElaboratingDefinition :: Scope.KeyedName -> Query (Maybe (Syntax.Definition, Syntax.Type Void, Meta.Vars (Syntax.Term Void)))
+  ElaboratingDefinition :: Scope.KeyedName -> Query (Maybe (Syntax.Definition, Syntax.Type Void, Elaboration.Meta.Vars))
   ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void)
   ElaboratedDefinition :: Name.Qualified -> Query (Maybe (Syntax.Definition, Syntax.Type Void))
   ConstructorType :: Name.QualifiedConstructor -> Query (Telescope Binding Syntax.Type Syntax.Type Void)

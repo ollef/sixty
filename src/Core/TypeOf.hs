@@ -11,6 +11,7 @@ import Core.Bindings (Bindings)
 import qualified Core.Bindings as Bindings
 import qualified Core.Domain as Domain
 import qualified Core.Evaluation as Evaluation
+import qualified Elaboration.Meta as Meta
 import qualified Core.Syntax as Syntax
 import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
@@ -18,7 +19,6 @@ import qualified Elaboration
 import Elaboration.Context (Context)
 import qualified Elaboration.Context as Context
 import qualified Environment
-import qualified Meta
 import Monad
 import Plicity
 import qualified Query

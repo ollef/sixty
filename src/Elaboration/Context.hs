@@ -21,6 +21,7 @@ import Core.Bindings (Bindings)
 import qualified Core.Domain as Domain
 import Core.Domain.Pattern (Pattern)
 import qualified Core.Evaluation as Evaluation
+import qualified Elaboration.Meta as Meta
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
 import qualified Core.Zonking as Zonking
@@ -64,7 +65,7 @@ data Context v = Context
   , values :: IntMap Var Domain.Value
   , types :: IntMap Var Domain.Type
   , boundVars :: IntSeq Var
-  , metas :: !(IORef (Meta.Vars (Syntax.Term Void)))
+  , metas :: !(IORef Meta.Vars)
   , coveredConstructors :: CoveredConstructors
   , coveredLiterals :: CoveredLiterals
   , errors :: !(IORef (Tsil Error))
@@ -470,10 +471,10 @@ piBoundVars context type_ = do
 lookupMeta
   :: Meta.Index
   -> Context v
-  -> M (Meta.Var (Syntax.Term void))
+  -> M Meta.Var
 lookupMeta i context = do
   m <- readIORef (metas context)
-  pure $ Syntax.coerce <$> Meta.lookup i m
+  pure $ Meta.lookup i m
 
 solveMeta
   :: Context v
