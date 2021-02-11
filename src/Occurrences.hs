@@ -118,6 +118,9 @@ termOccurrences env maybeSpan term =
     Syntax.Meta _ ->
       mempty
 
+    Syntax.PostponedCheck {} ->
+      mempty
+
     Syntax.Let bindings term' type_ body -> do
       (env', var) <- extend env
       bindingsOccurrences bindings var <>

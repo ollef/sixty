@@ -1,5 +1,6 @@
 {-# language DuplicateRecordFields #-}
 {-# language FlexibleContexts #-}
+{-# language GADTs #-}
 {-# language OverloadedStrings #-}
 {-# language RankNTypes #-}
 {-# language TupleSections #-}
@@ -17,6 +18,7 @@ import Rock
 import qualified Builtin
 import qualified Core.Binding as Binding
 import qualified Core.Bindings as Bindings
+import qualified Postponement
 import Core.Bindings (Bindings)
 import qualified Core.Domain as Domain
 import Core.Domain.Pattern (Pattern)
@@ -66,6 +68,7 @@ data Context v = Context
   , types :: IntMap Var Domain.Type
   , boundVars :: IntSeq Var
   , metas :: !(IORef Meta.Vars)
+  , postponed :: !(IORef PostponedChecks)
   , coveredConstructors :: CoveredConstructors
   , coveredLiterals :: CoveredLiterals
   , errors :: !(IORef (Tsil Error))
@@ -119,6 +122,7 @@ empty :: MonadBase IO m => Scope.KeyedName -> m (Context Void)
 empty key = do
   ms <- newIORef Meta.empty
   es <- newIORef mempty
+  ps <- newIORef PostponedChecks { checks = mempty, nextIndex = 0 }
   pure Context
     { scopeKey = key
     , span = Span.Relative 0 0
@@ -129,6 +133,7 @@ empty key = do
     , types = mempty
     , boundVars = mempty
     , metas = ms
+    , postponed = ps
     , errors = es
     , coveredConstructors = mempty
     , coveredLiterals = mempty
@@ -146,6 +151,7 @@ emptyFrom context =
     , types = mempty
     , boundVars = mempty
     , metas = metas context
+    , postponed = postponed context
     , errors = errors context
     , coveredConstructors = mempty
     , coveredLiterals = mempty
@@ -627,25 +633,66 @@ zonk
   -> Syntax.Term v
   -> M (Syntax.Term v)
 zonk context term = do
-  metaVars <- newIORef mempty
-  Zonking.zonkTerm (toEnvironment context) (go metaVars) term
-  where
-    go metaVars index = do
-      indexMap <- readIORef metaVars
+  metasRef <- newIORef mempty
+  postponedRef <- newIORef (mempty :: IntMap Postponement.Index (Maybe (Syntax.Term Void)))
+  let
+    zonkMeta index = do
+      indexMap <- readIORef metasRef
       case IntMap.lookup index indexMap of
         Nothing -> do
           solution <- lookupMeta index context
           case solution of
             Meta.Unsolved _ _ -> do
-              atomicModifyIORef metaVars $ \indexMap' ->
+              atomicModifyIORef metasRef $ \indexMap' ->
                 (IntMap.insert index Nothing indexMap', ())
               pure Nothing
 
             Meta.Solved term' _ -> do
-              term'' <- Zonking.zonkTerm (Environment.empty $ scopeKey context) (go metaVars) term'
-              atomicModifyIORef metaVars $ \indexMap' ->
+              term'' <- Zonking.zonkTerm (Environment.empty $ scopeKey context) zonkMeta zonkPostponed term'
+              atomicModifyIORef metasRef $ \indexMap' ->
                 (IntMap.insert index (Just term'') indexMap', ())
               pure $ Just term''
 
         Just solution ->
           pure solution
+
+    zonkPostponed :: Domain.Environment v -> Postponement.Index -> M (Maybe (Syntax.Term v))
+    zonkPostponed env index = do
+      indexMap <- readIORef postponedRef
+      case IntMap.lookup index indexMap of
+        Nothing -> do
+          solution <- lookupPostponedCheck index context
+          case solution of
+            Unchecked {} -> do
+              atomicModifyIORef postponedRef $ \indexMap' ->
+                (IntMap.insert index Nothing indexMap', ())
+              pure Nothing
+
+            Checked term' -> do
+              term'' <- Zonking.zonkTerm env zonkMeta zonkPostponed $ Syntax.coerce term'
+              atomicModifyIORef postponedRef $ \indexMap' ->
+                (IntMap.insert index (Just $ Syntax.coerce term'') indexMap', ())
+              pure $ Just term''
+
+        Just solution ->
+          pure $ Syntax.fromVoid <$> solution
+  Zonking.zonkTerm (toEnvironment context) zonkMeta zonkPostponed term
+
+-------------------------------------------------------------------------------
+-- Postponement
+data Postponed where
+  Unchecked :: Context v -> Surface.Term -> Domain.Type -> !Meta.Index -> Domain.Spine -> Postponed
+  Checked :: Syntax.Term v -> Postponed
+
+data PostponedChecks = PostponedChecks
+  { checks :: !(IntMap Postponement.Index Postponed)
+  , nextIndex :: !Postponement.Index
+  }
+
+lookupPostponedCheck
+  :: Postponement.Index
+  -> Context v
+  -> M Postponed
+lookupPostponedCheck i context = do
+  p <- readIORef (postponed context)
+  pure $ checks p IntMap.! i

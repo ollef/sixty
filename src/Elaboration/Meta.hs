@@ -31,8 +31,8 @@ lookup index (Vars m _) =
   m IntMap.! index
 
 insert :: Syntax.Term Void -> Span.Relative -> Vars -> (Vars, Meta.Index)
-insert unsolved span (Vars m index@(Meta.Index n)) =
-  (Vars (IntMap.insert index (Unsolved unsolved span) m) (Meta.Index (n + 1)), index)
+insert unsolved span (Vars m index) =
+  (Vars (IntMap.insert index (Unsolved unsolved span) m) (index + 1), index)
 
 solve :: Meta.Index -> Syntax.Term Void -> Vars -> Vars
 solve index term (Vars m n) =

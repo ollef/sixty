@@ -84,6 +84,9 @@ evaluate env term =
     Syntax.Meta meta ->
       pure $ Domain.meta meta
 
+    Syntax.PostponedCheck _ term' ->
+      evaluate env term'
+
     Syntax.Let _ term' _ body -> do
       term'' <- evaluate env term'
       (env', _) <- Environment.extendValue env term''

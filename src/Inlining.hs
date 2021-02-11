@@ -7,6 +7,7 @@ import Protolude hiding (Type, IntMap, evaluate, empty)
 
 import Core.Binding (Binding)
 import Core.Bindings (Bindings)
+import qualified Core.Syntax as Syntax
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Environment
@@ -15,9 +16,9 @@ import qualified Meta
 import Monad
 import qualified Name
 import Plicity
+import qualified Postponement
 import qualified Scope
 import qualified Span
-import qualified Core.Syntax as Syntax
 import Telescope (Telescope)
 import qualified Telescope
 import Var (Var)
@@ -73,6 +74,7 @@ data Value
   | Con !Name.QualifiedConstructor
   | Lit !Literal
   | Meta !Meta.Index
+  | PostponedCheck !Postponement.Index !Value
   | Let !Bindings !Var !Value !Type !Value
   | Pi !Binding !Var !Type !Plicity !Type
   | Fun !Type !Plicity !Type
@@ -120,6 +122,9 @@ evaluate dup env term =
 
     Syntax.Meta meta ->
       pure $ Meta meta
+
+    Syntax.PostponedCheck index term' ->
+      PostponedCheck index <$> evaluate dup env term'
 
     Syntax.Let name term' type_ body
       | duplicable term' -> do
@@ -217,6 +222,9 @@ readback env value =
     Meta meta ->
       Syntax.Meta meta
 
+    PostponedCheck index value' ->
+      Syntax.PostponedCheck index $ readback env value'
+
     Let name var term type_ body -> do
       let
         env' =
@@ -297,6 +305,9 @@ duplicable term =
 
     Syntax.Meta {} ->
       True
+
+    Syntax.PostponedCheck {} ->
+      False
 
     Syntax.Let {} ->
       False

@@ -12,6 +12,8 @@ import Data.Graph
 
 import Core.Binding (Binding)
 import Core.Bindings (Bindings)
+import qualified Core.Domain as Domain
+import qualified Core.Syntax as Syntax
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.IntSet (IntSet)
@@ -20,7 +22,6 @@ import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
-import qualified Core.Domain as Domain
 import qualified Environment
 import Extra
 import Literal (Literal)
@@ -28,9 +29,9 @@ import qualified Meta
 import Monad
 import qualified Name
 import Plicity
+import qualified Postponement
 import qualified Scope
 import qualified Span
-import qualified Core.Syntax as Syntax
 import Telescope (Telescope)
 import qualified Telescope
 import Var (Var)
@@ -153,6 +154,7 @@ data InnerValue
   | Con !Name.QualifiedConstructor
   | Lit !Literal
   | Meta !Meta.Index (Tsil Value)
+  | PostponedCheck !Postponement.Index !Value
   | Let !Bindings !Var !Value !Type !Value
   | Pi !Binding !Var !Type !Plicity !Type
   | Fun !Type !Plicity !Type
@@ -250,6 +252,11 @@ makeMeta index arguments =
     Occurrences (IntMap.singleton index (duplicableView <$> arguments)) <>
     foldMap occurrences arguments
 
+makePostponedCheck :: Postponement.Index -> Value -> Value
+makePostponedCheck index value =
+  Value (PostponedCheck index value) $
+    occurrences value
+
 makeLet :: Bindings -> Var -> Value -> Type -> Value -> Value
 makeLet bindings var value type_ body =
   Value (Let bindings var value type_ body) $
@@ -332,6 +339,9 @@ evaluate env term =
 
     Syntax.Meta index ->
       pure $ makeMeta index mempty
+
+    Syntax.PostponedCheck index term' ->
+      makePostponedCheck index <$> evaluate env term'
 
     Syntax.Let name value type_ body -> do
       (env', var) <- Environment.extend env
@@ -433,6 +443,9 @@ readback env metas (Value value occs) =
           fromMaybe (panic $ "Elaboration.Metas.readback Meta " <> show index) $
           Environment.lookupVarIndex var env)
         ((,) Explicit . readback env metas <$> arguments')
+
+    PostponedCheck index value' ->
+      Syntax.PostponedCheck index $ readback env metas value'
 
     Let name var value' type_ body ->
       Syntax.Let
@@ -571,6 +584,9 @@ substitute subst
         Meta index args ->
           makeMeta index $ go <$> args
 
+        PostponedCheck index value' ->
+          makePostponedCheck index $ go value'
+
         Let name var value' type_ body ->
           makeLet name var (go value') (go type_) (go body)
 
@@ -686,10 +702,12 @@ inlineIndex index targetScope solution@ ~(solutionVar, duplicableArgs, solutionV
     Lit _ ->
       pure value
 
-    Meta index' args
-      | otherwise -> do
-        args' <- forM args $ inlineIndex index targetScope solution
-        pure $ makeMeta index' args'
+    Meta index' args -> do
+      args' <- forM args $ inlineIndex index targetScope solution
+      pure $ makeMeta index' args'
+
+    PostponedCheck index' value' ->
+      makePostponedCheck index' <$> recurse value'
 
     Let name var value' type_ body -> do
       value'' <- recurse value'

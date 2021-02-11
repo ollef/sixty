@@ -8,9 +8,9 @@ import Data.OrderedHashMap (OrderedHashMap)
 import Data.Persist
 import Unsafe.Coerce
 
+import Boxity
 import Core.Binding (Binding)
 import Core.Bindings (Bindings)
-import Boxity
 import Data.IntMap (IntMap)
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
@@ -19,6 +19,7 @@ import Literal (Literal)
 import qualified Meta
 import qualified Name
 import Plicity
+import qualified Postponement
 import qualified Span
 import Telescope (Telescope)
 
@@ -28,6 +29,7 @@ data Term v
   | Con !Name.QualifiedConstructor
   | Lit !Literal
   | Meta !Meta.Index
+  | PostponedCheck !Postponement.Index !(Term v)
   | Let !Bindings !(Term v) !(Type v) !(Scope Term v)
   | Pi !Binding !(Type v) !Plicity !(Scope Type v)
   | Fun !(Type v) !Plicity !(Type v)

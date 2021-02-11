@@ -213,6 +213,9 @@ evaluate env term args =
     Syntax.Meta _ ->
       panic "LambdaLifting.evaluate meta"
 
+    Syntax.PostponedCheck {} ->
+      panic "LambdaLifting.evaluate postponed check"
+
     Syntax.Let bindings value type_ body ->
       applyArgs $ do
         type' <- evaluate env type_ []

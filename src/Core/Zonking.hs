@@ -1,30 +1,33 @@
+{-# language RankNTypes #-}
 module Core.Zonking where
 
 import Protolude
 
 import Core.Bindings (Bindings)
 import qualified Core.Domain as Domain
-import qualified Data.OrderedHashMap as OrderedHashMap
-import qualified Environment
 import qualified Core.Evaluation as Evaluation
-import qualified Meta
-import Monad
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
+import qualified Data.OrderedHashMap as OrderedHashMap
+import qualified Environment
+import qualified Meta
+import Monad
+import qualified Postponement
 import Telescope (Telescope)
 import qualified Telescope
 
 zonkTerm
   :: Domain.Environment v
   -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
   -> Syntax.Term v
   -> M (Syntax.Term v)
-zonkTerm env metas term = do
-  eitherValueOrTerm <- zonk env metas term
+zonkTerm env metas postponed term = do
+  eitherValueOrTerm <- zonk env metas postponed term
   case eitherValueOrTerm of
     Left value -> do
       term' <- Readback.readback env value
-      zonkTerm env metas term'
+      zonkTerm env metas postponed term'
 
     Right term' ->
       pure term'
@@ -32,10 +35,11 @@ zonkTerm env metas term = do
 zonkValue
   :: Domain.Environment v
   -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
   -> Syntax.Term v
   -> M Domain.Value
-zonkValue env metas term = do
-  eitherValueOrTerm <- zonk env metas term
+zonkValue env metas postponed term = do
+  eitherValueOrTerm <- zonk env metas postponed term
   case eitherValueOrTerm of
     Left value ->
       pure value
@@ -46,9 +50,10 @@ zonkValue env metas term = do
 zonk
   :: Domain.Environment v
   -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
   -> Syntax.Term v
   -> M (Either Domain.Value (Syntax.Term v))
-zonk env metas term =
+zonk env metas postponed term =
   case term of
     Syntax.Var _ ->
       pure $ Right term
@@ -72,86 +77,97 @@ zonk env metas term =
           value <- Evaluation.evaluate (Environment.emptyFrom env) term'
           pure $ Left value
 
+    Syntax.PostponedCheck index term' -> do
+      maybeTerm <- postponed env index
+      case maybeTerm of
+        Nothing ->
+          Right <$> zonkTerm env metas postponed term'
+
+        Just term'' ->
+          pure $ Right term''
+
     Syntax.Let binding term' type_ scope -> do
       (env', _) <- Environment.extend env
       result <- Syntax.Let binding <$>
-        zonkTerm env metas term' <*>
-        zonkTerm env metas type_ <*>
-        zonkTerm env' metas scope
+        zonkTerm env metas postponed term' <*>
+        zonkTerm env metas postponed type_ <*>
+        zonkTerm env' metas postponed scope
       pure $ Right result
 
     Syntax.Pi binding domain plicity targetScope -> do
       (env', _) <- Environment.extend env
       result <- Syntax.Pi binding <$>
-        zonkTerm env metas domain <*>
+        zonkTerm env metas postponed domain <*>
         pure plicity <*>
-        zonkTerm env' metas targetScope
+        zonkTerm env' metas postponed targetScope
       pure $ Right result
 
     Syntax.Fun domain plicity target -> do
       result <- Syntax.Fun <$>
-        zonkTerm env metas domain <*>
+        zonkTerm env metas postponed domain <*>
         pure plicity <*>
-        zonkTerm env metas target
+        zonkTerm env metas postponed target
       pure $ Right result
 
     Syntax.Lam binding type_ plicity bodyScope -> do
       (env', _) <- Environment.extend env
       result <- Syntax.Lam binding <$>
-        zonkTerm env metas type_ <*>
+        zonkTerm env metas postponed type_ <*>
         pure plicity <*>
-        zonkTerm env' metas bodyScope
+        zonkTerm env' metas postponed bodyScope
       pure $ Right result
 
     Syntax.App fun plicity arg -> do
-      funResult <- zonk env metas fun
+      funResult <- zonk env metas postponed fun
       case funResult of
         Left funValue -> do
-          argValue <- zonkValue env metas arg
+          argValue <- zonkValue env metas postponed arg
           value <- Evaluation.apply funValue plicity argValue
           pure $ Left value
 
         Right fun' -> do
-          result <- Syntax.App fun' plicity <$> zonkTerm env metas arg
+          result <- Syntax.App fun' plicity <$> zonkTerm env metas postponed arg
           pure $ Right result
 
     Syntax.Case scrutinee branches defaultBranch -> do
       result <- Syntax.Case <$>
-        zonkTerm env metas scrutinee <*>
-        zonkBranches env metas branches <*>
-        forM defaultBranch (zonkTerm env metas)
+        zonkTerm env metas postponed scrutinee <*>
+        zonkBranches env metas postponed branches <*>
+        forM defaultBranch (zonkTerm env metas postponed)
       pure $ Right result
 
     Syntax.Spanned span term' -> do
-      result <- zonk env metas term'
+      result <- zonk env metas postponed term'
       pure $ Syntax.Spanned span <$> result
 
 zonkBranches
   :: Domain.Environment v
   -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
   -> Syntax.Branches v
   -> M (Syntax.Branches v)
-zonkBranches env metas branches =
+zonkBranches env metas postponed branches =
   case branches of
     Syntax.ConstructorBranches constructorTypeName constructorBranches ->
-      Syntax.ConstructorBranches constructorTypeName <$> OrderedHashMap.mapMUnordered (mapM $ zonkTelescope env metas) constructorBranches
+      Syntax.ConstructorBranches constructorTypeName <$> OrderedHashMap.mapMUnordered (mapM $ zonkTelescope env metas postponed) constructorBranches
 
     Syntax.LiteralBranches literalBranches ->
-      Syntax.LiteralBranches <$> OrderedHashMap.mapMUnordered (mapM $ zonkTerm env metas) literalBranches
+      Syntax.LiteralBranches <$> OrderedHashMap.mapMUnordered (mapM $ zonkTerm env metas postponed) literalBranches
 
 zonkTelescope
   :: Domain.Environment v
   -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
   -> Telescope Bindings Syntax.Type Syntax.Term v
   -> M (Telescope Bindings Syntax.Type Syntax.Term v)
-zonkTelescope env metas tele =
+zonkTelescope env metas postponed tele =
   case tele of
     Telescope.Empty branch ->
-      Telescope.Empty <$> zonkTerm env metas branch
+      Telescope.Empty <$> zonkTerm env metas postponed branch
 
     Telescope.Extend bindings type_ plicity tele' -> do
       (env', _) <- Environment.extend env
       Telescope.Extend bindings <$>
-        zonkTerm env metas type_ <*>
+        zonkTerm env metas postponed type_ <*>
         pure plicity <*>
-        zonkTelescope env' metas tele'
+        zonkTelescope env' metas postponed tele'

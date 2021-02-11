@@ -217,6 +217,9 @@ termAction k env term =
     Syntax.Meta _ ->
       empty
 
+    Syntax.PostponedCheck {} ->
+      empty
+
     Syntax.Let bindings term' type_ body -> do
       (env', var) <- extendDef env bindings term' type_
       bindingsAction k env' bindings var <|>

@@ -109,6 +109,9 @@ prettyTerm prec env term =
     Syntax.Meta index ->
       pretty index
 
+    Syntax.PostponedCheck index term' ->
+      "postponed" <+> pretty index <+> "is" <+> prettyTerm prec env term'
+
     Syntax.Let bindings term' type_ body ->
       prettyParen (prec > letPrec) $
         let

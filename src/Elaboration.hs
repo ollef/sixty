@@ -56,6 +56,8 @@ import Telescope (Telescope)
 import qualified Telescope
 import Var (Var)
 
+-- TODO inline postponed checks
+
 inferTopLevelDefinition
   :: Scope.KeyedName
   -> Surface.Definition

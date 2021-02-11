@@ -3,7 +3,7 @@
 {-# language DerivingStrategies #-}
 {-# language GeneralizedNewtypeDeriving #-}
 {-# language OverloadedStrings #-}
-module Meta where
+module Postponement where
 
 import Data.Persist
 import Data.Text.Prettyprint.Doc
