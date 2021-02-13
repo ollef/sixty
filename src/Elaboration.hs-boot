@@ -9,6 +9,7 @@ import qualified Core.Domain as Domain
 import qualified Core.Syntax as Syntax
 import Elaboration.Context (Context)
 import Literal (Literal)
+import qualified Meta
 import Monad
 import Name (Name)
 import qualified Name
@@ -36,7 +37,7 @@ readback
 getExpectedTypeName
   :: Context v
   -> Domain.Type
-  -> M (Maybe Name.Qualified)
+  -> M (Maybe (Either Meta.Index Name.Qualified))
 
 data ResolvedConstructor
   = Ambiguous (HashSet Name.QualifiedConstructor) (HashSet Name.Qualified)
@@ -46,8 +47,8 @@ data ResolvedConstructor
 resolveConstructor
   :: HashSet Name.QualifiedConstructor
   -> HashSet Name.Qualified
-  -> M (Maybe Name.Qualified)
-  -> M ResolvedConstructor
+  -> Maybe (Either Meta.Index Name.Qualified)
+  -> Either Meta.Index ResolvedConstructor
 
 inferenceFailed
   :: Context v
