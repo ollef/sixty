@@ -8,7 +8,7 @@
 {-# options_ghc -Wno-orphans #-}
 module Orphans where
 
-import Protolude hiding (IntMap, get, put)
+import Protolude hiding (IntMap, IntSet, get, put)
 
 import Data.Constraint.Extras
 import Data.Dependent.HashMap (DHashMap)
@@ -22,6 +22,8 @@ import Data.IntervalMap.FingerTree (IntervalMap)
 import qualified Data.IntervalMap.FingerTree as IntervalMap
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
+import Data.IntSet (IntSet)
+import qualified Data.IntSet as IntSet
 import qualified Data.Map as Map
 import Data.Persist
 import qualified Data.Set as Set
@@ -51,6 +53,13 @@ instance (Persist k, Persist v, Coercible Int k) => Persist (IntMap k v) where
 
   get =
     IntMap.fromList <$> get
+
+instance (Persist k, Coercible Int k) => Persist (IntSet k) where
+  put =
+    put . IntSet.toList
+
+  get =
+    IntSet.fromList <$> get
 
 instance (Persist k, Eq k, Hashable k, Persist v) => Persist (HashMap k v) where
   put =
