@@ -54,6 +54,15 @@ adjust :: Coercible key Containers.Key => (value -> value) -> key -> IntMap key 
 adjust f key =
   coerce $ Containers.adjust f (coerce key)
 
+alterF
+  :: (Coercible key Containers.Key, Functor f)
+  => (Maybe value -> f (Maybe value))
+  -> key
+  -> IntMap key value
+  -> f (IntMap key value)
+alterF f key m =
+  coerce <$> Containers.alterF f (coerce key) (coerce m)
+
 lookup :: Coercible key Containers.Key => key -> IntMap key value -> Maybe value
 lookup key m =
   Containers.lookup (coerce key) (coerce m)
