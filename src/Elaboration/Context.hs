@@ -419,7 +419,7 @@ lookupIndexType index context =
 
 lookupVarType :: Var -> Context v -> Domain.Type
 lookupVarType var context =
-  fromMaybe (panic "Context.lookupVarType")
+  fromMaybe (panic $ "Context.lookupVarType " <> show var)
     $ IntMap.lookup var
     $ types context
 
