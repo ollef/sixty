@@ -408,47 +408,6 @@ checkConstructorType context term@(Surface.Term span _) dataVar paramVars = do
 
 -------------------------------------------------------------------------------
 
--- check
---   :: Context v
---   -> Surface.Term
---   -> Domain.Type
---   -> M (Syntax.Term v)
--- check context (Surface.Term span term) type_ =
---   -- traceShow ("check", term) $
---   Syntax.Spanned span <$> checkUnspanned (Context.spanned span context) term type_ Context.CanPostpone
-
--- check context (Surface.Term span term) type_ = do
---   putText $ "check "  <> show term
---   result <- checkUnspanned (Context.spanned span context) term type_
---   prettyType <- prettyValue context type_
---   prettyResult <- prettyTerm context result
---   putText ""
---   putText "check"
---   putText $ "    " <> show term
---   putText $ "    " <> show prettyType
---   putText $ "  = " <> show prettyResult
---   pure result
-
--- infer
---   :: Context v
---   -> Surface.Term
---   -> M (Syntax.Term v, Domain.Type)
--- infer context (Surface.Term span term) =
---   -- traceShow ("infer", term) $
---   first (Syntax.Spanned span) <$> inferUnspanned (Context.spanned span context) term Context.CanPostpone
-
--- infer context (Surface.Term span term) = do
---   putText $ "infer "  <> show term
---   (term', type_) <- inferUnspanned (Context.spanned span context) term
---   prettyType <- prettyValue context type_
---   prettyResult <- prettyTerm context term'
---   putText ""
---   putText "infer"
---   putText $ "    " <> show term
---   putText $ "  = " <> show prettyResult
---   putText $ "  , " <> show prettyType
---   pure (term', type_)
-
 check
   :: Context v
   -> Surface.Term
@@ -473,15 +432,6 @@ newtype Checked t = Checked t
 data Mode result where
   Infer :: Mode Inferred
   Check :: Domain.Type -> Mode Checked
-
-forceExpectedTypeHead :: Context v -> Mode result -> M (Mode result)
-forceExpectedTypeHead context mode =
-  case mode of
-    Infer ->
-      pure mode
-
-    Check type_ ->
-      Check <$> Context.forceHead context type_
 
 result :: Context v -> Mode result -> Syntax.Term v -> Domain.Type -> M (result (Syntax.Term v))
 result context mode term type_ =
@@ -511,6 +461,7 @@ elaborateUnspanned context term mode canPostpone = do
       case Context.lookupNameVar name context of
         Just var -> do
           term' <- readback context (Domain.var var)
+          putText $ "elab lookupVarType " <> show var
           result context mode term' $ Context.lookupVarType var context
 
         Nothing -> do
@@ -772,6 +723,15 @@ elaborateUnspanned context term mode canPostpone = do
     (Surface.ParseError err, _) -> do
       Context.reportParseError context err
       elaborateUnspanned context Surface.Wildcard mode Context.CanPostpone
+
+forceExpectedTypeHead :: Context v -> Mode result -> M (Mode result)
+forceExpectedTypeHead context mode =
+  case mode of
+    Infer ->
+      pure mode
+
+    Check type_ ->
+      Check <$> Context.forceHead context type_
 
 elaborationFailed :: Context v -> Mode result -> M (result (Syntax.Term v))
 elaborationFailed context mode =
