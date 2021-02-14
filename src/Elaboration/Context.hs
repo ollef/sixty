@@ -681,7 +681,7 @@ zonk context term = do
 -------------------------------------------------------------------------------
 -- Postponement
 data Postponed where
-  Unchecked :: Context v -> Domain.Type -> M (Syntax.Term v) -> M (Syntax.Term v) -> Postponed
+  Unchecked :: Context v -> Domain.Type -> (CanPostpone -> M (Syntax.Term v)) -> Postponed
   Checked :: Syntax.Term v -> Postponed
 
 data PostponedChecks = PostponedChecks
@@ -689,10 +689,15 @@ data PostponedChecks = PostponedChecks
   , nextIndex :: !Postponement.Index
   }
 
-newPostponedCheck :: Context v -> Meta.Index -> Domain.Type -> M (Syntax.Term v) -> M (Syntax.Term v) -> M Postponement.Index
-newPostponedCheck context blockingMeta type_ check infer = do
+data CanPostpone
+  = Can'tPostpone
+  | CanPostpone
+  deriving Show
+
+newPostponedCheck :: Context v -> Meta.Index -> Domain.Type -> (CanPostpone -> M (Syntax.Term v)) -> M Postponement.Index
+newPostponedCheck context blockingMeta type_ check = do
   postponementIndex <- atomicModifyIORef' (postponed context) $ \p ->
-    (PostponedChecks (IntMap.insert (nextIndex p) (Unchecked context type_ check infer) (checks p)) (nextIndex p + 1), nextIndex p)
+    (PostponedChecks (IntMap.insert (nextIndex p) (Unchecked context type_ check) (checks p)) (nextIndex p + 1), nextIndex p)
   addPostponementBlockedOnMeta context postponementIndex blockingMeta
   pure postponementIndex
 
@@ -713,17 +718,17 @@ unblockPostponedChecks context indices_ =
   forM_ (IntSet.toList indices_) $ \index -> do
     p <- readIORef $ postponed context
     case checks p IntMap.! index of
-      Unchecked context' type_ check infer -> do
+      Unchecked context' type_ check -> do
         do
           type' <- forceHead context' type_
           case type' of
             Domain.Neutral (Domain.Meta newBlockingMeta) _ -> do
               addPostponementBlockedOnMeta context index newBlockingMeta
               atomicModifyIORef' (postponed context) $ \p' ->
-                (PostponedChecks (IntMap.insert index (Unchecked context' type' check infer) (checks p')) (nextIndex p'), ())
+                (PostponedChecks (IntMap.insert index (Unchecked context' type' check) (checks p')) (nextIndex p'), ())
 
             _ -> do
-              result <- check
+              result <- check CanPostpone
               atomicModifyIORef' (postponed context) $ \p' ->
                 (PostponedChecks (IntMap.insert index (Checked result) (checks p')) (nextIndex p'), ())
 
@@ -738,8 +743,8 @@ inferAllPostponedChecks context = do
       p <- readIORef $ postponed context
       if index < nextIndex p then do
         case checks p IntMap.! index of
-          Unchecked _ _ _ infer -> do
-            result <- infer
+          Unchecked _ _ check -> do
+            result <- check Can'tPostpone
             atomicModifyIORef' (postponed context) $ \p' ->
               (PostponedChecks (IntMap.insert index (Checked result) (checks p')) (nextIndex p'), ())
 
