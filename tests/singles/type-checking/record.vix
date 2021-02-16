@@ -4,7 +4,7 @@ data Telescope where
 
 data Record (tele : Telescope) where
   Nil : Record Nil
-  Cons : forall A B. (a : A) -> Record (B a) -> Record (Cons A B)
+  Cons : forall A (B : A -> Telescope). (a : A) -> Record (B a) -> Record (Cons A B)
 
 project1 : forall A B. Record (Cons A B) -> A
 project1 (Cons a _) =
@@ -21,7 +21,7 @@ implicitPis tele f =
       f Nil
 
     Cons A B ->
-      forall (a : A). implicitPis (B a) (\b. f (Cons a b))
+      forall (a : A). implicitPis (B a) (\b. f (Cons @{B} a b))
 
 implicitApps : forall tele f. implicitPis tele f -> (args : Record tele) -> f args
 implicitApps @{f} fun args =
@@ -29,5 +29,5 @@ implicitApps @{f} fun args =
     Nil ->
       fun
 
-    Cons arg args' ->
-      implicitApps @{f = \b. f (Cons arg b)} (fun @{a = arg}) args'
+    Cons @{B} arg args' ->
+      implicitApps @{f = \b. f (Cons @{B} arg b)} (fun @{a = arg}) args'

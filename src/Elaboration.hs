@@ -1,3 +1,5 @@
+{-# language DeriveFunctor #-}
+{-# language GADTs #-}
 {-# language LambdaCase #-}
 {-# language OverloadedStrings #-}
 {-# language ViewPatterns #-}
@@ -5,17 +7,18 @@ module Elaboration where
 
 import Protolude hiding (Seq, force, check, evaluate, until)
 
+import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import Data.IORef.Lifted
 import Data.Text.Prettyprint.Doc (Doc)
 import Rock
+import Data.Coerce
 
 import qualified Builtin
 import Core.Binding (Binding)
 import qualified Core.Binding as Binding
-import Core.Bindings (Bindings)
 import qualified Core.Bindings as Bindings
 import qualified Core.Domain as Domain
 import qualified Core.Evaluation as Evaluation
@@ -39,7 +42,6 @@ import Error (Error)
 import qualified Error
 import qualified Error.Hydrated as Error
 import qualified Flexibility
-import Index
 import qualified Inlining
 import Literal (Literal)
 import qualified Literal
@@ -54,6 +56,7 @@ import qualified Span
 import qualified Surface.Syntax as Surface
 import Telescope (Telescope)
 import qualified Telescope
+import qualified Elaboration.ZonkPostponedChecks as ZonkPostponedChecks
 import Var (Var)
 
 inferTopLevelDefinition
@@ -64,9 +67,11 @@ inferTopLevelDefinition key def = do
   context <- Context.empty key
   (def', typeValue) <- inferDefinition context def
   type_ <- readback context typeValue
+  Context.inferAllPostponedChecks context
+  postponed <- readIORef $ Context.postponed context
   metaVars <- readIORef $ Context.metas context
   errors <- readIORef $ Context.errors context
-  pure ((def', type_, metaVars), toList errors)
+  pure ((ZonkPostponedChecks.zonkDefinition (Context.checks postponed) def', type_, metaVars), toList errors)
 
 checkTopLevelDefinition
   :: Scope.KeyedName
@@ -76,9 +81,11 @@ checkTopLevelDefinition
 checkTopLevelDefinition key def type_ = do
   context <- Context.empty key
   def' <- checkDefinition context def type_
+  Context.inferAllPostponedChecks context
+  postponed <- readIORef $ Context.postponed context
   metaVars <- readIORef $ Context.metas context
   errors <- readIORef $ Context.errors context
-  pure ((def', metaVars), toList errors)
+  pure ((ZonkPostponedChecks.zonkDefinition (Context.checks postponed) def', metaVars), toList errors)
 
 checkDefinitionMetaSolutions
   :: Scope.KeyedName
@@ -315,14 +322,13 @@ checkConstructorType context term@(Surface.Term span _) dataVar paramVars = do
             valueIndexEqualities context' (toList indices) (toList paramVars)
 
         _ -> do
-          Unification.unify
+          f <- Unification.tryUnify
             context'
-            Flexibility.Rigid
             constrType
             (Domain.Neutral
               (Domain.Var dataVar)
               (Domain.Apps $ second Domain.var <$> paramVars))
-          readback context' constrType
+          f <$> readback context' constrType
 
     termIndexEqualities
       :: Context v
@@ -407,77 +413,90 @@ check
   -> Surface.Term
   -> Domain.Type
   -> M (Syntax.Term v)
-check context (Surface.Term span term) type_ =
-  -- traceShow ("check", term) $
-  Syntax.Spanned span <$> checkUnspanned (Context.spanned span context) term type_
-
--- check context (Surface.Term span term) type_ = do
---   putText $ "check "  <> show term
---   result <- checkUnspanned (Context.spanned span context) term type_
---   prettyType <- prettyValue context type_
---   prettyResult <- prettyTerm context result
---   putText ""
---   putText "check"
---   putText $ "    " <> show term
---   putText $ "    " <> show prettyType
---   putText $ "  = " <> show prettyResult
---   pure result
+check context term type_ =
+  coerce $ elaborate context term $ Check type_
 
 infer
   :: Context v
   -> Surface.Term
-  -> M (Maybe Name.Qualified)
-  -> M (Syntax.Term v, Domain.Type)
-infer context (Surface.Term span term) expectedTypeName =
-  -- traceShow ("infer", term) $
-  first (Syntax.Spanned span) <$> inferUnspanned (Context.spanned span context) term expectedTypeName
+  -> M (Maybe (Either Meta.Index Name.Qualified))
+  -> M (Inferred (Syntax.Term v))
+infer context term expectedTypeName =
+  elaborate context term $ Infer expectedTypeName
 
--- infer context (Surface.Term span term) expectedTypeName = do
---   putText $ "infer "  <> show term
---   (term', type_) <- inferUnspanned (Context.spanned span context) term expectedTypeName
---   prettyType <- prettyValue context type_
---   prettyResult <- prettyTerm context term'
---   putText ""
---   putText "infer"
---   putText $ "    " <> show term
---   putText $ "  = " <> show prettyResult
---   putText $ "  , " <> show prettyType
---   pure (term', type_)
+data Inferred t = Inferred t Domain.Type
+  deriving Functor
 
-checkUnspanned
-  :: Context v
+newtype Checked t = Checked t
+  deriving Functor
+
+data Mode result where
+  Infer :: M (Maybe (Either Meta.Index Name.Qualified)) -> Mode Inferred
+  Check :: Domain.Type -> Mode Checked
+
+result :: Context v -> Mode result -> Syntax.Term v -> Domain.Type -> M (result (Syntax.Term v))
+result context mode term type_ =
+  case mode of
+    Infer _ ->
+      pure $ Inferred term type_
+
+    Check expectedType -> do
+      (args, type') <- insertMetasReturningSyntax context UntilExplicit type_
+      f <- Unification.tryUnify context type' expectedType
+      pure $ Checked $ f $ Syntax.apps term args
+
+implicitLambdaResult :: Context v -> Mode result -> Syntax.Term v -> Domain.Type -> M (result (Syntax.Term v))
+implicitLambdaResult context mode term type_ =
+  case mode of
+    Infer _ ->
+      pure $ Inferred term type_
+
+    Check expectedType -> do
+      (args, type') <- insertMetasReturningSyntax context (UntilImplicit $ const True) type_
+      f <- Unification.tryUnify context type' expectedType
+      pure $ Checked $ f $ Syntax.apps term args
+
+elaborate :: Functor result => Context v -> Surface.Term -> Mode result -> M (result (Syntax.Term v))
+elaborate context (Surface.Term span term) mode =
+  fmap (Syntax.Spanned span) <$> elaborateUnspanned (Context.spanned span context) term mode Context.CanPostpone
+
+elaborateUnspanned
+  :: Functor result
+  => Context v
   -> Surface.UnspannedTerm
-  -> Domain.Type
-  -> M (Syntax.Term v)
-checkUnspanned context term expectedType = do
-  expectedType' <- Context.forceHead context expectedType
-  case (term, expectedType') of
-    (Surface.Let name maybeType clauses body, _) -> do
-      (context', bindings, boundTerm, typeTerm) <- elaborateLet context name maybeType clauses
-      body' <- check context' body expectedType
-      pure $ Syntax.Let bindings boundTerm typeTerm body'
+  -> Mode result
+  -> Context.CanPostpone
+  -> M (result (Syntax.Term v))
+elaborateUnspanned context term mode canPostpone = do
+  mode' <- forceExpectedTypeHead context mode
+  case (term, mode') of
+    (Surface.Lam (Surface.ExplicitPattern pat) body, Check (Domain.Pi piBinding domain Explicit targetClosure)) -> do
+      let
+        name =
+          Binding.toName piBinding
+      (context', var) <- Context.extend context name domain
+      domain' <- readback context domain
+      target <-
+        Evaluation.evaluateClosure
+          targetClosure
+          (Domain.var var)
+      body' <- Matching.elaborateSingle context' var Explicit pat body target
+      binding <- SuggestedName.patternBinding context pat name
+      pure $ Checked $ Syntax.Lam binding domain' Explicit body'
 
-    (Surface.Case scrutinee branches, _) -> do
-      (scrutinee', scrutineeType) <-
-        inferAndInsertMetas context UntilExplicit scrutinee $ pure Nothing
-      Matching.elaborateCase context scrutinee' scrutineeType branches expectedType
-
-    (Surface.Lam (Surface.ExplicitPattern pat) body, Domain.Pi binding domain Explicit targetClosure) ->
-      checkLambda context binding domain Explicit pat targetClosure body
-
-    (Surface.Lam (Surface.ExplicitPattern pat) body, Domain.Fun domain Explicit target) -> do
+    (Surface.Lam (Surface.ExplicitPattern pat) body, Check (Domain.Fun domain Explicit target)) -> do
       domain' <- readback context domain
       binding <- SuggestedName.patternBinding context pat "x"
       (context', var) <- Context.extend context (Bindings.toName binding) domain
       body' <- Matching.elaborateSingle context' var Explicit pat body target
-      pure $ Syntax.Lam binding domain' Explicit body'
+      pure $ Checked $ Syntax.Lam binding domain' Explicit body'
 
     (Surface.Lam (Surface.ImplicitPattern _ namedPats) body, _)
       | HashMap.null namedPats ->
-        check context body expectedType
+        elaborate context body mode
 
-    (Surface.Lam (Surface.ImplicitPattern span namedPats) body, Domain.Pi binding domain Implicit targetClosure)
-      | let name = Binding.toName binding
+    (Surface.Lam (Surface.ImplicitPattern span namedPats) body, Check (Domain.Pi piBinding domain Implicit targetClosure))
+      | let name = Binding.toName piBinding
       , name `HashMap.member` namedPats -> do
         let
           pat =
@@ -486,290 +505,393 @@ checkUnspanned context term expectedType = do
           body' =
             Surface.Term (Context.span context) $
               Surface.Lam (Surface.ImplicitPattern span (HashMap.delete name namedPats)) body
-        checkLambda context binding domain Implicit pat targetClosure body'
 
-    (_, Domain.Pi binding domain Implicit targetClosure) -> do
+        (context', var) <- Context.extend context name domain
+        domain' <- readback context domain
+        target <-
+          Evaluation.evaluateClosure
+            targetClosure
+            (Domain.var var)
+        body'' <- Matching.elaborateSingle context' var Implicit pat body' target
+        binding <- SuggestedName.patternBinding context pat name
+        pure $ Checked $ Syntax.Lam binding domain' Implicit body''
+
+    (_, Check (Domain.Pi binding domain plicity targetClosure))
+      | case plicity of
+          Explicit -> False
+          Implicit -> True
+          Constraint -> True
+      -> do
+        let
+          name =
+            Binding.toName binding
+        (context', v) <- Context.extend context name domain
+        target <- Evaluation.evaluateClosure targetClosure $ Domain.var v
+        domain' <- readback context domain
+        Checked term' <- elaborateUnspanned context' term (Check target) Context.CanPostpone
+        pure $ Checked $ Syntax.Lam (Bindings.Unspanned name) domain' plicity term'
+
+    (Surface.Lam plicitPattern body@(Surface.Term bodySpan _), _) -> do
       let
-        name =
-          Binding.toName binding
-      (context', v) <- Context.extend context name domain
-      target <- Evaluation.evaluateClosure targetClosure $ Domain.var v
-      domain' <- readback context domain
-      term' <- checkUnspanned context' term target
-      pure $ Syntax.Lam (Bindings.Unspanned name) domain' Implicit term'
+        patternSpan =
+          Surface.plicitPatternSpan plicitPattern
 
-    (Surface.App function argument, _) -> do
+        elaborateLambda plicity name pat k = do
+          domain <- Context.newMetaType $ Context.spanned patternSpan context
+          domain' <- readback context domain
+          (context', var) <- Context.extend context name domain
+          target <- Context.newMetaType $ Context.spanned bodySpan context'
+          body' <- Matching.elaborateSingle context' var plicity pat body target
+          target' <- readback context' target
+          binding <- SuggestedName.patternBinding context pat name
+          k
+            context
+            mode
+            (Syntax.Lam binding domain' plicity body')
+            (Domain.Pi (Binding.Unspanned name) domain plicity
+              $ Domain.Closure (Context.toEnvironment context) target'
+            )
+
+      case (canPostpone, plicitPattern, mode') of
+        (Context.CanPostpone, _, Check expectedType@(Domain.Neutral (Domain.Meta blockingMeta) _)) -> do
+          postponeCheck context term expectedType blockingMeta
+
+        (Context.CanPostpone, _, Infer _) -> do
+          postponeInference context term
+
+        (_, Surface.ExplicitPattern pat, _) ->
+          elaborateLambda Explicit "x" pat result
+
+        (_, Surface.ImplicitPattern _ (HashMap.toList -> [(name, pat)]), _) -> do
+          elaborateLambda Implicit name pat implicitLambdaResult
+
+        (_, Surface.ImplicitPattern _ _, _) -> do
+          Context.report (Context.spanned patternSpan context) Error.UnableToInferImplicitLambda
+          elaborationFailed context mode
+
+    (Surface.Var name, _) ->
+      case Context.lookupNameVar name context of
+        Just var -> do
+          term' <- readback context (Domain.var var)
+          result context mode term' $ Context.lookupVarType var context
+
+        Nothing -> do
+          maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
+
+          case maybeScopeEntry of
+            Nothing -> do
+              Context.report context $ Error.NotInScope name
+              elaborationFailed context mode
+
+            Just (Scope.Name qualifiedName) -> do
+              type_ <- fetch $ Query.ElaboratedType qualifiedName
+              type' <- evaluate context $ Syntax.fromVoid type_
+              result context mode (Syntax.Global qualifiedName) type'
+
+            Just (Scope.Constructors constructorCandidates dataCandidates) -> do
+              maybeExpectedTypeName <- case mode of
+                Check expectedType ->
+                  getExpectedTypeName context expectedType
+
+                Infer m ->
+                  m
+              case resolveConstructor constructorCandidates dataCandidates maybeExpectedTypeName of
+                Left blockingMeta ->
+                  case (canPostpone, mode) of
+                    (Context.CanPostpone, Infer _) ->
+                      postponeInference context term
+
+                    (Context.CanPostpone, Check expectedType) ->
+                      postponeCheck context term expectedType blockingMeta
+
+                    (Context.Can'tPostpone, _) -> do
+                      Context.report context $ Error.Ambiguous name constructorCandidates dataCandidates
+                      elaborationFailed context mode
+
+                Right (Ambiguous constrCandidates' dataCandidates') ->
+                  case (canPostpone, mode) of
+                    (Context.CanPostpone, Infer _) ->
+                      postponeInference context term
+
+                    _ -> do
+                      Context.report context $ Error.Ambiguous name constrCandidates' dataCandidates'
+                      elaborationFailed context mode
+
+                Right (ResolvedConstructor constr) -> do
+                  type_ <- fetch $ Query.ConstructorType constr
+                  type' <- evaluate context $ Syntax.fromVoid $ Telescope.fold Syntax.implicitPi type_
+                  result context mode (Syntax.Con constr) type'
+
+                Right (ResolvedData data_) -> do
+                  type_ <- fetch $ Query.ElaboratedType data_
+                  type' <- evaluate context $ Syntax.fromVoid type_
+                  result context mode (Syntax.Global data_) type'
+
+            Just (Scope.Ambiguous constrCandidates dataCandidates) -> do
+              Context.report context $ Error.Ambiguous name constrCandidates dataCandidates
+              elaborationFailed context mode
+
+    (Surface.Lit lit, _) ->
+      result context mode (Syntax.Lit lit) (inferLiteral lit)
+
+    (Surface.Let name maybeType clauses body, _) -> do
       let
-        expectedTypeName =
-          getExpectedTypeName context expectedType'
-      (function', functionType) <-
-        inferAndInsertMetas context UntilExplicit function expectedTypeName
-      functionType' <- Context.forceHead context functionType
+        clauses' =
+          [ Clauses.Clause clause mempty | (_, clause) <- clauses]
+      (bindings, boundTerm, typeTerm, typeValue) <-
+        case maybeType of
+          Nothing -> do
+            (boundTerm, typeValue) <- Clauses.infer context clauses'
+            typeTerm <- readback context typeValue
+            pure (Bindings.fromName (map fst clauses) name, boundTerm, typeTerm, typeValue)
 
-      case functionType' of
-        Domain.Pi _ domain Explicit targetClosure -> do
-          (argument', target) <- checkApplication context argument domain targetClosure
-          f <- subtype context target expectedType
-          pure $ f $ Syntax.App function' Explicit argument'
+          Just (span, type_) -> do
+            typeTerm <- check context type_ Builtin.Type
+            typeValue <- evaluate context typeTerm
+            boundTerm <- Clauses.check context clauses' typeValue
+            pure (Bindings.fromName (span : map fst clauses) name, boundTerm, typeTerm, typeValue)
 
-        Domain.Fun domain Explicit target -> do
-          f <- subtype context target expectedType
-          argument' <- check context argument domain
-          pure $ f $ Syntax.App function' Explicit argument'
+      boundValue <- evaluate context boundTerm
+      (context', _) <- Context.extendPreDef context name boundValue typeValue
+      body' <- elaborate context' body mode
+      pure $ Syntax.Let bindings boundTerm typeTerm <$> body'
 
-        _ -> do
-          domain <- Context.newMetaType context
-          target <- Context.newMetaType context
-          let
-            metaFunctionType =
-              Domain.Fun domain Explicit expectedType
-          f <- Unification.tryUnify context functionType metaFunctionType
-          g <- subtype context target expectedType
-          argument' <- check context argument domain
-          pure $ g $ Syntax.App (f function') Explicit argument'
-
-    (Surface.ImplicitApps function arguments, _)
-      | HashMap.null arguments ->
-        check context function expectedType
-
-    (Surface.Wildcard, _) -> do
-      term' <- Context.newMeta expectedType context
-      readback context term'
-
-    (Surface.ParseError err, _) -> do
-      Context.reportParseError context err
-      checkUnspanned context Surface.Wildcard expectedType
-
-    _ -> do
-      let
-        expectedTypeName =
-          getExpectedTypeName context expectedType'
-      (term', type_) <- inferUnspanned context term expectedTypeName
-      subtypeWithTerm context term' type_ expectedType
-
-inferUnspanned
-  :: Context v
-  -> Surface.UnspannedTerm
-  -> M (Maybe Name.Qualified)
-  -> M (Syntax.Term v, Domain.Type)
-inferUnspanned context term expectedTypeName =
-  case term of
-    Surface.Var name ->
-      inferName context name expectedTypeName
-
-    Surface.Lit lit ->
-      pure (Syntax.Lit lit, inferLiteral lit)
-
-    Surface.Let name maybeType clauses body -> do
-      (context', bindings, boundTerm, typeTerm) <- elaborateLet context name maybeType clauses
-      (body', type_) <- infer context' body expectedTypeName
-      pure (Syntax.Let bindings boundTerm typeTerm body', type_)
-
-    Surface.Pi binding plicity domain target -> do
+    (Surface.Pi binding plicity domain target, _) -> do
       domain' <- check context domain Builtin.Type
       domain'' <- evaluate context domain'
 
       (context', _) <- Context.extendPre context binding domain''
 
       target' <- check context' target Builtin.Type
-      pure
-        ( Syntax.Pi (Binding.fromSurface binding) domain' plicity target'
-        , Builtin.Type
-        )
+      result context mode (Syntax.Pi (Binding.fromSurface binding) domain' plicity target') Builtin.Type
 
-    Surface.Fun domain target -> do
+    (Surface.Fun domain target, _) -> do
       domain' <- check context domain Builtin.Type
       target' <- check context target Builtin.Type
-      pure
-        ( Syntax.Fun domain' Explicit target'
-        , Builtin.Type
-        )
+      result context mode (Syntax.Fun domain' Explicit target') Builtin.Type
 
-    Surface.Lam (Surface.ExplicitPattern pat) body ->
-      inferLambda context "x" Explicit pat body
+    (Surface.Case scrutinee branches, _) -> do
+      (scrutinee', scrutineeType) <- inferAndInsertMetas context UntilExplicit scrutinee $ pure Nothing
+      case mode of
+        Infer _ -> do
+          expectedType <- Context.newMetaType context
+          term' <- Matching.elaborateCase context scrutinee' scrutineeType branches expectedType
+          pure $ Inferred term' expectedType
 
-    Surface.Lam (Surface.ImplicitPattern span argumentNames) body ->
-      case HashMap.toList argumentNames of
-        [] ->
-          infer context body expectedTypeName
+        Check expectedType ->
+          Checked <$> Matching.elaborateCase context scrutinee' scrutineeType branches expectedType
 
-        [(name, pat)] ->
-          inferLambda context name Implicit pat body
-
-        _ -> do
-          Context.report (Context.spanned span context) Error.UnableToInferImplicitLambda
-          inferenceFailed context
-
-    Surface.App function argument -> do
-      (function', functionType) <-
-        inferAndInsertMetas context UntilExplicit function expectedTypeName
+    (Surface.App function argument@(Surface.Term argumentSpan _), _) -> do
+      (function', functionType) <- inferAndInsertMetas context UntilExplicit function $ getModeExpectedTypeName context mode
       functionType' <- Context.forceHead context functionType
 
       case functionType' of
         Domain.Pi _ domain Explicit targetClosure -> do
-          (argument', target) <- checkApplication context argument domain targetClosure
-          pure
-            ( Syntax.App function' Explicit argument'
-            , target
-            )
+          argument' <- check context argument domain
+          argument'' <- evaluate context argument'
+          target <- Evaluation.evaluateClosure targetClosure argument''
+          result context mode (Syntax.App function' Explicit argument') target
 
         Domain.Fun domain Explicit target -> do
           argument' <- check context argument domain
-          pure
-            ( Syntax.App function' Explicit argument'
-            , target
-            )
+          result context mode (Syntax.App function' Explicit argument') target
 
         _ -> do
-          domain <- Context.newMetaType context
-          target <- Context.newMetaType context
+          domain <- Context.newMetaType $ Context.spanned argumentSpan context
+          (context', _) <- Context.extend context "x" domain
+          target <- Context.newMetaType context'
+          target' <- readback context' target
           let
+            targetClosure =
+              Domain.Closure (Context.toEnvironment context) target'
             metaFunctionType =
-              Domain.Fun domain Explicit target
-
+              Domain.Pi (Binding.Unspanned "x") domain Explicit targetClosure
           f <- Unification.tryUnify context functionType metaFunctionType
           argument' <- check context argument domain
-          pure
-            ( Syntax.App (f function') Explicit argument'
-            , target
-            )
+          argumentValue <- evaluate context argument'
+          target'' <- Evaluation.evaluateClosure targetClosure argumentValue
+          result context mode (Syntax.App (f function') Explicit argument') target''
 
-    Surface.ImplicitApps function arguments -> do
-      (function', functionType) <-
-        inferAndInsertMetas context (UntilImplicit (`HashMap.member` arguments)) function expectedTypeName
-      go function' arguments functionType
+    (Surface.ImplicitApps function arguments, _) -> do
+      Inferred function' functionType <- infer context function $ getModeExpectedTypeName context mode
+      (result_, resultType) <- inferImplicitApps context function' functionType arguments Context.CanPostpone
+      result context mode result_ resultType
 
-      where
-        go function' arguments' functionType
-          | HashMap.null arguments' =
-            pure (function', functionType)
+    (Surface.Wildcard, Check expectedType) -> do
+      term' <- Context.newMeta expectedType context
+      Checked <$> readback context term'
 
-          | otherwise = do
-            (metaArgs, functionType') <-
-              insertMetasReturningSyntax context (UntilImplicit (`HashMap.member` arguments')) functionType
-
-            let
-              function'' =
-                Syntax.apps function' metaArgs
-            functionType'' <- Context.forceHead context functionType'
-            case functionType'' of
-              Domain.Pi binding domain Implicit targetClosure
-                | let name = Binding.toName binding
-                , name `HashMap.member` arguments' -> do
-                  argument' <- check context (arguments' HashMap.! name) domain
-                  argument'' <- evaluate context argument'
-                  target <- Evaluation.evaluateClosure targetClosure argument''
-                  go
-                    (Syntax.App function'' Implicit argument')
-                    (HashMap.delete name arguments')
-                    target
-              _
-                | [(name, argument)] <- HashMap.toList arguments' -> do
-                  domain <- Context.newMetaType context
-                  target <- Context.newMetaType context
-                  (context', _) <- Context.extend context name domain
-                  target' <- readback context' target
-                  let
-                    metaFunctionType =
-                      Domain.Pi (Binding.Unspanned name) domain Implicit $
-                      Domain.Closure (Context.toEnvironment context) target'
-                  f <- Unification.tryUnify context functionType' metaFunctionType
-                  argument' <- check context argument domain
-                  pure (Syntax.App (f function'') Implicit argument', target)
-
-              _ -> do
-                functionType''' <- readback context functionType'
-                pfunction <- Context.toPrettyableTerm context function''
-                pfunctionType <- Context.toPrettyableTerm context functionType'''
-                Context.report context $
-                  Error.ImplicitApplicationMismatch
-                    (HashSet.fromMap $ void arguments')
-                    pfunction
-                    pfunctionType
-                inferenceFailed context
-
-    Surface.Case scrutinee branches -> do
-      (scrutinee', scrutineeType) <-
-        inferAndInsertMetas context UntilExplicit scrutinee $ pure Nothing
-      type_ <- Context.newMetaType context
-      term' <- Matching.elaborateCase context scrutinee' scrutineeType branches type_
-      pure (term', type_)
-
-    Surface.Wildcard -> do
+    (Surface.Wildcard, Infer _) -> do
       type_ <- Context.newMetaType context
       term' <- Context.newMeta type_ context
       term'' <- readback context term'
-      pure (term'', type_)
+      pure $ Inferred term'' type_
 
-    Surface.ParseError err -> do
+    (Surface.ParseError err, _) -> do
       Context.reportParseError context err
-      inferUnspanned context Surface.Wildcard expectedTypeName
+      elaborateUnspanned context Surface.Wildcard mode Context.CanPostpone
 
-inferName
+forceExpectedTypeHead :: Context v -> Mode result -> M (Mode result)
+forceExpectedTypeHead context mode =
+  case mode of
+    Infer _ ->
+      pure mode
+
+    Check type_ ->
+      Check <$> Context.forceHead context type_
+
+elaborationFailed :: Context v -> Mode result -> M (result (Syntax.Term v))
+elaborationFailed context mode =
+  case mode of
+    Infer _ -> do
+      type_ <- Context.newMetaType context
+      type' <- readback context type_
+      pure $ Inferred (Syntax.App (Syntax.Global Builtin.fail) Explicit type') type_
+
+    Check type_ -> do
+      type' <- readback context type_
+      result context mode (Syntax.App (Syntax.Global Builtin.fail) Explicit type') type_
+
+postponeCheck
   :: Context v
-  -> Name.Pre
-  -> M (Maybe Name.Qualified)
-  -> M (Syntax.Term v, Domain.Type)
-inferName context name expectedTypeName =
-  case Context.lookupNameVar name context of
-    Just var -> do
-      term <- readback context (Domain.var var)
-      let
-        type_ =
-          Context.lookupVarType var context
-      pure
-        ( term
-        , type_
-        )
+  -> Surface.UnspannedTerm
+  -> Domain.Type
+  -> Meta.Index
+  -> M (Checked (Syntax.Term v))
+postponeCheck context surfaceTerm expectedType blockingMeta = do
+  resultMetaValue <- Context.newMeta expectedType context
+  resultMetaTerm <- readback context resultMetaValue
+  postponementIndex <-
+    Context.newPostponedCheck
+      context
+      blockingMeta
+      expectedType
+      (\canPostpone -> do
+        Checked resultTerm <- elaborateUnspanned context surfaceTerm (Check expectedType) canPostpone
+        resultValue <- evaluate context resultTerm
+        success <- Context.try_ context $ Unification.unify context Flexibility.Rigid resultValue resultMetaValue
+        if success then
+          pure resultTerm
+        else
+          readback context $
+            Domain.Neutral (Domain.Global Builtin.fail) $ Domain.Apps $ pure (Explicit, expectedType)
+      )
+  pure $ Checked $ Syntax.PostponedCheck postponementIndex resultMetaTerm
 
-    Nothing -> do
-      maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
+postponeInference
+  :: Context v
+  -> Surface.UnspannedTerm
+  -> M (Inferred (Syntax.Term v))
+postponeInference context surfaceTerm = do
+  expectedType <- Context.newMetaType context
+  case expectedType of
+    Domain.Neutral (Domain.Meta blockingMeta) _ -> do
+      Checked term <- postponeCheck context surfaceTerm expectedType blockingMeta
+      pure $ Inferred term expectedType
 
-      case maybeScopeEntry of
-        Nothing -> do
-          Context.report context $ Error.NotInScope name
-          inferenceFailed context
-
-        Just (Scope.Name qualifiedName) -> do
-          type_ <- fetch $ Query.ElaboratedType qualifiedName
-          type' <- evaluate context $ Syntax.fromVoid type_
-          pure
-            ( Syntax.Global qualifiedName
-            , type'
-            )
-
-        Just (Scope.Constructors constructorCandidates dataCandidates) -> do
-          maybeConstr <- resolveConstructor constructorCandidates dataCandidates expectedTypeName
-          case maybeConstr of
-            Ambiguous constrCandidates' dataCandidates' -> do
-              Context.report context $ Error.Ambiguous name constrCandidates' dataCandidates'
-              inferenceFailed context
-
-            ResolvedConstructor constr -> do
-              type_ <- fetch $ Query.ConstructorType constr
-              type' <- evaluate context $ Syntax.fromVoid $ Telescope.fold Syntax.implicitPi type_
-              pure
-                ( Syntax.Con constr
-                , type'
-                )
-
-            ResolvedData data_ -> do
-              type_ <- fetch $ Query.ElaboratedType data_
-              type' <- evaluate context $ Syntax.fromVoid type_
-              pure
-                ( Syntax.Global data_
-                , type'
-                )
-
-        Just (Scope.Ambiguous constrCandidates dataCandidates) -> do
-          Context.report context $ Error.Ambiguous name constrCandidates dataCandidates
-          inferenceFailed context
+    _ ->
+      panic "postponeInfer non-meta"
 
 inferLiteral :: Literal -> Domain.Type
 inferLiteral literal =
   case literal of
     Literal.Integer _ ->
       Builtin.Int
+
+inferImplicitApps
+  :: Context v
+  -> Syntax.Term v
+  -> Domain.Value
+  -> HashMap Name Surface.Term
+  -> Context.CanPostpone
+  -> M (Syntax.Term v, Domain.Value)
+inferImplicitApps context function functionType arguments canPostpone
+  | HashMap.null arguments =
+    pure (function, functionType)
+
+  | otherwise = do
+    (metaArgs, functionType') <-
+      insertMetasReturningSyntax context (UntilImplicit (`HashMap.member` arguments)) functionType
+
+    let
+      function'' =
+        Syntax.apps function metaArgs
+    functionType'' <- Context.forceHead context functionType'
+    case functionType'' of
+      Domain.Pi binding domain Implicit targetClosure
+        | let name = Binding.toName binding
+        , name `HashMap.member` arguments -> do
+          argument' <- check context (arguments HashMap.! name) domain
+          argument'' <- evaluate context argument'
+          target <- Evaluation.evaluateClosure targetClosure argument''
+          inferImplicitApps
+            context
+            (Syntax.App function'' Implicit argument')
+            target
+            (HashMap.delete name arguments)
+            Context.CanPostpone
+      _
+        | [(name, argument@(Surface.Term argumentSpan _))] <- HashMap.toList arguments -> do
+          domain <- Context.newMetaType $ Context.spanned argumentSpan context
+          (context', _) <- Context.extend context name domain
+          target <- Context.newMetaType context'
+          target' <- readback context' target
+          let
+            targetClosure =
+              Domain.Closure (Context.toEnvironment context) target'
+            metaFunctionType =
+              Domain.Pi (Binding.Unspanned name) domain Implicit targetClosure
+          f <- Unification.tryUnify context functionType' metaFunctionType
+          argument' <- check context argument domain
+          argumentValue <- evaluate context argument'
+          target'' <- Evaluation.evaluateClosure targetClosure argumentValue
+          pure (Syntax.App (f function'') Implicit argument', target'')
+
+      Domain.Neutral (Domain.Meta blockingMeta) _
+        | Context.CanPostpone <- canPostpone ->
+          postponeImplicitApps context function arguments functionType blockingMeta
+
+      _ -> do
+        functionType''' <- readback context functionType'
+        pfunction <- Context.toPrettyableTerm context function''
+        pfunctionType <- Context.toPrettyableTerm context functionType'''
+        Context.report context $
+          Error.ImplicitApplicationMismatch
+            (HashSet.fromMap $ void arguments)
+            pfunction
+            pfunctionType
+        inferenceFailed context
+
+postponeImplicitApps
+  :: Context v
+  -> Syntax.Term v
+  -> HashMap Name Surface.Term
+  -> Domain.Value
+  -> Meta.Index
+  -> M (Syntax.Term v, Domain.Value)
+postponeImplicitApps context function arguments functionType blockingMeta = do
+  expectedType <- Context.newMetaType context
+  resultMetaValue <- Context.newMeta expectedType context
+  resultMetaTerm <- readback context resultMetaValue
+  postponementIndex <-
+    Context.newPostponedCheck
+      context
+      blockingMeta
+      expectedType
+      (\canPostpone -> do
+        (resultTerm, resultType) <- inferImplicitApps context function functionType arguments canPostpone
+        resultValue <- evaluate context resultTerm
+        f <- Unification.tryUnify context resultType expectedType
+        success <- Context.try_ context $ Unification.unify context Flexibility.Rigid resultMetaValue resultValue
+        if success then
+          pure $ f resultTerm
+
+        else
+          readback context $
+            Domain.Neutral (Domain.Global Builtin.fail) $ Domain.Apps $ pure (Explicit, expectedType)
+
+      )
+  pure (Syntax.PostponedCheck postponementIndex resultMetaTerm, expectedType)
 
 inferenceFailed :: Context v -> M (Syntax.Term v, Domain.Type)
 inferenceFailed context = do
@@ -780,88 +902,13 @@ inferenceFailed context = do
     , type_
     )
 
-checkLambda
-  :: Context v
-  -> Binding
-  -> Domain.Type
-  -> Plicity
-  -> Surface.Pattern
-  -> Domain.Closure
-  -> Surface.Term
-  -> M (Syntax.Term v)
-checkLambda context piBinding domain plicity pat targetClosure body = do
-  let
-    name =
-      Binding.toName piBinding
-  (context', var) <- Context.extend context name domain
-  domain' <- readback context domain
-  target <-
-    Evaluation.evaluateClosure
-      targetClosure
-      (Domain.var var)
-  body' <- Matching.elaborateSingle context' var plicity pat body target
-  binding <- SuggestedName.patternBinding context pat name
-  pure $ Syntax.Lam binding domain' plicity body'
+checkingFailed :: Context v -> Domain.Type -> M (Syntax.Term v)
+checkingFailed context type_ = do
+  type' <- readback context type_
+  pure $ Syntax.App (Syntax.Global Builtin.fail) Explicit type'
 
-inferLambda
-  :: Context v
-  -> Name
-  -> Plicity
-  -> Surface.Pattern
-  -> Surface.Term
-  -> M (Syntax.Term v, Domain.Type)
-inferLambda context name plicity pat body = do
-  domain <- Context.newMetaType context
-  domain' <- readback context domain
-  (context', var) <- Context.extend context name domain
-  target <- Context.newMetaType context'
-  body' <- Matching.elaborateSingle context' var plicity pat body target
-  target' <- readback context' target
-  binding <- SuggestedName.patternBinding context pat name
-  pure
-    ( Syntax.Lam binding domain' plicity body'
-    , Domain.Pi (Binding.Unspanned name) domain plicity
-      $ Domain.Closure (Context.toEnvironment context) target'
-    )
-
-checkApplication
-  :: Context v
-  -> Surface.Term
-  -> Domain.Type
-  -> Domain.Closure
-  -> M (Syntax.Term v, Domain.Value)
-checkApplication context argument domain targetClosure = do
-  argument' <- check context argument domain
-  argument'' <- evaluate context argument'
-  target <- Evaluation.evaluateClosure targetClosure argument''
-  pure (argument', target)
-
-elaborateLet
-  :: Context v
-  -> Name
-  -> Maybe (Span.Relative, Surface.Type)
-  -> [(Span.Relative, Surface.Clause)]
-  -> M (Context (Succ v), Bindings, Syntax.Term v, Syntax.Type v)
-elaborateLet context name maybeType clauses = do
-  let
-    clauses' =
-      [ Clauses.Clause clause mempty | (_, clause) <- clauses]
-  (binding, boundTerm, typeTerm, typeValue) <-
-    case maybeType of
-      Nothing -> do
-        (boundTerm, typeValue) <- Clauses.infer context clauses'
-        typeTerm <- readback context typeValue
-        pure (Bindings.fromName (map fst clauses) name, boundTerm, typeTerm, typeValue)
-
-      Just (span, type_) -> do
-        typeTerm <- check context type_ Builtin.Type
-        typeValue <- evaluate context typeTerm
-        boundTerm <- Clauses.check context clauses' typeValue
-        pure (Bindings.fromName (span : map fst clauses) name, boundTerm, typeTerm, typeValue)
-
-  boundValue <- evaluate context boundTerm
-  (context', _) <- Context.extendPreDef context name boundValue typeValue
-  pure (context', binding, boundTerm, typeTerm)
+-------------------------------------------------------------------------------
+-- Constructor name resolution
 
 data ResolvedConstructor
   = Ambiguous (HashSet Name.QualifiedConstructor) (HashSet Name.Qualified)
@@ -872,55 +919,80 @@ data ResolvedConstructor
 resolveConstructor
   :: HashSet Name.QualifiedConstructor
   -> HashSet Name.Qualified
-  -> M (Maybe Name.Qualified)
-  -> M ResolvedConstructor
-resolveConstructor constructorCandidates dataCandidates expectedTypeName =
-  case (toList constructorCandidates, toList dataCandidates) of
-    ([constr], []) ->
-      pure $ ResolvedConstructor constr
+  -> Maybe (Either Meta.Index Name.Qualified)
+  -> Either Meta.Index ResolvedConstructor
+resolveConstructor constructorCandidates dataCandidates maybeExpectedTypeName =
+  case maybeExpectedTypeName of
+    Nothing ->
+      Right $
+        case (toList constructorCandidates, toList dataCandidates) of
+          ([constr], []) ->
+            ResolvedConstructor constr
 
-    ([], [data_]) ->
-      pure $ ResolvedData data_
+          ([], [data_]) ->
+            ResolvedData data_
 
-    _ -> do
-      maybeExpectedTypeName <- expectedTypeName
-      case maybeExpectedTypeName of
-        Nothing ->
-          pure $ Ambiguous constructorCandidates dataCandidates
+          _ ->
+            Ambiguous constructorCandidates dataCandidates
 
-        Just Builtin.TypeName ->
-          pure $
-            case toList dataCandidates of
-              [data_] ->
-                ResolvedData data_
+    Just (Left blockingMeta) ->
+      case (toList constructorCandidates, toList dataCandidates) of
+        ([constr], []) ->
+          Right $ ResolvedConstructor constr
 
-              _ ->
-                Ambiguous mempty dataCandidates
+        ([], [data_]) ->
+          Right $ ResolvedData data_
 
-        Just typeName -> do
-          let
-            constrs' =
-              HashSet.filter
-                (\(Name.QualifiedConstructor constrTypeName _) -> constrTypeName == typeName)
-                constructorCandidates
-          case toList constrs' of
-            [constr] ->
-              pure $ ResolvedConstructor constr
+        _ ->
+          Left blockingMeta
 
-            _ ->
-              pure $ Ambiguous constrs' mempty
+    Just (Right Builtin.TypeName) ->
+      case toList dataCandidates of
+        [data_] ->
+          Right $ ResolvedData data_
+
+        _ ->
+          Right $ Ambiguous mempty dataCandidates
+
+    Just (Right expectedTypeName) -> do
+      let
+        constrs' =
+          HashSet.filter
+            (\(Name.QualifiedConstructor constrTypeName _) -> constrTypeName == expectedTypeName)
+            constructorCandidates
+      case toList constrs' of
+        [constr] ->
+          Right $ ResolvedConstructor constr
+
+        _ ->
+          Right $ Ambiguous constrs' mempty
+
+getModeExpectedTypeName
+  :: Context v
+  -> Mode x
+  -> M (Maybe (Either Meta.Index Name.Qualified))
+getModeExpectedTypeName context mode =
+  case mode of
+    Infer m ->
+      m
+
+    Check expectedType ->
+      getExpectedTypeName context expectedType
 
 getExpectedTypeName
   :: Context v
   -> Domain.Type
-  -> M (Maybe Name.Qualified)
+  -> M (Maybe (Either Meta.Index Name.Qualified))
 getExpectedTypeName context type_ = do
   type' <- Context.forceHead context type_
   case type' of
-    Domain.Neutral (Domain.Global name) _ ->
-      pure $ Just name
+    Domain.Neutral (Domain.Meta blockingMeta) _ ->
+      pure $ Just $ Left blockingMeta
 
-    Domain.Neutral {} ->
+    Domain.Neutral (Domain.Global name) _ ->
+      pure $ Just $ Right name
+
+    Domain.Neutral (Domain.Var _) _ ->
       pure Nothing
 
     Domain.Con {} ->
@@ -956,10 +1028,10 @@ inferAndInsertMetas
   :: Context v
   -> InsertUntil
   -> Surface.Term
-  -> M (Maybe Name.Qualified)
+  -> M (Maybe (Either Meta.Index Name.Qualified))
   -> M (Syntax.Term v, Domain.Type)
-inferAndInsertMetas context until (Surface.Term span term) expectedTypeName = do
-  (term', type_) <- inferUnspanned (Context.spanned span context) term expectedTypeName
+inferAndInsertMetas context until term@(Surface.Term span _) expectedTypeName = do
+  Inferred term' type_ <- infer context term expectedTypeName
   (args, type') <- insertMetasReturningSyntax context until type_
   pure (Syntax.Spanned span $ Syntax.apps term' args, type')
 
@@ -1036,50 +1108,7 @@ insertMetas context until type_ = do
       (args, res) <- insertMetas context until target
       pure ((plicity, meta) : args, res)
 
-subtype
-  :: Context v
-  -> Domain.Type
-  -> Domain.Type
-  -> M (Syntax.Term v -> Syntax.Term v)
-subtype context type1 type2 = do
-  type2' <- Context.forceHead context type2
-  let
-    until =
-      case type2' of
-        Domain.Pi _ _ Implicit _ ->
-          UntilImplicit $ const True
-
-        _ ->
-          UntilExplicit
-
-  (args, type1') <- insertMetasReturningSyntax context until type1
-  f <- Unification.tryUnify context type1' type2
-  pure $ \term -> f $ Syntax.apps term args
-
-subtypeWithTerm
-  :: Context v
-  -> Syntax.Term v
-  -> Domain.Type
-  -> Domain.Type
-  -> M (Syntax.Term v)
-subtypeWithTerm context term type1 type2 = do
-  type2' <- Context.forceHead context type2
-  let
-    until =
-      case (term, type2') of
-        (_, Domain.Pi _ _ Implicit _) ->
-          UntilImplicit $ const True
-
-        (Syntax.Lam _ _ Implicit _, Domain.Neutral (Domain.Meta _) _) ->
-          UntilImplicit $ const True
-
-        _ ->
-          UntilExplicit
-
-  (args, type1') <- insertMetasReturningSyntax context until type1
-  f <- Unification.tryUnify context type1' type2
-  pure $ f $ Syntax.apps term args
-
+-- TODO right side implicits
 subtypeWithoutRecovery
   :: Context v
   -> Domain.Type
@@ -1113,7 +1142,7 @@ checkMetaSolutions
 checkMetaSolutions context metaVars =
   flip IntMap.traverseWithKey (Meta.vars metaVars) $ \index var ->
     case var of
-      Meta.Unsolved type_ span -> do
+      Meta.Unsolved type_ _ span -> do
         ptype <- Context.toPrettyableClosedTerm context type_
         Context.report (Context.spanned span context) $
           Error.UnsolvedMetaVariable index ptype

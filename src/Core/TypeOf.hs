@@ -79,7 +79,7 @@ typeOfHead context hd =
       let
         type_ =
           case solution of
-            Meta.Unsolved type' _ ->
+            Meta.Unsolved type' _ _ ->
               type'
 
             Meta.Solved _ type' ->

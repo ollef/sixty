@@ -19,8 +19,8 @@ Record (Cons A tele) = Sigma A (\a. Record (tele a))
 
 Pi : (tele : Telescope) -> (Record tele -> Type) -> Type
 Pi Nil B = B MkUnit
-Pi (Cons A tele) B = forall (a : A). Pi (tele a) (\b. B (MkSigma a b))
+Pi (Cons A tele) B = forall (a : A). Pi (tele a) (\b. B (MkSigma @{B = \a. Record (tele a)} a b))
 
 apply : (tele : Telescope) -> (F : Record tele -> Type) -> Pi tele F -> (rec : Record tele) -> F rec
 apply Nil F f MkUnit = f
-apply (Cons A tele) F f (MkSigma a rec) = apply (tele a) (\b. F (MkSigma a b)) (f @{a}) rec
+apply (Cons A tele) F f (MkSigma a rec) = apply (tele a) (\b. F (MkSigma @{B = \a. Record (tele a)} a b)) (f @{a}) rec

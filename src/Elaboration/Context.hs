@@ -6,7 +6,7 @@
 {-# language TupleSections #-}
 module Elaboration.Context where
 
-import Protolude hiding (IntMap, IntSet, catch, force)
+import Protolude hiding (IntMap, IntSet, catch, check, force)
 
 import Control.Exception.Lifted
 import Control.Monad.Base
@@ -18,12 +18,10 @@ import Rock
 import qualified Builtin
 import qualified Core.Binding as Binding
 import qualified Core.Bindings as Bindings
-import qualified Postponement
 import Core.Bindings (Bindings)
 import qualified Core.Domain as Domain
 import Core.Domain.Pattern (Pattern)
 import qualified Core.Evaluation as Evaluation
-import qualified Elaboration.Meta as Meta
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
 import qualified Core.Zonking as Zonking
@@ -36,6 +34,7 @@ import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
+import qualified Elaboration.Meta as Meta
 import Environment (Environment(Environment))
 import qualified Environment
 import Error (Error)
@@ -50,6 +49,7 @@ import Monad
 import Name (Name(Name))
 import qualified Name
 import Plicity
+import qualified Postponement
 import qualified Query
 import qualified Scope
 import qualified Span
@@ -419,7 +419,7 @@ lookupIndexType index context =
 
 lookupVarType :: Var -> Context v -> Domain.Type
 lookupVarType var context =
-  fromMaybe (panic "Context.lookupVarType")
+  fromMaybe (panic $ "Context.lookupVarType " <> show var)
     $ IntMap.lookup var
     $ types context
 
@@ -487,9 +487,9 @@ solveMeta
   -> Meta.Index
   -> Syntax.Term Void
   -> M ()
-solveMeta context i term =
-  atomicModifyIORef (metas context) $ \m ->
-    (Meta.solve i term m, ())
+solveMeta context i term = do
+  unblocked <- atomicModifyIORef' (metas context) $ Meta.solve i term
+  unblockPostponedChecks context unblocked
 
 spanned :: Span.Relative -> Context v -> Context v
 spanned s context =
@@ -668,6 +668,11 @@ zonk context term = do
                 (IntMap.insert index Nothing indexMap', ())
               pure Nothing
 
+            Checking -> do
+              atomicModifyIORef' postponedRef $ \indexMap' ->
+                (IntMap.insert index Nothing indexMap', ())
+              pure Nothing
+
             Checked term' -> do
               term'' <- Zonking.zonkTerm env zonkMeta zonkPostponed $ Syntax.coerce term'
               atomicModifyIORef' postponedRef $ \indexMap' ->
@@ -681,13 +686,30 @@ zonk context term = do
 -------------------------------------------------------------------------------
 -- Postponement
 data Postponed where
-  Unchecked :: Context v -> Surface.Term -> Domain.Type -> !Meta.Index -> Domain.Spine -> Postponed
+  Unchecked :: Context v -> Domain.Type -> (CanPostpone -> M (Syntax.Term v)) -> Postponed
+  Checking :: Postponed
   Checked :: Syntax.Term v -> Postponed
 
 data PostponedChecks = PostponedChecks
   { checks :: !(IntMap Postponement.Index Postponed)
   , nextIndex :: !Postponement.Index
   }
+
+data CanPostpone
+  = Can'tPostpone
+  | CanPostpone
+  deriving Show
+
+newPostponedCheck :: Context v -> Meta.Index -> Domain.Type -> (CanPostpone -> M (Syntax.Term v)) -> M Postponement.Index
+newPostponedCheck context blockingMeta type_ check = do
+  postponementIndex <- atomicModifyIORef' (postponed context) $ \p ->
+    (PostponedChecks (IntMap.insert (nextIndex p) (Unchecked context type_ check) (checks p)) (nextIndex p + 1), nextIndex p)
+  addPostponementBlockedOnMeta context postponementIndex blockingMeta
+  pure postponementIndex
+
+addPostponementBlockedOnMeta :: Context v -> Postponement.Index -> Meta.Index -> M ()
+addPostponementBlockedOnMeta context postponementIndex blockingMeta =
+  atomicModifyIORef' (metas context) $ \m -> (Meta.addPostponedIndex blockingMeta postponementIndex m, ())
 
 lookupPostponedCheck
   :: Postponement.Index
@@ -696,3 +718,52 @@ lookupPostponedCheck
 lookupPostponedCheck i context = do
   p <- readIORef (postponed context)
   pure $ checks p IntMap.! i
+
+unblockPostponedChecks :: Context v -> IntSet Postponement.Index -> M ()
+unblockPostponedChecks context indices_ =
+  forM_ (IntSet.toList indices_) $ \index -> do
+    p <- readIORef $ postponed context
+    case checks p IntMap.! index of
+      Unchecked context' type_ check -> do
+        do
+          type' <- forceHead context' type_
+          case type' of
+            Domain.Neutral (Domain.Meta newBlockingMeta) _ -> do
+              addPostponementBlockedOnMeta context index newBlockingMeta
+              atomicModifyIORef' (postponed context) $ \p' ->
+                (PostponedChecks (IntMap.insert index (Unchecked context' type' check) (checks p')) (nextIndex p'), ())
+
+            _ -> do
+              result <- check CanPostpone
+              atomicModifyIORef' (postponed context) $ \p' ->
+                (PostponedChecks (IntMap.insert index (Checked result) (checks p')) (nextIndex p'), ())
+
+      Checking ->
+        pure ()
+
+      Checked _ ->
+        pure ()
+
+inferAllPostponedChecks :: Context v -> M ()
+inferAllPostponedChecks context = do
+  go 0
+  where
+    go index = do
+      p <- readIORef $ postponed context
+      if index < nextIndex p then do
+        case checks p IntMap.! index of
+          Unchecked _ _ check -> do
+            atomicModifyIORef' (postponed context) $ \p' ->
+              (PostponedChecks (IntMap.insert index Checking (checks p')) (nextIndex p'), ())
+            result <- check Can'tPostpone
+            atomicModifyIORef' (postponed context) $ \p' ->
+              (PostponedChecks (IntMap.insert index (Checked result) (checks p')) (nextIndex p'), ())
+
+          Checking ->
+            pure ()
+
+          Checked _ ->
+            pure ()
+        go $ index + 1
+      else
+        pure ()

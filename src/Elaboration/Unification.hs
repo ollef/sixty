@@ -527,7 +527,7 @@ instantiatedMetaType
 instantiatedMetaType context meta args = do
   solution <- Context.lookupMeta meta context
   case solution of
-    Meta.Unsolved metaType _ -> do
+    Meta.Unsolved metaType _ _ -> do
       metaType' <-
         Evaluation.evaluate
           (Environment.empty $ Context.scopeKey context)
@@ -779,7 +779,7 @@ checkNeutralSolution outerContext occurs env flexibility hd spine = do
         args' <- mapM (Context.forceHead outerContext . snd) args
         case traverse Domain.singleVarView args' of
           Just vars
-            | allowedVars <- map (\v -> isJust (Environment.lookupVarIndex v env)) vars
+            | allowedVars <- map (\v -> isJust (Environment.lookupVarIndex v env) && isNothing (Environment.lookupVarValue v env)) vars
             , any not allowedVars
             -> do
               pruneMeta outerContext i allowedVars
@@ -857,7 +857,7 @@ pruneMeta context meta allowedArgs = do
   -- putText $ "pruneMeta " <> show meta
   -- putText $ "pruneMeta " <> show allowedArgs
   case solution of
-    Meta.Unsolved metaType _ -> do
+    Meta.Unsolved metaType _ _ -> do
       -- putText $ show metaType
       metaType' <-
         Evaluation.evaluate

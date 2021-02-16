@@ -459,25 +459,16 @@ simplifyMatch context (Match value forcedValue plicity pat@(Surface.Pattern span
         maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
         case maybeScopeEntry of
           Just scopeEntry -> do
-            let
-              expectedTypeName =
-                Elaboration.getExpectedTypeName context type_
-
-              entryConstrs =
-                Scope.entryConstructors scopeEntry
-            resolved <- lift $ Elaboration.resolveConstructor entryConstrs mempty expectedTypeName
-            case resolved of
-              Elaboration.ResolvedConstructor constr
+            maybeConstr <- lift $ tryResolveConstructor context scopeEntry type_
+            case maybeConstr of
+              Just constr
                 | HashSet.member constr coveredConstrs ->
                   fail "Constructor already covered"
 
                 | otherwise ->
                   pure [match']
 
-              Elaboration.ResolvedData {} ->
-                pure [match']
-
-              Elaboration.Ambiguous {} ->
+              Nothing ->
                 pure [match']
 
           _ ->
@@ -717,25 +708,15 @@ splitConstructorOr context config matches k =
             maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
             case maybeScopeEntry of
               Just scopeEntry -> do
-                let
-                  expectedTypeName =
-                    Elaboration.getExpectedTypeName context type_
-
-                  entryConstrs =
-                    Scope.entryConstructors scopeEntry
-
-                resolved <- Elaboration.resolveConstructor entryConstrs mempty expectedTypeName
-                case resolved of
-                  Elaboration.ResolvedConstructor constr ->
+                maybeConstr <- tryResolveConstructor context scopeEntry type_
+                case maybeConstr of
+                  Just constr ->
                     splitConstructor context config scrutinee var span constr type_
 
-                  Elaboration.ResolvedData {} ->
+                  Nothing ->
                     splitConstructorOr context config matches' k
 
-                  Elaboration.Ambiguous {} ->
-                    splitConstructorOr context config matches' k
-
-              _ ->
+              Nothing ->
                 splitConstructorOr context config matches' k
 
         Match
@@ -925,25 +906,15 @@ findVarConstructorMatches context var matches =
           maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
           case maybeScopeEntry of
             Just scopeEntry -> do
-              let
-                expectedTypeName =
-                  Elaboration.getExpectedTypeName context type_
-
-                entryConstrs =
-                  Scope.entryConstructors scopeEntry
-              resolved <- Elaboration.resolveConstructor entryConstrs mempty expectedTypeName
-              case resolved of
-                Elaboration.ResolvedConstructor constr ->
+              maybeConstr <- tryResolveConstructor context scopeEntry type_
+              case maybeConstr of
+                Just constr ->
                   ((constr, [(span, patterns)]) :) <$> findVarConstructorMatches context var matches'
 
-                Elaboration.ResolvedData {} ->
+                Nothing ->
                   findVarConstructorMatches context var matches'
 
-                Elaboration.Ambiguous {} ->
-                  findVarConstructorMatches context var matches'
-
-
-            _ ->
+            Nothing ->
               findVarConstructorMatches context var matches'
 
       _:matches' ->
@@ -1151,3 +1122,23 @@ uninhabitedConstrType context fuel type_ =
 
         _ ->
           pure False
+
+tryResolveConstructor :: Context v -> Scope.Entry -> Domain.Type -> M (Maybe Name.QualifiedConstructor)
+tryResolveConstructor context scopeEntry type_ = do
+  let
+    entryConstrs =
+      Scope.entryConstructors scopeEntry
+
+  maybeExpectedTypeName <- Elaboration.getExpectedTypeName context type_
+  case Elaboration.resolveConstructor entryConstrs mempty maybeExpectedTypeName of
+    Left _ ->
+      pure Nothing
+
+    Right (Elaboration.ResolvedConstructor constr) ->
+      pure $ Just constr
+
+    Right Elaboration.ResolvedData {} ->
+      pure Nothing
+
+    Right Elaboration.Ambiguous {} ->
+      pure Nothing
