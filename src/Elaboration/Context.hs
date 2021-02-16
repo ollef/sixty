@@ -309,11 +309,6 @@ dependencies context value = do
     Domain.Pi binding type' _ closure ->
       abstractionDependencies (Binding.toName binding) type' closure
 
-    Domain.Fun domain _ target -> do
-      domainVars <- dependencies context domain
-      targetVars <- dependencies context target
-      pure $ domainVars <> targetVars
-
   where
     eliminationDependencies elimination =
       case elimination of
@@ -573,10 +568,6 @@ instantiateType context type_ spine = do
   case (type', spine) of
     (_, []) ->
       pure type'
-
-    (Domain.Fun _ plicity1 target, (plicity2, _):spine')
-      | plicity1 == plicity2 ->
-      instantiateType context target spine'
 
     (Domain.Pi _ _ plicity1 targetClosure, (plicity2, arg):spine')
       | plicity1 == plicity2 -> do

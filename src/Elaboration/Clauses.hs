@@ -57,13 +57,10 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
             Evaluation.evaluateClosure
               targetClosure
               (Domain.var var)
-          explicitFunCase context' bindings var domain target
-
-      Domain.Fun domain Explicit target
-        | HashMap.null implicits -> do
-          bindings <- nextExplicitBindings context clauses
-          (context', var) <- Context.extend context (Bindings.toName bindings) domain
-          explicitFunCase context' bindings var domain target
+          domain'' <- Elaboration.readback context domain
+          clauses' <- mapM (shiftExplicit context (Domain.var var) domain) clauses
+          body <- check context' clauses' target
+          pure $ Syntax.Lam bindings domain'' Explicit body
 
       Domain.Pi piBinding domain Implicit targetClosure -> do
         bindings <- nextImplicitBindings context piBinding clauses
@@ -83,12 +80,6 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
   where
     implicits =
       foldMap clauseImplicits clauses
-
-    explicitFunCase context' bindings var domain target = do
-      domain'' <- Elaboration.readback context domain
-      clauses' <- mapM (shiftExplicit context (Domain.var var) domain) clauses
-      body <- check context' clauses' target
-      pure $ Syntax.Lam bindings domain'' Explicit body
 
 infer
   :: Context v

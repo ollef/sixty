@@ -5,6 +5,7 @@ import Protolude hiding (Seq, head, force, evaluate)
 
 import Rock
 
+import qualified Core.Binding as Binding
 import Core.Binding (Binding)
 import Core.Bindings (Bindings)
 import qualified Core.Domain as Domain
@@ -99,7 +100,7 @@ evaluate env term =
     Syntax.Fun domain plicity target -> do
       domain' <- evaluate env domain
       target' <- evaluate env target
-      pure $ Domain.Fun domain' plicity target'
+      pure $ Domain.Pi (Binding.Unspanned "x") domain' plicity $ Domain.FunctionClosure $ const target'
 
     Syntax.Lam binding type_ plicity body -> do
       type' <- evaluate env type_
@@ -250,9 +251,14 @@ applySpine =
   Domain.foldlM applyElimination
 
 evaluateClosure :: Domain.Closure -> Domain.Value -> M Domain.Value
-evaluateClosure (Domain.Closure env body) argument = do
-  (env', _) <- Environment.extendValue env argument
-  evaluate env' body
+evaluateClosure closure argument = 
+  case closure of
+    Domain.Closure env body -> do
+      (env', _) <- Environment.extendValue env argument
+      evaluate env' body
+
+    Domain.FunctionClosure f ->
+      pure $ f argument
 
 -- | Evaluate the head of a value further, if possible
 -- due to new value bindings. Also evalutes through glued values.

@@ -29,7 +29,6 @@ data Value
   | Glued !Head Spine !(Lazy Value)
   | Lam !Bindings !Type !Plicity !Closure
   | Pi !Binding !Type !Plicity !Closure
-  | Fun !Type !Plicity !Type
 
 type Type = Value
 
@@ -43,6 +42,7 @@ type Environment = Environment.Environment Value
 
 data Closure where
   Closure :: Environment v -> Scope Syntax.Term v -> Closure
+  FunctionClosure :: (Value -> Value) -> Closure
 
 data Branches where
   Branches :: Environment v -> Syntax.Branches v -> Maybe (Syntax.Term v) -> Branches

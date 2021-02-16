@@ -61,9 +61,6 @@ typeOf context value =
     Domain.Pi {} ->
       pure Builtin.Type
 
-    Domain.Fun {} ->
-      pure Builtin.Type
-
 typeOfHead :: Context v -> Domain.Head -> M Domain.Type
 typeOfHead context hd =
   case hd of
@@ -126,10 +123,6 @@ typeOfApplication :: Context v -> Domain.Type -> Plicity -> Domain.Value -> M Do
 typeOfApplication context type_ plicity arg = do
   type' <- Context.forceHead context type_
   case type' of
-    Domain.Fun _ plicity' target
-      | plicity == plicity' ->
-        pure target
-
     Domain.Pi _ _ plicity' targetClosure
       | plicity == plicity' ->
         Evaluation.evaluateClosure targetClosure arg

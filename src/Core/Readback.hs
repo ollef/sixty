@@ -78,9 +78,6 @@ readback env value =
     Domain.Pi binding type_ plicity closure ->
       Syntax.Pi binding <$> readback env type_ <*> pure plicity <*> readbackClosure env closure
 
-    Domain.Fun domain plicity target ->
-      Syntax.Fun <$> readback env domain <*> pure plicity <*> readback env target
-
 readbackElimination :: Domain.Environment v -> Syntax.Term v -> Domain.Elimination -> M (Syntax.Term v)
 readbackElimination env eliminee elimination =
   case elimination of

@@ -136,25 +136,6 @@ unify context flexibility value1 value2 = do
       | plicity1 == plicity2 ->
         unifyAbstraction (Binding.toName binding1) domain1 targetClosure1 domain2 targetClosure2
 
-    (Domain.Pi binding1 domain1 plicity1 targetClosure1, Domain.Fun domain2 plicity2 target2)
-      | plicity1 == plicity2 -> do
-        unify context flexibility domain2 domain1
-        (context', var) <- Context.extend context (Binding.toName binding1) domain1
-        target1 <- Evaluation.evaluateClosure targetClosure1 $ Domain.var var
-        unify context' flexibility target1 target2
-
-    (Domain.Fun domain1 plicity1 target1, Domain.Pi binding2 domain2 plicity2 targetClosure2)
-      | plicity1 == plicity2 -> do
-        unify context flexibility domain2 domain1
-        (context', var) <- Context.extend context (Binding.toName binding2) domain2
-        target2 <- Evaluation.evaluateClosure targetClosure2 $ Domain.var var
-        unify context' flexibility target1 target2
-
-    (Domain.Fun domain1 plicity1 target1, Domain.Fun domain2 plicity2 target2)
-      | plicity1 == plicity2 -> do
-        unify context flexibility domain2 domain1
-        unify context flexibility target1 target2
-
     -- Eta expand
     (Domain.Lam bindings1 type1 plicity1 closure1, v2) -> do
       (context', var) <- Context.extend context (Bindings.toName bindings1) type1
@@ -502,15 +483,6 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
             (Domain.Pi {}, Domain.Pi {}) ->
               pure True
 
-            (Domain.Pi {}, Domain.Fun {}) ->
-              pure True
-
-            (Domain.Fun {}, Domain.Pi {}) ->
-              pure True
-
-            (Domain.Fun {}, Domain.Fun {}) ->
-              pure True
-
             _ ->
               pure False
 
@@ -711,12 +683,6 @@ checkValueSolution outerContext occurs env flexibility value = do
         <*> pure plicity
         <*> checkClosureSolution outerContext occurs env flexibility closure
 
-    Domain.Fun domain plicity target ->
-      Syntax.Fun
-        <$> checkValueSolution outerContext occurs env flexibility domain
-        <*> pure plicity
-        <*> checkValueSolution outerContext occurs env flexibility target
-
 checkBranchSolution
   :: Context outer
   -> Meta.Index
@@ -884,22 +850,6 @@ pruneMeta context meta allowedArgs = do
         allowed:alloweds' -> do
           type' <- Context.forceHead context type_
           case type' of
-            Domain.Fun domain plicity target -> do
-              domain' <- checkValueSolution context' meta (Context.toEnvironment context') Flexibility.Rigid domain
-              (context'', _) <-
-                if allowed then
-                  Context.extend context' "x" domain
-                else do
-                  fakeVar <- freshVar
-                  typeMismatch <- lazy $ throwIO $ Error.TypeMismatch mempty
-                  Context.extendDef
-                    context'
-                    "x"
-                    (Domain.Glued (Domain.Var fakeVar) mempty typeMismatch)
-                    domain
-              body <- go alloweds' context'' target
-              pure $ Syntax.Lam "x" domain' plicity body
-
             Domain.Pi binding domain plicity targetClosure -> do
               let
                 name =

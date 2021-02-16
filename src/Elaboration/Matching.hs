@@ -149,9 +149,6 @@ isPatternValue context value = do
     Domain.Pi {} ->
       pure False
 
-    Domain.Fun {} ->
-      pure False
-
   where
     dropTypeArgs
       :: Telescope n t t' v
@@ -372,8 +369,6 @@ uncoveredScrutineePatterns context value = do
     Domain.Pi {} ->
       pure []
 
-    Domain.Fun {} ->
-      pure []
   where
     dropTypeArgs
       :: Telescope n t t' v
@@ -517,10 +512,8 @@ matchPrepatterns context values patterns type_ =
       case type' of
         Domain.Pi _ domain Explicit targetClosure -> do
           target <- Evaluation.evaluateClosure targetClosure value
-          explicitFunCase value values' pat patterns' domain target
-
-        Domain.Fun domain Explicit target ->
-          explicitFunCase value values' pat patterns' domain target
+          (matches, type'') <- matchPrepatterns context values' patterns' target
+          pure (Match value value Explicit pat domain : matches, type'')
 
         _ ->
           panic "matchPrepatterns explicit non-pi"
@@ -558,9 +551,6 @@ matchPrepatterns context values patterns type_ =
           target <- Evaluation.evaluateClosure targetClosure value
           matchPrepatterns context values' patterns target
 
-        Domain.Fun _ Implicit target ->
-          matchPrepatterns context values' patterns target
-
         _ ->
           panic "matchPrepatterns implicit non-pi 2"
 
@@ -579,9 +569,6 @@ matchPrepatterns context values patterns type_ =
           target <- Evaluation.evaluateClosure targetClosure value
           go domain target
 
-        Domain.Fun domain Constraint target ->
-          go domain target
-
         _ ->
           panic "matchPrepatterns constraint non-pi"
 
@@ -596,11 +583,6 @@ matchPrepatterns context values patterns type_ =
     (Surface.ImplicitPattern patSpan _:patterns', (Explicit, _):_) -> do
       Context.report (Context.spanned patSpan context) $ Error.PlicityMismatch Error.Field (Error.Mismatch Explicit Implicit)
       matchPrepatterns context values patterns' type_
-
-  where
-    explicitFunCase value values' pat patterns' domain target = do
-      (matches, type'') <- matchPrepatterns context values' patterns' target
-      pure (Match value value Explicit pat domain : matches, type'')
 
 type PatternInstantiation = Tsil (Bindings, Domain.Value, Domain.Type)
 
@@ -861,29 +843,6 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
           tele <- goConstrFields context' constr conArgs' target patterns'
           pure $ Telescope.Extend bindings domain'' plicity tele
 
-        Domain.Fun domain plicity target -> do
-          domain'' <- Elaboration.readback context domain
-          (bindings, patterns') <-
-            case plicity of
-             Explicit ->
-               SuggestedName.nextExplicit context patterns
-
-             Implicit ->
-               SuggestedName.nextImplicit context "x" patterns
-
-             Constraint ->
-               pure (Bindings.Unspanned "x", patterns)
-          (context' , fieldVar) <- Context.extendBefore context scrutineeVar bindings domain
-          let
-            fieldValue =
-              Domain.var fieldVar
-
-            conArgs' =
-              conArgs Tsil.:> (plicity, fieldValue)
-
-          tele <- goConstrFields context' constr conArgs' target patterns'
-          pure $ Telescope.Extend bindings domain'' plicity tele
-
         _ -> do
           let
             context' =
@@ -1111,14 +1070,6 @@ uninhabitedConstrType context fuel type_ =
             (context', var) <- Context.extend context (Binding.toName binding) domain
             target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
             uninhabitedConstrType context' fuel target
-
-        Domain.Fun domain _ target -> do
-          uninhabited <- uninhabitedType context (fuel - 1) mempty domain
-          if uninhabited then
-            pure True
-
-          else
-            uninhabitedConstrType context fuel target
 
         _ ->
           pure False

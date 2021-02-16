@@ -24,7 +24,6 @@ data Value
   | Glued !Domain.Head Spine !Value
   | Lam !Bindings !Type !Plicity !Closure
   | Pi !Binding !Type !Plicity !Closure
-  | Fun !Type !Plicity !Type
   deriving Show
 
 type Type = Value
@@ -40,6 +39,7 @@ type Environment = Environment.Environment Value
 
 data Closure where
   Closure :: Environment v -> Scope Syntax.Term v -> Closure
+  FunctionClosure :: Closure
 
 deriving instance Show Closure
 
@@ -69,9 +69,6 @@ to value =
     Domain.Pi binding type_ plicity closure ->
       Pi binding <$> to type_ <*> pure plicity <*> closureTo closure
 
-    Domain.Fun domain plicity target ->
-      Fun <$> to domain <*> pure plicity <*> to target
-
 eliminationTo :: Domain.Elimination -> M Elimination
 eliminationTo elimination =
   case elimination of
@@ -86,8 +83,13 @@ lazyTo =
   to <=< force
 
 closureTo :: Domain.Closure -> M Closure
-closureTo (Domain.Closure env term) =
-  flip Closure term <$> environmentTo env
+closureTo closure =
+  case closure of
+    Domain.Closure env term ->
+      flip Closure term <$> environmentTo env
+
+    Domain.FunctionClosure _ ->
+      pure FunctionClosure
 
 branchesTo :: Domain.Branches -> M Branches
 branchesTo (Domain.Branches env branches defaultBranch) = do

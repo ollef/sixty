@@ -190,12 +190,6 @@ inferDataDefinition context thisSpan preParams constrs paramVars =
       (context', var) <-
         Context.extendPre context (Surface.SpannedName thisSpan thisName) thisType'
 
-      lazyReturnType <-
-        lazy $
-          readback context' $
-          Domain.Neutral (Domain.Global qualifiedThisName) $
-          Domain.Apps $ second Domain.var <$> paramVars
-
       constrs' <- forM constrs $ \case
         Surface.GADTConstructors cs type_ -> do
           type' <- checkConstructorType context' type_ var paramVars
@@ -206,7 +200,10 @@ inferDataDefinition context thisSpan preParams constrs paramVars =
           types' <- forM types $ \type_ ->
             check context' type_ Builtin.Type
 
-          returnType <- force lazyReturnType
+          returnType <-
+            readback context' $
+              Domain.Neutral (Domain.Global qualifiedThisName) $
+              Domain.Apps $ second Domain.var <$> paramVars
           let
             type_ =
               Syntax.funs types' Explicit returnType
@@ -311,11 +308,6 @@ checkConstructorType context term@(Surface.Term span _) dataVar paramVars = do
           target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
           target' <- goValue context'' target
           pure $ Syntax.Pi binding domain' plicity target'
-
-        Domain.Fun domain plicity target -> do
-          domain' <- readback context' domain
-          target' <- goValue context' target
-          pure $ Syntax.Fun domain' plicity target'
 
         Domain.Neutral (Domain.Var headVar) (Domain.appsView -> Just indices)
           | headVar == dataVar ->
@@ -482,13 +474,6 @@ elaborateUnspanned context term mode canPostpone = do
           (Domain.var var)
       body' <- Matching.elaborateSingle context' var Explicit pat body target
       binding <- SuggestedName.patternBinding context pat name
-      pure $ Checked $ Syntax.Lam binding domain' Explicit body'
-
-    (Surface.Lam (Surface.ExplicitPattern pat) body, Check (Domain.Fun domain Explicit target)) -> do
-      domain' <- readback context domain
-      binding <- SuggestedName.patternBinding context pat "x"
-      (context', var) <- Context.extend context (Bindings.toName binding) domain
-      body' <- Matching.elaborateSingle context' var Explicit pat body target
       pure $ Checked $ Syntax.Lam binding domain' Explicit body'
 
     (Surface.Lam (Surface.ImplicitPattern _ namedPats) body, _)
@@ -690,10 +675,6 @@ elaborateUnspanned context term mode canPostpone = do
           argument' <- check context argument domain
           argument'' <- evaluate context argument'
           target <- Evaluation.evaluateClosure targetClosure argument''
-          result context mode (Syntax.App function' Explicit argument') target
-
-        Domain.Fun domain Explicit target -> do
-          argument' <- check context argument domain
           result context mode (Syntax.App function' Explicit argument') target
 
         _ -> do
@@ -1010,9 +991,6 @@ getExpectedTypeName context type_ = do
       target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
       getExpectedTypeName context' target
 
-    Domain.Fun _ _ target ->
-      getExpectedTypeName context target
-
     Domain.Lam {} ->
       pure Nothing
 
@@ -1058,11 +1036,6 @@ insertMetas context until type_ = do
     (UntilTheEnd, Domain.Pi _ domain plicity targetClosure) ->
       instantiate domain plicity targetClosure
 
-    (UntilTheEnd, Domain.Fun domain plicity target) -> do
-      meta <- Context.newMeta domain context
-      (args, res) <- insertMetas context until target
-      pure ((plicity, meta) : args, res)
-
     (UntilExplicit, Domain.Pi _ domain Implicit targetClosure) ->
       instantiate domain Implicit targetClosure
 
@@ -1079,20 +1052,6 @@ insertMetas context until type_ = do
             value =
               Builtin.Refl kind term1 term2
           target <- Evaluation.evaluateClosure targetClosure value
-          (args, res) <- insertMetas context until target
-          pure ((Constraint, f value) : args, res)
-
-        _ ->
-          panic "insertMetas: non-equality constraint"
-
-    (_, Domain.Fun domain Constraint target) -> do
-      domain' <- Context.forceHead context domain
-      case domain' of
-        Builtin.Equals kind term1 term2 -> do
-          f <- Unification.tryUnifyD context term1 term2
-          let
-            value =
-              Builtin.Refl kind term1 term2
           (args, res) <- insertMetas context until target
           pure ((Constraint, f value) : args, res)
 
@@ -1157,12 +1116,6 @@ checkMetaSolutions context metaVars =
     addLambdas context' type_ = do
       type' <- Context.forceHead context' type_
       case type' of
-        Domain.Fun domain Explicit target -> do
-          domain' <- readback context' domain
-          (context'', _) <- Context.extend context' "x" domain
-          body <- addLambdas context'' target
-          pure $ Syntax.Lam "x" domain' Explicit body
-
         Domain.Pi binding domain Explicit targetClosure -> do
           let
             name =

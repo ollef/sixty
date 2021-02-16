@@ -98,27 +98,6 @@ unify context flexibility untouchables value1 value2 = do
       | plicity1 == plicity2 ->
         unifyAbstraction (Binding.toName binding1) domain1 targetClosure1 domain2 targetClosure2
 
-    (Domain.Pi binding1 domain1 plicity1 targetClosure1, Domain.Fun domain2 plicity2 target2)
-      | plicity1 == plicity2 -> do
-        context1 <- unify context flexibility untouchables domain2 domain1
-        (context2, var) <- Context.extend context1 (Binding.toName binding1) domain1
-        target1 <- Evaluation.evaluateClosure targetClosure1 $ Domain.var var
-        context3 <- unify context2 flexibility (IntSet.insert var untouchables) target1 target2
-        pure $ unextend context3
-
-    (Domain.Fun domain1 plicity1 target1, Domain.Pi binding2 domain2 plicity2 targetClosure2)
-      | plicity1 == plicity2 -> do
-        context1 <- unify context flexibility untouchables domain2 domain1
-        (context2, var) <- Context.extend context1 (Binding.toName binding2) domain2
-        target2 <- Evaluation.evaluateClosure targetClosure2 $ Domain.var var
-        context3 <- unify context2 flexibility (IntSet.insert var untouchables) target1 target2
-        pure $ unextend context3
-
-    (Domain.Fun domain1 plicity1 target1, Domain.Fun domain2 plicity2 target2)
-      | plicity1 == plicity2 -> do
-        context1 <- unify context flexibility untouchables domain2 domain1
-        unify context1 flexibility untouchables target1 target2
-
     -- Eta expand
     (Domain.Lam bindings1 type1 plicity1 closure1, v2) -> do
       (context1, var) <- Context.extend context (Bindings.toName bindings1) type1
@@ -350,10 +329,6 @@ occurs context flexibility untouchables value = do
 
     Domain.Pi binding domain _ targetClosure ->
       occursAbstraction (Binding.toName binding) domain targetClosure
-
-    Domain.Fun domain _ target -> do
-      occurs context flexibility untouchables domain
-      occurs context flexibility untouchables target
 
   where
     occursForce lazyValue = do

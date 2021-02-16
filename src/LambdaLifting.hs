@@ -323,12 +323,6 @@ makeConstructorFunction con env type_ spine = do
       domain' <- Readback.readback env domain
       pure $ Syntax.Lam (Bindings.Unspanned $ Binding.toName binding) domain' plicity body
 
-    Domain.Fun domain plicity target -> do
-      (env', var) <- Environment.extend env
-      body <- makeConstructorFunction con env' target $ spine Tsil.:> (plicity, Domain.var var)
-      domain' <- Readback.readback env domain
-      pure $ Syntax.Lam "x" domain' plicity body
-
     _ ->
       Readback.readback env $ Domain.Con con spine
 
@@ -343,10 +337,6 @@ typeArity env type_ = do
       (env', var) <- Environment.extend env
       target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
       targetArity <- typeArity env' target
-      pure $ targetArity + 1
-
-    Domain.Fun _ _ target -> do
-      targetArity <- typeArity env target
       pure $ targetArity + 1
 
     _ ->
