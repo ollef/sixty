@@ -690,7 +690,12 @@ checkValueSolution outerContext occurs env flexibility value = do
         value''' <- force value''
         checkValueSolution outerContext occurs env flexibility value'''
 
-    Domain.Glued _ _ value'' -> do
+    Domain.Glued hd@(Domain.Meta _) spine value'' ->
+      checkNeutralSolution outerContext occurs env Flexibility.Flexible hd spine `catch` \(_ :: Error.Elaboration) -> do
+        value''' <- force value''
+        checkValueSolution outerContext occurs env flexibility value'''
+
+    Domain.Glued (Domain.Var _) _ value'' -> do
       value''' <- force value''
       checkValueSolution outerContext occurs env flexibility value'''
 
