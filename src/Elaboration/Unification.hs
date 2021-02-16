@@ -1,5 +1,4 @@
 {-# language DuplicateRecordFields #-}
-{-# language ViewPatterns #-}
 {-# language OverloadedStrings #-}
 {-# language ScopedTypeVariables #-}
 module Elaboration.Unification where
@@ -547,7 +546,7 @@ fullyApplyToMetas
 fullyApplyToMetas context constr type_ = do
   type' <- Context.forceHead context type_
   case type' of
-    Domain.Neutral (Domain.Global _typeName) (Domain.appsView -> Just typeArgs) -> do
+    Domain.Neutral (Domain.Global _typeName) (Domain.Apps typeArgs) -> do
       constrType <- fetch $ Query.ConstructorType constr
       constrType' <-
         Evaluation.evaluate
@@ -770,7 +769,7 @@ checkNeutralSolution outerContext occurs env flexibility hd spine = do
           checkEliminationSolution outerContext occurs env flexibility inner elim
 
   case (hd, spine) of
-    (Domain.Meta i, Domain.appsView -> Just args)
+    (Domain.Meta i, Domain.Apps args)
       | Flexibility.Rigid <- flexibility -> do
         args' <- mapM (Context.forceHead outerContext . snd) args
         case traverse Domain.singleVarView args' of
