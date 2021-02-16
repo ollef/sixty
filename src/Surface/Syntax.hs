@@ -84,9 +84,11 @@ lams :: Foldable f => f PlicitPattern -> Term -> Term
 lams vs body@(Term bodySpan _) =
   foldr (\pat -> Term (Span.add (plicitPatternSpan pat) bodySpan) . Lam pat) body vs
 
-pis :: Foldable f => Plicity -> f SpannedName -> Type -> Type -> Type
-pis plicity vs domain target@(Term (Span.Relative _ end) _) =
-  foldr (\spannedName@(SpannedName (Span.Relative start _) _) -> Term (Span.Relative start end) . Pi spannedName plicity domain) target vs
+pis :: Plicity -> [([SpannedName], Type)] -> Type -> Type
+pis plicity vars target@(Term (Span.Relative _ end) _) =
+  foldr (\(vs, domain) target' ->
+    foldr (\spannedName@(SpannedName (Span.Relative start _) _) -> Term (Span.Relative start end) . Pi spannedName plicity domain) target' vs
+  ) target vars
 
 function :: Term -> Term -> Term
 function domain@(Term span1 _) target@(Term span2 _) =

@@ -1,0 +1,3 @@
+Nat : Type
+
+f : (x y : Type)(z w : Nat) -> Type

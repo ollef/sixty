@@ -577,7 +577,7 @@ atomicTerm =
 
         Lexer.Forall ->
           continue $
-            implicitPis <$>
+            Surface.pis Implicit <$>
               some
                 ( (,) <$ token Lexer.LeftParen <*> some spannedName <* token Lexer.Colon <*> term <* token Lexer.RightParen
                 <|> (\spannedName_@(Surface.SpannedName span_ _) -> ([spannedName_], Surface.Term span_ Surface.Wildcard)) <$> spannedName
@@ -590,9 +590,6 @@ atomicTerm =
         _ ->
           break
   where
-    implicitPis vss target =
-      foldr (\(vs, domain) target' -> Surface.pis Implicit vs domain target') target vss
-
     branch :: Parser (Surface.Pattern, Surface.Term)
     branch =
       (,) <$> pattern_ <* token Lexer.RightArrow <*> term
@@ -622,8 +619,10 @@ plicitAtomicTerm =
 term :: Parser Surface.Term
 term =
   Surface.pis Explicit <$>
-    try (token Lexer.LeftParen *> some spannedName <* token Lexer.Colon) <*>
-    term <* token Lexer.RightParen <*
+    some
+      ((,) <$> try (token Lexer.LeftParen *> some spannedName <* token Lexer.Colon) <*>
+        term <* token Lexer.RightParen
+      ) <*
     token Lexer.RightArrow <*> term
   <|> atomicTerm <**> (foldl' (flip (.)) identity <$> many plicitAtomicTerm) <**> fun
   <?> "term"
