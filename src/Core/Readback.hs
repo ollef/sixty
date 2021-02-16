@@ -34,7 +34,7 @@ readback env value =
               readbackSpine env head' spine
 
             (Nothing, Nothing) ->
-              panic "readback neutral var"
+              panic $ "readback neutral var " <> show v
 
         Domain.Global g ->
           readbackSpine env (Syntax.Global g) spine
