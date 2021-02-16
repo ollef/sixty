@@ -879,16 +879,13 @@ pruneMeta context meta allowedArgs = do
       case alloweds of
         [] -> do
           v <- Context.newMeta type_ context'
-          Readback.readback (Context.toEnvironment context') v
+          checkValueSolution context' meta (Context.toEnvironment context') Flexibility.Rigid v
 
         allowed:alloweds' -> do
           type' <- Context.forceHead context type_
           case type' of
             Domain.Fun domain plicity target -> do
-              domain' <-
-                Readback.readback
-                  (Context.toEnvironment context')
-                  domain
+              domain' <- checkValueSolution context' meta (Context.toEnvironment context') Flexibility.Rigid domain
               (context'', _) <-
                 if allowed then
                   Context.extend context' "x" domain
@@ -922,11 +919,8 @@ pruneMeta context meta allowedArgs = do
                 Evaluation.evaluateClosure
                   targetClosure
                   (Domain.var v)
-              domain'' <-
-                Readback.readback
-                  (Context.toEnvironment context')
-                  domain
+              domain' <- checkValueSolution context' meta (Context.toEnvironment context') Flexibility.Rigid domain
               body <- go alloweds' context'' target
-              pure $ Syntax.Lam (Bindings.Unspanned name) domain'' plicity body
+              pure $ Syntax.Lam (Bindings.Unspanned name) domain' plicity body
 
             _ -> panic "pruneMeta wrong type"
