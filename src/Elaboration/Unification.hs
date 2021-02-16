@@ -72,15 +72,15 @@ unify context flexibility value1 value2 = do
     (Domain.Neutral (Domain.Meta metaIndex1) (Domain.Apps args1), Domain.Neutral (Domain.Meta metaIndex2) (Domain.Apps args2))
       | Flexibility.Rigid <- flexibility
       , map fst args1 == map fst args2 -> do
-        args1' <- mapM (Context.forceHead context . snd) args1
-        args2' <- mapM (Context.forceHead context . snd) args2
+        args1' <- mapM (mapM $ Context.forceHead context) args1
+        args2' <- mapM (mapM $ Context.forceHead context) args2
         if metaIndex1 == metaIndex2 then do
           -- Intersection: If the same metavar is applied to two different lists of unknown
           -- variables its solution must not mention any variables at
           -- positions where the lists differ.
           let
             keep =
-              Tsil.zipWith shouldKeepMetaArgument args1' args2'
+              Tsil.zipWith (shouldKeepMetaArgument `on` snd) args1' args2'
           if and keep then
             Tsil.zipWithM_ (unify context flexibility `on` snd) args1 args2
 
@@ -90,16 +90,16 @@ unify context flexibility value1 value2 = do
         else do
           let
             maybeVars1 =
-              mapM Domain.singleVarView args1'
+              mapM (mapM Domain.singleVarView) args1'
             maybeVars2 =
-              mapM Domain.singleVarView args2'
+              mapM (mapM Domain.singleVarView) args2'
           case (maybeVars1, maybeVars2) of
             (Just vars1, _)
-              | unique vars1 ->
-                solve context metaIndex1 vars1 value2'
+              | unique $ snd <$> vars1 ->
+                solve context metaIndex1 vars1 value2
 
             (_, Just vars2)
-              | unique vars2 ->
+              | unique $ snd <$> vars2 ->
                 solve context metaIndex2 vars2 value1'
 
             _ ->
@@ -193,10 +193,10 @@ unify context flexibility value1 value2 = do
     -- Metas
     (Domain.Neutral (Domain.Meta metaIndex1) (Domain.Apps args1), v2)
       | Flexibility.Rigid <- flexibility -> do
-        args1' <- mapM (Context.forceHead context . snd) args1
-        case traverse Domain.singleVarView args1' of
+        args1' <- mapM (mapM $ Context.forceHead context) args1
+        case traverse (traverse Domain.singleVarView) args1' of
           Just vars1
-            | unique vars1 ->
+            | unique $ snd <$> vars1 ->
               solve context metaIndex1 vars1 v2
 
           _ ->
@@ -204,10 +204,10 @@ unify context flexibility value1 value2 = do
 
     (v1, Domain.Neutral (Domain.Meta metaIndex2) (Domain.Apps args2))
       | Flexibility.Rigid <- flexibility -> do
-        args2' <- mapM (Context.forceHead context . snd) args2
-        case traverse Domain.singleVarView args2' of
+        args2' <- mapM (mapM $ Context.forceHead context) args2
+        case traverse (traverse Domain.singleVarView) args2' of
           Just vars2
-            | unique vars2 ->
+            | unique $ snd <$> vars2 ->
             solve context metaIndex2 vars2 v1
 
           _ ->
@@ -597,9 +597,9 @@ shouldKeepMetaArgument value1 value2 =
 -- Solution checking and pruning
 
 -- | Solve `meta = \vars. value`.
-solve :: Context v -> Meta.Index -> Tsil Var -> Domain.Value -> M ()
+solve :: Context v -> Meta.Index -> Tsil (Plicity, Var) -> Domain.Value -> M ()
 solve context meta vars value = do
-  term <- checkSolution context meta (IntSeq.fromTsil vars) value
+  term <- checkSolution context meta vars value
   Context.solveMeta context meta term
 
 -- | Occurs check, scope check, prune, and read back the solution at the same
@@ -607,36 +607,40 @@ solve context meta vars value = do
 checkSolution
   :: Context v
   -> Meta.Index
-  -> IntSeq Var
+  -> Tsil (Plicity, Var)
   -> Domain.Value
   -> M (Syntax.Term Void)
 checkSolution outerContext meta vars value = do
+  let
+    indices =
+      IntSeq.fromTsil $ snd <$> vars
   solution <-
     checkValueSolution
       outerContext
       meta
       Environment
         { scopeKey = Context.scopeKey outerContext
-        , indices = Index.Map vars
+        , indices = Index.Map indices
         , values = Context.values outerContext
-        , glueableBefore = Index $ IntSeq.size vars
+        , glueableBefore = Index $ IntSeq.size indices
         }
       Flexibility.Rigid
       value
-  addAndCheckLambdas outerContext meta vars solution
+  addAndCheckLambdas outerContext meta (fst <$> vars) indices solution
 
 addAndCheckLambdas
   :: Context v
   -> Meta.Index
+  -> Tsil Plicity
   -> IntSeq Var
   -> Syntax.Term v'
   -> M (Syntax.Term v')
-addAndCheckLambdas outerContext meta vars term =
-  case vars of
-    IntSeq.Empty ->
+addAndCheckLambdas outerContext meta plicities vars term =
+  case (plicities, vars) of
+    (Tsil.Empty, IntSeq.Empty) ->
       pure term
 
-    vars' IntSeq.:> var -> do
+    (plicities' Tsil.:> plicity, vars' IntSeq.:> var) -> do
       let
         name =
           Context.lookupVarName var outerContext
@@ -657,8 +661,11 @@ addAndCheckLambdas outerContext meta vars term =
           type_
       let
         term' =
-          Syntax.Lam (Bindings.Unspanned name) type' Explicit (Syntax.succ term)
-      addAndCheckLambdas outerContext meta vars' term'
+          Syntax.Lam (Bindings.Unspanned name) type' plicity (Syntax.succ term)
+      addAndCheckLambdas outerContext meta plicities' vars' term'
+
+    _ ->
+      panic "addAndCheckLambdas length mismatch"
 
 checkValueSolution
   :: Context v
