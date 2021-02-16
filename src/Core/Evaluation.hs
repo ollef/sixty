@@ -195,7 +195,10 @@ apply fun plicity arg =
   case fun of
     Domain.Lam _ _  plicity' closure
       | plicity == plicity' ->
-      evaluateClosure closure arg
+        evaluateClosure closure arg
+
+      | otherwise ->
+        panic "Core.Evaluation: plicity mismatch"
 
     Domain.Neutral hd spine ->
       pure $ Domain.Neutral hd $ spine Domain.:> Domain.App plicity arg
