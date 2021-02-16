@@ -49,7 +49,7 @@ runTask sourceDirectories files prettyError task = do
     writeErrors :: Writer TaskKind Query a -> [Error] -> Task Query ()
     writeErrors (Writer q) errs =
       unless (null errs) $
-        atomicModifyIORef errorsVar $ (, ()) . DHashMap.insert q (Const errs)
+        atomicModifyIORef' errorsVar $ (, ()) . DHashMap.insert q (Const errs)
 
     ignoreTaskKind :: Query a -> TaskKind -> Task Query ()
     ignoreTaskKind _ _ =
@@ -220,7 +220,7 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
       writeErrors :: Writer TaskKind Query a -> [Error] -> Task Query ()
       writeErrors (Writer key) errs = do
         errs' <- mapM (prettyError <=< Error.Hydrated.fromError) errs
-        atomicModifyIORef (_errorsVar state) $
+        atomicModifyIORef' (_errorsVar state) $
           (, ()) . if null errs' then DHashMap.delete key else DHashMap.insert key (Const errs')
 
       rules :: Rules Query
@@ -239,7 +239,7 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
                 let
                   h =
                     Const $ has' @Hashable @Identity query $ hash $ Identity value
-                atomicModifyIORef (_hashesVar state) $
+                atomicModifyIORef' (_hashesVar state) $
                   (, ()) . DHashMap.insert query h
                 pure h
           ) $
@@ -254,9 +254,9 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
         readIORef $ _errorsVar state
 
       Prune -> do
-        atomicModifyIORef (_tracesVar state) $
+        atomicModifyIORef' (_tracesVar state) $
           (, ()) . DHashMap.intersectionWithKey (\_ _ t -> t) started
-        atomicModifyIORef (_errorsVar state) $ \errors -> do
+        atomicModifyIORef' (_errorsVar state) $ \errors -> do
           let
             errors' = DHashMap.intersectionWithKey (\_ _ e -> e) started errors
           (errors', errors')
@@ -305,7 +305,7 @@ pooledForConcurrentlyIO_ as f = do
   processCount <- getNumCapabilities
   let
     go =
-      join $ atomicModifyIORef todoRef $ \todo ->
+      join $ atomicModifyIORef' todoRef $ \todo ->
         case todo of
           [] ->
             (todo, pure ())
@@ -331,7 +331,7 @@ pooledForConcurrentlyIO as f = do
   processCount <- getNumCapabilities
   let
     go =
-      join $ atomicModifyIORef todoRef $ \todo ->
+      join $ atomicModifyIORef' todoRef $ \todo ->
         case todo of
           [] ->
             (todo, pure ())

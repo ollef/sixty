@@ -430,7 +430,7 @@ lookupVarValue var context =
 newMeta :: Domain.Type -> Context v -> M Domain.Value
 newMeta type_ context = do
   closedType <- piBoundVars context type_
-  i <- atomicModifyIORef (metas context) $ Meta.insert closedType (span context)
+  i <- atomicModifyIORef' (metas context) $ Meta.insert closedType (span context)
   pure $ Domain.Neutral (Domain.Meta i) $ Domain.Apps ((,) Explicit . Domain.var <$> IntSeq.toTsil (boundVars context))
 
 newMetaType :: Context v -> M Domain.Value
@@ -596,7 +596,7 @@ report context err =
       Error.Elaboration (scopeKey context) $
       Error.Spanned (span context) err
   in
-  atomicModifyIORef (errors context) $ \errs ->
+  atomicModifyIORef' (errors context) $ \errs ->
     (errs Tsil.:> err', ())
 
 reportParseError :: Context v -> Error.Parsing -> M ()
@@ -610,7 +610,7 @@ reportParseError context err = do
     let
       err' =
         Error.Parse filePath err
-    atomicModifyIORef (errors context) $ \errs ->
+    atomicModifyIORef' (errors context) $ \errs ->
       (errs Tsil.:> err', ())
 
 try :: Context v -> M a -> M (Maybe a)
@@ -642,14 +642,14 @@ zonk context term = do
         Nothing -> do
           solution <- lookupMeta index context
           case solution of
-            Meta.Unsolved _ _ -> do
-              atomicModifyIORef metasRef $ \indexMap' ->
+            Meta.Unsolved {} -> do
+              atomicModifyIORef' metasRef $ \indexMap' ->
                 (IntMap.insert index Nothing indexMap', ())
               pure Nothing
 
             Meta.Solved term' _ -> do
               term'' <- Zonking.zonkTerm (Environment.empty $ scopeKey context) zonkMeta zonkPostponed term'
-              atomicModifyIORef metasRef $ \indexMap' ->
+              atomicModifyIORef' metasRef $ \indexMap' ->
                 (IntMap.insert index (Just term'') indexMap', ())
               pure $ Just term''
 
@@ -664,13 +664,13 @@ zonk context term = do
           solution <- lookupPostponedCheck index context
           case solution of
             Unchecked {} -> do
-              atomicModifyIORef postponedRef $ \indexMap' ->
+              atomicModifyIORef' postponedRef $ \indexMap' ->
                 (IntMap.insert index Nothing indexMap', ())
               pure Nothing
 
             Checked term' -> do
               term'' <- Zonking.zonkTerm env zonkMeta zonkPostponed $ Syntax.coerce term'
-              atomicModifyIORef postponedRef $ \indexMap' ->
+              atomicModifyIORef' postponedRef $ \indexMap' ->
                 (IntMap.insert index (Just $ Syntax.coerce term'') indexMap', ())
               pure $ Just term''
 
