@@ -1042,9 +1042,7 @@ insertMetasReturningSyntax
   -> M ([(Plicity, Syntax.Term v)], Domain.Type)
 insertMetasReturningSyntax context until type_ = do
   (args, res) <- insertMetas context until type_
-  args' <- forM args $ \(plicity, arg) -> do
-    arg' <- readback context arg
-    pure (plicity, arg')
+  args' <- mapM (mapM $ readback context) args
   pure (args', res)
 
 insertMetas
