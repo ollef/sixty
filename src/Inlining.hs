@@ -125,7 +125,7 @@ evaluate dup env term =
       panic "Inlining: Can't handle postponed check"
 
     Syntax.Let name term' type_ body
-      | duplicable term' -> do
+      | dup term' -> do
         value <- evaluate dup env term'
         (env', _) <- Environment.extendValue env value
         evaluate dup env' body
