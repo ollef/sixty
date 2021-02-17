@@ -5,8 +5,10 @@
 {-# language ViewPatterns #-}
 module Elaboration where
 
-import Protolude hiding (Seq, force, check, evaluate, until)
+import Protolude hiding (IntMap, Seq, force, check, evaluate, until)
 
+import Data.Coerce
+import Data.Functor.Compose
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
@@ -14,15 +16,14 @@ import qualified Data.HashSet as HashSet
 import Data.IORef.Lifted
 import Data.Text.Prettyprint.Doc (Doc)
 import Rock
-import Data.Coerce
 
+import Boxity
 import qualified Builtin
 import Core.Binding (Binding)
 import qualified Core.Binding as Binding
 import qualified Core.Bindings as Bindings
 import qualified Core.Domain as Domain
 import qualified Core.Evaluation as Evaluation
-import qualified Elaboration.Meta as Meta
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
 import qualified Data.IntMap as IntMap
@@ -34,14 +35,17 @@ import Elaboration.Context (Context)
 import qualified Elaboration.Context as Context
 import qualified Elaboration.Matching as Matching
 import Elaboration.Matching.SuggestedName as SuggestedName
+import qualified Elaboration.Meta as Meta
 import qualified Elaboration.Metas as Metas
 import qualified Elaboration.Substitution as Substitution
 import qualified Elaboration.Unification as Unification
+import qualified Elaboration.ZonkPostponedChecks as ZonkPostponedChecks
 import qualified Environment
 import Error (Error)
 import qualified Error
 import qualified Error.Hydrated as Error
 import qualified Flexibility
+import qualified Index
 import qualified Inlining
 import Literal (Literal)
 import qualified Literal
@@ -56,7 +60,6 @@ import qualified Span
 import qualified Surface.Syntax as Surface
 import Telescope (Telescope)
 import qualified Telescope
-import qualified Elaboration.ZonkPostponedChecks as ZonkPostponedChecks
 import Var (Var)
 
 inferTopLevelDefinition
@@ -114,25 +117,25 @@ checkDefinition context def expectedType =
   case def of
     Surface.TypeDeclaration _ type_ -> do
       type' <- check context type_ expectedType
-      pure $ Syntax.TypeDeclaration type'
+      postProcessDefinition context $ Syntax.TypeDeclaration type'
 
     Surface.ConstantDefinition clauses -> do
       let
         clauses' =
           [ Clauses.Clause clause mempty | (_, clause) <- clauses]
       term' <- Clauses.check context clauses' expectedType
-      pure $ Syntax.ConstantDefinition term'
+      postProcessDefinition context $ Syntax.ConstantDefinition term'
 
     Surface.DataDefinition span boxity params constrs -> do
       (tele, type_) <- inferDataDefinition context span params constrs mempty
       type' <- evaluate context type_
       success <- Context.try_ context $ Unification.unify context Flexibility.Rigid type' expectedType
       if success then
-        pure $ Syntax.DataDefinition boxity tele
+        postProcessDataDefinition context boxity tele
 
       else do
         expectedType' <- readback context expectedType
-        pure $
+        postProcessDefinition context $
           Syntax.ConstantDefinition $
           Syntax.App (Syntax.Global Builtin.fail) Explicit expectedType'
 
@@ -144,19 +147,28 @@ inferDefinition context def =
   case def of
     Surface.TypeDeclaration _ type_ -> do
       type' <- check context type_ Builtin.Type
-      pure (Syntax.TypeDeclaration type', Builtin.Type)
+      def' <- postProcessDefinition context $ Syntax.TypeDeclaration type'
+      pure (def', Builtin.Type)
 
     Surface.ConstantDefinition clauses -> do
       let
         clauses' =
           [ Clauses.Clause clause mempty | (_, clause) <- clauses]
       (term', type_) <- Clauses.infer context clauses'
-      pure (Syntax.ConstantDefinition term', type_)
+      def' <- postProcessDefinition context $ Syntax.ConstantDefinition term'
+      pure (def', type_)
 
     Surface.DataDefinition span boxity params constrs -> do
       (tele, type_) <- inferDataDefinition context span params constrs mempty
       type' <- evaluate context type_
-      pure (Syntax.DataDefinition boxity tele, type')
+      def' <- postProcessDataDefinition context boxity tele
+      pure (def', type')
+
+postProcessDefinition :: Context v -> Syntax.Definition -> M Syntax.Definition
+postProcessDefinition context def = do
+  Context.inferAllPostponedChecks context
+  postponed <- readIORef $ Context.postponed context
+  pure $ ZonkPostponedChecks.zonkDefinition (Context.checks postponed) def
 
 -------------------------------------------------------------------------------
 
@@ -166,16 +178,13 @@ inferDataDefinition
   -> [(Surface.SpannedName, Surface.Type, Plicity)]
   -> [Surface.ConstructorDefinition]
   -> Tsil (Plicity, Var)
-  -> M (Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v, Syntax.Type v)
+  -> M (Telescope Binding Syntax.Type (Compose Syntax.ConstructorDefinitions Index.Succ) v, Syntax.Type v)
 inferDataDefinition context thisSpan preParams constrs paramVars =
   case preParams of
     [] -> do
       let
         Scope.KeyedName _ qualifiedThisName@(Name.Qualified _ thisName) =
           Context.scopeKey context
-
-        this =
-          Syntax.Global qualifiedThisName
 
       thisType <-
         Syntax.fromVoid <$>
@@ -187,33 +196,28 @@ inferDataDefinition context thisSpan preParams constrs paramVars =
 
       thisType' <- evaluate context thisType
 
-      (context', var) <-
+      (context', _) <-
         Context.extendPre context (Surface.SpannedName thisSpan thisName) thisType'
-
-      lazyReturnType <-
-        lazy $
-          readback context' $
-          Domain.Neutral (Domain.Global qualifiedThisName) $
-          Domain.Apps $ second Domain.var <$> paramVars
 
       constrs' <- forM constrs $ \case
         Surface.GADTConstructors cs type_ -> do
-          type' <- checkConstructorType context' type_ var paramVars
-          type'' <- Substitution.let_ context this type'
-          pure [(constr, type'') | (_, constr) <- cs]
+          type' <- check context' type_ Builtin.Type
+          pure [(constr, type') | (_, constr) <- cs]
 
         Surface.ADTConstructor _ constr types -> do
           types' <- forM types $ \type_ ->
             check context' type_ Builtin.Type
 
-          returnType <- force lazyReturnType
+          returnType <-
+            readback context' $
+              Domain.Neutral (Domain.Global qualifiedThisName) $
+              Domain.Apps $ second Domain.var <$> paramVars
           let
             type_ =
               Syntax.funs types' Explicit returnType
-          type' <- Substitution.let_ context this type_
-          pure [(constr, type')]
+          pure [(constr, type_)]
       pure
-        ( Telescope.Empty (Syntax.ConstructorDefinitions $ OrderedHashMap.fromList $ concat constrs')
+        ( Telescope.Empty (Compose $ Syntax.ConstructorDefinitions $ OrderedHashMap.fromList $ concat constrs')
         , Syntax.Global Builtin.TypeName
         )
 
@@ -259,51 +263,84 @@ varPis context env vars target =
 
       pure $ Syntax.Pi binding domain' plicity target'
 
-checkConstructorType
-  :: Context v
-  -> Surface.Term
-  -> Var
-  -> Tsil (Plicity, Var)
-  -> M (Syntax.Term v)
-checkConstructorType context term@(Surface.Term span _) dataVar paramVars = do
-  let
-    context' =
-      Context.spanned span context
-  constrType <- check context' term Builtin.Type
-  maybeConstrType'' <- Context.try context' $ goTerm context' constrType
-  pure $
-    fromMaybe
-      (Syntax.App (Syntax.Global Builtin.fail) Explicit Builtin.type_)
-      maybeConstrType''
+postProcessDataDefinition
+   :: Context Void
+   -> Boxity.Boxity
+   -> Telescope Binding Syntax.Type (Compose Syntax.ConstructorDefinitions Index.Succ) Void
+   -> M Syntax.Definition
+postProcessDataDefinition outerContext boxity outerTele = do
+  Context.inferAllPostponedChecks outerContext
+  postponed <- readIORef $ Context.postponed outerContext
+  Syntax.DataDefinition boxity <$> go outerContext postponed outerTele mempty
   where
-    goTerm :: Context v -> Syntax.Term v -> M (Syntax.Term v)
-    goTerm context' constrType =
-      case constrType of
-        Syntax.Spanned span' constrType' -> do
-          constrType'' <- goTerm (Context.spanned span' context') constrType'
-          pure $ Syntax.Spanned span' constrType''
+    go
+      :: Context v
+      -> Context.PostponedChecks
+      -> Telescope Binding Syntax.Type (Compose Syntax.ConstructorDefinitions Index.Succ) v
+      -> Tsil (Plicity, Var)
+      -> M (Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v)
+    go context postponed tele paramVars =
+      case tele of
+        Telescope.Empty (Compose (Syntax.ConstructorDefinitions constructorDefinitions)) -> do
+          let
+            Scope.KeyedName _ qualifiedThisName =
+              Context.scopeKey context
 
-        Syntax.Pi binding domain plicity target -> do
-          domain' <- evaluate context' domain
-          (context'', _) <- Context.extend context' (Binding.toName binding) domain'
-          target' <- goTerm context'' target
-          pure $ Syntax.Pi binding domain plicity target'
+            this =
+              Syntax.Global qualifiedThisName
 
-        Syntax.Fun domain plicity target -> do
-          target' <- goTerm context' target
-          pure $ Syntax.Fun domain plicity target'
+          map (Telescope.Empty . Syntax.ConstructorDefinitions) $ OrderedHashMap.forMUnordered constructorDefinitions $ \constructorType -> do
+            let
+              zonkedConstructorType =
+                ZonkPostponedChecks.zonkTerm (Context.checks postponed) constructorType
+            constructorType' <- Substitution.let_ context this zonkedConstructorType
+            maybeConstructorType <- Context.try context $ addConstructorIndexEqualities context paramVars constructorType'
+            pure $
+              fromMaybe
+                (Syntax.App (Syntax.Global Builtin.fail) Explicit Builtin.type_)
+                maybeConstructorType
 
-        (Syntax.appsView -> (hd@(Syntax.varView -> Just headIndex), indices))
-          | Context.lookupIndexVar headIndex context' == dataVar ->
-            termIndexEqualities context' (toList indices) (toList paramVars) hd mempty
+        Telescope.Extend name type_ plicity tele' -> do
+          typeValue <- evaluate context type_
+          (context', paramVar) <- Context.extend context (Binding.toName name) typeValue
+          let
+            zonkedType =
+              ZonkPostponedChecks.zonkTerm (Context.checks postponed) type_
+          Telescope.Extend name zonkedType plicity <$> go context' postponed tele' (paramVars Tsil.:> (plicity, paramVar))
 
-        _ -> do
-          constrType' <- evaluate context' constrType
-          goValue context' constrType'
+
+addConstructorIndexEqualities :: Context v -> Tsil (Plicity, Var) -> Syntax.Term v -> M (Syntax.Term v)
+addConstructorIndexEqualities context paramVars constrType =
+  case constrType of
+    Syntax.Spanned span' constrType' -> do
+      constrType'' <- addConstructorIndexEqualities (Context.spanned span' context) paramVars constrType'
+      pure $ Syntax.Spanned span' constrType''
+
+    Syntax.Pi binding domain plicity target -> do
+      domain' <- evaluate context domain
+      (context'', _) <- Context.extend context (Binding.toName binding) domain'
+      target' <- addConstructorIndexEqualities context'' paramVars target
+      pure $ Syntax.Pi binding domain plicity target'
+
+    Syntax.Fun domain plicity target -> do
+      target' <- addConstructorIndexEqualities context paramVars target
+      pure $ Syntax.Fun domain plicity target'
+
+    (Syntax.appsView -> (hd@(Syntax.globalView -> Just headGlobal), indices))
+      | headGlobal == dataName ->
+        termIndexEqualities context (toList indices) (toList paramVars) hd mempty
+
+    _ -> do
+      constrType' <- evaluate context constrType
+      goValue context constrType'
+
+  where
+    Scope.KeyedName _ dataName =
+      Context.scopeKey context
 
     goValue :: Context v -> Domain.Value -> M (Syntax.Term v)
-    goValue context' constrType = do
-      constrType' <- Context.forceHead context constrType
+    goValue context' constrTypeValue = do
+      constrType' <- Context.forceHead context constrTypeValue
       case constrType' of
         Domain.Pi binding domain plicity targetClosure -> do
           domain' <- readback context' domain
@@ -317,18 +354,18 @@ checkConstructorType context term@(Surface.Term span _) dataVar paramVars = do
           target' <- goValue context' target
           pure $ Syntax.Fun domain' plicity target'
 
-        Domain.Neutral (Domain.Var headVar) (Domain.appsView -> Just indices)
-          | headVar == dataVar ->
+        Domain.Neutral (Domain.Global headGlobal) (Domain.appsView -> Just indices)
+          | headGlobal == dataName ->
             valueIndexEqualities context' (toList indices) (toList paramVars)
 
         _ -> do
           f <- Unification.tryUnify
             context'
-            constrType
+            constrTypeValue
             (Domain.Neutral
-              (Domain.Var dataVar)
+              (Domain.Global dataName)
               (Domain.Apps $ second Domain.var <$> paramVars))
-          f <$> readback context' constrType
+          f <$> readback context' constrTypeValue
 
     termIndexEqualities
       :: Context v
@@ -400,7 +437,7 @@ checkConstructorType context term@(Surface.Term span _) dataVar paramVars = do
 
         ([], []) ->
           readback context' $
-            Domain.Neutral (Domain.Var dataVar) $
+            Domain.Neutral (Domain.Global dataName) $
             Domain.Apps $ second Domain.var <$> paramVars
 
         _ ->

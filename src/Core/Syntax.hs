@@ -77,6 +77,18 @@ appsView term =
     _ ->
       (term, mempty)
 
+globalView :: Term v -> Maybe Name.Qualified
+globalView term =
+  case term of
+    Global v ->
+      Just v
+
+    Spanned _ term' ->
+      globalView term'
+
+    _ ->
+      Nothing
+
 varView :: Term v -> Maybe (Index v)
 varView term =
   case term of
