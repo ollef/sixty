@@ -16,7 +16,6 @@ import qualified Meta
 import Monad
 import qualified Name
 import Plicity
-import qualified Postponement
 import qualified Scope
 import qualified Span
 import Telescope (Telescope)
@@ -74,7 +73,6 @@ data Value
   | Con !Name.QualifiedConstructor
   | Lit !Literal
   | Meta !Meta.Index
-  | PostponedCheck !Postponement.Index !Value
   | Let !Bindings !Var !Value !Type !Value
   | Pi !Binding !Var !Type !Plicity !Type
   | Fun !Type !Plicity !Type
@@ -123,8 +121,8 @@ evaluate dup env term =
     Syntax.Meta meta ->
       pure $ Meta meta
 
-    Syntax.PostponedCheck index term' ->
-      PostponedCheck index <$> evaluate dup env term'
+    Syntax.PostponedCheck {} ->
+      panic "Inlining: Can't handle postponed check"
 
     Syntax.Let name term' type_ body
       | duplicable term' -> do
@@ -221,9 +219,6 @@ readback env value =
 
     Meta meta ->
       Syntax.Meta meta
-
-    PostponedCheck index value' ->
-      Syntax.PostponedCheck index $ readback env value'
 
     Let name var term type_ body -> do
       let
