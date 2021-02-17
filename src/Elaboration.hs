@@ -525,8 +525,8 @@ elaborateUnspanned context term mode canPostpone = do
         let
           name =
             Binding.toName binding
-        (context', v) <- Context.extend context name domain
-        target <- Evaluation.evaluateClosure targetClosure $ Domain.var v
+        (context', var) <- Context.extend context name domain
+        target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
         domain' <- readback context domain
         Checked term' <- elaborateUnspanned context' term (Check target) Context.CanPostpone
         pure $ Checked $ Syntax.Lam (Bindings.Unspanned name) domain' plicity term'
