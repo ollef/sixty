@@ -27,7 +27,8 @@ check argumentFiles printElaborated = do
   ((), errs) <- Driver.runTask sourceDirectories filePaths Error.Hydrated.pretty $
     if printElaborated then
       withAsync (void Driver.checkAll) $ \checkedAll -> do
-        forM_ filePaths $ \filePath -> do
+        inputFiles <- fetch Query.InputFiles
+        forM_ inputFiles $ \filePath -> do
           (module_, _, defs) <- fetch $ Query.ParsedFile filePath
           let
             names =
