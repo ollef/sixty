@@ -64,6 +64,19 @@ fold f tele =
     Extend name t plicity scope ->
       f name t plicity $ Telescope.fold f scope
 
+foldr
+  :: (forall v'. n -> t v' -> Plicity -> Scope result v' -> result v')
+  -> (forall v'. k v' -> result v')
+  -> Telescope n t k v
+  -> result v
+foldr f g tele =
+  case tele of
+    Empty k ->
+      g k
+
+    Extend name t plicity scope ->
+      f name t plicity $ Telescope.foldr f g scope
+
 fromVoid :: Telescope n t k Void -> Telescope n t k v
 fromVoid = unsafeCoerce
 
