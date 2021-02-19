@@ -1129,8 +1129,8 @@ tryResolveConstructor context scopeEntry type_ = do
     entryConstrs =
       Scope.entryConstructors scopeEntry
 
-  maybeExpectedTypeName <- Elaboration.getExpectedTypeName context type_
-  case Elaboration.resolveConstructor entryConstrs mempty maybeExpectedTypeName of
+  resolution <- Elaboration.resolveConstructor entryConstrs mempty $ Elaboration.getExpectedTypeName context type_
+  case resolution of
     Left _ ->
       pure Nothing
 

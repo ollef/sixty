@@ -628,13 +628,14 @@ elaborateUnspanned context term mode canPostpone = do
               result context mode (Syntax.Global qualifiedName) type'
 
             Just (Scope.Constructors constructorCandidates dataCandidates) -> do
-              maybeExpectedTypeName <- case mode of
-                Check expectedType ->
-                  getExpectedTypeName context expectedType
+              resolution <- resolveConstructor constructorCandidates dataCandidates $
+                case mode of
+                  Check expectedType ->
+                    getExpectedTypeName context expectedType
 
-                Infer m ->
-                  m
-              case resolveConstructor constructorCandidates dataCandidates maybeExpectedTypeName of
+                  Infer m ->
+                    m
+              case resolution of
                 Left blockingMeta ->
                   case (canPostpone, mode) of
                     (Context.CanPostpone, Infer _) ->
@@ -945,53 +946,45 @@ data ResolvedConstructor
 resolveConstructor
   :: HashSet Name.QualifiedConstructor
   -> HashSet Name.Qualified
-  -> Maybe (Either Meta.Index Name.Qualified)
-  -> Either Meta.Index ResolvedConstructor
-resolveConstructor constructorCandidates dataCandidates maybeExpectedTypeName =
-  case maybeExpectedTypeName of
-    Nothing ->
-      Right $
-        case (toList constructorCandidates, toList dataCandidates) of
-          ([constr], []) ->
-            ResolvedConstructor constr
+  -> M (Maybe (Either Meta.Index Name.Qualified))
+  -> M (Either Meta.Index ResolvedConstructor)
+resolveConstructor constructorCandidates dataCandidates getExpectedTypeName_ =
+  case (toList constructorCandidates, toList dataCandidates) of
+    ([constr], []) ->
+      pure $ Right $ ResolvedConstructor constr
 
-          ([], [data_]) ->
-            ResolvedData data_
+    ([], [data_]) ->
+      pure $ Right $ ResolvedData data_
 
-          _ ->
-            Ambiguous constructorCandidates dataCandidates
+    _ -> do
+      maybeExpectedTypeName <- getExpectedTypeName_
+      pure $ case maybeExpectedTypeName of
+        Nothing ->
+          Right $ Ambiguous constructorCandidates dataCandidates
 
-    Just (Left blockingMeta) ->
-      case (toList constructorCandidates, toList dataCandidates) of
-        ([constr], []) ->
-          Right $ ResolvedConstructor constr
-
-        ([], [data_]) ->
-          Right $ ResolvedData data_
-
-        _ ->
+        Just (Left blockingMeta) ->
           Left blockingMeta
 
-    Just (Right Builtin.TypeName) ->
-      case toList dataCandidates of
-        [data_] ->
-          Right $ ResolvedData data_
+        Just (Right Builtin.TypeName) ->
+          case toList dataCandidates of
+            [data_] ->
+              Right $ ResolvedData data_
 
-        _ ->
-          Right $ Ambiguous mempty dataCandidates
+            _ ->
+              Right $ Ambiguous mempty dataCandidates
 
-    Just (Right expectedTypeName) -> do
-      let
-        constrs' =
-          HashSet.filter
-            (\(Name.QualifiedConstructor constrTypeName _) -> constrTypeName == expectedTypeName)
-            constructorCandidates
-      case toList constrs' of
-        [constr] ->
-          Right $ ResolvedConstructor constr
+        Just (Right expectedTypeName) -> do
+          let
+            constrs' =
+              HashSet.filter
+                (\(Name.QualifiedConstructor constrTypeName _) -> constrTypeName == expectedTypeName)
+                constructorCandidates
+          case toList constrs' of
+            [constr] ->
+              Right $ ResolvedConstructor constr
 
-        _ ->
-          Right $ Ambiguous constrs' mempty
+            _ ->
+              Right $ Ambiguous constrs' mempty
 
 getModeExpectedTypeName
   :: Context v

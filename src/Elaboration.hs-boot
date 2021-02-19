@@ -47,8 +47,8 @@ data ResolvedConstructor
 resolveConstructor
   :: HashSet Name.QualifiedConstructor
   -> HashSet Name.Qualified
-  -> Maybe (Either Meta.Index Name.Qualified)
-  -> Either Meta.Index ResolvedConstructor
+  -> M (Maybe (Either Meta.Index Name.Qualified))
+  -> M (Either Meta.Index ResolvedConstructor)
 
 inferenceFailed
   :: Context v
