@@ -201,28 +201,28 @@ elaborateSingle
   -> Domain.Type
   -> M (Syntax.Term v)
 elaborateSingle context scrutinee plicity pat@(Surface.Pattern patSpan _) rhs@(Surface.Term rhsSpan _) expectedType = do
-    let
-      scrutineeValue =
-        Domain.var scrutinee
+  let
+    scrutineeValue =
+      Domain.var scrutinee
 
-      scrutineeType =
-        Context.lookupVarType scrutinee context
+    scrutineeType =
+      Context.lookupVarType scrutinee context
 
-    usedClauses <- newIORef mempty
+  usedClauses <- newIORef mempty
 
-    elaborateWithCoverage context Config
-      { _expectedType = expectedType
-      , _scrutinees = pure (plicity, scrutineeValue)
-      , _clauses =
-        [ Clause
-          { _span = Span.add patSpan rhsSpan
-          , _matches = [Match scrutineeValue scrutineeValue plicity pat scrutineeType]
-          , _rhs = rhs
-          }
-        ]
-      , _usedClauses = usedClauses
-      , _matchKind = Error.Lambda
-      }
+  elaborateWithCoverage context Config
+    { _expectedType = expectedType
+    , _scrutinees = pure (plicity, scrutineeValue)
+    , _clauses =
+      [ Clause
+        { _span = Span.add patSpan rhsSpan
+        , _matches = [Match scrutineeValue scrutineeValue plicity pat scrutineeType]
+        , _rhs = rhs
+        }
+      ]
+    , _usedClauses = usedClauses
+    , _matchKind = Error.Lambda
+    }
 
 -------------------------------------------------------------------------------
 
