@@ -525,7 +525,7 @@ instantiatedMetaType
   -> Tsil (Plicity, Domain.Value)
   -> M Domain.Type
 instantiatedMetaType context meta args = do
-  solution <- Context.lookupMeta meta context
+  solution <- Context.lookupMeta context meta
   case solution of
     Meta.Unsolved metaType _ _ _ -> do
       metaType' <-
@@ -853,7 +853,7 @@ pruneMeta
   -> Tsil Bool
   -> M ()
 pruneMeta context meta allowedArgs = do
-  solution <- Context.lookupMeta meta context
+  solution <- Context.lookupMeta context meta
   -- putText $ "pruneMeta " <> show meta
   -- putText $ "pruneMeta " <> show allowedArgs
   case solution of

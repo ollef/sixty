@@ -480,10 +480,10 @@ piBoundVars context type_ = do
           pis vars' term'
 
 lookupMeta
-  :: Meta.Index
-  -> Context v
+  :: Context v
+  -> Meta.Index
   -> M Meta.Var
-lookupMeta i context = do
+lookupMeta context i = do
   m <- readIORef (metas context)
   pure $ Meta.lookup i m
 
@@ -531,7 +531,7 @@ forceHead context value =
         forceHead context value'
 
     Domain.Neutral (Domain.Meta metaIndex) spine -> do
-      meta <- lookupMeta metaIndex context
+      meta <- lookupMeta context metaIndex
 
       case meta of
         Meta.Solved headValue _ -> do
@@ -565,7 +565,7 @@ forceHeadGlue context value =
         pure $ Domain.Glued (Domain.Var var) spine value'
 
     Domain.Neutral (Domain.Meta metaIndex) spine -> do
-      meta <- lookupMeta metaIndex context
+      meta <- lookupMeta context metaIndex
 
       case meta of
         Meta.Solved headValue _ -> do
@@ -658,7 +658,7 @@ zonk context term = do
       indexMap <- readIORef metasRef
       case IntMap.lookup index indexMap of
         Nothing -> do
-          solution <- lookupMeta index context
+          solution <- lookupMeta context index
           case solution of
             Meta.Unsolved {} -> do
               atomicModifyIORef' metasRef $ \indexMap' ->

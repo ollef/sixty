@@ -75,7 +75,7 @@ typeOfHead context hd =
       Evaluation.evaluate (Environment.empty $ Context.scopeKey context) type_
 
     Domain.Meta index -> do
-      solution <- Context.lookupMeta index context
+      solution <- Context.lookupMeta context index
       let
         type_ =
           case solution of
