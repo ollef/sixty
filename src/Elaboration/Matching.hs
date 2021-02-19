@@ -371,6 +371,9 @@ uncoveredScrutineePatterns context value = do
     Domain.Neutral (Domain.Var _) (_ Domain.:> _) ->
       pure []
 
+    Domain.Neutral (Domain.Meta _) _ ->
+      pure []
+
     Domain.Neutral (Domain.Global _) _ ->
       pure []
 
@@ -387,9 +390,6 @@ uncoveredScrutineePatterns context value = do
         patterns <- uncoveredScrutineePatterns context arg
         pure $ (,) plicity <$> patterns
       pure $ Pattern.Con constr <$> sequence spine''
-
-    Domain.Neutral (Domain.Meta _) _ ->
-      pure []
 
     Domain.Glued _ _ value'' -> do
       value''' <- force value''
