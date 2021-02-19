@@ -19,8 +19,6 @@ zipWithTuple : forall a b c n. (a -> b -> c) -> Tuple (Vector n a) (Vector n b) 
 zipWithTuple f (MkTuple Nil Nil) = Nil
 zipWithTuple f (MkTuple (Cons a as') (Cons b bs')) = Cons (f a b) (zipWithTuple f (MkTuple as' bs'))
 
-data Bool = False | True
-
 data List a = Nil | Cons a (List a)
 
 zipWithListCase : forall a b c. (a -> b -> c) -> List a -> List b -> List c
