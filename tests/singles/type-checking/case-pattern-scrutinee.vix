@@ -28,3 +28,12 @@ zipWithListCase f as bs =
       Cons _ _ -> Cons (f a b) (zipWithListCase f as' bs')
       -- as is a Cons cell, so no Nil case
     MkTuple _ _ -> Nil
+
+zipWithListCaseLet : forall a b c. (a -> b -> c) -> List a -> List b -> List c
+zipWithListCaseLet f as bs =
+  let x = MkTuple as bs in
+  case x of
+    MkTuple (Cons a as') (Cons b bs') -> case as of
+      Cons _ _ -> Cons (f a b) (zipWithListCase f as' bs')
+      -- as is a Cons cell, so no Nil case
+    MkTuple _ _ -> Nil
