@@ -1,0 +1,10 @@
+data Bool = False | True
+
+f : Bool
+f =
+  let x : Bool
+      x = _ -- unsolved meta error expected
+  in
+  case x of
+    False -> True
+    True -> False

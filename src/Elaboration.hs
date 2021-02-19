@@ -715,11 +715,11 @@ elaborateUnspanned context term mode canPostpone = do
       case mode of
         Infer _ -> do
           expectedType <- Context.newMetaType context
-          term' <- Matching.elaborateCase context scrutinee' scrutineeType branches expectedType
+          term' <- Matching.elaborateCase context scrutinee' scrutineeType branches expectedType Context.CanPostpone
           pure $ Inferred term' expectedType
 
         Check expectedType ->
-          Checked <$> Matching.elaborateCase context scrutinee' scrutineeType branches expectedType
+          Checked <$> Matching.elaborateCase context scrutinee' scrutineeType branches expectedType Context.CanPostpone
 
     (Surface.App function argument@(Surface.Term argumentSpan _), _) -> do
       (function', functionType) <- inferAndInsertMetas context UntilExplicit function $ getModeExpectedTypeName context mode

@@ -5,19 +5,11 @@ module Elaboration.Matching where
 
 import Protolude hiding (IntMap, IntSet, force, try)
 
+import {-# source #-} qualified Elaboration
+import qualified Builtin
 import Control.Exception.Lifted
 import Control.Monad.Fail
 import Control.Monad.Trans.Maybe
-import qualified Data.HashMap.Lazy as HashMap
-import qualified Data.HashSet as HashSet
-import Data.HashSet (HashSet)
-import qualified Data.IntSeq as IntSeq
-import Data.IORef.Lifted
-import qualified Data.Set as Set
-import Rock
-import {-# source #-} qualified Elaboration
-import GHC.Exts (fromList)
-import qualified Builtin
 import Core.Binding (Binding)
 import qualified Core.Binding as Binding
 import Core.Bindings (Bindings)
@@ -30,9 +22,15 @@ import qualified Core.Domain.Telescope as Domain.Telescope
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
+import qualified Data.HashMap.Lazy as HashMap
+import qualified Data.HashSet as HashSet
+import Data.HashSet (HashSet)
 import qualified Data.IntMap as IntMap
+import qualified Data.IntSeq as IntSeq
+import Data.IORef.Lifted
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
+import qualified Data.Set as Set
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import Elaboration.Context (Context)
@@ -43,12 +41,15 @@ import qualified Elaboration.Unification.Indices as Indices
 import qualified Environment
 import qualified Error
 import qualified Flexibility
+import GHC.Exts (fromList)
 import Literal (Literal)
+import qualified Meta
 import Monad
 import Name (Name(Name))
 import qualified Name
 import Plicity
 import qualified Query
+import Rock
 import qualified Scope
 import qualified Span
 import qualified Surface.Syntax as Surface
@@ -80,41 +81,69 @@ elaborateCase
   -> Domain.Type
   -> [(Surface.Pattern, Surface.Term)]
   -> Domain.Type
+  -> Context.CanPostpone
   -> M (Syntax.Term v)
-elaborateCase context scrutinee scrutineeType branches expectedType = do
-  usedClauses <- newIORef mempty
+elaborateCase context scrutinee scrutineeType branches expectedType canPostpone = do
   scrutineeValue <- Elaboration.evaluate context scrutinee
-  isPatternScrutinee <- isPatternValue context scrutineeValue
+  blockingMetaOrIsPatternScrutinee <- runExceptT $ isPatternValue context scrutineeValue
+  case (canPostpone, blockingMetaOrIsPatternScrutinee) of
+    (Context.CanPostpone, Left blockingMeta) ->
+      postponeElaborateCase context scrutinee scrutineeType branches expectedType blockingMeta
 
-  (context', var) <-
-    if isPatternScrutinee then
-      Context.extendDef context "scrutinee" scrutineeValue scrutineeType
-    else
-      Context.extend context "scrutinee" scrutineeType
+    _ -> do
+      (context', var) <-
+        if fromRight False blockingMetaOrIsPatternScrutinee then
+          Context.extendDef context "scrutinee" scrutineeValue scrutineeType
 
-  let
-    scrutineeVarValue =
-      Domain.var var
-  term <- elaborateWithCoverage context' Config
-    { _expectedType = expectedType
-    , _scrutinees = pure (Explicit, scrutineeVarValue)
-    , _clauses =
-      [ Clause
-        { _span = Span.add patSpan rhsSpan
-        , _matches = [Match scrutineeVarValue scrutineeVarValue Explicit pat scrutineeType]
-        , _rhs = rhs'
+        else
+          Context.extend context "scrutinee" scrutineeType
+
+      let
+        scrutineeVarValue =
+          Domain.var var
+      usedClauses <- newIORef mempty
+      term <- elaborateWithCoverage context' Config
+        { _expectedType = expectedType
+        , _scrutinees = pure (Explicit, scrutineeVarValue)
+        , _clauses =
+          [ Clause
+            { _span = Span.add patSpan rhsSpan
+            , _matches = [Match scrutineeVarValue scrutineeVarValue Explicit pat scrutineeType]
+            , _rhs = rhs'
+            }
+          | (pat@(Surface.Pattern patSpan _), rhs'@(Surface.Term rhsSpan _)) <- branches
+          ]
+        , _usedClauses = usedClauses
+        , _matchKind = Error.Branch
         }
-      | (pat@(Surface.Pattern patSpan _), rhs'@(Surface.Term rhsSpan _)) <- branches
-      ]
-    , _usedClauses = usedClauses
-    , _matchKind = Error.Branch
-    }
-  scrutineeType' <- Readback.readback (Context.toEnvironment context) scrutineeType
-  pure $ Syntax.Let "scrutinee" scrutinee scrutineeType' term
+      scrutineeType' <- Readback.readback (Context.toEnvironment context) scrutineeType
+      pure $ Syntax.Let "scrutinee" scrutinee scrutineeType' term
 
-isPatternValue :: Context v -> Domain.Value -> M Bool
+postponeElaborateCase
+  :: Context v
+  -> Syntax.Term v
+  -> Domain.Type
+  -> [(Surface.Pattern, Surface.Term)]
+  -> Domain.Type
+  -> Meta.Index
+  -> M (Syntax.Term v)
+postponeElaborateCase context scrutinee scrutineeType branches expectedType blockingMeta = do
+  resultMetaValue <- Context.newMeta context expectedType
+  resultMetaTerm <- Elaboration.readback context resultMetaValue
+  postponementIndex <- Context.newPostponedCheck context blockingMeta $ \canPostpone -> do
+    resultTerm <- elaborateCase context scrutinee scrutineeType branches expectedType canPostpone
+    resultValue <- Elaboration.evaluate context resultTerm
+    success <- Context.try_ context $ Unification.unify context Flexibility.Rigid resultValue resultMetaValue
+    if success then
+      pure resultTerm
+    else
+      Elaboration.readback context $
+        Domain.Neutral (Domain.Global Builtin.fail) $ Domain.Apps $ pure (Explicit, expectedType)
+  pure $ Syntax.PostponedCheck postponementIndex resultMetaTerm
+
+isPatternValue :: Context v -> Domain.Value -> ExceptT Meta.Index M Bool
 isPatternValue context value = do
-  value' <- Context.forceHead context value
+  value' <- lift $ Context.forceHead context value
   case value' of
     Domain.Neutral (Domain.Var _) Domain.Empty ->
       pure True
@@ -125,8 +154,8 @@ isPatternValue context value = do
     Domain.Neutral (Domain.Global _) _ ->
       pure False
 
-    Domain.Neutral (Domain.Meta _) _ ->
-      pure False
+    Domain.Neutral (Domain.Meta blockingMeta) _ ->
+      throwError blockingMeta
 
     Domain.Lit _ ->
       pure True
@@ -140,7 +169,7 @@ isPatternValue context value = do
       and <$> mapM (isPatternValue context . snd) spine'
 
     Domain.Glued _ _ value'' -> do
-      value''' <- force value''
+      value''' <- lift $ force value''
       isPatternValue context value'''
 
     Domain.Lam {} ->
