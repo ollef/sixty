@@ -36,7 +36,7 @@ import qualified Elaboration.Context as Context
 import qualified Elaboration.Matching as Matching
 import Elaboration.Matching.SuggestedName as SuggestedName
 import qualified Elaboration.Meta as Meta
-import qualified Elaboration.Metas as Metas
+import qualified Elaboration.MetaInlining as MetaInlining
 import qualified Elaboration.Substitution as Substitution
 import qualified Elaboration.Unification as Unification
 import qualified Elaboration.ZonkPostponedChecks as ZonkPostponedChecks
@@ -100,7 +100,7 @@ checkDefinitionMetaSolutions key def type_ metas = do
   let
     context' = context { Context.metas = metasVar }
   metas' <- checkMetaSolutions context' metas
-  (def', type') <- Metas.inlineSolutions key metas' def type_
+  (def', type') <- MetaInlining.inlineSolutions key metas' def type_
   def'' <- Inlining.inlineDefinition key def'
   type'' <- Inlining.inlineTerm (Environment.empty key) type'
   errors <- readIORef $ Context.errors context'

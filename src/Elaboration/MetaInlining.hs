@@ -3,7 +3,7 @@
 {-# language DeriveTraversable #-}
 {-# language FlexibleContexts #-}
 {-# language OverloadedStrings #-}
-module Elaboration.Metas where
+module Elaboration.MetaInlining where
 
 import Prelude (Show (showsPrec))
 import Protolude hiding (Type, IntMap, IntSet, evaluate)
@@ -59,7 +59,7 @@ inlineSolutions scopeKey solutions def type_ = do
 
     lookupMetaIndex metas index =
       IntMap.lookupDefault
-        (panic "Elaboration.Metas.inlineSolutions: unknown index")
+        (panic "Elaboration.MetaInlining.inlineSolutions: unknown index")
         index
         metas
 
@@ -141,7 +141,7 @@ inlineSolutions scopeKey solutions def type_ = do
 
   where
     acyclic (AcyclicSCC x) = x
-    acyclic (CyclicSCC _) = panic "Elaboration.Metas.CyclicSCC"
+    acyclic (CyclicSCC _) = panic "Elaboration.MetaInlining.CyclicSCC"
 
 data Value = Value !InnerValue Occurrences
 
@@ -418,7 +418,7 @@ readback env metas (Value value occs) =
   case value of
     Var var ->
       Syntax.Var $
-        fromMaybe (panic "Elaboration.Metas.readback Var") $
+        fromMaybe (panic "Elaboration.MetaInlining.readback Var") $
           Environment.lookupVarIndex var env
 
     Global global ->
@@ -440,7 +440,7 @@ readback env metas (Value value occs) =
       in
       Syntax.apps
         (Syntax.Var $
-          fromMaybe (panic $ "Elaboration.Metas.readback Meta " <> show index) $
+          fromMaybe (panic $ "Elaboration.MetaInlining.readback Meta " <> show index) $
           Environment.lookupVarIndex var env)
         ((,) Explicit . readback env metas <$> arguments')
 
