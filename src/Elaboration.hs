@@ -592,9 +592,6 @@ elaborateUnspanned context term mode canPostpone = do
             )
 
       case (canPostpone, plicitPattern, mode') of
-        (Context.CanPostpone, _, Check expectedType@(Domain.Neutral (Domain.Meta blockingMeta) _)) -> do
-          postponeCheck context term expectedType blockingMeta
-
         (Context.CanPostpone, _, Infer _) -> do
           postponeInference context term
 
@@ -648,14 +645,9 @@ elaborateUnspanned context term mode canPostpone = do
                       Context.report context $ Error.Ambiguous name constructorCandidates dataCandidates
                       elaborationFailed context mode
 
-                Right (Ambiguous constrCandidates' dataCandidates') ->
-                  case (canPostpone, mode) of
-                    (Context.CanPostpone, Infer _) ->
-                      postponeInference context term
-
-                    _ -> do
-                      Context.report context $ Error.Ambiguous name constrCandidates' dataCandidates'
-                      elaborationFailed context mode
+                Right (Ambiguous constrCandidates' dataCandidates') -> do
+                  Context.report context $ Error.Ambiguous name constrCandidates' dataCandidates'
+                  elaborationFailed context mode
 
                 Right (ResolvedConstructor constr) -> do
                   type_ <- fetch $ Query.ConstructorType constr
