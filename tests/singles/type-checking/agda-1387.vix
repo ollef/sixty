@@ -1,0 +1,25 @@
+
+Bool : Type
+Bool = (B : _) -> B -> B -> B
+true  : Bool
+true = \_ t f. t
+false : Bool
+false = \_ t f. f
+
+Eq : forall A. A -> A -> Type
+Eq = \@{A} x y. (P : A -> Type) -> P x -> P y
+
+refl : forall A x. Eq @{A} x x
+refl = \_ px. px
+
+T : Bool -> Type
+T = \b. b _ (forall A. A -> A) Type
+
+g : (b : Bool) -> Eq b true -> T b -> Bool
+f : (b : Bool) -> T b -> Eq b true -> Bool
+
+works : Bool
+works = g _ refl (\x. x)
+
+test : Bool
+test = f _ (\x. x) refl

@@ -1,0 +1,12 @@
+Nat : Type
+Dec : Type -> Type
+True : forall A. Dec A -> Type
+fromWitness : forall P (Q : Dec P). P -> True Q
+T : Nat -> Type
+
+Coprime = forall i. T i
+
+coprime : Dec Coprime
+
+bla : Coprime -> True coprime
+bla = \c. fromWitness c

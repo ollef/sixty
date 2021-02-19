@@ -1,0 +1,5 @@
+id : forall A. A -> A
+id = \x. x
+
+test : forall A. A -> forall B. B -> A
+test = id (\x y. x)
