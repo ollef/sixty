@@ -10,7 +10,10 @@ data Equals forall T. (a b : T) where
 lhs1 : forall a b. a -> Equals a b -> b
 lhs1 x Refl = x
 
-rhs1 : Equals Nat ((\x. x) Nat)
+id : forall a. a -> a
+id x = x
+
+rhs1 : Equals Nat (id Nat)
 rhs1 = Refl
 
 lhs2 : (a : Nat) -> Equals a n -> Equals n a
