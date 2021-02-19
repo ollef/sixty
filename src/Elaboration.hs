@@ -758,12 +758,12 @@ elaborateUnspanned context term mode canPostpone = do
       result context mode result_ resultType
 
     (Surface.Wildcard, Check expectedType) -> do
-      term' <- Context.newMeta expectedType context
+      term' <- Context.newMeta context expectedType
       Checked <$> readback context term'
 
     (Surface.Wildcard, Infer _) -> do
       type_ <- Context.newMetaType context
-      term' <- Context.newMeta type_ context
+      term' <- Context.newMeta context type_
       term'' <- readback context term'
       pure $ Inferred term'' type_
 
@@ -799,7 +799,7 @@ postponeCheck
   -> Meta.Index
   -> M (Checked (Syntax.Term v))
 postponeCheck context surfaceTerm expectedType blockingMeta = do
-  resultMetaValue <- Context.newMeta expectedType context
+  resultMetaValue <- Context.newMeta context expectedType
   resultMetaTerm <- readback context resultMetaValue
   postponementIndex <- Context.newPostponedCheck context blockingMeta $ \canPostpone -> do
     Checked resultTerm <- elaborateUnspanned context surfaceTerm (Check expectedType) canPostpone
@@ -905,7 +905,7 @@ postponeImplicitApps
   -> M (Syntax.Term v, Domain.Value)
 postponeImplicitApps context function arguments functionType blockingMeta = do
   expectedType <- Context.newMetaType context
-  resultMetaValue <- Context.newMeta expectedType context
+  resultMetaValue <- Context.newMeta context expectedType
   resultMetaTerm <- readback context resultMetaValue
   postponementIndex <- Context.newPostponedCheck context blockingMeta $ \canPostpone -> do
     (resultTerm, resultType) <- inferImplicitApps context function functionType arguments canPostpone
@@ -1076,7 +1076,7 @@ insertMetas context until type_ = do
       instantiate domain plicity targetClosure
 
     (UntilTheEnd, Domain.Fun domain plicity target) -> do
-      meta <- Context.newMeta domain context
+      meta <- Context.newMeta context domain
       (args, res) <- insertMetas context until target
       pure ((plicity, meta) : args, res)
 
@@ -1120,7 +1120,7 @@ insertMetas context until type_ = do
       pure ([], type_)
   where
     instantiate domain plicity targetClosure = do
-      meta <- Context.newMeta domain context
+      meta <- Context.newMeta context domain
       target <- Evaluation.evaluateClosure targetClosure meta
       (args, res) <- insertMetas context until target
       pure ((plicity, meta) : args, res)

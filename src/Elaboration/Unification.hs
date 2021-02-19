@@ -878,7 +878,7 @@ pruneMeta context meta allowedArgs = do
     go alloweds context' type_ =
       case alloweds of
         [] -> do
-          v <- Context.newMeta type_ context'
+          v <- Context.newMeta context' type_
           checkValueSolution context' meta (Context.toEnvironment context') Flexibility.Rigid v
 
         allowed:alloweds' -> do

@@ -446,15 +446,15 @@ toPrettyablePattern context = do
 -------------------------------------------------------------------------------
 -- Meta variables
 
-newMeta :: Domain.Type -> Context v -> M Domain.Value
-newMeta type_ context = do
+newMeta :: Context v -> Domain.Type -> M Domain.Value
+newMeta context type_ = do
   (closedType, arity) <- piBoundVars context type_
   i <- atomicModifyIORef' (metas context) $ Meta.insert closedType arity (span context)
   pure $ Domain.Neutral (Domain.Meta i) $ Domain.Apps ((,) Explicit . Domain.var <$> IntSeq.toTsil (boundVars context))
 
 newMetaType :: Context v -> M Domain.Value
-newMetaType =
-  newMeta Builtin.Type
+newMetaType context =
+  newMeta context Builtin.Type
 
 piBoundVars :: Context v -> Domain.Type -> M (Syntax.Type Void, Int)
 piBoundVars context type_ = do
