@@ -1,6 +1,5 @@
 {-# language OverloadedStrings #-}
 {-# language RankNTypes #-}
-{-# language ViewPatterns #-}
 module Elaboration.Matching where
 
 import Protolude hiding (IntMap, IntSet, force, try)
@@ -775,9 +774,8 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
       tele' <- Evaluation.evaluateConstructorDefinitions (Environment.empty $ Context.scopeKey outerContext) tele
       outerType' <- Context.forceHead outerContext outerType
       case outerType' of
-        Domain.Neutral (Domain.Global typeName') spine
-          | typeName == typeName'
-          , Just params <- Domain.appsView spine ->
+        Domain.Neutral (Domain.Global typeName') (Domain.Apps params)
+          | typeName == typeName' ->
             goParams (Context.spanned span outerContext) (toList params) mempty tele'
 
         _ -> do
@@ -1055,7 +1053,7 @@ uninhabitedScrutinee :: Context v -> Domain.Value -> M Bool
 uninhabitedScrutinee context value = do
   value' <- Context.forceHead context value
   case value' of
-    Domain.Neutral (Domain.Var var) (Domain.appsView -> Just args) -> do
+    Domain.Neutral (Domain.Var var) (Domain.Apps args) -> do
       let
         varType =
           Context.lookupVarType var context
@@ -1092,7 +1090,7 @@ uninhabitedType context fuel coveredConstructors type_ = do
         Right _ ->
           False
 
-    Domain.Neutral (Domain.Global global) (Domain.appsView -> Just args) -> do
+    Domain.Neutral (Domain.Global global) (Domain.Apps args) -> do
       maybeDefinitions <- fetch $ Query.ElaboratedDefinition global
       case maybeDefinitions of
         Just (Syntax.DataDefinition _ tele, _) -> do
