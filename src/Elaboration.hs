@@ -70,7 +70,6 @@ inferTopLevelDefinition key def = do
   context <- Context.empty key
   (def', typeValue) <- inferDefinition context def
   type_ <- readback context typeValue
-  Context.inferAllPostponedChecks context
   postponed <- readIORef $ Context.postponed context
   metaVars <- readIORef $ Context.metas context
   errors <- readIORef $ Context.errors context
@@ -84,7 +83,6 @@ checkTopLevelDefinition
 checkTopLevelDefinition key def type_ = do
   context <- Context.empty key
   def' <- checkDefinition context def type_
-  Context.inferAllPostponedChecks context
   postponed <- readIORef $ Context.postponed context
   metaVars <- readIORef $ Context.metas context
   errors <- readIORef $ Context.errors context
