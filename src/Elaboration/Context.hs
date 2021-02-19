@@ -90,35 +90,6 @@ toEnvironment context =
     , glueableBefore = Index.zero
     }
 
-toPrettyableTerm :: Context v -> Syntax.Term v -> M Error.PrettyableTerm
-toPrettyableTerm context term = do
-  term' <- zonk context term
-  let
-    Scope.KeyedName _ (Name.Qualified module_ _) =
-      scopeKey context
-  pure $
-    Error.PrettyableTerm
-      module_
-      ((`lookupVarName` context) <$> toList (indices context))
-      (Syntax.coerce term')
-
-toPrettyableClosedTerm :: Context v -> Syntax.Term Void -> M Error.PrettyableTerm
-toPrettyableClosedTerm context term = do
-  term' <- zonk (emptyFrom context) term
-  let
-    Scope.KeyedName _ (Name.Qualified module_ _) =
-      scopeKey context
-  pure $ Error.PrettyableTerm module_ mempty (Syntax.coerce term')
-
-toPrettyablePattern :: Context v -> Pattern -> Error.PrettyablePattern
-toPrettyablePattern context = do
-  let
-    Scope.KeyedName _ (Name.Qualified module_ _) =
-      scopeKey context
-  Error.PrettyablePattern
-    module_
-    ((`lookupVarName` context) <$> toList (indices context))
-
 empty :: MonadBase IO m => Scope.KeyedName -> m (Context Void)
 empty key = do
   ms <- newIORef Meta.empty
@@ -157,6 +128,15 @@ emptyFrom context =
     , coveredConstructors = mempty
     , coveredLiterals = mempty
     }
+
+spanned :: Span.Relative -> Context v -> Context v
+spanned s context =
+  context
+    { span = s
+    }
+
+-------------------------------------------------------------------------------
+-- Extension
 
 extendPre
   :: Context v
@@ -396,6 +376,9 @@ dependencies context value = do
           rest <- telescopeVars context'' env' tele'
           pure $ domainVars <> IntSet.delete var rest
 
+-------------------------------------------------------------------------------
+-- Lookup
+
 lookupNameVar :: Name.Pre -> Context v -> Maybe Var
 lookupNameVar (Name.Pre name) context =
   HashMap.lookup (Name name) (nameVars context)
@@ -427,6 +410,38 @@ lookupVarType var context =
 lookupVarValue :: Var -> Context v -> Maybe Domain.Type
 lookupVarValue var context =
   IntMap.lookup var (values context)
+
+-------------------------------------------------------------------------------
+-- Prettyable terms
+
+toPrettyableTerm :: Context v -> Syntax.Term v -> M Error.PrettyableTerm
+toPrettyableTerm context term = do
+  term' <- zonk context term
+  let
+    Scope.KeyedName _ (Name.Qualified module_ _) =
+      scopeKey context
+  pure $
+    Error.PrettyableTerm
+      module_
+      ((`lookupVarName` context) <$> toList (indices context))
+      (Syntax.coerce term')
+
+toPrettyableClosedTerm :: Context v -> Syntax.Term Void -> M Error.PrettyableTerm
+toPrettyableClosedTerm context term = do
+  term' <- zonk (emptyFrom context) term
+  let
+    Scope.KeyedName _ (Name.Qualified module_ _) =
+      scopeKey context
+  pure $ Error.PrettyableTerm module_ mempty (Syntax.coerce term')
+
+toPrettyablePattern :: Context v -> Pattern -> Error.PrettyablePattern
+toPrettyablePattern context = do
+  let
+    Scope.KeyedName _ (Name.Qualified module_ _) =
+      scopeKey context
+  Error.PrettyablePattern
+    module_
+    ((`lookupVarName` context) <$> toList (indices context))
 
 -------------------------------------------------------------------------------
 -- Meta variables
@@ -511,12 +526,6 @@ solveMeta context meta term = do
 
       Just newBlockingMeta ->
         addPostponementsBlockedOnMeta context unblocked newBlockingMeta
-
-spanned :: Span.Relative -> Context v -> Context v
-spanned s context =
-  context
-    { span = s
-    }
 
 -------------------------------------------------------------------------------
 
