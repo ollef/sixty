@@ -568,6 +568,10 @@ elaborateUnspanned context term mode canPostpone = do
         Checked term' <- elaborateUnspanned context' term (Check target) Context.CanPostpone
         pure $ Checked $ Syntax.Lam (Bindings.Unspanned name) domain' plicity term'
 
+    (_, Check expectedType@(Domain.Neutral (Domain.Meta blockingMeta) _))
+      | Context.CanPostpone <- canPostpone ->
+        postponeCheck context term expectedType blockingMeta
+
     (Surface.Lam plicitPattern body@(Surface.Term bodySpan _), _) -> do
       let
         patternSpan =
@@ -798,21 +802,15 @@ postponeCheck
 postponeCheck context surfaceTerm expectedType blockingMeta = do
   resultMetaValue <- Context.newMeta expectedType context
   resultMetaTerm <- readback context resultMetaValue
-  postponementIndex <-
-    Context.newPostponedCheck
-      context
-      blockingMeta
-      expectedType
-      (\canPostpone -> do
-        Checked resultTerm <- elaborateUnspanned context surfaceTerm (Check expectedType) canPostpone
-        resultValue <- evaluate context resultTerm
-        success <- Context.try_ context $ Unification.unify context Flexibility.Rigid resultValue resultMetaValue
-        if success then
-          pure resultTerm
-        else
-          readback context $
-            Domain.Neutral (Domain.Global Builtin.fail) $ Domain.Apps $ pure (Explicit, expectedType)
-      )
+  postponementIndex <- Context.newPostponedCheck context blockingMeta $ \canPostpone -> do
+    Checked resultTerm <- elaborateUnspanned context surfaceTerm (Check expectedType) canPostpone
+    resultValue <- evaluate context resultTerm
+    success <- Context.try_ context $ Unification.unify context Flexibility.Rigid resultValue resultMetaValue
+    if success then
+      pure resultTerm
+    else
+      readback context $
+        Domain.Neutral (Domain.Global Builtin.fail) $ Domain.Apps $ pure (Explicit, expectedType)
   pure $ Checked $ Syntax.PostponedCheck postponementIndex resultMetaTerm
 
 postponeInference
@@ -910,24 +908,17 @@ postponeImplicitApps context function arguments functionType blockingMeta = do
   expectedType <- Context.newMetaType context
   resultMetaValue <- Context.newMeta expectedType context
   resultMetaTerm <- readback context resultMetaValue
-  postponementIndex <-
-    Context.newPostponedCheck
-      context
-      blockingMeta
-      expectedType
-      (\canPostpone -> do
-        (resultTerm, resultType) <- inferImplicitApps context function functionType arguments canPostpone
-        resultValue <- evaluate context resultTerm
-        f <- Unification.tryUnify context resultType expectedType
-        success <- Context.try_ context $ Unification.unify context Flexibility.Rigid resultMetaValue resultValue
-        if success then
-          pure $ f resultTerm
+  postponementIndex <- Context.newPostponedCheck context blockingMeta $ \canPostpone -> do
+    (resultTerm, resultType) <- inferImplicitApps context function functionType arguments canPostpone
+    resultValue <- evaluate context resultTerm
+    f <- Unification.tryUnify context resultType expectedType
+    success <- Context.try_ context $ Unification.unify context Flexibility.Rigid resultMetaValue resultValue
+    if success then
+      pure $ f resultTerm
 
-        else
-          readback context $
-            Domain.Neutral (Domain.Global Builtin.fail) $ Domain.Apps $ pure (Explicit, expectedType)
-
-      )
+    else
+      readback context $
+        Domain.Neutral (Domain.Global Builtin.fail) $ Domain.Apps $ pure (Explicit, expectedType)
   pure (Syntax.PostponedCheck postponementIndex resultMetaTerm, expectedType)
 
 inferenceFailed :: Context v -> M (Syntax.Term v, Domain.Type)
@@ -1143,6 +1134,15 @@ insertMetas context until type_ = do
       (args, res) <- insertMetas context until target
       pure ((plicity, meta) : args, res)
 
+-- subtype
+--   :: Context v
+--   -> Domain.Type
+--   -> Domain.Type
+--   -> M (Syntax.Term v -> Syntax.Term v)
+-- subtype context type1 type2 = do
+--   type2' <- Context.forceHead type2
+--   case type2' of
+
 -- TODO right side implicits
 subtypeWithoutRecovery
   :: Context v
@@ -1177,7 +1177,7 @@ checkMetaSolutions
 checkMetaSolutions context metaVars =
   flip IntMap.traverseWithKey (Meta.vars metaVars) $ \index var ->
     case var of
-      Meta.Unsolved type_ _ span -> do
+      Meta.Unsolved type_ _ _ span -> do
         ptype <- Context.toPrettyableClosedTerm context type_
         Context.report (Context.spanned span context) $
           Error.UnsolvedMetaVariable index ptype

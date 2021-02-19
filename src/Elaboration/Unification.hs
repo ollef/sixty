@@ -527,7 +527,7 @@ instantiatedMetaType
 instantiatedMetaType context meta args = do
   solution <- Context.lookupMeta meta context
   case solution of
-    Meta.Unsolved metaType _ _ -> do
+    Meta.Unsolved metaType _ _ _ -> do
       metaType' <-
         Evaluation.evaluate
           (Environment.empty $ Context.scopeKey context)
@@ -857,7 +857,7 @@ pruneMeta context meta allowedArgs = do
   -- putText $ "pruneMeta " <> show meta
   -- putText $ "pruneMeta " <> show allowedArgs
   case solution of
-    Meta.Unsolved metaType _ _ -> do
+    Meta.Unsolved metaType _ _ _ -> do
       -- putText $ show metaType
       metaType' <-
         Evaluation.evaluate
