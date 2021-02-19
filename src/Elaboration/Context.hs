@@ -428,6 +428,9 @@ lookupVarValue :: Var -> Context v -> Maybe Domain.Type
 lookupVarValue var context =
   IntMap.lookup var (values context)
 
+-------------------------------------------------------------------------------
+-- Meta variables
+
 newMeta :: Domain.Type -> Context v -> M Domain.Value
 newMeta type_ context = do
   (closedType, arity) <- piBoundVars context type_
