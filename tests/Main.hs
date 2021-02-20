@@ -67,39 +67,35 @@ checkFiles sourceDirectories files = do
         filter ((filePath ==) . Error.Hydrated._filePath . fst) errs
     verifyErrors filePath moduleErrs expectedErrors
 
-verifyErrors :: FilePath -> [(Error.Hydrated, Doc ann)] -> HashMap Int ExpectedError -> IO ()
+verifyErrors :: FilePath -> [(Error.Hydrated, Doc ann)] -> HashMap Int [ExpectedError] -> IO ()
 verifyErrors filePath errs expectedErrors = do
   let
     errorsMap =
-      HashMap.fromList
-        [ (Error.Hydrated.lineNumber err, errorToExpectedError $ Error.Hydrated._error err)
+      HashMap.fromListWith (<>)
+        [ (Error.Hydrated.lineNumber err, pure $ errorToExpectedError $ Error.Hydrated._error err)
         | (err, _) <- errs
         ]
 
-  forM_ (HashMap.toList expectedErrors) $ \(lineNumber, expectedError) ->
+  forM_ (HashMap.toList expectedErrors) $ \(lineNumber, expectedErrorsOnLine) ->
     case HashMap.lookup lineNumber errorsMap of
-      Just expectedError'
-        | expectedError == expectedError' ->
+      Just errorsOnLine
+        | sort errorsOnLine == sort expectedErrorsOnLine ->
           pure ()
 
       _ ->
         Tasty.assertFailure $
           toS filePath <> ":" <> show (lineNumber + 1) <> ": " <>
-          "Expected " <> show expectedError <> " error"
+          "Expected " <> show expectedErrorsOnLine <> " errors"
 
   forM_ errs $ \(err, doc) ->
-    let
-      failure =
-        Tasty.assertFailure $
-          "Unexpected error:\n" <> show (doc <> line)
-    in
     case HashMap.lookup (Error.Hydrated.lineNumber err) expectedErrors of
-      Just expectedError
-        | expectedError == errorToExpectedError (Error.Hydrated._error err) ->
+      Just expectedErrorsOnLine
+        | errorToExpectedError (Error.Hydrated._error err) `elem` expectedErrorsOnLine ->
           pure ()
 
       _ ->
-        failure
+        Tasty.assertFailure $
+          "Unexpected error:\n" <> show (doc <> line)
 
 data ExpectedError
   = Parse
@@ -118,7 +114,7 @@ data ExpectedError
   | PlicityMismatch
   | UnableToInferImplicitLambda
   | ImplicitApplicationMismatch
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 errorToExpectedError :: Error -> ExpectedError
 errorToExpectedError err =
@@ -175,13 +171,14 @@ errorToExpectedError err =
 
 expectedErrorsFromSource
   :: Text
-  -> HashMap Int ExpectedError
+  -> HashMap Int [ExpectedError]
 expectedErrorsFromSource sourceText =
-  HashMap.fromList $ concatMap go $ zip [0..] $ Text.lines sourceText
+  HashMap.fromListWith (<>) $ concatMap (map (second pure) . go) $ zip [0..] $ Text.lines sourceText
   where
     go (lineNumber, lineText) =
       case Text.splitOn "--" lineText of
-        [_, expectedErrorText] ->
+        [_, expectedErrorTexts] -> do
+          expectedErrorText <- Text.splitOn "," expectedErrorTexts
           case Text.strip expectedErrorText of
             "parse error expected" ->
               [(lineNumber, Parse)]

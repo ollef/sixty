@@ -28,8 +28,8 @@ cases3 x = case x of
   Lol -> Nil
 
 multiClauses1 : forall a. List a -> List a -> List a
-multiClauses1 Nil Nil = Nil -- non-exhaustive patterns error expected
+multiClauses1 Nil Nil = Nil -- non-exhaustive patterns error expected, non-exhaustive patterns error expected
 
 multiClauses2 : forall a. List a -> List a -> List a
-multiClauses2 Nil Nil = Nil -- non-exhaustive patterns error expected
+multiClauses2 Nil Nil = Nil -- non-exhaustive patterns error expected, non-exhaustive patterns error expected
 multiClauses2 (Cons _ _) (Cons _ _) = Nil -- non-exhaustive patterns error expected
