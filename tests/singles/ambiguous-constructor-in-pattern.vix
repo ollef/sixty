@@ -1,0 +1,11 @@
+data List a where
+  Nil : List a
+  Cons : a -> List a -> List a
+
+data List2 a where
+  Nil : List2 a
+  Cons : a -> List a -> List2 a
+
+test x = -- unsolved meta error expected
+  case x of
+    Nil -> 610 -- redundant match error expected, ambiguous name error expected
