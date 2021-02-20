@@ -29,7 +29,7 @@ instance Monoid Header where
       }
 
 data ExposedNames
-  = Exposed (HashSet Name.Pre)
+  = Exposed (HashSet Name.Surface)
   | AllExposed
   deriving (Eq, Show, Generic, Persist, Hashable)
 
@@ -50,6 +50,6 @@ instance Monoid ExposedNames where
 data Import = Import
   { _span :: !Span.Absolute
   , _module :: !Name.Module
-  , _alias :: !(Span.Absolute, Name.Pre)
+  , _alias :: !(Span.Absolute, Name.Surface)
   , _importedNames :: !ExposedNames
   } deriving (Eq, Show, Generic, Persist, Hashable)

@@ -28,7 +28,7 @@ unspanned (Term _ term) =
   term
 
 data UnspannedTerm
-  = Var !Name.Pre
+  = Var !Name.Surface
   | Lit !Literal
   | Let !Name !(Maybe (Span.Relative, Type)) [(Span.Relative, Clause)] !Term
   | Pi !SpannedName !Plicity !Type !Type
@@ -51,7 +51,7 @@ data Pattern
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 data UnspannedPattern
-  = ConOrVar !Span.Relative !Name.Pre [PlicitPattern]
+  = ConOrVar !Span.Relative !Name.Surface [PlicitPattern]
   | WildcardPattern
   | LitPattern !Literal
   | Anno !Pattern !Type
@@ -98,7 +98,7 @@ anno :: Pattern -> Type -> Pattern
 anno pat@(Pattern span1 _) type_@(Term span2 _) =
   Pattern (Span.add span1 span2) (Anno pat type_)
 
-conOrVar :: Span.Relative -> Name.Pre -> [PlicitPattern] -> Pattern
+conOrVar :: Span.Relative -> Name.Surface -> [PlicitPattern] -> Pattern
 conOrVar nameSpan name patterns =
   let
     span =

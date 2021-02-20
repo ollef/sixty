@@ -89,7 +89,7 @@ data Pattern
 
 data UnspannedPattern
   = Con !Span.Relative !Name.QualifiedConstructor [Surface.PlicitPattern]
-  | Var !Name.Pre
+  | Var !Name.Surface
   | Wildcard
   | Lit !Literal
   | Anno !Surface.Pattern !Surface.Type
@@ -609,7 +609,7 @@ simplifyMatch context canPostpone match@(Match value forcedValue plicity pat typ
                   (Telescope.fromVoid constrType)
                   (toList args)
 
-              (matches', type') <- matchPrepatterns context patSpine pats patsType
+              (matches', type') <- matchSurfacePatterns context patSpine pats patsType
               let
                 context' =
                   Context.spanned span context
@@ -659,13 +659,13 @@ instantiateConstructorType env tele spine =
     _ ->
       panic $ "instantiateConstructorType: " <> show (tele, fst <$> spine)
 
-matchPrepatterns
+matchSurfacePatterns
   :: Context v
   -> [(Plicity, Domain.Value)]
   -> [Surface.PlicitPattern]
   -> Domain.Type
   -> M ([Match], Domain.Type)
-matchPrepatterns context values patterns type_ =
+matchSurfacePatterns context values patterns type_ =
   case (patterns, values) of
     ([], []) ->
       pure ([], type_)
@@ -681,11 +681,11 @@ matchPrepatterns context values patterns type_ =
           explicitFunCase value values' (unresolvedPattern pat) patterns' domain target
 
         _ ->
-          panic "matchPrepatterns explicit non-pi"
+          panic "matchSurfacePatterns explicit non-pi"
 
     (Surface.ImplicitPattern _ namedPats:patterns', _)
       | HashMap.null namedPats ->
-        matchPrepatterns context values patterns' type_
+        matchSurfacePatterns context values patterns' type_
 
     (Surface.ImplicitPattern patSpan namedPats:patterns', (Implicit, value):values') -> do
       type' <- Context.forceHead context type_
@@ -695,7 +695,7 @@ matchPrepatterns context values patterns type_ =
           , HashMap.member name namedPats -> do
             target <- Evaluation.evaluateClosure targetClosure value
             (matches, type'') <-
-              matchPrepatterns
+              matchSurfacePatterns
                 context
                 values'
                 (Surface.ImplicitPattern patSpan (HashMap.delete name namedPats) : patterns')
@@ -704,29 +704,29 @@ matchPrepatterns context values patterns type_ =
 
           | otherwise -> do
             target <- Evaluation.evaluateClosure targetClosure value
-            matchPrepatterns context values' patterns target
+            matchSurfacePatterns context values' patterns target
 
         _ ->
-          panic "matchPrepatterns implicit non-pi"
+          panic "matchSurfacePatterns implicit non-pi"
 
     (_, (Implicit, value):values') -> do
       type' <- Context.forceHead context type_
       case type' of
         Domain.Pi _ _ Implicit targetClosure -> do
           target <- Evaluation.evaluateClosure targetClosure value
-          matchPrepatterns context values' patterns target
+          matchSurfacePatterns context values' patterns target
 
         Domain.Fun _ Implicit target ->
-          matchPrepatterns context values' patterns target
+          matchSurfacePatterns context values' patterns target
 
         _ ->
-          panic "matchPrepatterns implicit non-pi 2"
+          panic "matchSurfacePatterns implicit non-pi 2"
 
     (_, (Constraint, value):values') -> do
       type' <- Context.forceHead context type_
       let
         go domain target = do
-          (matches, type'') <- matchPrepatterns context values' patterns target
+          (matches, type'') <- matchSurfacePatterns context values' patterns target
           let
             pattern_ =
               Pattern (Context.span context) Wildcard
@@ -741,7 +741,7 @@ matchPrepatterns context values patterns type_ =
           go domain target
 
         _ ->
-          panic "matchPrepatterns constraint non-pi"
+          panic "matchSurfacePatterns constraint non-pi"
 
     (pat:_, []) -> do
       Context.report (Context.spanned (Surface.plicitPatternSpan pat) context) $ Error.PlicityMismatch Error.Field Error.Extra
@@ -749,15 +749,15 @@ matchPrepatterns context values patterns type_ =
 
     ([], (Explicit, _):_) -> do
       Context.report context $ Error.PlicityMismatch Error.Field $ Error.Missing Explicit
-      matchPrepatterns context values [Surface.ExplicitPattern $ Surface.Pattern (Context.span context) Surface.WildcardPattern] type_
+      matchSurfacePatterns context values [Surface.ExplicitPattern $ Surface.Pattern (Context.span context) Surface.WildcardPattern] type_
 
     (Surface.ImplicitPattern patSpan _:patterns', (Explicit, _):_) -> do
       Context.report (Context.spanned patSpan context) $ Error.PlicityMismatch Error.Field (Error.Mismatch Explicit Implicit)
-      matchPrepatterns context values patterns' type_
+      matchSurfacePatterns context values patterns' type_
 
   where
     explicitFunCase value values' pat patterns' domain target = do
-      (matches, type'') <- matchPrepatterns context values' patterns' target
+      (matches, type'') <- matchSurfacePatterns context values' patterns' target
       pure (Match value value Explicit pat domain : matches, type'')
 
 type PatternInstantiation = Tsil (Bindings, Domain.Value, Domain.Type)
@@ -769,7 +769,7 @@ letBindPatternInstantiation context inst k =
       k context
 
     inst' Tsil.:> (bindings, value, type_) -> do
-      (context', _) <- Context.extendPreDef context (Bindings.toName bindings) value type_
+      (context', _) <- Context.extendSurfaceDef context (Bindings.toName bindings) value type_
       result <- letBindPatternInstantiation context' inst' k
       term <- Elaboration.readback context value
       type' <- Elaboration.readback context type_
@@ -782,7 +782,7 @@ extendWithPatternInstantation context inst k =
       k context
 
     inst' Tsil.:> (bindings, value, type_) -> do
-      (context', _) <- lift $ Context.extendPreDef context (Bindings.toName bindings) value type_
+      (context', _) <- lift $ Context.extendSurfaceDef context (Bindings.toName bindings) value type_
       extendWithPatternInstantation context' inst' k
 
 expandAnnotations
@@ -823,7 +823,7 @@ matchInstantiation match =
     Match _ _ _ (Pattern _ Wildcard) _ ->
       pure mempty
 
-    Match value _ _ (Pattern span (Var (Name.Pre name))) type_ ->
+    Match value _ _ (Pattern span (Var (Name.Surface name))) type_ ->
       pure $ pure (Bindings.Spanned $ pure (span, Name name), value, type_)
 
     Match _ _ _ (Pattern _ (Forced _)) _ ->

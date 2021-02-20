@@ -195,7 +195,7 @@ inferDataDefinition context thisSpan preParams constrs paramVars =
       thisType' <- evaluate context thisType
 
       (context', _) <-
-        Context.extendPre context (Surface.SpannedName thisSpan thisName) thisType'
+        Context.extendSurface context (Surface.SpannedName thisSpan thisName) thisType'
 
       constrs' <- forM constrs $ \case
         Surface.GADTConstructors cs type_ -> do
@@ -222,7 +222,7 @@ inferDataDefinition context thisSpan preParams constrs paramVars =
     (binding, type_, plicity):preParams' -> do
       type' <- check context type_ Builtin.Type
       type'' <- evaluate context type'
-      (context', paramVar) <- Context.extendPre context binding type''
+      (context', paramVar) <- Context.extendSurface context binding type''
       let
         paramVars' =
           paramVars Tsil.:> (plicity, paramVar)
@@ -684,7 +684,7 @@ elaborateUnspanned context term mode canPostpone = do
             pure (Bindings.fromName (span : map fst clauses) name, boundTerm, typeTerm, typeValue)
 
       boundValue <- evaluate context boundTerm
-      (context', _) <- Context.extendPreDef context name boundValue typeValue
+      (context', _) <- Context.extendSurfaceDef context name boundValue typeValue
       body' <- elaborate context' body mode
       pure $ Syntax.Let bindings boundTerm typeTerm <$> body'
 
@@ -692,7 +692,7 @@ elaborateUnspanned context term mode canPostpone = do
       domain' <- check context domain Builtin.Type
       domain'' <- evaluate context domain'
 
-      (context', _) <- Context.extendPre context binding domain''
+      (context', _) <- Context.extendSurface context binding domain''
 
       target' <- check context' target Builtin.Type
       result context mode (Syntax.Pi (Binding.fromSurface binding) domain' plicity target') Builtin.Type

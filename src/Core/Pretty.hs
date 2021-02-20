@@ -37,15 +37,15 @@ import qualified Telescope
 -- Pretty-printing environments
 
 data Environment v = Environment
-  { varNames :: Seq Name.Pre
-  , usedNames :: HashMap Name.Pre (Maybe Scope.Entry)
-  , importedConstructorAliases :: HashMap Name.QualifiedConstructor (HashSet Name.Pre)
-  , importedAliases :: HashMap Name.Qualified (HashSet Name.Pre)
+  { varNames :: Seq Name.Surface
+  , usedNames :: HashMap Name.Surface (Maybe Scope.Entry)
+  , importedConstructorAliases :: HashMap Name.QualifiedConstructor (HashSet Name.Surface)
+  , importedAliases :: HashMap Name.Qualified (HashSet Name.Surface)
   }
 
-extend :: Environment v -> Name -> (Environment (Succ v), Name.Pre)
+extend :: Environment v -> Name -> (Environment (Succ v), Name.Surface)
 extend env (Name name) =
-  go (Name.Pre name : [Name.Pre $ name <> show (i :: Int) | i <- [0..]])
+  go (Name.Surface name : [Name.Surface $ name <> show (i :: Int) | i <- [0..]])
   where
     go (name':names)
       | name' `HashMap.member` usedNames env =
@@ -60,11 +60,11 @@ extend env (Name name) =
     go [] =
       panic "Pretty.extend"
 
-extendBinding :: Environment v -> Binding -> (Environment (Succ v), Name.Pre)
+extendBinding :: Environment v -> Binding -> (Environment (Succ v), Name.Surface)
 extendBinding env binding =
   extend env $ Binding.toName binding
 
-extendBindings :: Environment v -> Bindings -> (Environment (Succ v), Name.Pre)
+extendBindings :: Environment v -> Bindings -> (Environment (Succ v), Name.Surface)
 extendBindings env binding =
   extend env $ Bindings.toName binding
 
@@ -182,7 +182,7 @@ prettyGlobal :: Environment v -> Name.Qualified -> Doc ann
 prettyGlobal env global = do
   let
     aliases =
-      sortOn (\(Name.Pre name) -> Text.lengthWord16 name) $
+      sortOn (\(Name.Surface name) -> Text.lengthWord16 name) $
       filter (unambiguous env) $
       HashSet.toList $
       HashMap.lookupDefault mempty global $
@@ -199,7 +199,7 @@ prettyConstr :: Environment v -> Name.QualifiedConstructor -> Doc ann
 prettyConstr env constr = do
   let
     aliases =
-      sortOn (\(Name.Pre name) -> Text.lengthWord16 name) $
+      sortOn (\(Name.Surface name) -> Text.lengthWord16 name) $
       filter (unambiguous env) $
       HashSet.toList $
       HashMap.lookupDefault mempty constr $
@@ -212,7 +212,7 @@ prettyConstr env constr = do
     alias:_ ->
       pretty alias
 
-unambiguous :: Environment v -> Name.Pre -> Bool
+unambiguous :: Environment v -> Name.Surface -> Bool
 unambiguous env name =
   case HashMap.lookupDefault Nothing name $ usedNames env of
     Nothing ->

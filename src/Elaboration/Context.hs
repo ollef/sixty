@@ -138,12 +138,12 @@ spanned s context =
 -------------------------------------------------------------------------------
 -- Extension
 
-extendPre
+extendSurface
   :: Context v
   -> Surface.SpannedName
   -> Domain.Type
   -> M (Context (Succ v), Var)
-extendPre context (Surface.SpannedName _ name) type_ = do
+extendSurface context (Surface.SpannedName _ name) type_ = do
   var <- freshVar
   pure
     ( context
@@ -173,13 +173,13 @@ extend context name type_ = do
     , var
     )
 
-extendPreDef
+extendSurfaceDef
   :: Context v
   -> Name
   -> Domain.Value
   -> Domain.Type
   -> M (Context (Succ v), Var)
-extendPreDef context name value type_ = do
+extendSurfaceDef context name value type_ = do
   var <- freshVar
   pure
     ( context
@@ -379,8 +379,8 @@ dependencies context value = do
 -------------------------------------------------------------------------------
 -- Lookup
 
-lookupNameVar :: Name.Pre -> Context v -> Maybe Var
-lookupNameVar (Name.Pre name) context =
+lookupNameVar :: Name.Surface -> Context v -> Maybe Var
+lookupNameVar (Name.Surface name) context =
   HashMap.lookup (Name name) (nameVars context)
 
 lookupVarIndex :: Var -> Context v -> Maybe (Index v)

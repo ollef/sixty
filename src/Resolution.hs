@@ -42,21 +42,21 @@ moduleScopes module_@(Name.Module moduleText) definitions =
           | otherwise =
             Span.Absolute position position
 
-        prename =
-          Name.Pre nameText
+        surfaceName =
+          Name.Surface nameText
 
-        qualifiedPreName =
-          Name.Pre $ moduleText <> "." <> nameText
+        qualifiedSurfaceName =
+          Name.Surface $ moduleText <> "." <> nameText
 
         qualifiedName =
           Name.Qualified module_ name
 
         privateScope' =
-          HashMap.insertWith (<>) qualifiedPreName (Scope.Name qualifiedName) $
-          HashMap.insertWith (<>) prename (Scope.Name qualifiedName) privateScope
+          HashMap.insertWith (<>) qualifiedSurfaceName (Scope.Name qualifiedName) $
+          HashMap.insertWith (<>) surfaceName (Scope.Name qualifiedName) privateScope
 
         publicScope' =
-          HashMap.insertWith (<>) prename (Scope.Name qualifiedName) publicScope
+          HashMap.insertWith (<>) surfaceName (Scope.Name qualifiedName) publicScope
 
         definitionCase =
           let
@@ -111,12 +111,12 @@ moduleScopes module_@(Name.Module moduleText) definitions =
               definitionCase
 
             constructors =
-              [ ( ( Name.Pre text
+              [ ( ( Name.Surface text
                   , Scope.Constructors
                     (HashSet.singleton $ Name.QualifiedConstructor qualifiedName constr)
                     mempty
                   )
-                , ( Name.Pre $ moduleText <> "." <> text
+                , ( Name.Surface $ moduleText <> "." <> text
                   , Scope.Constructors
                     (HashSet.singleton $ Name.QualifiedConstructor qualifiedName constr)
                     mempty
@@ -135,11 +135,11 @@ moduleScopes module_@(Name.Module moduleText) definitions =
               ]
 
             privateScope''' =
-              HashMap.insertWith (<>) qualifiedPreName (Scope.Constructors mempty $ HashSet.singleton qualifiedName) $
-              HashMap.insertWith (<>) prename (Scope.Constructors mempty $ HashSet.singleton qualifiedName) privateScope''
+              HashMap.insertWith (<>) qualifiedSurfaceName (Scope.Constructors mempty $ HashSet.singleton qualifiedName) $
+              HashMap.insertWith (<>) surfaceName (Scope.Constructors mempty $ HashSet.singleton qualifiedName) privateScope''
 
             publicScope''' =
-              HashMap.insertWith (<>) prename (Scope.Constructors mempty $ HashSet.singleton qualifiedName) publicScope''
+              HashMap.insertWith (<>) surfaceName (Scope.Constructors mempty $ HashSet.singleton qualifiedName) publicScope''
 
             publicConstructors =
               HashMap.fromListWith (<>) $ fst <$> constructors
@@ -156,7 +156,7 @@ moduleScopes module_@(Name.Module moduleText) definitions =
           )
 
 -- TODO: Error for names that aren't exposed
-exposedNames :: Module.ExposedNames -> HashMap Name.Pre a -> HashMap Name.Pre a
+exposedNames :: Module.ExposedNames -> HashMap Name.Surface a -> HashMap Name.Surface a
 exposedNames exposed m =
   case exposed of
     Module.AllExposed ->
@@ -165,7 +165,7 @@ exposedNames exposed m =
     Module.Exposed names ->
       HashMap.intersection m (HashSet.toMap names)
 
-importedNames :: Semigroup a => Module.Import -> HashMap Name.Pre a -> HashMap Name.Pre a
+importedNames :: Semigroup a => Module.Import -> HashMap Name.Surface a -> HashMap Name.Surface a
 importedNames import_ m =
   HashMap.unionWith (<>) unqualifiedNames qualifiedNames
   where
@@ -174,6 +174,6 @@ importedNames import_ m =
 
     qualifiedNames =
       HashMap.fromList
-        [ (snd (Module._alias import_) <> "." <> prename, a)
-        | (prename, a) <- HashMap.toList m
+        [ (snd (Module._alias import_) <> "." <> surfaceName, a)
+        | (surfaceName, a) <- HashMap.toList m
         ]

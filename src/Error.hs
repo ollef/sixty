@@ -31,8 +31,8 @@ data Error
   deriving (Eq, Show, Generic, Persist)
 
 data Elaboration
-  = NotInScope !Name.Pre
-  | Ambiguous !Name.Pre (HashSet Name.QualifiedConstructor) (HashSet Name.Qualified)
+  = NotInScope !Name.Surface
+  | Ambiguous !Name.Surface (HashSet Name.QualifiedConstructor) (HashSet Name.Qualified)
   | TypeMismatch (Tsil (PrettyableTerm, PrettyableTerm))
   | OccursCheck (Tsil (PrettyableTerm, PrettyableTerm))
   | UnsolvedMetaVariable !Meta.Index !PrettyableTerm

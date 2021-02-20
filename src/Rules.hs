@@ -253,17 +253,17 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
           (_, _, defs) <- fetch $ ParsedFile filePath
           pure $ Resolution.moduleScopes module_ defs
 
-    ResolvedName (Scope.KeyedName key (Name.Qualified module_ keyName)) prename ->
+    ResolvedName (Scope.KeyedName key (Name.Qualified module_ keyName)) surfaceName ->
       noError $ do
         (_, scopes) <- fetch $ Scopes module_
-        importedScopeEntry <- fetchImportedName module_ prename
+        importedScopeEntry <- fetchImportedName module_ surfaceName
         pure $
           case HashMap.lookup (keyName, key) scopes of
             Nothing ->
               importedScopeEntry
 
             Just (scope, _) ->
-              importedScopeEntry <> HashMap.lookup prename scope
+              importedScopeEntry <> HashMap.lookup surfaceName scope
 
     IsDefinitionVisible (Scope.KeyedName key (Name.Qualified keyModule keyName)) qualifiedName@(Name.Qualified nameModule _)
       | keyModule == nameModule ->

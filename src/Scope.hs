@@ -41,7 +41,7 @@ entryConstructors entry =
       cs
 
 type Scope =
-  HashMap Name.Pre Entry
+  HashMap Name.Surface Entry
 
 type Visibility =
   HashMap Name.Qualified Key
@@ -85,31 +85,31 @@ instance Semigroup Entry where
 
 aliases
   :: Scope
-  -> (HashMap Name.QualifiedConstructor (HashSet Name.Pre), HashMap Name.Qualified (HashSet Name.Pre))
+  -> (HashMap Name.QualifiedConstructor (HashSet Name.Surface), HashMap Name.Qualified (HashSet Name.Surface))
 aliases scope =
   bimap (HashMap.fromListWith (<>)) (HashMap.fromListWith (<>)) $
     partitionEithers $
     concat
     [ case entry of
         Name name ->
-          [Right (name, HashSet.singleton prename)]
+          [Right (name, HashSet.singleton surfaceName)]
 
         Constructors constrs dataNames ->
-          [ Left (constr, HashSet.singleton prename)
+          [ Left (constr, HashSet.singleton surfaceName)
           | constr <- HashSet.toList constrs
           ]
           <>
-          [ Right (name, HashSet.singleton prename)
+          [ Right (name, HashSet.singleton surfaceName)
           | name <- HashSet.toList dataNames
           ]
 
         Ambiguous constrs names ->
-          [ Left (constr, HashSet.singleton prename)
+          [ Left (constr, HashSet.singleton surfaceName)
           | constr <- HashSet.toList constrs
           ]
           <>
-          [ Right (name, HashSet.singleton prename)
+          [ Right (name, HashSet.singleton surfaceName)
           | name <- HashSet.toList names
           ]
-    | (prename, entry) <- HashMap.toList scope
+    | (surfaceName, entry) <- HashMap.toList scope
     ]

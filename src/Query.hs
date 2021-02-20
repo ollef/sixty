@@ -56,13 +56,13 @@ data Query a where
   ParsedFile :: FilePath -> Query (Name.Module, Module.Header, [(Position.Absolute, (Name, Surface.Definition))])
   ModuleDefinitions :: Name.Module -> Query (OrderedHashSet Name)
   ModuleHeader :: Name.Module -> Query Module.Header
-  ImportedNames :: Name.Module -> Mapped.Query Name.Pre Scope.Entry a -> Query a
-  NameAliases :: Name.Module -> Query (HashMap Name.QualifiedConstructor (HashSet Name.Pre), HashMap Name.Qualified (HashSet Name.Pre))
+  ImportedNames :: Name.Module -> Mapped.Query Name.Surface Scope.Entry a -> Query a
+  NameAliases :: Name.Module -> Query (HashMap Name.QualifiedConstructor (HashSet Name.Surface), HashMap Name.Qualified (HashSet Name.Surface))
   ModulePositionMap :: Name.Module -> Query (HashMap (Scope.Key, Name) Position.Absolute)
   ModuleSpanMap :: Name.Module -> Query (HashMap (Scope.Key, Name) Span.Absolute)
   ParsedDefinition :: Name.Module -> Mapped.Query (Scope.Key, Name) Surface.Definition a -> Query a
   Scopes :: Name.Module -> Query ((Scope, Scope, Scope.Visibility), Scope.Module)
-  ResolvedName :: Scope.KeyedName -> Name.Pre -> Query (Maybe Scope.Entry)
+  ResolvedName :: Scope.KeyedName -> Name.Surface -> Query (Maybe Scope.Entry)
   IsDefinitionVisible :: Scope.KeyedName -> Name.Qualified -> Query Bool
   ElaboratingDefinition :: Scope.KeyedName -> Query (Maybe (Syntax.Definition, Syntax.Type Void, Elaboration.Meta.Vars))
   ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void)
@@ -90,7 +90,7 @@ data Query a where
 fetchImportedName
   :: MonadFetch Query m
   => Name.Module
-  -> Name.Pre
+  -> Name.Surface
   -> m (Maybe Scope.Entry)
 fetchImportedName module_ =
   fetch . ImportedNames module_ . Mapped.Query

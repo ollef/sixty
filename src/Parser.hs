@@ -427,9 +427,9 @@ spannedIdentifier =
       _ ->
         break $ expected "identifier"
 
-spannedPrename :: Parser (Span.Relative, Name.Pre)
-spannedPrename =
-  second Name.Pre <$> spannedIdentifier
+spannedSurfaceName :: Parser (Span.Relative, Name.Surface)
+spannedSurfaceName =
+  second Name.Surface <$> spannedIdentifier
 
 spannedModuleName :: Parser (Span.Relative, Name.Module)
 spannedModuleName =
@@ -495,7 +495,7 @@ atomicPattern =
           continue $ (\term_@(Surface.Term termSpan _) -> Surface.Pattern termSpan $ Surface.Forced term_) <$> atomicTerm
 
         Lexer.Identifier name_ ->
-          continue $ pure $ Surface.Pattern span $ Surface.ConOrVar span (Name.Pre name_) mempty
+          continue $ pure $ Surface.Pattern span $ Surface.ConOrVar span (Name.Surface name_) mempty
 
         Lexer.Number int ->
           continue $ pure $ Surface.Pattern span $ Surface.LitPattern $ Literal.Integer int
@@ -505,7 +505,7 @@ atomicPattern =
 
 pattern_ :: Parser Surface.Pattern
 pattern_ =
-  ( uncurry Surface.conOrVar <$> spannedPrename <*> many plicitPattern
+  ( uncurry Surface.conOrVar <$> spannedSurfaceName <*> many plicitPattern
     <|> atomicPattern
   )
   <**>
@@ -527,7 +527,7 @@ plicitPattern =
     patName =
       spannedName <**>
         ((\pat (Surface.SpannedName _ name_) -> (name_, pat)) <$ token Lexer.Equals <*> pattern_
-        <|> pure (\(Surface.SpannedName span name_@(Name n)) -> (name_, Surface.Pattern span $ Surface.ConOrVar span (Name.Pre n) mempty))
+        <|> pure (\(Surface.SpannedName span name_@(Name n)) -> (name_, Surface.Pattern span $ Surface.ConOrVar span (Name.Surface n) mempty))
         )
 
 -------------------------------------------------------------------------------
@@ -565,7 +565,7 @@ atomicTerm =
           continue $ pure $ Surface.Term span Surface.Wildcard
 
         Lexer.Identifier ident ->
-          continue $ pure $ Surface.Term span $ Surface.Var $ Name.Pre ident
+          continue $ pure $ Surface.Term span $ Surface.Var $ Name.Surface ident
 
         Lexer.Case ->
           continue $
@@ -613,7 +613,7 @@ plicitAtomicTerm =
     implicitArgument =
       spannedName <**>
         ((\t (Surface.SpannedName _ n) -> (n, t)) <$ token Lexer.Equals <*> term
-        <|> pure (\(Surface.SpannedName span n@(Name text)) -> (n, Surface.Term span $ Surface.Var $ Name.Pre text))
+        <|> pure (\(Surface.SpannedName span n@(Name text)) -> (n, Surface.Term span $ Surface.Var $ Name.Surface text))
         )
 
 term :: Parser Surface.Term
@@ -723,7 +723,7 @@ import_ =
     mkImport
       <$ token (Lexer.Identifier "import") <*> spannedModuleName
       <*>
-        (Just <$ token (Lexer.Identifier "as") <*> spannedPrename
+        (Just <$ token (Lexer.Identifier "as") <*> spannedSurfaceName
         <|> pure Nothing
         )
       <*>
@@ -735,7 +735,7 @@ import_ =
       Module.Import
         { _span = absoluteSpan
         , _module = n
-        , _alias = maybe (absoluteSpan, Name.Pre text) (first $ Span.absoluteFrom 0) malias
+        , _alias = maybe (absoluteSpan, Name.Surface text) (first $ Span.absoluteFrom 0) malias
         , _importedNames = fold mexposed
         }
       where
@@ -748,4 +748,4 @@ exposedNames =
   where
     inner =
       Module.AllExposed <$ token (Lexer.Operator "..")
-      <|> Module.Exposed . HashSet.fromList <$> sepBy (snd <$> spannedPrename) (token $ Lexer.Operator ",")
+      <|> Module.Exposed . HashSet.fromList <$> sepBy (snd <$> spannedSurfaceName) (token $ Lexer.Operator ",")

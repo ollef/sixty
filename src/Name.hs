@@ -14,7 +14,7 @@ import Data.Persist
 
 import Extra
 
-newtype Pre = Pre Text
+newtype Surface = Surface Text
   deriving stock (Eq, Ord, Show)
   deriving newtype (IsString, Semigroup, Hashable, Persist)
 
@@ -60,8 +60,8 @@ instance IsString Qualified where
       Just module_ ->
         Qualified (Module module_) (Name name)
 
-instance Pretty Pre where
-  pretty (Pre t) =
+instance Pretty Surface where
+  pretty (Surface t) =
     pretty t
 
 instance Pretty Name where

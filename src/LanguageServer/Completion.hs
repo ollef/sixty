@@ -187,7 +187,7 @@ getUsableNames itemContext context varPositions = do
     scopeEntries =
       moduleScopeEntries <> importedScopeEntries
 
-  imports <- forM (HashMap.toList scopeEntries) $ \(Name.Pre name, entry) ->
+  imports <- forM (HashMap.toList scopeEntries) $ \(Name.Surface name, entry) ->
     case entry of
       Scope.Name global -> do
         let
