@@ -489,7 +489,7 @@ atomicPattern =
           continue $ pure $ Surface.Pattern span $ Surface.ConOrVar span "?" mempty
 
         Lexer.Underscore ->
-          continue $ pure $ Surface.Pattern span $ Surface.WildcardPattern
+          continue $ pure $ Surface.Pattern span Surface.WildcardPattern
 
         Lexer.Forced ->
           continue $ (\term_@(Surface.Term termSpan _) -> Surface.Pattern termSpan $ Surface.Forced term_) <$> atomicTerm
