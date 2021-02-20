@@ -1,0 +1,18 @@
+data Bool = False | True
+
+data List a = Nil | Cons a (List a)
+
+data Maybe a = Nothing | Just a
+
+the : (T : Type) -> T -> T
+the _ t = t
+
+myType : Bool -> Type -> Type
+myType b t =
+  (the (Type -> Type) (case b of
+    False -> List
+    True -> Maybe))
+  t
+
+test : myType True Type -> Maybe Type
+test x = x
