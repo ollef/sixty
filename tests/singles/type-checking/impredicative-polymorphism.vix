@@ -8,3 +8,8 @@ data Equals forall T. (x y : T) where
 
 g : ((g : forall a. a -> a) -> Equals @{T = forall a. a -> a} g g -> Int) -> Int
 g f = f (\x. x) Refl
+
+data List a = Nil | Cons a (List a)
+
+list : List (forall a b. a -> b -> a)
+list = Cons (\x y. x) (Cons (\@{a, b}(x : a)(y : b). x) (Cons (\@{b} x (y : b). x) (Cons (\@{a}(x : a) y. x) Nil)))
