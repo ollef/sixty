@@ -436,8 +436,9 @@ potentiallyMatchingBranches
   -> Domain.Branches
   -> M [Maybe (Either Name.QualifiedConstructor Literal)]
 potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv branches defaultBranch) = do
+  resultValue' <- Context.forceHead outerContext resultValue
   defaultBranch' <- fmap (catMaybes . toList) $ forM defaultBranch $ \branch -> do
-    isMatch <- branchMatches outerContext outerEnv $ Telescope.Empty branch
+    isMatch <- branchMatches outerContext resultValue' outerEnv $ Telescope.Empty branch
     pure $
       if isMatch then
         Just Nothing
@@ -449,7 +450,7 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
     case branches of
       Syntax.ConstructorBranches constructorTypeName constructorBranches ->
         forM (OrderedHashMap.toList constructorBranches) $ \(constr, (_, tele)) -> do
-          isMatch <- branchMatches outerContext outerEnv tele
+          isMatch <- branchMatches outerContext resultValue' outerEnv tele
           pure $
             if isMatch then
               Just $ Just $ Left $ Name.QualifiedConstructor constructorTypeName constr
@@ -459,7 +460,7 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
 
       Syntax.LiteralBranches literalBranches ->
         forM (OrderedHashMap.toList literalBranches) $ \(int, (_, branch)) -> do
-          isMatch <- branchMatches outerContext outerEnv $ Telescope.Empty branch
+          isMatch <- branchMatches outerContext resultValue' outerEnv $ Telescope.Empty branch
           pure $
             if isMatch then
               Just $ Just $ Right int
@@ -471,15 +472,16 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
   where
     branchMatches
       :: Context v
+      -> Domain.Value
       -> Domain.Environment v'
       -> Telescope Bindings Syntax.Type Syntax.Term v'
       -> M Bool
-    branchMatches context env tele =
+    branchMatches context resultValue' env tele =
       case tele of
         Telescope.Empty body -> do
           body' <- Evaluation.evaluate env body
           body'' <- Context.forceHead context body'
-          case (body'', resultValue) of
+          case (body'', resultValue') of
             (Domain.Neutral (Domain.Meta _) (Domain.Apps _), _) ->
               pure True
 
@@ -487,7 +489,7 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
               matches <- potentiallyMatchingBranches context resultValue branches'
               pure $ not $ null matches
 
-            (Domain.Neutral head1 _, Domain.Neutral head2 _) ->
+            (Domain.Neutral head1 (Domain.Apps _), Domain.Neutral head2 (Domain.Apps _)) ->
               pure $ head1 == head2
 
             (Domain.Con con1 _, Domain.Con con2 _) ->
@@ -517,7 +519,7 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
         Telescope.Extend bindings type_ _ tele' -> do
           type' <- Evaluation.evaluate env type_
           (context', var) <- Context.extend context (Bindings.toName bindings) type'
-          branchMatches context' (Environment.extendVar env var) tele'
+          branchMatches context' resultValue' (Environment.extendVar env var) tele'
 
 instantiatedMetaType
   :: Context v
