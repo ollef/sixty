@@ -2,4 +2,4 @@ the : (A : Type) -> A -> A
 
 f = \x. the Type
   (x -- unsolved meta error expected
-  x) -- occurs check error expected
+  x) -- occurs check error expected, TODO: why don't we get this error?
