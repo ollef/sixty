@@ -515,7 +515,7 @@ elaborateUnspanned context term mode canPostpone = do
         Evaluation.evaluateClosure
           targetClosure
           (Domain.var var)
-      body' <- Matching.elaborateSingle context' var Explicit pat body target
+      body' <- Matching.checkSingle context' var Explicit pat body target
       binding <- SuggestedName.patternBinding context pat name
       pure $ Checked $ Syntax.Lam binding domain' Explicit body'
 
@@ -523,7 +523,7 @@ elaborateUnspanned context term mode canPostpone = do
       domain' <- readback context domain
       binding <- SuggestedName.patternBinding context pat "x"
       (context', var) <- Context.extend context (Bindings.toName binding) domain
-      body' <- Matching.elaborateSingle context' var Explicit pat body target
+      body' <- Matching.checkSingle context' var Explicit pat body target
       pure $ Checked $ Syntax.Lam binding domain' Explicit body'
 
     (Surface.Lam (Surface.ImplicitPattern _ namedPats) body, _)
@@ -547,7 +547,7 @@ elaborateUnspanned context term mode canPostpone = do
           Evaluation.evaluateClosure
             targetClosure
             (Domain.var var)
-        body'' <- Matching.elaborateSingle context' var Implicit pat body' target
+        body'' <- Matching.checkSingle context' var Implicit pat body' target
         binding <- SuggestedName.patternBinding context pat name
         pure $ Checked $ Syntax.Lam binding domain' Implicit body''
 
@@ -580,7 +580,7 @@ elaborateUnspanned context term mode canPostpone = do
           domain' <- readback context domain
           (context', var) <- Context.extend context name domain
           target <- Context.newMetaType $ Context.spanned bodySpan context'
-          body' <- Matching.elaborateSingle context' var plicity pat body target
+          body' <- Matching.checkSingle context' var plicity pat body target
           target' <- readback context' target
           binding <- SuggestedName.patternBinding context pat name
           k
@@ -707,11 +707,11 @@ elaborateUnspanned context term mode canPostpone = do
       case mode of
         Infer _ -> do
           expectedType <- Context.newMetaType context
-          term' <- Matching.elaborateCase context scrutinee' scrutineeType branches expectedType Context.CanPostpone
+          term' <- Matching.checkCase context scrutinee' scrutineeType branches expectedType Context.CanPostpone
           pure $ Inferred term' expectedType
 
         Check expectedType ->
-          Checked <$> Matching.elaborateCase context scrutinee' scrutineeType branches expectedType Context.CanPostpone
+          Checked <$> Matching.checkCase context scrutinee' scrutineeType branches expectedType Context.CanPostpone
 
     (Surface.App function argument@(Surface.Term argumentSpan _), _) -> do
       (function', functionType) <- inferAndInsertMetas context UntilExplicit function $ getModeExpectedTypeName context mode

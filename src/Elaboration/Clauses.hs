@@ -44,7 +44,7 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
           }
         | Clause (Surface.Clause span _ rhs) matches <- clauses
         ]
-    Matching.elaborateClauses context matchingClauses expectedType
+    Matching.checkClauses context matchingClauses expectedType
 
   | otherwise = do
     expectedType' <- Context.forceHead context expectedType
@@ -106,7 +106,7 @@ infer context (fmap removeEmptyImplicits -> clauses)
         | Clause (Surface.Clause span _ rhs) matches <- clauses
         ]
     expectedType <- Context.newMetaType context
-    result <- Matching.elaborateClauses context matchingClauses expectedType
+    result <- Matching.checkClauses context matchingClauses expectedType
     pure (result, expectedType)
 
   | otherwise =
