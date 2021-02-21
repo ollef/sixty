@@ -37,6 +37,7 @@ import qualified Elaboration.Matching as Matching
 import Elaboration.Matching.SuggestedName as SuggestedName
 import qualified Elaboration.Meta as Meta
 import qualified Elaboration.MetaInlining as MetaInlining
+import qualified Elaboration.Postponed as Postponed
 import qualified Elaboration.Substitution as Substitution
 import qualified Elaboration.Unification as Unification
 import qualified Elaboration.ZonkPostponedChecks as ZonkPostponedChecks
@@ -54,6 +55,7 @@ import Monad
 import Name (Name)
 import qualified Name
 import Plicity
+import qualified Postponement
 import qualified Query
 import qualified Scope
 import qualified Span
@@ -73,7 +75,7 @@ inferTopLevelDefinition key def = do
   postponed <- readIORef $ Context.postponed context
   metaVars <- readIORef $ Context.metas context
   errors <- readIORef $ Context.errors context
-  pure ((ZonkPostponedChecks.zonkDefinition (Context.checks postponed) def', type_, metaVars), toList errors)
+  pure ((ZonkPostponedChecks.zonkDefinition postponed def', type_, metaVars), toList errors)
 
 checkTopLevelDefinition
   :: Scope.KeyedName
@@ -86,7 +88,7 @@ checkTopLevelDefinition key def type_ = do
   postponed <- readIORef $ Context.postponed context
   metaVars <- readIORef $ Context.metas context
   errors <- readIORef $ Context.errors context
-  pure ((ZonkPostponedChecks.zonkDefinition (Context.checks postponed) def', metaVars), toList errors)
+  pure ((ZonkPostponedChecks.zonkDefinition postponed def', metaVars), toList errors)
 
 checkDefinitionMetaSolutions
   :: Scope.KeyedName
@@ -166,7 +168,7 @@ postProcessDefinition :: Context v -> Syntax.Definition -> M Syntax.Definition
 postProcessDefinition context def = do
   Context.inferAllPostponedChecks context
   postponed <- readIORef $ Context.postponed context
-  pure $ ZonkPostponedChecks.zonkDefinition (Context.checks postponed) def
+  pure $ ZonkPostponedChecks.zonkDefinition postponed def
 
 -------------------------------------------------------------------------------
 
@@ -273,7 +275,7 @@ postProcessDataDefinition outerContext boxity outerTele = do
   where
     go
       :: Context v
-      -> Context.PostponedChecks
+      -> Postponed.Checks
       -> Telescope Binding Syntax.Type (Compose Syntax.ConstructorDefinitions Index.Succ) v
       -> Tsil (Plicity, Var)
       -> M (Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v)
@@ -290,7 +292,7 @@ postProcessDataDefinition outerContext boxity outerTele = do
           map (Telescope.Empty . Syntax.ConstructorDefinitions) $ OrderedHashMap.forMUnordered constructorDefinitions $ \constructorType -> do
             let
               zonkedConstructorType =
-                ZonkPostponedChecks.zonkTerm (Context.checks postponed) constructorType
+                ZonkPostponedChecks.zonkTerm postponed constructorType
             constructorType' <- Substitution.let_ context this zonkedConstructorType
             maybeConstructorType <- Context.try context $ addConstructorIndexEqualities context paramVars constructorType'
             pure $
@@ -303,7 +305,7 @@ postProcessDataDefinition outerContext boxity outerTele = do
           (context', paramVar) <- Context.extend context (Binding.toName name) typeValue
           let
             zonkedType =
-              ZonkPostponedChecks.zonkTerm (Context.checks postponed) type_
+              ZonkPostponedChecks.zonkTerm postponed type_
           Telescope.Extend name zonkedType plicity <$> go context' postponed tele' (paramVars Tsil.:> (plicity, paramVar))
 
 
@@ -493,14 +495,14 @@ implicitLambdaResult context mode term type_ =
 
 elaborate :: Functor result => Context v -> Surface.Term -> Mode result -> M (result (Syntax.Term v))
 elaborate context (Surface.Term span term) mode =
-  fmap (Syntax.Spanned span) <$> elaborateUnspanned (Context.spanned span context) term mode Context.CanPostpone
+  fmap (Syntax.Spanned span) <$> elaborateUnspanned (Context.spanned span context) term mode Postponement.CanPostpone
 
 elaborateUnspanned
   :: Functor result
   => Context v
   -> Surface.UnspannedTerm
   -> Mode result
-  -> Context.CanPostpone
+  -> Postponement.CanPostpone
   -> M (result (Syntax.Term v))
 elaborateUnspanned context term mode canPostpone = do
   mode' <- forceExpectedTypeHead context mode
@@ -557,11 +559,11 @@ elaborateUnspanned context term mode canPostpone = do
         (context', var) <- Context.extend context name domain
         target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
         domain' <- readback context domain
-        Checked term' <- elaborateUnspanned context' term (Check target) Context.CanPostpone
+        Checked term' <- elaborateUnspanned context' term (Check target) Postponement.CanPostpone
         pure $ Checked $ Syntax.Lam (Bindings.Unspanned name) domain' plicity term'
 
     (_, Check expectedType@(Domain.Neutral (Domain.Meta blockingMeta) _))
-      | Context.CanPostpone <- canPostpone ->
+      | Postponement.CanPostpone <- canPostpone ->
         postponeCheck context term expectedType blockingMeta
 
     (Surface.Lam plicitPattern body@(Surface.Term bodySpan _), _) -> do
@@ -586,7 +588,7 @@ elaborateUnspanned context term mode canPostpone = do
             )
 
       case (canPostpone, plicitPattern, mode') of
-        (Context.CanPostpone, _, Infer _) -> do
+        (Postponement.CanPostpone, _, Infer _) -> do
           postponeInference context term
 
         (_, Surface.ExplicitPattern pat, _) ->
@@ -629,13 +631,13 @@ elaborateUnspanned context term mode canPostpone = do
               case resolution of
                 Left blockingMeta ->
                   case (canPostpone, mode) of
-                    (Context.CanPostpone, Infer _) ->
+                    (Postponement.CanPostpone, Infer _) ->
                       postponeInference context term
 
-                    (Context.CanPostpone, Check expectedType) ->
+                    (Postponement.CanPostpone, Check expectedType) ->
                       postponeCheck context term expectedType blockingMeta
 
-                    (Context.Can'tPostpone, _) -> do
+                    (Postponement.Can'tPostpone, _) -> do
                       Context.report context $ Error.Ambiguous name constructorCandidates dataCandidates
                       elaborationFailed context mode
 
@@ -701,11 +703,11 @@ elaborateUnspanned context term mode canPostpone = do
       case mode of
         Infer _ -> do
           expectedType <- Context.newMetaType context
-          term' <- Matching.checkCase context scrutinee' scrutineeType branches expectedType Context.CanPostpone
+          term' <- Matching.checkCase context scrutinee' scrutineeType branches expectedType Postponement.CanPostpone
           pure $ Inferred term' expectedType
 
         Check expectedType ->
-          Checked <$> Matching.checkCase context scrutinee' scrutineeType branches expectedType Context.CanPostpone
+          Checked <$> Matching.checkCase context scrutinee' scrutineeType branches expectedType Postponement.CanPostpone
 
     (Surface.App function argument@(Surface.Term argumentSpan _), _) -> do
       (function', functionType) <- inferAndInsertMetas context UntilExplicit function $ getModeExpectedTypeName context mode
@@ -740,7 +742,7 @@ elaborateUnspanned context term mode canPostpone = do
 
     (Surface.ImplicitApps function arguments, _) -> do
       Inferred function' functionType <- infer context function $ getModeExpectedTypeName context mode
-      (result_, resultType) <- inferImplicitApps context function' functionType arguments Context.CanPostpone
+      (result_, resultType) <- inferImplicitApps context function' functionType arguments Postponement.CanPostpone
       result context mode result_ resultType
 
     (Surface.Wildcard, Check expectedType) -> do
@@ -755,7 +757,7 @@ elaborateUnspanned context term mode canPostpone = do
 
     (Surface.ParseError err, _) -> do
       Context.reportParseError context err
-      elaborateUnspanned context Surface.Wildcard mode Context.CanPostpone
+      elaborateUnspanned context Surface.Wildcard mode Postponement.CanPostpone
 
 forceExpectedTypeHead :: Context v -> Mode result -> M (Mode result)
 forceExpectedTypeHead context mode =
@@ -823,7 +825,7 @@ inferImplicitApps
   -> Syntax.Term v
   -> Domain.Value
   -> HashMap Name Surface.Term
-  -> Context.CanPostpone
+  -> Postponement.CanPostpone
   -> M (Syntax.Term v, Domain.Value)
 inferImplicitApps context function functionType arguments canPostpone
   | HashMap.null arguments =
@@ -849,7 +851,7 @@ inferImplicitApps context function functionType arguments canPostpone
             (Syntax.App function'' Implicit argument')
             target
             (HashMap.delete name arguments)
-            Context.CanPostpone
+            Postponement.CanPostpone
       _
         | [(name, argument@(Surface.Term argumentSpan _))] <- HashMap.toList arguments -> do
           domain <- Context.newMetaType $ Context.spanned argumentSpan context
@@ -868,7 +870,7 @@ inferImplicitApps context function functionType arguments canPostpone
           pure (Syntax.App (f function'') Implicit argument', target'')
 
       Domain.Neutral (Domain.Meta blockingMeta) _
-        | Context.CanPostpone <- canPostpone ->
+        | Postponement.CanPostpone <- canPostpone ->
           postponeImplicitApps context function arguments functionType blockingMeta
 
       _ -> do

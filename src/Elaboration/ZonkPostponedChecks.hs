@@ -2,15 +2,12 @@
 module Elaboration.ZonkPostponedChecks where
 
 import qualified Core.Syntax as Syntax
-import Data.IntMap (IntMap)
-import qualified Data.IntMap as IntMap
-import qualified Elaboration.Context as Context
-import qualified Postponement
+import qualified Elaboration.Postponed as Postponed
 import Protolude hiding (IntMap)
 import Telescope (Telescope)
 import qualified Telescope
 
-zonkDefinition :: IntMap Postponement.Index Context.Postponed -> Syntax.Definition -> Syntax.Definition
+zonkDefinition :: Postponed.Checks -> Syntax.Definition -> Syntax.Definition
 zonkDefinition postponed def =
   case def of
     Syntax.TypeDeclaration type_ ->
@@ -23,7 +20,7 @@ zonkDefinition postponed def =
       Syntax.DataDefinition boxity $ zonkDataDefinition postponed tele
 
 zonkDataDefinition
-  :: IntMap Postponement.Index Context.Postponed
+  :: Postponed.Checks
   -> Telescope binding Syntax.Type Syntax.ConstructorDefinitions v
   -> Telescope binding Syntax.Type Syntax.ConstructorDefinitions v
 zonkDataDefinition postponed tele =
@@ -34,7 +31,7 @@ zonkDataDefinition postponed tele =
     Telescope.Extend binding type_ plicity tele' ->
       Telescope.Extend binding (zonkTerm postponed type_) plicity (zonkDataDefinition postponed tele')
 
-zonkTerm :: IntMap Postponement.Index Context.Postponed -> Syntax.Term v -> Syntax.Term v
+zonkTerm :: Postponed.Checks -> Syntax.Term v -> Syntax.Term v
 zonkTerm postponed term =
   case term of
     Syntax.Var _ ->
@@ -53,14 +50,14 @@ zonkTerm postponed term =
       term
 
     Syntax.PostponedCheck index term' ->
-      case postponed IntMap.! index of
-        Context.Unchecked {} ->
+      case Postponed.lookup index postponed of
+        Postponed.Unchecked {} ->
           zonkTerm postponed term'
 
-        Context.Checking ->
+        Postponed.Checking ->
           zonkTerm postponed term'
 
-        Context.Checked term'' ->
+        Postponed.Checked term'' ->
           zonkTerm postponed $ Syntax.coerce term''
 
     Syntax.Let binding term' type_ scope ->
@@ -84,7 +81,7 @@ zonkTerm postponed term =
     Syntax.Spanned span term' ->
       Syntax.Spanned span $ zonkTerm postponed term'
 
-zonkBranches :: IntMap Postponement.Index Context.Postponed -> Syntax.Branches v -> Syntax.Branches v
+zonkBranches :: Postponed.Checks -> Syntax.Branches v -> Syntax.Branches v
 zonkBranches postponed branches =
   case branches of
     Syntax.ConstructorBranches constructorTypeName constructorBranches ->
@@ -94,7 +91,7 @@ zonkBranches postponed branches =
       Syntax.LiteralBranches $ map (zonkTerm postponed) <$> literalBranches
 
 zonkTelescope
-  :: IntMap Postponement.Index Context.Postponed
+  :: Postponed.Checks
   -> Telescope bindings Syntax.Type Syntax.Term v
   -> Telescope bindings Syntax.Type Syntax.Term v
 zonkTelescope postponed tele =

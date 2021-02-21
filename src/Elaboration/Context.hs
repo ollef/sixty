@@ -1,10 +1,7 @@
 {-# language BangPatterns #-}
 {-# language DuplicateRecordFields #-}
 {-# language FlexibleContexts #-}
-{-# language GADTs #-}
 {-# language OverloadedStrings #-}
-{-# language RankNTypes #-}
-{-# language TupleSections #-}
 module Elaboration.Context where
 
 import Protolude hiding (IntMap, IntSet, catch, check, force)
@@ -36,6 +33,7 @@ import qualified Data.IntSet as IntSet
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Elaboration.Meta as Meta
+import qualified Elaboration.Postponed as Postponed
 import Environment (Environment(Environment))
 import qualified Environment
 import Error (Error)
@@ -69,7 +67,7 @@ data Context v = Context
   , types :: IntMap Var Domain.Type
   , boundVars :: IntSeq Var
   , metas :: !(IORef Meta.Vars)
-  , postponed :: !(IORef PostponedChecks)
+  , postponed :: !(IORef Postponed.Checks)
   , coveredConstructors :: CoveredConstructors
   , coveredLiterals :: CoveredLiterals
   , errors :: !(IORef (Tsil Error))
@@ -94,7 +92,7 @@ empty :: MonadBase IO m => Scope.KeyedName -> m (Context Void)
 empty key = do
   ms <- newIORef Meta.empty
   es <- newIORef mempty
-  ps <- newIORef PostponedChecks { checks = mempty, nextIndex = 0 }
+  ps <- newIORef Postponed.empty
   pure Context
     { scopeKey = key
     , span = Span.Relative 0 0
@@ -693,17 +691,17 @@ zonk context term = do
         Nothing -> do
           solution <- lookupPostponedCheck index context
           case solution of
-            Unchecked {} -> do
+            Postponed.Unchecked {} -> do
               atomicModifyIORef' postponedRef $ \indexMap' ->
                 (IntMap.insert index Nothing indexMap', ())
               pure Nothing
 
-            Checking -> do
+            Postponed.Checking -> do
               atomicModifyIORef' postponedRef $ \indexMap' ->
                 (IntMap.insert index Nothing indexMap', ())
               pure Nothing
 
-            Checked term' -> do
+            Postponed.Checked term' -> do
               term'' <- Zonking.zonkTerm env zonkMeta zonkPostponed $ Syntax.coerce term'
               atomicModifyIORef' postponedRef $ \indexMap' ->
                 (IntMap.insert index (Just $ Syntax.coerce term'') indexMap', ())
@@ -715,21 +713,6 @@ zonk context term = do
 
 -------------------------------------------------------------------------------
 -- Postponement
-
-data Postponed where
-  Unchecked :: (CanPostpone -> M (Syntax.Term v)) -> Postponed
-  Checking :: Postponed
-  Checked :: Syntax.Term v -> Postponed
-
-data PostponedChecks = PostponedChecks
-  { checks :: !(IntMap Postponement.Index Postponed)
-  , nextIndex :: !Postponement.Index
-  }
-
-data CanPostpone
-  = Can'tPostpone
-  | CanPostpone
-  deriving Show
 
 stillBlocked :: Context v -> Int -> Domain.Value -> M (Maybe Meta.Index)
 stillBlocked context !arity value = do
@@ -747,10 +730,9 @@ stillBlocked context !arity value = do
     _ ->
       pure Nothing
 
-newPostponedCheck :: Context v -> Meta.Index -> (CanPostpone -> M (Syntax.Term v)) -> M Postponement.Index
+newPostponedCheck :: Context v -> Meta.Index -> (Postponement.CanPostpone -> M (Syntax.Term v)) -> M Postponement.Index
 newPostponedCheck context blockingMeta check = do
-  postponementIndex <- atomicModifyIORef' (postponed context) $ \p ->
-    (PostponedChecks (IntMap.insert (nextIndex p) (Unchecked check) (checks p)) (nextIndex p + 1), nextIndex p)
+  postponementIndex <- atomicModifyIORef' (postponed context) $ Postponed.insert check
   addPostponementBlockedOnMeta context postponementIndex blockingMeta
   pure postponementIndex
 
@@ -765,38 +747,34 @@ addPostponementsBlockedOnMeta context postponementIndices blockingMeta =
 lookupPostponedCheck
   :: Postponement.Index
   -> Context v
-  -> M Postponed
-lookupPostponedCheck i context = do
-  p <- readIORef (postponed context)
-  pure $ checks p IntMap.! i
+  -> M Postponed.Check
+lookupPostponedCheck i context =
+  Postponed.lookup i <$> readIORef (postponed context)
 
 checkUnblockedPostponedChecks :: Context v -> IntSet Postponement.Index -> M ()
 checkUnblockedPostponedChecks context indices_ = do
   forM_ (IntSet.toList indices_) $ \index -> do
     join $ atomicModifyIORef' (postponed context) $ \postponed' -> do
       let
-        (doIt, checks') =
-          IntMap.alterF alter index (checks postponed')
+        (doIt, postponed'') =
+          Postponed.adjustF adjust index postponed'
 
-        alter maybeValue =
-          case maybeValue of
-            Nothing ->
-              panic "checkUnblockedPostponedChecks: non-existent postponement index"
-
-            Just (Unchecked check) ->
+        adjust check =
+          case check of
+            Postponed.Unchecked check' ->
               ( do
-                result <- check CanPostpone
+                result <- check' Postponement.CanPostpone
                 atomicModifyIORef' (postponed context) $ \p' ->
-                  (PostponedChecks (IntMap.insert index (Checked result) (checks p')) (nextIndex p'), ())
-              , Just Checking
+                  (Postponed.update index (Postponed.Checked result) p', ())
+              , check
               )
 
-            Just Checking ->
-              (pure (), maybeValue)
+            Postponed.Checking ->
+              (pure (), check)
 
-            Just (Checked _) ->
-              (pure (), maybeValue)
-      (PostponedChecks checks' (nextIndex postponed'), doIt)
+            Postponed.Checked _ ->
+              (pure (), check)
+      (postponed'', doIt)
 
 inferAllPostponedChecks :: Context v -> M ()
 inferAllPostponedChecks context = do
@@ -804,31 +782,28 @@ inferAllPostponedChecks context = do
   where
     go index =
       join $ atomicModifyIORef' (postponed context) $ \postponed' ->
-        if index < nextIndex postponed' then do
+        if index < Postponed.nextIndex postponed' then do
           let
-            (doIt, checks') =
-              IntMap.alterF alter index (checks postponed')
+            (doIt, postponed'') =
+              Postponed.adjustF adjust index postponed'
 
-            alter maybeValue =
-              case maybeValue of
-                Nothing ->
-                  panic "checkUnblockedPostponedChecks: non-existent postponement index"
-
-                Just (Unchecked check) ->
+            adjust value =
+              case value of
+                Postponed.Unchecked check ->
                   ( do
-                    result <- check Can'tPostpone
+                    result <- check Postponement.Can'tPostpone
                     atomicModifyIORef' (postponed context) $ \p' ->
-                      (PostponedChecks (IntMap.insert index (Checked result) (checks p')) (nextIndex p'), ())
-                  , Just Checking
+                      (Postponed.update index (Postponed.Checked result) p', ())
+                  , Postponed.Checking
                   )
 
-                Just Checking ->
-                  (pure (), maybeValue)
+                Postponed.Checking ->
+                  (pure (), value)
 
-                Just (Checked _) ->
-                  (pure (), maybeValue)
+                Postponed.Checked _ ->
+                  (pure (), value)
 
-          (PostponedChecks checks' (nextIndex postponed'), do doIt; go $ index + 1)
+          (postponed'', do doIt; go $ index + 1)
 
         else
           (postponed', pure ())

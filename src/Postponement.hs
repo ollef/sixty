@@ -17,3 +17,8 @@ newtype Index = Index Int
 instance Pretty Index where
   pretty (Index i) =
     "?" <> pretty i
+
+data CanPostpone
+  = Can'tPostpone
+  | CanPostpone
+  deriving Show

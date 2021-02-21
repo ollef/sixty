@@ -53,6 +53,7 @@ import Monad
 import Name (Name(Name))
 import qualified Name
 import Plicity
+import qualified Postponement
 import qualified Query
 import Rock
 import qualified Scope
@@ -109,7 +110,7 @@ resolvePattern
   :: Context v
   -> Surface.UnspannedPattern
   -> Domain.Type
-  -> Context.CanPostpone
+  -> Postponement.CanPostpone
   -> ExceptT Meta.Index M UnspannedPattern
 resolvePattern context unspannedPattern type_ canPostpone = do
   case unspannedPattern of
@@ -130,10 +131,10 @@ resolvePattern context unspannedPattern type_ canPostpone = do
           case resolution of
             Left blockingMeta ->
               case canPostpone of
-                Context.CanPostpone ->
+                Postponement.CanPostpone ->
                   throwError blockingMeta
 
-                Context.Can'tPostpone -> do
+                Postponement.Can'tPostpone -> do
                   lift $ Context.report context $ Error.Ambiguous name constructorCandidates mempty
                   pure Wildcard
 
@@ -180,13 +181,13 @@ checkCase
   -> Domain.Type
   -> [(Surface.Pattern, Surface.Term)]
   -> Domain.Type
-  -> Context.CanPostpone
+  -> Postponement.CanPostpone
   -> M (Syntax.Term v)
 checkCase context scrutinee scrutineeType branches expectedType canPostpone = do
   scrutineeValue <- Elaboration.evaluate context scrutinee
   blockingMetaOrIsPatternScrutinee <- runExceptT $ isPatternValue context scrutineeValue
   case (canPostpone, blockingMetaOrIsPatternScrutinee) of
-    (Context.CanPostpone, Left blockingMeta) ->
+    (Postponement.CanPostpone, Left blockingMeta) ->
       postponeCaseCheck context scrutinee scrutineeType branches expectedType blockingMeta
 
     _ -> do
@@ -356,7 +357,7 @@ checkSingle context scrutinee plicity pat@(Surface.Pattern patSpan _) rhs@(Surfa
 
 checkWithCoverage :: Context v -> Config -> M (Syntax.Term v)
 checkWithCoverage context config = do
-  result <- check context config Context.CanPostpone
+  result <- check context config Postponement.CanPostpone
   let
     allClauseSpans =
       Set.fromList
@@ -368,7 +369,7 @@ checkWithCoverage context config = do
     Context.report (Context.spanned span context) $ Error.RedundantMatch $ _matchKind config
   pure result
 
-check :: Context v -> Config -> Context.CanPostpone -> M (Syntax.Term v)
+check :: Context v -> Config -> Postponement.CanPostpone -> M (Syntax.Term v)
 check context config canPostpone = do
   clauses <- catMaybes <$> mapM (simplifyClause context canPostpone) (_clauses config)
   let
@@ -398,7 +399,7 @@ check context config canPostpone = do
           case solved matches of
             Nothing ->
               case canPostpone of
-                Context.CanPostpone -> do
+                Postponement.CanPostpone -> do
                   maybeBlockingMeta <- findPatternResolutionBlocker context clauses
                   case maybeBlockingMeta of
                     Nothing ->
@@ -407,7 +408,7 @@ check context config canPostpone = do
                     Just blockingMeta ->
                       postponeElaboration context config blockingMeta
 
-                Context.Can'tPostpone ->
+                Postponement.Can'tPostpone ->
                   indeterminateIndexUnification
 
             Just inst -> do
@@ -422,7 +423,7 @@ findPatternResolutionBlocker context clauses =
   fmap (either Just (\() -> Nothing))  $ runExceptT $ forM_ clauses $ \clause ->
     forM_ (_matches clause) $ \case
       Match _ _ _ (UnresolvedPattern span unspannedSurfacePattern) type_ ->
-        void $ resolvePattern (Context.spanned span context) unspannedSurfacePattern type_ Context.CanPostpone
+        void $ resolvePattern (Context.spanned span context) unspannedSurfacePattern type_ Postponement.CanPostpone
 
       Match _ _ _ Pattern {} _ ->
         pure ()
@@ -559,7 +560,7 @@ uncoveredScrutineePatterns context value = do
 
 -------------------------------------------------------------------------------
 
-simplifyClause :: Context v -> Context.CanPostpone -> Clause -> M (Maybe Clause)
+simplifyClause :: Context v -> Postponement.CanPostpone -> Clause -> M (Maybe Clause)
 simplifyClause context canPostpone clause = do
   maybeMatches <- runMaybeT $
     concat <$> mapM (simplifyMatch context canPostpone) (_matches clause)
@@ -578,7 +579,7 @@ simplifyClause context canPostpone clause = do
 
 simplifyMatch
   :: Context v
-  -> Context.CanPostpone
+  -> Postponement.CanPostpone
   -> Match
   -> MaybeT M [Match]
 simplifyMatch context canPostpone match@(Match value forcedValue plicity pat type_) = do
@@ -941,7 +942,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
                   Context.coveredConstructors context
                 }
                 config
-                Context.CanPostpone
+                Postponement.CanPostpone
 
           scrutinee <- Elaboration.readback context scrutineeValue
 
@@ -1019,7 +1020,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
           let
             context' =
               Context.defineWellOrdered context scrutineeVar $ Domain.Con constr conArgs
-          result <- check context' config Context.CanPostpone
+          result <- check context' config Postponement.CanPostpone
           pure $ Telescope.Empty result
 
 findVarConstructorMatches
@@ -1061,7 +1062,7 @@ splitLiteral context config scrutineeValue scrutineeVar span lit outerType = do
     let
       context' =
         Context.defineWellOrdered context scrutineeVar $ Domain.Lit int
-    result <- check context' config Context.CanPostpone
+    result <- check context' config Postponement.CanPostpone
     pure (int, (spans, f result))
 
   defaultBranch <-
@@ -1071,7 +1072,7 @@ splitLiteral context config scrutineeValue scrutineeVar span lit outerType = do
         Context.coveredLiterals context
       }
       config
-      Context.CanPostpone
+      Postponement.CanPostpone
 
   scrutinee <- Elaboration.readback context scrutineeValue
 
@@ -1120,14 +1121,14 @@ splitEqualityOr context config matches k =
                 check context config
                   { _clauses = drop 1 $ _clauses config
                   }
-                  Context.CanPostpone
+                  Postponement.CanPostpone
 
               Left Indices.Dunno ->
                 splitEqualityOr context config matches' k
 
               Right context' -> do
                 context'' <- Context.define context' var $ Builtin.Refl type_ value1 value2
-                result <- check context'' config Context.CanPostpone
+                result <- check context'' config Postponement.CanPostpone
                 scrutinee <- Elaboration.readback context'' $ Domain.var var
                 pure $
                   Syntax.Case scrutinee
