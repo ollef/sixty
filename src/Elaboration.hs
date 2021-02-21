@@ -511,10 +511,7 @@ elaborateUnspanned context term mode canPostpone = do
           Binding.toName piBinding
       (context', var) <- Context.extend context name domain
       domain' <- readback context domain
-      target <-
-        Evaluation.evaluateClosure
-          targetClosure
-          (Domain.var var)
+      target <- Evaluation.evaluateClosure targetClosure (Domain.var var)
       body' <- Matching.checkSingle context' var Explicit pat body target
       binding <- SuggestedName.patternBinding context pat name
       pure $ Checked $ Syntax.Lam binding domain' Explicit body'
@@ -543,10 +540,7 @@ elaborateUnspanned context term mode canPostpone = do
 
         (context', var) <- Context.extend context name domain
         domain' <- readback context domain
-        target <-
-          Evaluation.evaluateClosure
-            targetClosure
-            (Domain.var var)
+        target <- Evaluation.evaluateClosure targetClosure (Domain.var var)
         body'' <- Matching.checkSingle context' var Implicit pat body' target
         binding <- SuggestedName.patternBinding context pat name
         pure $ Checked $ Syntax.Lam binding domain' Implicit body''
