@@ -6,7 +6,6 @@ module LanguageServer.Completion where
 
 import Protolude hiding (IntMap, catch, evaluate, moduleName)
 
-import Control.Exception.Lifted
 import Control.Monad.Trans.Maybe
 import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef.Lifted
@@ -23,7 +22,6 @@ import qualified Data.IntMap as IntMap
 import qualified Elaboration
 import Elaboration.Context (Context)
 import qualified Elaboration.Context as Context
-import qualified Error
 import qualified Error.Hydrated as Error
 import qualified LanguageServer.CursorAction as CursorAction
 import Monad
@@ -97,9 +95,9 @@ questionMark filePath (Position.LineColumn line column) =
             writeIORef (Context.metas context) metasBefore'
             appliedValue <- lift $ foldM (\fun (plicity, arg) -> Evaluation.apply fun plicity arg) value args
             appliedType <- lift $ TypeOf.typeOf context appliedValue
-            _ <- MaybeT $
-              (Just <$> Elaboration.subtypeWithoutRecovery context appliedType typeUnderCursor)
-              `catch` \(_ :: Error.Elaboration) -> pure Nothing
+            MaybeT $ do
+              isSubtype <- Elaboration.isSubtype context appliedType typeUnderCursor
+              pure $ if isSubtype then Just () else Nothing
             pure args
 
 

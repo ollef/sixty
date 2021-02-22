@@ -1113,38 +1113,30 @@ insertMetas context until type_ = do
       (args, res) <- insertMetas context until target
       pure ((plicity, meta) : args, res)
 
--- subtype
---   :: Context v
---   -> Domain.Type
---   -> Domain.Type
---   -> M (Syntax.Term v -> Syntax.Term v)
--- subtype context type1 type2 = do
---   type2' <- Context.forceHead type2
---   case type2' of
-
--- TODO right side implicits
-subtypeWithoutRecovery
+isSubtype
   :: Context v
   -> Domain.Type
   -> Domain.Type
-  -> M (Syntax.Term v -> Syntax.Term v)
-subtypeWithoutRecovery context type1 type2 = do
+  -> M Bool
+isSubtype context type1 type2 = do
   type2' <- Context.forceHead context type2
-  let
-    until =
-      case type2' of
-        Domain.Pi _ _ Implicit _ ->
-          UntilImplicit $ const True
+  case type2' of
+    Domain.Pi binding domain plicity targetClosure
+      | case plicity of
+          Explicit -> False
+          Implicit -> True
+          Constraint -> True
+      -> do
+        let
+          name =
+            Binding.toName binding
+        (context', var) <- Context.extend context name domain
+        target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
+        isSubtype context' type1 target
 
-        Domain.Neutral (Domain.Meta _) _ ->
-          UntilImplicit $ const True
-
-        _ ->
-          UntilExplicit
-
-  (args, type1') <- insertMetasReturningSyntax context until type1
-  Unification.unify context Flexibility.Rigid type1' type2
-  pure $ \term -> Syntax.apps term args
+    _ -> do
+      (_, type1') <- insertMetasReturningSyntax context UntilExplicit type1
+      Context.try_ context $ Unification.unify context Flexibility.Rigid type1' type2
 
 -------------------------------------------------------------------------------
 -- Meta solutions
