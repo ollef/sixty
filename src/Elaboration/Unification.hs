@@ -207,7 +207,7 @@ unify context flexibility value1 value2 = do
         case traverse (traverse Domain.singleVarView) args2' of
           Just vars2
             | unique $ snd <$> vars2 ->
-            solve context metaIndex2 vars2 v1
+              solve context metaIndex2 vars2 v1
 
           _ ->
             can'tUnify
