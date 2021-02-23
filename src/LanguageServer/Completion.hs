@@ -45,8 +45,7 @@ complete filePath (Position.LineColumn line column) =
 
       CursorAction.Term itemContext context varPositions _ -> do
         names <- lift $ getUsableNames itemContext context varPositions
-        lift $ forM names $ \(name, term, kind) -> do
-          value <- Elaboration.evaluate context term
+        lift $ forM names $ \(name, value, kind) -> do
           type_ <- TypeOf.typeOf context value
           type' <- Elaboration.readback context type_
           prettyType <- Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context type'
@@ -81,13 +80,13 @@ questionMark filePath (Position.LineColumn line column) =
         valueUnderCursor <- lift $ Elaboration.evaluate context termUnderCursor
         typeUnderCursor <- lift $ TypeOf.typeOf context valueUnderCursor
         typeUnderCursor' <- lift $ Elaboration.readback context typeUnderCursor
+        hPutStrLn stderr (show varPositions :: Text)
         prettyTypeUnderCursor <- lift $ Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context typeUnderCursor'
         names <- lift $ getUsableNames itemContext context varPositions
 
         metasBefore <- readIORef $ Context.metas context
-        lift $ fmap concat $ forM names $ \(name, term, kind) -> do
+        lift $ fmap concat $ forM names $ \(name, value, kind) -> do
           writeIORef (Context.metas context) metasBefore
-          value <- Elaboration.evaluate context term
           type_ <- TypeOf.typeOf context value
           (maxArgs, _) <- Elaboration.insertMetas context Elaboration.UntilTheEnd type_
           metasBefore' <- readIORef $ Context.metas context
@@ -155,7 +154,7 @@ questionMark filePath (Position.LineColumn line column) =
                   , _tags = mempty
                   }
 
-getUsableNames :: CursorAction.ItemContext -> Context v -> IntMap Var value -> M [(Text, Syntax.Term v, LSP.CompletionItemKind)]
+getUsableNames :: CursorAction.ItemContext -> Context v -> IntMap Var value -> M [(Text, Domain.Value, LSP.CompletionItemKind)]
 getUsableNames itemContext context varPositions = do
   hPutStrLn stderr $ "getUsableNames " ++ show itemContext
   locals <- case itemContext of
@@ -164,8 +163,7 @@ getUsableNames itemContext context varPositions = do
         let
           Name text =
             Context.lookupVarName var context
-        term <- Elaboration.readback context $ Domain.var var
-        pure (text, term, LSP.CiVariable)
+        pure (text, Domain.var var, LSP.CiVariable)
 
     CursorAction.PatternContext ->
       pure []
@@ -193,7 +191,7 @@ getUsableNames itemContext context varPositions = do
             maybeDefinition <- fetch $ Query.ElaboratedDefinition global
             pure
               [ ( name
-                , Syntax.Global global
+                , Domain.global global
                 , case maybeDefinition of
                     Just (Syntax.DataDefinition {}, _) ->
                       LSP.CiEnum
@@ -224,12 +222,12 @@ getUsableNames itemContext context varPositions = do
             pure $
               case toList datas of
                 [data_] ->
-                  [(name, Syntax.Global data_, LSP.CiEnum)]
+                  [(name, Domain.global data_, LSP.CiEnum)]
 
                 _ ->
                   []
               <>
-              [ (name, Syntax.Con con, LSP.CiEnumMember)
+              [ (name, Domain.con con, LSP.CiEnumMember)
               | con <- toList constrs
               ]
         case itemContext of
