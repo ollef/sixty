@@ -1,0 +1,4 @@
+data Equals forall T. (x y : T) where
+  Refl : Equals x x
+
+h : ((g : forall a. a -> a) -> Equals g g -> Int) -> Int -- unsolved meta error expected
