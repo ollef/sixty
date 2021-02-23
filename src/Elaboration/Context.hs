@@ -757,8 +757,8 @@ lookupPostponedCheck i context =
   Postponed.lookup i <$> readIORef (postponed context)
 
 checkUnblockedPostponedChecks :: Context v -> IntSet Postponement.Index -> M ()
-checkUnblockedPostponedChecks context indices_ = do
-  forM_ (IntSet.toList indices_) $ \index -> do
+checkUnblockedPostponedChecks context indices_ =
+  forM_ (IntSet.toList indices_) $ \index ->
     join $ atomicModifyIORef' (postponed context) $ \postponed' -> do
       let
         (doIt, postponed'') =
@@ -782,7 +782,7 @@ checkUnblockedPostponedChecks context indices_ = do
       (postponed'', doIt)
 
 inferAllPostponedChecks :: Context v -> M ()
-inferAllPostponedChecks context = do
+inferAllPostponedChecks context =
   go 0
   where
     go index =
