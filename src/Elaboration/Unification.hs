@@ -178,17 +178,6 @@ unify context flexibility value1 value2 = do
 
       unify context' flexibility body1 body2
 
-    -- Case inversion
-    (Domain.Neutral (Domain.Meta meta) (spine@(Domain.Apps args) Domain.:> Domain.Case branches), _)
-      | Flexibility.Rigid <- flexibility -> do
-        matches <- potentiallyMatchingBranches context value2' branches
-        invertCase meta spine args matches
-
-    (_, Domain.Neutral (Domain.Meta meta) (spine@(Domain.Apps args) Domain.:> Domain.Case branches))
-      | Flexibility.Rigid <- flexibility -> do
-        matches <- potentiallyMatchingBranches context value1' branches
-        invertCase meta spine args matches
-
     -- Glued values
     (Domain.Glued head1 spine1 value1'', Domain.Glued head2 spine2 value2'')
       | head1 == head2 ->
@@ -225,6 +214,17 @@ unify context flexibility value1 value2 = do
 
           _ ->
             can'tUnify
+
+    -- Case inversion
+    (Domain.Neutral (Domain.Meta meta) (spine@(Domain.Apps args) Domain.:> Domain.Case branches), _)
+      | Flexibility.Rigid <- flexibility -> do
+        matches <- potentiallyMatchingBranches context value2' branches
+        invertCase meta spine args matches
+
+    (_, Domain.Neutral (Domain.Meta meta) (spine@(Domain.Apps args) Domain.:> Domain.Case branches))
+      | Flexibility.Rigid <- flexibility -> do
+        matches <- potentiallyMatchingBranches context value1' branches
+        invertCase meta spine args matches
 
     _ ->
       can'tUnify
