@@ -141,7 +141,7 @@ inlineSolutions scopeKey solutions def type_ = do
 
   where
     acyclic (AcyclicSCC x) = x
-    acyclic (CyclicSCC _) = panic "Elaboration.MetaInlining.CyclicSCC"
+    acyclic (CyclicSCC xs) = panic $ "Elaboration.MetaInlining.CyclicSCC " <> show (fst <$> xs)
 
 data Value = Value !InnerValue Occurrences
 
