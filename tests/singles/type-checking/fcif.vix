@@ -1,0 +1,116 @@
+-- Adapted from https://github.com/AndrasKovacs/implicit-fun-elaboration/blob/3e2d6165ffe9d559badac3f86cf93071ca757730/src/benchmarks.fcif
+
+data Nat = Zero | Succ Nat
+data List a = Nil | Cons a (List a)
+data Pair a b = Pair a b
+data Bool = False | True
+
+length : forall A. List A -> Nat
+length Nil = Zero
+length (Cons _ as) = Succ (length as)
+
+head : forall a. List a -> a
+
+tail : forall a. List a -> List a
+tail Nil = Nil
+tail (Cons _ as) = as
+
+map : forall a b. (a -> b) -> List a -> List b
+map f Nil = Nil
+map f (Cons x xs) = Cons (f x) (map f xs)
+
+append : forall a. List a -> List a -> List a
+append Nil ys = ys
+append (Cons x xs) ys = Cons x (append xs ys)
+
+the : (A : Type) -> A -> A
+the _ a = a
+
+const : forall A B. A -> B -> A
+const x _ = x
+
+IdTy : Type
+IdTy = forall A. A -> A
+
+single : forall A. A -> List A
+single a = Cons a Nil
+
+id : forall A. A -> A
+id a = a
+
+ids : List IdTy
+ids = Nil
+
+app : forall A B. (A -> B) -> A -> B
+app = id
+
+revapp : forall A B. A -> (A -> B) -> B
+revapp x f = f x
+
+poly : IdTy -> Pair Nat Bool
+poly f = Pair (f Zero) (f True)
+
+choose : forall A. A -> A -> A
+choose = const
+
+auto : IdTy -> IdTy
+auto = id
+
+auto2 : forall B. IdTy -> B -> B
+auto2 _ b = b
+
+A2 : IdTy -> IdTy
+A2 = choose id
+
+A3 = choose Nil ids
+
+A4 : IdTy -> IdTy
+A4 x = x x
+
+A5 : IdTy -> IdTy
+A5 = id auto
+
+A6 : forall B. IdTy -> B -> B
+A6 = id auto2
+
+A7 = choose id auto
+
+A9 : (forall A. (A -> A) -> List A -> A) -> IdTy
+A9 f = f (choose id) ids
+
+A10 = poly id
+
+A11 = poly (\x. x)
+
+A12 = id poly (\x. x)
+
+C1 = length ids
+C2 = tail ids
+
+C3 : IdTy
+C3 = head ids
+
+C4 : List IdTy
+C4 = single id
+
+C5 = Cons id ids
+C6 = Cons (\ x. x) ids
+
+C7 = append (single Succ) (single id)
+
+C8 : (forall a. List a -> List a -> a) -> IdTy
+C8 g = g (single id) ids
+
+C9 = map poly (single id)
+
+C10 = map head (single ids)
+
+D1 = app poly id
+
+D2 = revapp id poly
+
+E2 : (h : Nat -> forall A. A -> A)(k : forall A. A -> List A -> A)(lst : List (forall A. Nat -> A -> A)) -> forall A. Nat -> A -> A
+E2 h k lst = k (\x. h x) lst
+
+E3 : ((forall A. A -> forall B. B -> B) -> Nat) -> Nat
+E3 r = r (\x y. y)
