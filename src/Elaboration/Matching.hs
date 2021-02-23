@@ -50,7 +50,7 @@ import GHC.Exts (fromList)
 import Literal (Literal)
 import qualified Meta
 import Monad
-import Name (Name(Name))
+import Name (Name)
 import qualified Name
 import Plicity
 import qualified Postponement
@@ -114,7 +114,7 @@ resolvePattern
   -> ExceptT Meta.Index M UnspannedPattern
 resolvePattern context unspannedPattern type_ canPostpone = do
   case unspannedPattern of
-    Surface.ConOrVar conSpan name argPatterns -> do
+    Surface.ConOrVar (Surface.SpannedName conSpan name) argPatterns -> do
       maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
       let
         varCase =
@@ -412,11 +412,13 @@ check context config canPostpone = do
                   indeterminateIndexUnification
 
             Just inst -> do
-              letBindPatternInstantiation context inst $ \context' -> do
-                mapM_ (checkForcedPattern context') matches
-                result <- Elaboration.check context' (_rhs firstClause) (_expectedType config)
-                modifyIORef (_usedClauses config) $ Set.insert $ _span firstClause
-                pure result
+              let
+                context' =
+                  withPatternInstantiation inst context
+              mapM_ (checkForcedPattern context') matches
+              result <- Elaboration.check context' (_rhs firstClause) (_expectedType config)
+              modifyIORef (_usedClauses config) $ Set.insert $ _span firstClause
+              pure result
 
 findPatternResolutionBlocker :: Context v -> [Clause] -> M (Maybe Meta.Index)
 findPatternResolutionBlocker context clauses =
@@ -761,30 +763,11 @@ matchSurfacePatterns context values patterns type_ =
       (matches, type'') <- matchSurfacePatterns context values' patterns' target
       pure (Match value value Explicit pat domain : matches, type'')
 
-type PatternInstantiation = Tsil (Bindings, Domain.Value, Domain.Type)
+type PatternInstantiation = Tsil (Name.Surface, Domain.Value, Domain.Type)
 
-letBindPatternInstantiation :: Context v -> PatternInstantiation -> (forall v'. Context v' -> M (Syntax.Term v')) -> M (Syntax.Term v)
-letBindPatternInstantiation context inst k =
-  case inst of
-    Tsil.Empty ->
-      k context
-
-    inst' Tsil.:> (bindings, value, type_) -> do
-      (context', _) <- Context.extendSurfaceDef context (Bindings.toName bindings) value type_
-      result <- letBindPatternInstantiation context' inst' k
-      term <- Elaboration.readback context value
-      type' <- Elaboration.readback context type_
-      pure $ Syntax.Let bindings term type' result
-
-extendWithPatternInstantation :: Context v -> PatternInstantiation -> (forall v'. Context v' -> MaybeT M a) -> MaybeT M a
-extendWithPatternInstantation context inst k =
-  case inst of
-    Tsil.Empty ->
-      k context
-
-    inst' Tsil.:> (bindings, value, type_) -> do
-      (context', _) <- lift $ Context.extendSurfaceDef context (Bindings.toName bindings) value type_
-      extendWithPatternInstantation context' inst' k
+withPatternInstantiation :: PatternInstantiation -> Context v -> Context v
+withPatternInstantiation inst context =
+  foldr (\(name, value, type_) -> Context.withSurfaceNameValue name value type_) context inst
 
 expandAnnotations
   :: Context v
@@ -797,10 +780,12 @@ expandAnnotations context matches =
 
     match:matches' ->
       case matchInstantiation match of
-        Just inst ->
-          extendWithPatternInstantation context inst $ \context' -> do
-            matches'' <- expandAnnotations context' matches'
-            pure $ match : matches''
+        Just inst -> do
+          let
+            context' =
+              withPatternInstantiation inst context
+          matches'' <- expandAnnotations context' matches'
+          pure $ match : matches''
 
         Nothing ->
           case match of
@@ -824,8 +809,8 @@ matchInstantiation match =
     Match _ _ _ (Pattern _ Wildcard) _ ->
       pure mempty
 
-    Match value _ _ (Pattern span (Var (Name.Surface name))) type_ ->
-      pure $ pure (Bindings.Spanned $ pure (span, Name name), value, type_)
+    Match value _ _ (Pattern _ (Var surfaceName)) type_ ->
+      pure $ pure (surfaceName, value, type_)
 
     Match _ _ _ (Pattern _ (Forced _)) _ ->
       pure mempty

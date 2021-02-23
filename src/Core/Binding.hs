@@ -8,7 +8,8 @@ import Protolude
 import Data.Persist
 
 import qualified Surface.Syntax as Surface
-import Name (Name)
+import Name (Name(Name))
+import qualified Name
 import qualified Span
 
 data Binding
@@ -26,8 +27,8 @@ toName bindings =
       name
 
 fromSurface :: Surface.SpannedName -> Binding
-fromSurface (Surface.SpannedName span name) =
-  Spanned span name
+fromSurface (Surface.SpannedName span (Name.Surface name)) =
+  Spanned span $ Name name
 
 spans :: Binding -> [Span.Relative]
 spans binding =

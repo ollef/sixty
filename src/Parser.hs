@@ -427,17 +427,13 @@ spannedIdentifier =
       _ ->
         break $ expected "identifier"
 
-spannedSurfaceName :: Parser (Span.Relative, Name.Surface)
-spannedSurfaceName =
-  second Name.Surface <$> spannedIdentifier
-
 spannedModuleName :: Parser (Span.Relative, Name.Module)
 spannedModuleName =
   second Name.Module <$> spannedIdentifier
 
 spannedName :: Parser Surface.SpannedName
 spannedName =
-  uncurry Surface.SpannedName . second Name <$> spannedIdentifier
+  uncurry Surface.SpannedName . second Name.Surface <$> spannedIdentifier
 
 spannedConstructor :: Parser (Span.Relative, Name.Constructor)
 spannedConstructor =
@@ -486,7 +482,7 @@ atomicPattern =
           continue $ pattern_ <* token Lexer.RightParen
 
         Lexer.QuestionMark ->
-          continue $ pure $ Surface.Pattern span $ Surface.ConOrVar span "?" mempty
+          continue $ pure $ Surface.Pattern span $ Surface.ConOrVar (Surface.SpannedName span "?") mempty
 
         Lexer.Underscore ->
           continue $ pure $ Surface.Pattern span Surface.WildcardPattern
@@ -495,7 +491,7 @@ atomicPattern =
           continue $ (\term_@(Surface.Term termSpan _) -> Surface.Pattern termSpan $ Surface.Forced term_) <$> atomicTerm
 
         Lexer.Identifier name_ ->
-          continue $ pure $ Surface.Pattern span $ Surface.ConOrVar span (Name.Surface name_) mempty
+          continue $ pure $ Surface.Pattern span $ Surface.ConOrVar (Surface.SpannedName span $ Name.Surface name_) mempty
 
         Lexer.Number int ->
           continue $ pure $ Surface.Pattern span $ Surface.LitPattern $ Literal.Integer int
@@ -505,7 +501,7 @@ atomicPattern =
 
 pattern_ :: Parser Surface.Pattern
 pattern_ =
-  ( uncurry Surface.conOrVar <$> spannedSurfaceName <*> many plicitPattern
+  ( Surface.conOrVar <$> spannedName <*> many plicitPattern
     <|> atomicPattern
   )
   <**>
@@ -525,9 +521,9 @@ plicitPattern =
     mkImplicitPattern span1 pats span2 =
       Surface.ImplicitPattern (Span.add span1 span2) $ HashMap.fromList pats
     patName =
-      spannedName <**>
-        ((\pat (Surface.SpannedName _ name_) -> (name_, pat)) <$ token Lexer.Equals <*> pattern_
-        <|> pure (\(Surface.SpannedName span name_@(Name n)) -> (name_, Surface.Pattern span $ Surface.ConOrVar span (Name.Surface n) mempty))
+      spannedIdentifier <**>
+        ((\pat (_, nameText) -> (Name nameText, pat)) <$ token Lexer.Equals <*> pattern_
+        <|> pure (\(span, nameText) -> (Name nameText, Surface.Pattern span $ Surface.ConOrVar (Surface.SpannedName span (Name.Surface nameText)) mempty))
         )
 
 -------------------------------------------------------------------------------
@@ -596,12 +592,12 @@ atomicTerm =
 
     letBinding :: Parser (Surface.Term -> Surface.Term)
     letBinding = do
-      Surface.SpannedName span name_@(Name nameText) <- spannedName
-      Surface.let_ span name_ . Just . (,) span <$ token Lexer.Colon <*> recoveringTerm <*>
+      (span, nameText) <- spannedIdentifier
+      Surface.let_ span (Name.Surface nameText) . Just . (,) span <$ token Lexer.Colon <*> recoveringTerm <*>
         sameLevel (withIndentationBlock $ do
           span' <- token $ Lexer.Identifier nameText
           clauses span' nameText)
-        <|> Surface.let_ span name_ Nothing <$> clauses span nameText
+        <|> Surface.let_ span (Name.Surface nameText) Nothing <$> clauses span nameText
 
 plicitAtomicTerm :: Parser (Surface.Term -> Surface.Term)
 plicitAtomicTerm =
@@ -611,9 +607,9 @@ plicitAtomicTerm =
   <|> flip Surface.app <$> atomicTerm
   where
     implicitArgument =
-      spannedName <**>
-        ((\t (Surface.SpannedName _ n) -> (n, t)) <$ token Lexer.Equals <*> term
-        <|> pure (\(Surface.SpannedName span n@(Name text)) -> (n, Surface.Term span $ Surface.Var $ Name.Surface text))
+      spannedIdentifier <**>
+        ((\t (_, nameText) -> (Name nameText, t)) <$ token Lexer.Equals <*> term
+        <|> pure (\(span, nameText) -> (Name nameText, Surface.Term span $ Surface.Var $ Name.Surface nameText))
         )
 
 term :: Parser Surface.Term
@@ -643,8 +639,8 @@ definition =
   relativeTo $
     dataDefinition
     <|> do
-      Surface.SpannedName span name_@(Name nameText) <- spannedName
-      (,) name_ <$>
+      (span, nameText) <- spannedIdentifier
+      (,) (Name nameText) <$>
         (Surface.TypeDeclaration span <$ token Lexer.Colon <*> recoveringTerm
         <|> Surface.ConstantDefinition <$> clauses span nameText
         )
@@ -662,7 +658,7 @@ clause =
 
 dataDefinition :: Parser (Name, Surface.Definition)
 dataDefinition =
-  mkDataDefinition <$> boxity <*> spannedName <*> parameters <*>
+  mkDataDefinition <$> boxity <*> spannedIdentifier <*> parameters <*>
     (token Lexer.Where *> blockOfMany gadtConstructors
     <|> token Lexer.Equals *> sepBy1 adtConstructor (token Lexer.Pipe)
     )
@@ -671,8 +667,8 @@ dataDefinition =
       Boxed <$ token (Lexer.Identifier "boxed") <* uncheckedToken Lexer.Data
       <|> Unboxed <$ token Lexer.Data
 
-    mkDataDefinition boxity_ (Surface.SpannedName span name_) params constrs =
-      (name_, Surface.DataDefinition span boxity_ params constrs)
+    mkDataDefinition boxity_ (span, nameText) params constrs =
+      (Name nameText, Surface.DataDefinition span boxity_ params constrs)
     parameters =
       parameters1 <|> pure []
 
@@ -723,20 +719,24 @@ import_ =
     mkImport
       <$ token (Lexer.Identifier "import") <*> spannedModuleName
       <*>
-        (Just <$ token (Lexer.Identifier "as") <*> spannedSurfaceName
+        (Just <$ token (Lexer.Identifier "as") <*> spannedName
         <|> pure Nothing
         )
       <*>
-        (Just <$ token (Lexer.Identifier "exposing") <*> exposedNames
-        <|> pure Nothing
+        (token (Lexer.Identifier "exposing") *> exposedNames
+        <|> pure mempty
         )
   where
-    mkImport (span, n@(Name.Module text)) malias mexposed =
+    mkImport (span, n@(Name.Module text)) malias exposed =
       Module.Import
         { _span = absoluteSpan
         , _module = n
-        , _alias = maybe (absoluteSpan, Name.Surface text) (first $ Span.absoluteFrom 0) malias
-        , _importedNames = fold mexposed
+        , _alias =
+          maybe
+            (absoluteSpan, Name.Surface text)
+            (\(Surface.SpannedName span' name) -> (Span.absoluteFrom 0 span', name))
+            malias
+        , _importedNames = exposed
         }
       where
         absoluteSpan =
@@ -748,4 +748,4 @@ exposedNames =
   where
     inner =
       Module.AllExposed <$ token (Lexer.Operator "..")
-      <|> Module.Exposed . HashSet.fromList <$> sepBy (snd <$> spannedSurfaceName) (token $ Lexer.Operator ",")
+      <|> Module.Exposed . HashSet.fromList <$> sepBy ((\(Surface.SpannedName _ name) -> name) <$> spannedName) (token $ Lexer.Operator ",")

@@ -58,7 +58,6 @@ import Plicity
 import qualified Postponement
 import qualified Query
 import qualified Scope
-import qualified Span
 import qualified Surface.Syntax as Surface
 import Telescope (Telescope)
 import qualified Telescope
@@ -126,8 +125,8 @@ checkDefinition context def expectedType =
       term' <- Clauses.check context clauses' expectedType
       postProcessDefinition context $ Syntax.ConstantDefinition term'
 
-    Surface.DataDefinition span boxity params constrs -> do
-      (tele, type_) <- inferDataDefinition context span params constrs mempty
+    Surface.DataDefinition _span boxity params constrs -> do
+      (tele, type_) <- inferDataDefinition context params constrs mempty
       type' <- evaluate context type_
       success <- Context.try_ context $ Unification.unify context Flexibility.Rigid type' expectedType
       if success then
@@ -158,8 +157,8 @@ inferDefinition context def =
       def' <- postProcessDefinition context $ Syntax.ConstantDefinition term'
       pure (def', type_)
 
-    Surface.DataDefinition span boxity params constrs -> do
-      (tele, type_) <- inferDataDefinition context span params constrs mempty
+    Surface.DataDefinition _span boxity params constrs -> do
+      (tele, type_) <- inferDataDefinition context params constrs mempty
       type' <- evaluate context type_
       def' <- postProcessDataDefinition context boxity tele
       pure (def', type')
@@ -174,16 +173,15 @@ postProcessDefinition context def = do
 
 inferDataDefinition
   :: Context v
-  -> Span.Relative
   -> [(Surface.SpannedName, Surface.Type, Plicity)]
   -> [Surface.ConstructorDefinition]
   -> Tsil (Plicity, Var)
   -> M (Telescope Binding Syntax.Type (Compose Syntax.ConstructorDefinitions Index.Succ) v, Syntax.Type v)
-inferDataDefinition context thisSpan preParams constrs paramVars =
+inferDataDefinition context preParams constrs paramVars =
   case preParams of
     [] -> do
       let
-        Scope.KeyedName _ qualifiedThisName@(Name.Qualified _ thisName) =
+        Scope.KeyedName _ qualifiedThisName@(Name.Qualified _ (Name.Name thisName)) =
           Context.scopeKey context
 
       thisType <-
@@ -197,7 +195,7 @@ inferDataDefinition context thisSpan preParams constrs paramVars =
       thisType' <- evaluate context thisType
 
       (context', _) <-
-        Context.extendSurface context (Surface.SpannedName thisSpan thisName) thisType'
+        Context.extendSurface context (Name.Surface thisName) thisType'
 
       constrs' <- forM constrs $ \case
         Surface.GADTConstructors cs type_ -> do
@@ -221,20 +219,20 @@ inferDataDefinition context thisSpan preParams constrs paramVars =
         , Syntax.Global Builtin.TypeName
         )
 
-    (binding, type_, plicity):preParams' -> do
+    (spannedName@(Surface.SpannedName _ name), type_, plicity):preParams' -> do
       type' <- check context type_ Builtin.Type
       type'' <- evaluate context type'
-      (context', paramVar) <- Context.extendSurface context binding type''
+      (context', paramVar) <- Context.extendSurface context name type''
       let
         paramVars' =
           paramVars Tsil.:> (plicity, paramVar)
 
-        binding' =
-          Binding.fromSurface binding
-      (tele, dataType) <- inferDataDefinition context' thisSpan preParams' constrs paramVars'
+        binding =
+          Binding.fromSurface spannedName
+      (tele, dataType) <- inferDataDefinition context' preParams' constrs paramVars'
       pure
-        ( Telescope.Extend binding' type' plicity tele
-        , Syntax.Pi binding' type' plicity dataType
+        ( Telescope.Extend binding type' plicity tele
+        , Syntax.Pi binding type' plicity dataType
         )
 
 varPis
@@ -602,10 +600,10 @@ elaborateUnspanned context term mode canPostpone = do
           elaborationFailed context mode
 
     (Surface.Var name, _) ->
-      case Context.lookupNameVar name context of
-        Just var -> do
-          term' <- readback context (Domain.var var)
-          result context mode term' $ Context.lookupVarType var context
+      case Context.lookupSurfaceName name context of
+        Just (value, type_) -> do
+          term' <- readback context value
+          result context mode term' type_
 
         Nothing -> do
           maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
@@ -662,8 +660,11 @@ elaborateUnspanned context term mode canPostpone = do
     (Surface.Lit lit, _) ->
       result context mode (Syntax.Lit lit) (inferLiteral lit)
 
-    (Surface.Let name maybeType clauses body, _) -> do
+    (Surface.Let surfaceName@(Name.Surface nameText) maybeType clauses body, _) -> do
       let
+        name =
+          Name.Name nameText
+
         clauses' =
           [ Clauses.Clause clause mempty | (_, clause) <- clauses]
       (bindings, boundTerm, typeTerm, typeValue) <-
@@ -680,18 +681,18 @@ elaborateUnspanned context term mode canPostpone = do
             pure (Bindings.fromName (span : map fst clauses) name, boundTerm, typeTerm, typeValue)
 
       boundValue <- evaluate context boundTerm
-      (context', _) <- Context.extendSurfaceDef context name boundValue typeValue
+      (context', _) <- Context.extendSurfaceDef context surfaceName boundValue typeValue
       body' <- elaborate context' body mode
       pure $ Syntax.Let bindings boundTerm typeTerm <$> body'
 
-    (Surface.Pi binding plicity domain target, _) -> do
+    (Surface.Pi spannedName@(Surface.SpannedName _ name) plicity domain target, _) -> do
       domain' <- check context domain Builtin.Type
       domain'' <- evaluate context domain'
 
-      (context', _) <- Context.extendSurface context binding domain''
+      (context', _) <- Context.extendSurface context name domain''
 
       target' <- check context' target Builtin.Type
-      result context mode (Syntax.Pi (Binding.fromSurface binding) domain' plicity target') Builtin.Type
+      result context mode (Syntax.Pi (Binding.fromSurface spannedName) domain' plicity target') Builtin.Type
 
     (Surface.Fun domain target, _) -> do
       domain' <- check context domain Builtin.Type

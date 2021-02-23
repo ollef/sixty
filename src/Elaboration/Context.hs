@@ -52,7 +52,6 @@ import qualified Postponement
 import qualified Query
 import qualified Scope
 import qualified Span
-import qualified Surface.Syntax as Surface
 import Telescope (Telescope)
 import qualified Telescope
 import Var
@@ -61,7 +60,7 @@ data Context v = Context
   { scopeKey :: !Scope.KeyedName
   , span :: !Span.Relative
   , indices :: Index.Map v Var
-  , nameVars :: HashMap Name Var
+  , surfaceNames :: HashMap Name.Surface (Domain.Value, Domain.Type)
   , varNames :: IntMap Var Name
   , values :: IntMap Var Domain.Value
   , types :: IntMap Var Domain.Type
@@ -96,7 +95,7 @@ empty key = do
   pure Context
     { scopeKey = key
     , span = Span.Relative 0 0
-    , nameVars = mempty
+    , surfaceNames = mempty
     , varNames = mempty
     , indices = Index.Map.Empty
     , values = mempty
@@ -114,7 +113,7 @@ emptyFrom context =
   Context
     { scopeKey = scopeKey context
     , span = span context
-    , nameVars = mempty
+    , surfaceNames = mempty
     , varNames = mempty
     , indices = Index.Map.Empty
     , values = mempty
@@ -138,15 +137,15 @@ spanned s context =
 
 extendSurface
   :: Context v
-  -> Surface.SpannedName
+  -> Name.Surface
   -> Domain.Type
   -> M (Context (Succ v), Var)
-extendSurface context (Surface.SpannedName _ name) type_ = do
+extendSurface context name@(Name.Surface nameText) type_ = do
   var <- freshVar
   pure
     ( context
-      { nameVars = HashMap.insert name var $ nameVars context
-      , varNames = IntMap.insert var name $ varNames context
+      { surfaceNames = HashMap.insert name (Domain.var var, type_) $ surfaceNames context
+      , varNames = IntMap.insert var (Name nameText) $ varNames context
       , indices = indices context Index.Map.:> var
       , types = IntMap.insert var type_ (types context)
       , boundVars = boundVars context IntSeq.:> var
@@ -173,22 +172,28 @@ extend context name type_ = do
 
 extendSurfaceDef
   :: Context v
-  -> Name
+  -> Name.Surface
   -> Domain.Value
   -> Domain.Type
   -> M (Context (Succ v), Var)
-extendSurfaceDef context name value type_ = do
+extendSurfaceDef context surfaceName@(Name.Surface nameText) value type_ = do
   var <- freshVar
   pure
     ( context
-      { nameVars = HashMap.insert name var $ nameVars context
-      , varNames = IntMap.insert var name $ varNames context
+      { surfaceNames = HashMap.insert surfaceName (Domain.var var, type_) $ surfaceNames context
+      , varNames = IntMap.insert var (Name nameText) $ varNames context
       , indices = indices context Index.Map.:> var
       , values = IntMap.insert var value (values context)
       , types = IntMap.insert var type_ (types context)
       }
     , var
     )
+
+withSurfaceNameValue :: Name.Surface -> Domain.Value -> Domain.Type -> Context v -> Context v
+withSurfaceNameValue name value type_ context =
+  context
+    { surfaceNames = HashMap.insert name (value, type_) $ surfaceNames context
+    }
 
 extendDef
   :: Context v
@@ -377,9 +382,9 @@ dependencies context value = do
 -------------------------------------------------------------------------------
 -- Lookup
 
-lookupNameVar :: Name.Surface -> Context v -> Maybe Var
-lookupNameVar (Name.Surface name) context =
-  HashMap.lookup (Name name) (nameVars context)
+lookupSurfaceName :: Name.Surface -> Context v -> Maybe (Domain.Value, Domain.Type)
+lookupSurfaceName surfaceName context =
+  HashMap.lookup surfaceName (surfaceNames context)
 
 lookupVarIndex :: Var -> Context v -> Maybe (Index v)
 lookupVarIndex var context =

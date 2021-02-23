@@ -30,7 +30,7 @@ unspanned (Term _ term) =
 data UnspannedTerm
   = Var !Name.Surface
   | Lit !Literal
-  | Let !Name !(Maybe (Span.Relative, Type)) [(Span.Relative, Clause)] !Term
+  | Let !Name.Surface !(Maybe (Span.Relative, Type)) [(Span.Relative, Clause)] !Term
   | Pi !SpannedName !Plicity !Type !Type
   | Fun !Type !Type
   | Lam !PlicitPattern !Term
@@ -43,7 +43,7 @@ data UnspannedTerm
 
 type Type = Term
 
-data SpannedName = SpannedName !Span.Relative !Name
+data SpannedName = SpannedName !Span.Relative !Name.Surface
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 data Pattern
@@ -51,7 +51,7 @@ data Pattern
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 data UnspannedPattern
-  = ConOrVar !Span.Relative !Name.Surface [PlicitPattern]
+  = ConOrVar !SpannedName [PlicitPattern]
   | WildcardPattern
   | LitPattern !Literal
   | Anno !Pattern !Type
@@ -98,20 +98,20 @@ anno :: Pattern -> Type -> Pattern
 anno pat@(Pattern span1 _) type_@(Term span2 _) =
   Pattern (Span.add span1 span2) (Anno pat type_)
 
-conOrVar :: Span.Relative -> Name.Surface -> [PlicitPattern] -> Pattern
-conOrVar nameSpan name patterns =
+conOrVar :: SpannedName -> [PlicitPattern] -> Pattern
+conOrVar spannedName@(SpannedName nameSpan _) patterns =
   let
     span =
       maybe nameSpan (Span.add nameSpan . plicitPatternSpan) $ Extra.last patterns
   in
-  Pattern span $ ConOrVar nameSpan name patterns
+  Pattern span $ ConOrVar spannedName patterns
 
 case_ :: Span.Relative -> Term -> Span.Relative -> [(Pattern, Term)] -> Term
 case_ caseSpan scrutinee ofSpan brs =
   Term (Span.add caseSpan $ maybe ofSpan (\(_, Term span _) -> span) $ Extra.last brs) $ Case scrutinee brs
 
 
-let_ :: Span.Relative -> Name -> Maybe (Span.Relative, Type) -> [(Span.Relative, Clause)] -> Term -> Term
+let_ :: Span.Relative -> Name.Surface -> Maybe (Span.Relative, Type) -> [(Span.Relative, Clause)] -> Term -> Term
 let_ nameSpan name maybeType clauses rhs@(Term rhsSpan _) =
   Term (Span.add nameSpan rhsSpan) $ Let name maybeType clauses rhs
 

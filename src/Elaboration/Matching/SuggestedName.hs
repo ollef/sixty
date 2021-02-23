@@ -97,7 +97,7 @@ shiftImplicit name patterns =
 patternNames :: Context v -> Surface.Pattern -> M [(Span.Relative, Name)]
 patternNames context pattern_ =
   case pattern_ of
-    Surface.Pattern span (Surface.ConOrVar _ surfaceName@(Name.Surface nameText) []) -> do
+    Surface.Pattern span (Surface.ConOrVar (Surface.SpannedName _ surfaceName@(Name.Surface nameText)) []) -> do
       maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) surfaceName
       if HashSet.null $ foldMap Scope.entryConstructors maybeScopeEntry then
         pure [(span, Name nameText)]
