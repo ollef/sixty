@@ -82,10 +82,11 @@ verifyErrors filePath errs expectedErrors = do
         | sort errorsOnLine == sort expectedErrorsOnLine ->
           pure ()
 
-      _ ->
+      maybeErrorsOnLine ->
         Tasty.assertFailure $
           toS filePath <> ":" <> show (lineNumber + 1) <> ": " <>
-          "Expected " <> show expectedErrorsOnLine <> " errors"
+          "Expected " <> show expectedErrorsOnLine <> " errors, got " <>
+          show (fold maybeErrorsOnLine)
 
   forM_ errs $ \(err, doc) ->
     case HashMap.lookup (Error.Hydrated.lineNumber err) expectedErrors of
