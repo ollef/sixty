@@ -226,6 +226,14 @@ unify context flexibility value1 value2 = do
         matches <- potentiallyMatchingBranches context value1' branches
         invertCase meta spine args matches
 
+    -- Failure terms mean that there has been an earlier error that's already
+    -- been reported, so let's not trigger more errors from them.
+    (Domain.Neutral (Domain.Global Builtin.FailName) _, _) ->
+      pure ()
+
+    (_, Domain.Neutral (Domain.Global Builtin.FailName) _) ->
+      pure ()
+
     _ ->
       can'tUnify
 
