@@ -87,18 +87,29 @@ unify context flexibility value1 value2 = do
 
         else do
           let
-            maybeVars1 =
-              mapM (mapM Domain.singleVarView) args1'
-            maybeVars2 =
-              mapM (mapM Domain.singleVarView) args2'
-          case (maybeVars1, maybeVars2) of
-            (Just vars1, _)
-              | unique $ snd <$> vars1 ->
+            maybeUniqueVars1 = do
+              vars1 <- mapM (mapM Domain.singleVarView) args1'
+              guard $ unique $ snd <$> vars1
+              pure vars1
+
+            maybeUniqueVars2 = do
+              vars2 <- mapM (mapM Domain.singleVarView) args2'
+              guard $ unique $ snd <$> vars2
+              pure vars2
+
+          case (maybeUniqueVars1, maybeUniqueVars2) of
+            (Just vars1, Just vars2)
+              | length vars1 > length vars2 ->
                 solve context metaIndex1 vars1 value2
 
-            (_, Just vars2)
-              | unique $ snd <$> vars2 ->
-                solve context metaIndex2 vars2 value1'
+              | otherwise ->
+                solve context metaIndex2 vars2 value1
+
+            (Just vars1, _) ->
+              solve context metaIndex1 vars1 value2
+
+            (_, Just vars2) ->
+              solve context metaIndex2 vars2 value1
 
             _ ->
               can'tUnify
