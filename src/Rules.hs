@@ -326,10 +326,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             pure
               ( case mdef of
                 Nothing ->
-                  Syntax.App
-                    (Syntax.Global Builtin.fail)
-                    Explicit
-                    (Syntax.Global Builtin.TypeName)
+                  Builtin.fail Builtin.type_
 
                 Just (_, type_) ->
                   type_
@@ -342,12 +339,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             pure $
               case maybeResult of
                 Nothing ->
-                  ( Syntax.App
-                    (Syntax.Global Builtin.fail)
-                    Explicit
-                    (Syntax.Global Builtin.TypeName)
-                  , errs
-                  )
+                  (Builtin.fail Builtin.type_, errs)
 
                 Just (Syntax.TypeDeclaration result, _) ->
                   (result, errs)
@@ -374,7 +366,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
         def <- fetch $ ElaboratedDefinition dataTypeName
         let
           fail =
-            Syntax.App (Syntax.Global Builtin.fail) Explicit $ Syntax.App (Syntax.Global Builtin.fail) Explicit (Syntax.Global Builtin.TypeName)
+            Builtin.fail $ Builtin.fail Builtin.type_
 
         case def of
           Just (Syntax.DataDefinition _ tele, _) -> do

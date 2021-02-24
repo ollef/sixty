@@ -52,7 +52,7 @@ tryUnify context value1 value2 = do
     pure identity
   else do
     type_ <- Readback.readback (Context.toEnvironment context) value2
-    pure $ const $ Syntax.App (Syntax.Global Builtin.fail) Explicit type_
+    pure $ const $ Builtin.fail type_
 
 tryUnifyD :: Context v -> Domain.Value -> Domain.Value -> M (Domain.Value -> Domain.Value)
 tryUnifyD context value1 value2 = do
@@ -60,7 +60,7 @@ tryUnifyD context value1 value2 = do
   pure $ if success then
     identity
   else
-    const $ Domain.Neutral (Domain.Global Builtin.fail) $ Domain.Apps $ pure (Explicit, value2)
+    const $ Builtin.Fail value2
 
 unify :: Context v -> Flexibility -> Domain.Value -> Domain.Value -> M ()
 unify context flexibility value1 value2 = do

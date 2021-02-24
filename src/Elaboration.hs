@@ -136,7 +136,7 @@ checkDefinition context def expectedType =
         expectedType' <- readback context expectedType
         postProcessDefinition context $
           Syntax.ConstantDefinition $
-          Syntax.App (Syntax.Global Builtin.fail) Explicit expectedType'
+          Builtin.fail expectedType'
 
 inferDefinition
   :: Context Void
@@ -293,10 +293,7 @@ postProcessDataDefinition outerContext boxity outerTele = do
                 ZonkPostponedChecks.zonkTerm postponed constructorType
             constructorType' <- Substitution.let_ context this zonkedConstructorType
             maybeConstructorType <- Context.try context $ addConstructorIndexEqualities context paramVars constructorType'
-            pure $
-              fromMaybe
-                (Syntax.App (Syntax.Global Builtin.fail) Explicit Builtin.type_)
-                maybeConstructorType
+            pure $ fromMaybe (Builtin.fail Builtin.type_) maybeConstructorType
 
         Telescope.Extend name type_ plicity tele' -> do
           typeValue <- evaluate context type_
@@ -775,11 +772,11 @@ elaborationFailed context mode =
     Infer _ -> do
       type_ <- Context.newMetaType context
       type' <- readback context type_
-      pure $ Inferred (Syntax.App (Syntax.Global Builtin.fail) Explicit type') type_
+      pure $ Inferred (Builtin.fail type') type_
 
     Check type_ -> do
       type' <- readback context type_
-      result context mode (Syntax.App (Syntax.Global Builtin.fail) Explicit type') type_
+      result context mode (Builtin.fail type') type_
 
 postponeCheck
   :: Context v
@@ -797,8 +794,7 @@ postponeCheck context surfaceTerm expectedType blockingMeta = do
     if success then
       pure resultTerm
     else
-      readback context $
-        Domain.Neutral (Domain.Global Builtin.fail) $ Domain.Apps $ pure (Explicit, expectedType)
+      readback context $ Builtin.Fail expectedType
   pure $ Checked $ Syntax.PostponedCheck postponementIndex resultMetaTerm
 
 postponeInference
@@ -905,8 +901,7 @@ postponeImplicitApps context function arguments functionType blockingMeta = do
       pure $ f resultTerm
 
     else
-      readback context $
-        Domain.Neutral (Domain.Global Builtin.fail) $ Domain.Apps $ pure (Explicit, expectedType)
+      readback context $ Builtin.Fail expectedType
   pure (Syntax.PostponedCheck postponementIndex resultMetaTerm, expectedType)
 
 inferenceFailed :: Context v -> M (Syntax.Term v, Domain.Type)
@@ -914,14 +909,13 @@ inferenceFailed context = do
   type_ <- Context.newMetaType context
   type' <- readback context type_
   pure
-    ( Syntax.App (Syntax.Global Builtin.fail) Explicit type'
+    ( Builtin.fail type'
     , type_
     )
 
 checkingFailed :: Context v -> Domain.Type -> M (Syntax.Term v)
-checkingFailed context type_ = do
-  type' <- readback context type_
-  pure $ Syntax.App (Syntax.Global Builtin.fail) Explicit type'
+checkingFailed context type_ =
+  readback context $ Builtin.Fail type_
 
 -------------------------------------------------------------------------------
 -- Constructor name resolution
@@ -1180,9 +1174,8 @@ checkMetaSolutions context metaVars =
           body <- addLambdas context'' target
           pure $ Syntax.Lam (Bindings.Unspanned name) domain' Explicit body
 
-        _ -> do
-          typeTerm <- readback context' type_
-          pure $ Syntax.App (Syntax.Global Builtin.fail) Explicit typeTerm
+        _ ->
+          readback context' $ Builtin.Fail type_
 
 -------------------------------------------------------------------------------
 

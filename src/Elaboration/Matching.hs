@@ -237,8 +237,7 @@ postponeCaseCheck context scrutinee scrutineeType branches expectedType blocking
     if success then
       pure resultTerm
     else
-      Elaboration.readback context $
-        Domain.Neutral (Domain.Global Builtin.fail) $ Domain.Apps $ pure (Explicit, expectedType)
+      Elaboration.readback context $ Builtin.Fail expectedType
   pure $ Syntax.PostponedCheck postponementIndex resultMetaTerm
 
 isPatternValue :: Context v -> Domain.Value -> ExceptT Meta.Index M Bool
@@ -382,8 +381,7 @@ check context config canPostpone = do
           patterns <- uncoveredScrutineePatterns context scrutinee
           pure $ (,) plicity <$> (Context.toPrettyablePattern context <$> patterns)
         Context.report context $ Error.NonExhaustivePatterns $ sequence scrutinees
-      targetType <- Elaboration.readback context $ _expectedType config
-      pure $ Syntax.App (Syntax.Global Builtin.fail) Explicit targetType
+      Elaboration.readback context $ Builtin.Fail $ _expectedType config
 
     firstClause:_ -> do
       let
@@ -394,8 +392,7 @@ check context config canPostpone = do
           let
             indeterminateIndexUnification = do
               Context.report context $ Error.IndeterminateIndexUnification $ _matchKind config
-              targetType <- Elaboration.readback context $ _expectedType config
-              pure $ Syntax.App (Syntax.Global Builtin.fail) Explicit targetType
+              Elaboration.readback context $ Builtin.Fail $ _expectedType config
           case solved matches of
             Nothing ->
               case canPostpone of
@@ -441,8 +438,7 @@ postponeElaboration context config blockingMeta = do
     if success then
       pure resultTerm
     else
-      Elaboration.readback context $
-        Domain.Neutral (Domain.Global Builtin.fail) $ Domain.Apps $ pure (Explicit, _expectedType config)
+      Elaboration.readback context $ Builtin.Fail $ _expectedType config
   pure $ Syntax.PostponedCheck postponementIndex resultMetaTerm
 
 checkForcedPattern :: Context v -> Match -> M ()

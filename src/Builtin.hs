@@ -24,9 +24,17 @@ type_ :: Syntax.Term v
 type_ =
   Syntax.Global TypeName
 
-fail :: Name.Qualified
-fail =
+pattern FailName :: Name.Qualified
+pattern FailName =
   "Sixten.Builtin.fail"
+
+pattern Fail :: Domain.Type -> Domain.Value
+pattern Fail type_ =
+  Domain.Neutral (Domain.Global FailName) (Domain.Apps (Tsil.Empty Tsil.:> (Explicit, type_)))
+
+fail :: Syntax.Type v -> Syntax.Term v
+fail =
+  Syntax.App (Syntax.Global Builtin.FailName) Explicit
 
 pattern EqualsName :: Name.Qualified
 pattern EqualsName =
