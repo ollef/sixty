@@ -69,11 +69,10 @@ unify context flexibility value1 value2 = do
   catchAndAdd $ case (value1', value2') of
     -- Both metas
     (Domain.Neutral (Domain.Meta metaIndex1) (Domain.Apps args1), Domain.Neutral (Domain.Meta metaIndex2) (Domain.Apps args2))
-      | Flexibility.Rigid <- flexibility
-      , map fst args1 == map fst args2 -> do
+      | Flexibility.Rigid <- flexibility -> do
         args1' <- mapM (mapM $ Context.forceHead context) args1
         args2' <- mapM (mapM $ Context.forceHead context) args2
-        if metaIndex1 == metaIndex2 then do
+        if metaIndex1 == metaIndex2 && map fst args1 == map fst args2 then do
           -- Intersection: If the same metavar is applied to two different lists of unknown
           -- variables its solution must not mention any variables at
           -- positions where the lists differ.
