@@ -9,12 +9,48 @@ import qualified Core.Evaluation as Evaluation
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
 import qualified Data.OrderedHashMap as OrderedHashMap
+import Core.Binding (Binding)
 import qualified Environment
 import qualified Meta
 import Monad
 import qualified Postponement
 import Telescope (Telescope)
 import qualified Telescope
+
+zonkDefinition
+  :: Domain.Environment Void
+  -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
+  -> Syntax.Definition
+  -> M Syntax.Definition
+zonkDefinition env metas postponed definition = case definition of
+  Syntax.TypeDeclaration type_ ->
+    Syntax.TypeDeclaration <$> zonkTerm env metas postponed type_
+
+  Syntax.ConstantDefinition term ->
+    Syntax.ConstantDefinition <$> zonkTerm env metas postponed term
+
+  Syntax.DataDefinition boxity tele ->
+    Syntax.DataDefinition boxity <$> zonkDataDefinition env metas postponed tele
+
+zonkDataDefinition
+  :: Domain.Environment v
+  -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
+  -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v
+  -> M (Telescope Core.Binding.Binding Syntax.Type Syntax.ConstructorDefinitions v)
+zonkDataDefinition env metas postponed tele =
+  case tele of
+    Telescope.Empty (Syntax.ConstructorDefinitions constructorDefinitions) ->
+      Telescope.Empty . Syntax.ConstructorDefinitions <$>
+        OrderedHashMap.mapMUnordered (zonkTerm env metas postponed) constructorDefinitions
+
+    Telescope.Extend bindings type_ plicity tele' -> do
+      (env', _) <- Environment.extend env
+      Telescope.Extend bindings <$>
+        zonkTerm env metas postponed type_ <*>
+        pure plicity <*>
+        zonkDataDefinition env' metas postponed tele'
 
 zonkTerm
   :: Domain.Environment v
