@@ -87,6 +87,10 @@ unionWith :: (value -> value -> value) -> IntMap key value -> IntMap key value -
 unionWith f m1 m2 =
   IntMap $ Containers.unionWith f (coerce m1) (coerce m2)
 
+difference :: IntMap key value1 -> IntMap key value2 -> IntMap key value1
+difference (IntMap m1) (IntMap m2) =
+  IntMap $ Containers.difference m1 m2
+
 traverseWithKey :: (Coercible key Containers.Key, Applicative t) => (key -> value1 -> t value2) -> IntMap key value1 -> t (IntMap key value2)
 traverseWithKey f (IntMap m) =
   IntMap <$> Containers.traverseWithKey (coerce f) m
