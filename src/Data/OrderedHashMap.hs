@@ -62,6 +62,10 @@ mapMUnordered :: Applicative f => (a -> f b) -> OrderedHashMap k a -> f (Ordered
 mapMUnordered f (OrderedHashMap h) =
   OrderedHashMap <$> traverse (traverse f) h
 
+mapMUnordered_ :: Applicative f => (a -> f ()) -> OrderedHashMap k a -> f ()
+mapMUnordered_ f (OrderedHashMap h) =
+  traverse_ (traverse_ f) h
+
 forMUnordered :: Applicative f => OrderedHashMap k a -> (a -> f b) -> f (OrderedHashMap k b)
 forMUnordered =
   flip mapMUnordered
