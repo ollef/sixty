@@ -85,6 +85,9 @@ typeOfHead context hd =
             Meta.Solved _ type' ->
               type'
 
+            Meta.LazilySolved _ type' ->
+              type'
+
       Evaluation.evaluate (Environment.empty $ Context.scopeKey context) type_
 
 typeOfElimination :: Context v -> Domain.Type -> Domain.Elimination -> M Domain.Type

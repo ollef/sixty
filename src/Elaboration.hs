@@ -66,7 +66,7 @@ import Var (Var)
 inferTopLevelDefinition
   :: Scope.KeyedName
   -> Surface.Definition
-  -> M ((Syntax.Definition, Syntax.Type Void, Meta.State), [Error])
+  -> M ((Syntax.Definition, Syntax.Type Void, Meta.EagerState), [Error])
 inferTopLevelDefinition key def = do
   context <- Context.empty key
   (def', typeValue) <- inferDefinition context def
@@ -74,30 +74,36 @@ inferTopLevelDefinition key def = do
   postponed <- readIORef $ Context.postponed context
   metaVars <- readIORef $ Context.metas context
   errors <- readIORef $ Context.errors context
-  pure ((ZonkPostponedChecks.zonkDefinition postponed def', type_, metaVars), toList errors)
+  let
+    zonkedDef = ZonkPostponedChecks.zonkDefinition postponed def'
+  eagerMetaVars <- Meta.toEagerState metaVars zonkedDef $ Just type_
+  pure ((zonkedDef, type_, eagerMetaVars), toList errors)
 
 checkTopLevelDefinition
   :: Scope.KeyedName
   -> Surface.Definition
   -> Domain.Type
-  -> M ((Syntax.Definition, Meta.State), [Error])
+  -> M ((Syntax.Definition, Meta.EagerState), [Error])
 checkTopLevelDefinition key def type_ = do
   context <- Context.empty key
   def' <- checkDefinition context def type_
   postponed <- readIORef $ Context.postponed context
   metaVars <- readIORef $ Context.metas context
   errors <- readIORef $ Context.errors context
-  pure ((ZonkPostponedChecks.zonkDefinition postponed def', metaVars), toList errors)
+  let
+    zonkedDef = ZonkPostponedChecks.zonkDefinition postponed def'
+  eagerMetaVars <- Meta.toEagerState metaVars zonkedDef Nothing
+  pure ((zonkedDef, eagerMetaVars), toList errors)
 
 checkDefinitionMetaSolutions
   :: Scope.KeyedName
   -> Syntax.Definition
   -> Syntax.Type Void
-  -> Meta.State
+  -> Meta.EagerState
   -> M ((Syntax.Definition, Syntax.Type Void), [Error])
 checkDefinitionMetaSolutions key def type_ metas = do
   context <- Context.empty key
-  metasVar <- newIORef metas
+  metasVar <- newIORef $ Meta.fromEagerState metas
   let
     context' = context { Context.metas = metasVar }
   metas' <- checkMetaSolutions context' metas
@@ -1138,12 +1144,12 @@ isSubtype context type1 type2 = do
 
 checkMetaSolutions
   :: Context Void
-  -> Meta.State
+  -> Meta.EagerState
   -> M Syntax.MetaSolutions
 checkMetaSolutions context metaVars =
-  flip IntMap.traverseWithKey (Meta.entries metaVars) $ \index entry ->
+  flip IntMap.traverseWithKey (Meta.eagerEntries metaVars) $ \index entry ->
     case entry of
-      Meta.Unsolved type_ _ _ span -> do
+      Meta.EagerUnsolved type_ _ span -> do
         ptype <- Context.toPrettyableClosedTerm context type_
         Context.report (Context.spanned span context) $
           Error.UnsolvedMetaVariable index ptype
@@ -1151,7 +1157,7 @@ checkMetaSolutions context metaVars =
         failTerm <- addLambdas (Context.emptyFrom context) type'
         pure (failTerm, type_)
 
-      Meta.Solved solution type_ ->
+      Meta.EagerSolved solution type_ ->
         pure (solution, type_)
   where
     addLambdas :: Context v -> Domain.Type -> M (Syntax.Term v)

@@ -64,7 +64,7 @@ data Query a where
   Scopes :: Name.Module -> Query ((Scope, Scope, Scope.Visibility), Scope.Module)
   ResolvedName :: Scope.KeyedName -> Name.Surface -> Query (Maybe Scope.Entry)
   IsDefinitionVisible :: Scope.KeyedName -> Name.Qualified -> Query Bool
-  ElaboratingDefinition :: Scope.KeyedName -> Query (Maybe (Syntax.Definition, Syntax.Type Void, Elaboration.Meta.State))
+  ElaboratingDefinition :: Scope.KeyedName -> Query (Maybe (Syntax.Definition, Syntax.Type Void, Elaboration.Meta.EagerState))
   ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void)
   ElaboratedDefinition :: Name.Qualified -> Query (Maybe (Syntax.Definition, Syntax.Type Void))
   ConstructorType :: Name.QualifiedConstructor -> Query (Telescope Binding Syntax.Type Syntax.Type Void)

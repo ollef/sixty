@@ -558,6 +558,9 @@ instantiatedMetaType context meta args = do
     Meta.Solved {} ->
       panic "instantiatedMetaType already solved"
 
+    Meta.LazilySolved {} ->
+      panic "instantiatedMetaType already solved"
+
 fullyApplyToMetas
   :: Context v
   -> Name.QualifiedConstructor
@@ -892,6 +895,9 @@ pruneMeta context meta allowedArgs = do
       Context.solveMeta context meta solution'
 
     Meta.Solved {} ->
+      panic "pruneMeta already solved"
+
+    Meta.LazilySolved {} ->
       panic "pruneMeta already solved"
 
   where

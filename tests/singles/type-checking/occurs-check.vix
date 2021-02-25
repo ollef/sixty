@@ -1,5 +1,5 @@
 the : (A : Type) -> A -> A
 
 f = \x. the Type -- unsolved meta error expected
-  (x -- type mismatch error expected, type mismatch error expected, unsolved meta error expected
+  (x -- type mismatch error expected, type mismatch error expected
   x)

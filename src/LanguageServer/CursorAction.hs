@@ -27,6 +27,7 @@ import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Elaboration
 import Elaboration.Context (Context)
 import qualified Elaboration.Context as Context
+import qualified Elaboration.Meta as Meta
 import qualified Index
 import qualified LanguageServer.LineColumns as LineColumns
 import Literal (Literal)
@@ -167,7 +168,7 @@ definitionAction
 definitionAction k env key qualifiedName =
   definitionNameActions <|> do
     (def, _, metaVars) <- MaybeT $ fetch $ Query.ElaboratingDefinition $ Scope.KeyedName key qualifiedName
-    metaVarsVar <- newIORef metaVars
+    metaVarsVar <- newIORef $ Meta.fromEagerState metaVars
     let
       env' =
         env { _context = (_context env) { Context.metas = metaVarsVar } }

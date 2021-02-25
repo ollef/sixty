@@ -65,7 +65,7 @@ data Context v = Context
   , values :: IntMap Var Domain.Value
   , types :: IntMap Var Domain.Type
   , boundVars :: IntSeq Var
-  , metas :: !(IORef Meta.State)
+  , metas :: !(IORef (Meta.State M))
   , postponed :: !(IORef Postponed.Checks)
   , coveredConstructors :: CoveredConstructors
   , coveredLiterals :: CoveredLiterals
@@ -503,7 +503,7 @@ piBoundVars context type_ = do
 lookupMeta
   :: Context v
   -> Meta.Index
-  -> M Meta.Entry
+  -> M (Meta.Entry M)
 lookupMeta context i = do
   m <- readIORef (metas context)
   pure $ Meta.lookup i m
@@ -547,14 +547,15 @@ forceHead context value =
 
     Domain.Neutral (Domain.Meta metaIndex) spine -> do
       meta <- lookupMeta context metaIndex
+      eagerMeta <- Meta.toEagerEntry meta
 
-      case meta of
-        Meta.Solved headValue _ -> do
+      case eagerMeta of
+        Meta.EagerSolved headValue _ -> do
           headValue' <- Evaluation.evaluate (Environment.empty $ scopeKey context) headValue
           value' <- Evaluation.applySpine headValue' spine
           forceHead context value'
 
-        Meta.Unsolved {} ->
+        Meta.EagerUnsolved {} ->
           pure value
 
     Domain.Glued _ _ value' -> do
@@ -581,16 +582,17 @@ forceHeadGlue context value =
 
     Domain.Neutral (Domain.Meta metaIndex) spine -> do
       meta <- lookupMeta context metaIndex
+      eagerMeta <- Meta.toEagerEntry meta
 
-      case meta of
-        Meta.Solved headValue _ -> do
+      case eagerMeta of
+        Meta.EagerSolved headValue _ -> do
           value' <- lazy $ do
             headValue' <- Evaluation.evaluate (Environment.empty $ scopeKey context) headValue
             value' <- Evaluation.applySpine headValue' spine
             forceHeadGlue context value'
           pure $ Domain.Glued (Domain.Meta metaIndex) spine value'
 
-        Meta.Unsolved {} ->
+        Meta.EagerUnsolved {} ->
           pure value
 
     _ ->
@@ -673,14 +675,15 @@ zonk context term = do
       indexMap <- readIORef metasRef
       case IntMap.lookup index indexMap of
         Nothing -> do
-          solution <- lookupMeta context index
-          case solution of
-            Meta.Unsolved {} -> do
+          meta <- lookupMeta context index
+          eagerMeta <- Meta.toEagerEntry meta
+          case eagerMeta of
+            Meta.EagerUnsolved {} -> do
               atomicModifyIORef' metasRef $ \indexMap' ->
                 (IntMap.insert index Nothing indexMap', ())
               pure Nothing
 
-            Meta.Solved term' _ -> do
+            Meta.EagerSolved term' _ -> do
               term'' <- Zonking.zonkTerm (Environment.empty $ scopeKey context) zonkMeta zonkPostponed term'
               atomicModifyIORef' metasRef $ \indexMap' ->
                 (IntMap.insert index (Just term'') indexMap', ())
