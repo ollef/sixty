@@ -23,6 +23,8 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Elaboration of meta variable solutions to local definitions
   - [x] Case expression inversion
 - [x] Basic type checking
+- [x] Elaboration postponement
+  - [x] Lazily written solutions
 - [x] Query architecture
   - [x] Parallel type checking
 - [x] Simple modules
@@ -52,7 +54,6 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Redundant pattern check
   - [x] Clause elaboration
   - [x] Pattern lambdas
-- [x] Elaboration postponement
 - [x] Inductive families
 - [x] Glued evaluation
 - [x] Let definitions by clauses

@@ -2,6 +2,7 @@
 {-# language DuplicateRecordFields #-}
 {-# language FlexibleContexts #-}
 {-# language OverloadedStrings #-}
+{-# language ViewPatterns #-}
 module Elaboration.Context where
 
 import Protolude hiding (IntMap, IntSet, catch, check, force)
@@ -508,6 +509,14 @@ lookupMeta context i = do
   m <- readIORef (metas context)
   pure $ Meta.lookup i m
 
+lookupEagerMeta
+  :: Context v
+  -> Meta.Index
+  -> M Meta.EagerEntry
+lookupEagerMeta context i = do
+  m <- readIORef (metas context)
+  Meta.toEagerEntry $ Meta.lookup i m
+
 solveMeta
   :: Context v
   -> Meta.Index
@@ -521,6 +530,29 @@ solveMeta context meta term = do
     let
       emptyContext =
         emptyFrom context
+    value <- Evaluation.evaluate (toEnvironment emptyContext) term
+    maybeNewBlockingMeta <- stillBlocked emptyContext arity value
+    case maybeNewBlockingMeta of
+      Nothing ->
+        checkUnblockedPostponedChecks context unblocked
+
+      Just newBlockingMeta ->
+        addPostponementsBlockedOnMeta context unblocked newBlockingMeta
+
+lazilySolveMeta
+  :: Context v
+  -> Meta.Index
+  -> Lazy (Syntax.Term Void)
+  -> M ()
+lazilySolveMeta context meta lazyTerm = do
+  (arity, unblocked) <- atomicModifyIORef' (metas context) $ Meta.lazilySolve meta $ force lazyTerm
+  if IntSet.null unblocked then
+    pure ()
+  else do
+    let
+      emptyContext =
+        emptyFrom context
+    term <- force lazyTerm
     value <- Evaluation.evaluate (toEnvironment emptyContext) term
     maybeNewBlockingMeta <- stillBlocked emptyContext arity value
     case maybeNewBlockingMeta of
@@ -546,10 +578,9 @@ forceHead context value =
         forceHead context value'
 
     Domain.Neutral (Domain.Meta metaIndex) spine -> do
-      meta <- lookupMeta context metaIndex
-      eagerMeta <- Meta.toEagerEntry meta
+      meta <- lookupEagerMeta context metaIndex
 
-      case eagerMeta of
+      case meta of
         Meta.EagerSolved headValue _ -> do
           headValue' <- Evaluation.evaluate (Environment.empty $ scopeKey context) headValue
           value' <- Evaluation.applySpine headValue' spine
@@ -581,10 +612,8 @@ forceHeadGlue context value =
         pure $ Domain.Glued (Domain.Var var) spine value'
 
     Domain.Neutral (Domain.Meta metaIndex) spine -> do
-      meta <- lookupMeta context metaIndex
-      eagerMeta <- Meta.toEagerEntry meta
-
-      case eagerMeta of
+      meta <- lookupEagerMeta context metaIndex
+      case meta of
         Meta.EagerSolved headValue _ -> do
           value' <- lazy $ do
             headValue' <- Evaluation.evaluate (Environment.empty $ scopeKey context) headValue
@@ -675,9 +704,8 @@ zonk context term = do
       indexMap <- readIORef metasRef
       case IntMap.lookup index indexMap of
         Nothing -> do
-          meta <- lookupMeta context index
-          eagerMeta <- Meta.toEagerEntry meta
-          case eagerMeta of
+          meta <- lookupEagerMeta context index
+          case meta of
             Meta.EagerUnsolved {} -> do
               atomicModifyIORef' metasRef $ \indexMap' ->
                 (IntMap.insert index Nothing indexMap', ())

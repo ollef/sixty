@@ -227,18 +227,9 @@ postponeCaseCheck
   -> Domain.Type
   -> Meta.Index
   -> M (Syntax.Term v)
-postponeCaseCheck context scrutinee scrutineeType branches expectedType blockingMeta = do
-  resultMetaValue <- Context.newMeta context expectedType
-  resultMetaTerm <- Elaboration.readback context resultMetaValue
-  postponementIndex <- Context.newPostponedCheck context blockingMeta $ \canPostpone -> do
-    resultTerm <- checkCase context scrutinee scrutineeType branches expectedType canPostpone
-    resultValue <- Elaboration.evaluate context resultTerm
-    success <- Context.try_ context $ Unification.unify context Flexibility.Rigid resultValue resultMetaValue
-    if success then
-      pure resultTerm
-    else
-      Elaboration.readback context $ Builtin.Fail expectedType
-  pure $ Syntax.PostponedCheck postponementIndex resultMetaTerm
+postponeCaseCheck context scrutinee scrutineeType branches expectedType blockingMeta =
+  Elaboration.postpone context expectedType blockingMeta $
+    checkCase context scrutinee scrutineeType branches expectedType
 
 isPatternValue :: Context v -> Domain.Value -> ExceptT Meta.Index M Bool
 isPatternValue context value = do
@@ -428,18 +419,9 @@ findPatternResolutionBlocker context clauses =
         pure ()
 
 postponeElaboration :: Context v -> Config -> Meta.Index -> M (Syntax.Term v)
-postponeElaboration context config blockingMeta = do
-  resultMetaValue <- Context.newMeta context $ _expectedType config
-  resultMetaTerm <- Elaboration.readback context resultMetaValue
-  postponementIndex <- Context.newPostponedCheck context blockingMeta $ \canPostpone -> do
-    resultTerm <- check context config canPostpone
-    resultValue <- Elaboration.evaluate context resultTerm
-    success <- Context.try_ context $ Unification.unify context Flexibility.Rigid resultValue resultMetaValue
-    if success then
-      pure resultTerm
-    else
-      Elaboration.readback context $ Builtin.Fail $ _expectedType config
-  pure $ Syntax.PostponedCheck postponementIndex resultMetaTerm
+postponeElaboration context config blockingMeta =
+  Elaboration.postpone context (_expectedType config) blockingMeta $
+    check context config
 
 checkForcedPattern :: Context v -> Match -> M ()
 checkForcedPattern context match =

@@ -1,5 +1,6 @@
 {-# language DeriveAnyClass #-}
 {-# language DeriveGeneric #-}
+{-# language LambdaCase #-}
 {-# language OverloadedStrings #-}
 module Elaboration.Meta where
 
@@ -8,7 +9,6 @@ import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
-import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Persist
 import qualified Meta
 import Orphans ()
@@ -61,6 +61,27 @@ solve index term (State entries_ n) =
         Just LazilySolved {} ->
           panic "Solving an already solved meta variable"
 
+lazilySolve :: Meta.Index -> m (Syntax.Term Void) -> State m -> (State m, (Int, IntSet Postponement.Index))
+lazilySolve index mterm (State entries_ n) =
+  (State entries' n, data_)
+  where
+    (data_, entries') =
+      IntMap.alterF alter index entries_
+
+    alter maybeVar =
+      case maybeVar of
+        Nothing ->
+          panic "Solving non-existent meta variable"
+
+        Just (Unsolved type_ arity' postponed' _) ->
+          ((arity', postponed'), Just $ LazilySolved mterm type_)
+
+        Just Solved {} ->
+          panic "Solving an already solved meta variable"
+
+        Just LazilySolved {} ->
+          panic "Solving an already solved meta variable"
+
 addPostponedIndex :: Meta.Index -> Postponement.Index -> State m -> State m
 addPostponedIndex index postponementIndex (State m n) =
   State (IntMap.adjust adjust index m) n
@@ -95,7 +116,7 @@ addPostponedIndices index postponementIndices (State m n) =
 -- Eager entries
 
 data EagerEntry
-  = EagerUnsolved (Syntax.Type Void) !Int !Span.Relative
+  = EagerUnsolved (Syntax.Type Void) !Int (IntSet Postponement.Index) !Span.Relative
   | EagerSolved (Syntax.Term Void) (Syntax.Type Void)
   deriving (Eq, Generic, Persist, Hashable)
 
@@ -111,8 +132,8 @@ fromEagerState (EagerState entries_ nextIndex_) =
 fromEagerEntry :: EagerEntry -> Entry m
 fromEagerEntry entry =
   case entry of
-    EagerUnsolved type_ arity span ->
-      Unsolved type_ arity mempty span
+    EagerUnsolved type_ arity postponements span ->
+      Unsolved type_ arity postponements span
 
     EagerSolved term type_ ->
       Solved term type_
@@ -120,8 +141,8 @@ fromEagerEntry entry =
 toEagerEntry :: Monad m => Entry m -> m EagerEntry
 toEagerEntry entry =
   case entry of
-    Unsolved type_ arity _postponements span ->
-      pure $ EagerUnsolved type_ arity span
+    Unsolved type_ arity postponements span ->
+      pure $ EagerUnsolved type_ arity postponements span
 
     Solved solution type_ ->
       pure $ EagerSolved solution type_
@@ -132,121 +153,126 @@ toEagerEntry entry =
 
 toEagerState :: Monad m => State m -> Syntax.Definition -> Maybe (Syntax.Type Void) -> m EagerState
 toEagerState state definition maybeType = do
-  entries_ <- flip execStateT mempty $ flip runReaderT (entries state) $ do
-    toEagerDefinition definition
-    mapM_ toEagerTerm maybeType
+  entries_ <- go (definitionMetas definition <> foldMap termMetas maybeType) mempty
   pure EagerState
     { eagerEntries = entries_
     , eagerNextIndex = nextIndex state
     }
+  where
+    go todo done
+      | IntMap.null todo' =
+        pure done
 
-type ToEagerT m = ReaderT (IntMap Meta.Index (Entry m)) (StateT (IntMap Meta.Index EagerEntry) m)
+      | otherwise = do
+        newlyDone <-
+          traverse
+            (\case
+              Unsolved type_ arity postponements span ->
+                pure $ EagerUnsolved type_ arity postponements span
 
-toEagerDefinition :: Monad m => Syntax.Definition -> ToEagerT m ()
-toEagerDefinition definition =
+              Solved solution type_ ->
+                pure $ EagerSolved solution type_
+
+              LazilySolved msolution type_ -> do
+                solution <- msolution
+                pure $ EagerSolved solution type_
+            )
+            todo'
+
+        let
+          newTodo =
+            foldMap
+              (\case
+                EagerUnsolved type_ _arity _postponements _span ->
+                  termMetas type_
+
+                EagerSolved solution _ ->
+                  termMetas solution
+              )
+              newlyDone
+
+        go newTodo (done <> newlyDone)
+      where
+        todo' =
+          IntMap.difference (IntMap.fromSet (entries state IntMap.!) todo) done
+
+definitionMetas :: Syntax.Definition -> IntSet Meta.Index
+definitionMetas definition =
   case definition of
     Syntax.TypeDeclaration type_ ->
-      toEagerTerm type_
+      termMetas type_
 
     Syntax.ConstantDefinition term ->
-      toEagerTerm term
+      termMetas term
 
     Syntax.DataDefinition _boxity tele ->
-      toEagerDataDefinition tele
+      dataDefinitionMetas tele
 
-toEagerDataDefinition :: Monad m => Telescope binding Syntax.Type Syntax.ConstructorDefinitions v -> ToEagerT m ()
-toEagerDataDefinition tele =
+dataDefinitionMetas :: Telescope binding Syntax.Type Syntax.ConstructorDefinitions v -> IntSet Meta.Index
+dataDefinitionMetas tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constructorDefinitions) ->
-      OrderedHashMap.mapMUnordered_ toEagerTerm constructorDefinitions
+      foldMap termMetas constructorDefinitions
 
-    Telescope.Extend _binding type_ _plixity tele' -> do
-      toEagerTerm type_
-      toEagerDataDefinition tele'
+    Telescope.Extend _binding type_ _plixity tele' ->
+      termMetas type_ <> dataDefinitionMetas tele'
 
-toEagerTerm :: Monad m => Syntax.Term v -> ToEagerT m ()
-toEagerTerm term =
+termMetas :: Syntax.Term v -> IntSet Meta.Index
+termMetas term =
   case term of
     Syntax.Var _ ->
-      pure ()
+      mempty
 
     Syntax.Global _ ->
-      pure ()
+      mempty
 
     Syntax.Con _ ->
-      pure ()
+      mempty
 
     Syntax.Lit _ ->
-      pure ()
+      mempty
 
-    Syntax.Meta index -> do
-      maybeAlreadyDone <- gets $ IntMap.lookup index
-      case maybeAlreadyDone of
-        Nothing -> do
-          entry <- asks (IntMap.! index)
-          case entry of
-            Unsolved type_ arity _postponements span -> do
-              modify $ IntMap.insert index $ EagerUnsolved type_ arity span
-              toEagerTerm type_
-
-            Solved solution type_ -> do
-              modify $ IntMap.insert index $ EagerSolved solution type_
-              toEagerTerm solution
-              toEagerTerm type_
-
-            LazilySolved msolution type_ -> do
-              solution <- lift $ lift msolution
-              modify $ IntMap.insert index $ EagerSolved solution type_
-              toEagerTerm solution
-              toEagerTerm type_
-
-        Just _ ->
-          pure ()
+    Syntax.Meta index ->
+      IntSet.singleton index
 
     Syntax.PostponedCheck {} ->
-      panic "Elaboration.Meta.toEagerTerm: PostponedCheck"
+      panic "Elaboration.Meta.termMetas: PostponedCheck"
 
-    Syntax.Let _binding term' type_ body -> do
-      toEagerTerm term'
-      toEagerTerm type_
-      toEagerTerm body
+    Syntax.Let _binding term' type_ body ->
+      termMetas term' <> termMetas type_ <> termMetas body
 
-    Syntax.Pi _binding domain _plicity target -> do
-      toEagerTerm domain
-      toEagerTerm target
+    Syntax.Pi _binding domain _plicity target ->
+      termMetas domain <> termMetas target
 
-    Syntax.Fun domain _plicity target -> do
-      toEagerTerm domain
-      toEagerTerm target
+    Syntax.Fun domain _plicity target ->
+      termMetas domain <> termMetas target
 
-    Syntax.Lam _bindings type_ _plicity body -> do
-      toEagerTerm type_
-      toEagerTerm body
+    Syntax.Lam _bindings type_ _plicity body ->
+      termMetas type_ <> termMetas body
 
-    Syntax.App function _plicity argument -> do
-      toEagerTerm function
-      toEagerTerm argument
+    Syntax.App function _plicity argument ->
+      termMetas function <> termMetas argument
 
-    Syntax.Case scrutinee branches maybeDefaultBranch -> do
-      toEagerTerm scrutinee
+    Syntax.Case scrutinee branches maybeDefaultBranch ->
+      termMetas scrutinee <>
       case branches of
         Syntax.LiteralBranches literalBranches ->
-          OrderedHashMap.mapMUnordered_ (mapM_ toEagerTerm) literalBranches
+          foldMap (foldMap termMetas) literalBranches
 
         Syntax.ConstructorBranches _constructorTypeName constructorBranches ->
-          OrderedHashMap.mapMUnordered_ (mapM_ toEagerTelescope) constructorBranches
+          foldMap (foldMap telescopeMetas) constructorBranches
 
-      mapM_ toEagerTerm maybeDefaultBranch
+      <>
+      foldMap termMetas maybeDefaultBranch
 
     Syntax.Spanned _span term' ->
-      toEagerTerm term'
+      termMetas term'
 
-toEagerTelescope :: Monad m => Telescope binding Syntax.Type Syntax.Term v -> ToEagerT m ()
-toEagerTelescope tele =
+telescopeMetas :: Telescope binding Syntax.Type Syntax.Term v -> IntSet Meta.Index
+telescopeMetas tele =
   case tele of
     Telescope.Empty term ->
-      toEagerTerm term
+      termMetas term
 
-    Telescope.Extend _binding type_ _plixity tele' -> do
-      toEagerTerm type_
-      toEagerTelescope tele'
+    Telescope.Extend _binding type_ _plixity tele' ->
+      termMetas type_ <> telescopeMetas tele'

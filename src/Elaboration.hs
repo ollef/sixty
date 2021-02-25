@@ -27,6 +27,7 @@ import qualified Core.Evaluation as Evaluation
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
 import qualified Data.IntMap as IntMap
+import qualified Data.IntSet as IntSet
 import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
@@ -308,7 +309,6 @@ postProcessDataDefinition outerContext boxity outerTele = do
             zonkedType =
               ZonkPostponedChecks.zonkTerm postponed type_
           Telescope.Extend name zonkedType plicity <$> go context' postponed tele' (paramVars Tsil.:> (plicity, paramVar))
-
 
 addConstructorIndexEqualities :: Context v -> Tsil (Plicity, Var) -> Syntax.Term v -> M (Syntax.Term v)
 addConstructorIndexEqualities context paramVars constrType =
@@ -790,18 +790,10 @@ postponeCheck
   -> Domain.Type
   -> Meta.Index
   -> M (Checked (Syntax.Term v))
-postponeCheck context surfaceTerm expectedType blockingMeta = do
-  resultMetaValue <- Context.newMeta context expectedType
-  resultMetaTerm <- readback context resultMetaValue
-  postponementIndex <- Context.newPostponedCheck context blockingMeta $ \canPostpone -> do
+postponeCheck context surfaceTerm expectedType blockingMeta =
+  fmap Checked $ postpone context expectedType blockingMeta $ \canPostpone -> do
     Checked resultTerm <- elaborateUnspanned context surfaceTerm (Check expectedType) canPostpone
-    resultValue <- evaluate context resultTerm
-    success <- Context.try_ context $ Unification.unify context Flexibility.Rigid resultValue resultMetaValue
-    if success then
-      pure resultTerm
-    else
-      readback context $ Builtin.Fail expectedType
-  pure $ Checked $ Syntax.PostponedCheck postponementIndex resultMetaTerm
+    pure resultTerm
 
 postponeInference
   :: Context v
@@ -896,19 +888,11 @@ postponeImplicitApps
   -> M (Syntax.Term v, Domain.Value)
 postponeImplicitApps context function arguments functionType blockingMeta = do
   expectedType <- Context.newMetaType context
-  resultMetaValue <- Context.newMeta context expectedType
-  resultMetaTerm <- readback context resultMetaValue
-  postponementIndex <- Context.newPostponedCheck context blockingMeta $ \canPostpone -> do
+  postponedTerm <- postpone context expectedType blockingMeta $ \canPostpone -> do
     (resultTerm, resultType) <- inferImplicitApps context function functionType arguments canPostpone
-    resultValue <- evaluate context resultTerm
     f <- Unification.tryUnify context resultType expectedType
-    success <- Context.try_ context $ Unification.unify context Flexibility.Rigid resultMetaValue resultValue
-    if success then
-      pure $ f resultTerm
-
-    else
-      readback context $ Builtin.Fail expectedType
-  pure (Syntax.PostponedCheck postponementIndex resultMetaTerm, expectedType)
+    pure $ f resultTerm
+  pure (postponedTerm, expectedType)
 
 inferenceFailed :: Context v -> M (Syntax.Term v, Domain.Type)
 inferenceFailed context = do
@@ -922,6 +906,54 @@ inferenceFailed context = do
 checkingFailed :: Context v -> Domain.Type -> M (Syntax.Term v)
 checkingFailed context type_ =
   readback context $ Builtin.Fail type_
+
+-------------------------------------------------------------------------------
+-- Postponement
+
+postpone
+  :: Context v
+  -> Domain.Type
+  -> Meta.Index
+  -> (Postponement.CanPostpone -> M (Syntax.Term v))
+  -> M (Syntax.Term v)
+postpone context expectedType blockingMeta check_ = do
+  resultMetaValue <- Context.newMeta context expectedType
+  resultMetaTerm <- readback context resultMetaValue
+  case resultMetaValue of
+    Domain.Neutral (Domain.Meta resultMeta) (Domain.Apps (traverse (traverse Domain.singleVarView) -> Just resultMetaArgs)) -> do
+      postponementIndex <- Context.newPostponedCheck context blockingMeta $ \canPostpone -> do
+        resultTerm <- check_ canPostpone
+        metaValue <- Context.lookupEagerMeta context resultMeta
+        let
+          metaSolution = do
+            resultValue <- evaluate context resultTerm
+            Unification.checkSolution context resultMeta resultMetaArgs resultValue
+
+        success <- case metaValue of
+          Meta.EagerSolved _ _ -> do
+            resultValue <- evaluate context resultTerm
+            Context.try_ context $ Unification.unify context Flexibility.Rigid resultValue resultMetaValue
+
+          Meta.EagerUnsolved _ _ postponements _
+            | IntSet.null postponements -> do
+              lazySolution <- lazy metaSolution
+              Context.lazilySolveMeta context resultMeta lazySolution
+              pure True
+
+            | otherwise -> do
+              solution <- metaSolution
+              Context.solveMeta context resultMeta solution
+              pure True
+
+        if success then
+          pure resultTerm
+
+        else
+          readback context $ Builtin.Fail expectedType
+      pure $ Syntax.PostponedCheck postponementIndex resultMetaTerm
+
+    _ ->
+      panic "Elaboration.postpone: malformed meta value"
 
 -------------------------------------------------------------------------------
 -- Constructor name resolution
@@ -1149,7 +1181,7 @@ checkMetaSolutions
 checkMetaSolutions context metaVars =
   flip IntMap.traverseWithKey (Meta.eagerEntries metaVars) $ \index entry ->
     case entry of
-      Meta.EagerUnsolved type_ _ span -> do
+      Meta.EagerUnsolved type_ _ _ span -> do
         ptype <- Context.toPrettyableClosedTerm context type_
         Context.report (Context.spanned span context) $
           Error.UnsolvedMetaVariable index ptype

@@ -14,6 +14,7 @@ import Monad
 import Name (Name)
 import qualified Name
 import Plicity
+import qualified Postponement
 import qualified Surface.Syntax as Surface
 
 check
@@ -66,3 +67,10 @@ insertMetas
   -> M ([(Plicity, Domain.Value)], Domain.Type)
 
 prettyValue :: Context v -> Domain.Value -> M (Doc ann)
+
+postpone
+  :: Context v
+  -> Domain.Type
+  -> Meta.Index
+  -> (Postponement.CanPostpone -> M (Syntax.Term v))
+  -> M (Syntax.Term v)
