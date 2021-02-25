@@ -12,37 +12,37 @@ import Data.Persist
 import qualified Meta
 import Orphans ()
 import qualified Postponement
-import Protolude hiding (IntMap, IntSet)
+import Protolude hiding (IntMap, IntSet, State)
 import qualified Span
 
-data Var
+data Entry
   = Unsolved (Syntax.Type Void) !Int (IntSet Postponement.Index) !Span.Relative
   | Solved (Syntax.Term Void) (Syntax.Type Void)
   deriving (Eq, Generic, Persist, Hashable)
 
-data Vars = Vars
-  { vars :: !(IntMap Meta.Index Var)
+data State = State
+  { entries :: !(IntMap Meta.Index Entry)
   , nextIndex :: !Meta.Index
   } deriving (Eq, Generic, Persist, Hashable)
 
-empty :: Vars
+empty :: State
 empty =
-  Vars mempty (Meta.Index 0)
+  State mempty $ Meta.Index 0
 
-lookup :: Meta.Index -> Vars -> Var
-lookup index (Vars m _) =
+lookup :: Meta.Index -> State -> Entry
+lookup index (State m _) =
   m IntMap.! index
 
-insert :: Syntax.Term Void -> Int -> Span.Relative -> Vars -> (Vars, Meta.Index)
-insert type_ arity span (Vars m index) =
-  (Vars (IntMap.insert index (Unsolved type_ arity mempty span) m) (index + 1), index)
+insert :: Syntax.Term Void -> Int -> Span.Relative -> State -> (State, Meta.Index)
+insert type_ arity span (State m index) =
+  (State (IntMap.insert index (Unsolved type_ arity mempty span) m) (index + 1), index)
 
-solve :: Meta.Index -> Syntax.Term Void -> Vars -> (Vars, (Int, IntSet Postponement.Index))
-solve index term (Vars m n) =
-  (Vars vars' n, data_)
+solve :: Meta.Index -> Syntax.Term Void -> State -> (State, (Int, IntSet Postponement.Index))
+solve index term (State entries_ n) =
+  (State entries' n, data_)
   where
-    (data_, vars') =
-      IntMap.alterF alter index m
+    (data_, entries') =
+      IntMap.alterF alter index entries_
 
     alter maybeVar =
       case maybeVar of
@@ -55,24 +55,24 @@ solve index term (Vars m n) =
         Just Solved {} ->
           panic "Solving an already solved meta variable"
 
-addPostponedIndex :: Meta.Index -> Postponement.Index -> Vars -> Vars
-addPostponedIndex index postponementIndex (Vars m n) =
-  Vars (IntMap.adjust adjust index m) n
+addPostponedIndex :: Meta.Index -> Postponement.Index -> State -> State
+addPostponedIndex index postponementIndex (State m n) =
+  State (IntMap.adjust adjust index m) n
   where
-    adjust var =
-      case var of
+    adjust entry =
+      case entry of
         Unsolved type_ arity postponed span ->
           Unsolved type_ arity (IntSet.insert postponementIndex postponed) span
 
         Solved {} ->
           panic "Adding postponement index to an already solved meta variable"
 
-addPostponedIndices :: Meta.Index -> IntSet Postponement.Index -> Vars -> Vars
-addPostponedIndices index postponementIndices (Vars m n) =
-  Vars (IntMap.adjust adjust index m) n
+addPostponedIndices :: Meta.Index -> IntSet Postponement.Index -> State -> State
+addPostponedIndices index postponementIndices (State m n) =
+  State (IntMap.adjust adjust index m) n
   where
-    adjust var =
-      case var of
+    adjust entry =
+      case entry of
         Unsolved type_ arity postponed span ->
           Unsolved type_ arity (postponementIndices <> postponed) span
 

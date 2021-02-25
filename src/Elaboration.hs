@@ -66,7 +66,7 @@ import Var (Var)
 inferTopLevelDefinition
   :: Scope.KeyedName
   -> Surface.Definition
-  -> M ((Syntax.Definition, Syntax.Type Void, Meta.Vars), [Error])
+  -> M ((Syntax.Definition, Syntax.Type Void, Meta.State), [Error])
 inferTopLevelDefinition key def = do
   context <- Context.empty key
   (def', typeValue) <- inferDefinition context def
@@ -80,7 +80,7 @@ checkTopLevelDefinition
   :: Scope.KeyedName
   -> Surface.Definition
   -> Domain.Type
-  -> M ((Syntax.Definition, Meta.Vars), [Error])
+  -> M ((Syntax.Definition, Meta.State), [Error])
 checkTopLevelDefinition key def type_ = do
   context <- Context.empty key
   def' <- checkDefinition context def type_
@@ -93,7 +93,7 @@ checkDefinitionMetaSolutions
   :: Scope.KeyedName
   -> Syntax.Definition
   -> Syntax.Type Void
-  -> Meta.Vars
+  -> Meta.State
   -> M ((Syntax.Definition, Syntax.Type Void), [Error])
 checkDefinitionMetaSolutions key def type_ metas = do
   context <- Context.empty key
@@ -1138,11 +1138,11 @@ isSubtype context type1 type2 = do
 
 checkMetaSolutions
   :: Context Void
-  -> Meta.Vars
+  -> Meta.State
   -> M Syntax.MetaSolutions
 checkMetaSolutions context metaVars =
-  flip IntMap.traverseWithKey (Meta.vars metaVars) $ \index var ->
-    case var of
+  flip IntMap.traverseWithKey (Meta.entries metaVars) $ \index entry ->
+    case entry of
       Meta.Unsolved type_ _ _ span -> do
         ptype <- Context.toPrettyableClosedTerm context type_
         Context.report (Context.spanned span context) $

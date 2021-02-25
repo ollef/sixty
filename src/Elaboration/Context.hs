@@ -65,7 +65,7 @@ data Context v = Context
   , values :: IntMap Var Domain.Value
   , types :: IntMap Var Domain.Type
   , boundVars :: IntSeq Var
-  , metas :: !(IORef Meta.Vars)
+  , metas :: !(IORef Meta.State)
   , postponed :: !(IORef Postponed.Checks)
   , coveredConstructors :: CoveredConstructors
   , coveredLiterals :: CoveredLiterals
@@ -503,7 +503,7 @@ piBoundVars context type_ = do
 lookupMeta
   :: Context v
   -> Meta.Index
-  -> M Meta.Var
+  -> M Meta.Entry
 lookupMeta context i = do
   m <- readIORef (metas context)
   pure $ Meta.lookup i m
