@@ -283,10 +283,12 @@ makeLam bindings var type_ plicity body =
     occurrences body
 
 makeApp0 :: Value -> Plicity -> Value -> Value
-makeApp0 fun@(Value fun' _) plicity arg =
+makeApp0 fun@(Value fun' (Occurrences occs)) plicity arg =
   case (fun', plicity) of
     (Meta index args, Explicit) ->
-      makeMeta index $ args Tsil.:> arg
+      Value (Meta index (args Tsil.:> arg)) $
+        Occurrences (IntMap.adjust (Tsil.:> duplicableView arg) index occs) <>
+        occurrences arg
 
     _ ->
       makeApp fun plicity arg
