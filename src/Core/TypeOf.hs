@@ -76,19 +76,7 @@ typeOfHead context hd =
 
     Domain.Meta index -> do
       solution <- Context.lookupMeta context index
-      let
-        type_ =
-          case solution of
-            Meta.Unsolved type' _ _ _ ->
-              type'
-
-            Meta.Solved _ type' ->
-              type'
-
-            Meta.LazilySolved _ type' ->
-              type'
-
-      Evaluation.evaluate (Environment.empty $ Context.scopeKey context) type_
+      Evaluation.evaluate (Environment.empty $ Context.scopeKey context) $ Meta.entryType solution
 
 typeOfElimination :: Context v -> Domain.Type -> Domain.Elimination -> M Domain.Type
 typeOfElimination context type_ elimination =

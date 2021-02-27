@@ -23,6 +23,18 @@ data Entry m
   | Solved (Syntax.Term Void) (Syntax.Type Void)
   | LazilySolved !(m (Syntax.Term Void)) (Syntax.Type Void)
 
+entryType :: Entry m -> Syntax.Type Void
+entryType entry =
+  case entry of
+    Unsolved _ type_ _ _ _ ->
+      type_
+
+    Solved _ _ type_ ->
+      type_
+
+    LazilySolved _ _ type_ ->
+      type_
+
 data State m = State
   { entries :: !(IntMap Meta.Index (Entry m))
   , nextIndex :: !Meta.Index
