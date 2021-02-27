@@ -242,7 +242,7 @@ reassignWeights state =
     { entries =
       IntMap.fromList $
       zipWith (\newWeight (index, entry) -> (index, mapEntryLink (\link -> link { weight = newWeight }) entry)) [0..] $
-      sortOn (weight . entryLink . snd) $
+      sortOn (entryWeight . snd) $
       IntMap.toList $
       entries state
     }
