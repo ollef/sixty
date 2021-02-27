@@ -261,6 +261,23 @@ data EagerState = EagerState
   , eagerGreatest :: Maybe Meta.Index
   } deriving (Eq, Generic, Persist, Hashable)
 
+dependencyOrderedEagerEntries :: EagerState -> [(Meta.Index, EagerEntry)]
+dependencyOrderedEagerEntries =
+  sortOn (eagerEntryWeight . snd) . IntMap.toList . eagerEntries
+
+eagerEntryLink :: EagerEntry -> Link
+eagerEntryLink entry =
+  case entry of
+    EagerUnsolved l _ _ _ _ ->
+      l
+
+    EagerSolved l _ _ ->
+      l
+
+eagerEntryWeight :: EagerEntry -> Double
+eagerEntryWeight =
+  weight . eagerEntryLink
+
 fromEagerState :: EagerState -> State m
 fromEagerState state =
   State

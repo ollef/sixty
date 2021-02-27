@@ -11,7 +11,6 @@ import Unsafe.Coerce
 import Boxity
 import Core.Binding (Binding)
 import Core.Bindings (Bindings)
-import Data.IntMap (IntMap)
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import Index
@@ -119,7 +118,7 @@ coerce =
   unsafeCoerce
 
 type MetaSolutions =
-  IntMap Meta.Index (Term Void, Type Void)
+  [(Meta.Index, Term Void, Type Void)]
 
 data Definition
   = TypeDeclaration !(Type Void)

@@ -8,8 +8,6 @@ module Elaboration.MetaInlining where
 import Prelude (Show (showsPrec))
 import Protolude hiding (Type, IntMap, IntSet, evaluate)
 
-import Data.Graph
-
 import Core.Binding (Binding)
 import Core.Bindings (Bindings)
 import qualified Core.Domain as Domain
@@ -23,7 +21,6 @@ import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Environment
-import Extra
 import Literal (Literal)
 import qualified Meta
 import Monad
@@ -44,19 +41,12 @@ inlineSolutions
   -> Syntax.Type Void
   -> M (Syntax.Definition, Syntax.Type Void)
 inlineSolutions scopeKey solutions def type_ = do
-  solutionValues <- forM solutions $ \(metaTerm, metaType) -> do
+  solutionValues <- forM solutions $ \(index, metaTerm, metaType) -> do
     metaValue <- evaluate (Environment.empty scopeKey) metaTerm
     metaType' <- evaluate (Environment.empty scopeKey) metaType
-    pure (metaValue, metaType')
+    pure (index, metaValue, metaType')
 
   let
-    sortedSolutions =
-      acyclic <$>
-      topoSortWith
-        fst
-        (\(_, (metaValue, metaType)) -> fst <$> IntMap.toList (void $ unoccurrences $ occurrences metaValue <> occurrences metaType))
-        (IntMap.toList solutionValues)
-
     lookupMetaIndex metas index =
       IntMap.lookupDefault
         (panic "Elaboration.MetaInlining.inlineSolutions: unknown index")
@@ -66,8 +56,8 @@ inlineSolutions scopeKey solutions def type_ = do
     inlineTermSolutions :: Domain.Environment v -> Syntax.Term v -> M (Syntax.Term v)
     inlineTermSolutions env term = do
       let
-        go :: (Meta.Index, (Value, Type)) -> (Value, IntMap Meta.Index (Var, [Maybe DuplicableValue])) -> M (Value, IntMap Meta.Index (Var, [Maybe DuplicableValue]))
-        go (index, (solutionValue, solutionType)) (value, metaVars) =
+        go :: (Meta.Index, Value, Type) -> (Value, IntMap Meta.Index (Var, [Maybe DuplicableValue])) -> M (Value, IntMap Meta.Index (Var, [Maybe DuplicableValue]))
+        go (index, solutionValue, solutionType) (value, metaVars) =
           case IntMap.lookup index $ occurrencesMap value of
             Nothing ->
               pure (value, metaVars)
@@ -96,7 +86,7 @@ inlineSolutions scopeKey solutions def type_ = do
 
               pure (value', metaVars')
       value <- evaluate env term
-      (inlinedValue, metaVars) <- foldrM go (value, mempty) sortedSolutions
+      (inlinedValue, metaVars) <- foldrM go (value, mempty) solutionValues
       pure $
         readback env (lookupMetaIndex metaVars) inlinedValue
 
@@ -138,10 +128,6 @@ inlineSolutions scopeKey solutions def type_ = do
     ( inlinedDef
     , inlinedType
     )
-
-  where
-    acyclic (AcyclicSCC x) = x
-    acyclic (CyclicSCC xs) = panic $ "Elaboration.MetaInlining.CyclicSCC " <> show (fst <$> xs)
 
 data Value = Value !InnerValue Occurrences
 

@@ -26,7 +26,6 @@ import qualified Core.Domain as Domain
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
-import qualified Data.IntMap as IntMap
 import qualified Data.IntSet as IntSet
 import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
@@ -1169,7 +1168,7 @@ checkMetaSolutions
   -> Meta.EagerState
   -> M Syntax.MetaSolutions
 checkMetaSolutions context metaVars =
-  flip IntMap.traverseWithKey (Meta.eagerEntries metaVars) $ \index entry ->
+  forM (Meta.dependencyOrderedEagerEntries metaVars) $ \(index, entry) ->
     case entry of
       Meta.EagerUnsolved _ type_ _ _ span -> do
         ptype <- Context.toPrettyableClosedTerm context type_
@@ -1177,10 +1176,10 @@ checkMetaSolutions context metaVars =
           Error.UnsolvedMetaVariable index ptype
         type' <- evaluate (Context.emptyFrom context) type_
         failTerm <- addLambdas (Context.emptyFrom context) type'
-        pure (failTerm, type_)
+        pure (index, failTerm, type_)
 
       Meta.EagerSolved _ solution type_ ->
-        pure (solution, type_)
+        pure (index, solution, type_)
   where
     addLambdas :: Context v -> Domain.Type -> M (Syntax.Term v)
     addLambdas context' type_ = do
