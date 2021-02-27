@@ -636,28 +636,34 @@ checkSolution outerContext meta vars value = do
   let
     indices =
       IntSeq.fromTsil $ snd <$> vars
-  solution <-
-    checkValueSolution
-      outerContext
-      meta
-      Environment
-        { scopeKey = Context.scopeKey outerContext
-        , indices = Index.Map indices
-        , values = Context.values outerContext
-        , glueableBefore = Index $ IntSeq.size indices
+    renaming =
+      PartialRenaming
+        { occurs = Just meta
+        , environment = Environment
+          { scopeKey = Context.scopeKey outerContext
+          , indices = Index.Map indices
+          , values = Context.values outerContext
+          , glueableBefore = Index $ IntSeq.size indices
+          }
+        , renamingFlexibility = Flexibility.Rigid
         }
-      Flexibility.Rigid
-      value
-  addAndCheckLambdas outerContext meta (fst <$> vars) indices solution
+  solution <- renameValue outerContext renaming value
+  addAndRenameLambdas outerContext meta (fst <$> vars) indices solution
 
-addAndCheckLambdas
+data PartialRenaming v' = PartialRenaming
+  { occurs :: Maybe Meta.Index
+  , environment :: !(Domain.Environment v')
+  , renamingFlexibility :: !Flexibility
+  }
+
+addAndRenameLambdas
   :: Context v
   -> Meta.Index
   -> Tsil Plicity
   -> IntSeq Var
   -> Syntax.Term v'
   -> M (Syntax.Term v')
-addAndCheckLambdas outerContext meta plicities vars term =
+addAndRenameLambdas outerContext meta plicities vars term =
   case (plicities, vars) of
     (Tsil.Empty, IntSeq.Empty) ->
       pure term
@@ -668,210 +674,216 @@ addAndCheckLambdas outerContext meta plicities vars term =
           Context.lookupVarName var outerContext
         type_ =
           Context.lookupVarType var outerContext
-
-      type' <-
-        checkValueSolution
-          outerContext
-          meta
-          Environment
-            { scopeKey = Context.scopeKey outerContext
-            , indices = Index.Map vars'
-            , values = Context.values outerContext
-            , glueableBefore = Index $ IntSeq.size vars'
+        renaming =
+          PartialRenaming
+            { occurs = Just meta
+            , environment = Environment
+              { scopeKey = Context.scopeKey outerContext
+              , indices = Index.Map vars'
+              , values = Context.values outerContext
+              , glueableBefore = Index $ IntSeq.size vars'
+              }
+            , renamingFlexibility = Flexibility.Rigid
             }
-          Flexibility.Rigid
-          type_
+
+      type' <- renameValue outerContext renaming type_
       let
         term' =
           Syntax.Lam (Bindings.Unspanned name) type' plicity (Syntax.succ term)
-      addAndCheckLambdas outerContext meta plicities' vars' term'
+      addAndRenameLambdas outerContext meta plicities' vars' term'
 
     _ ->
-      panic "addAndCheckLambdas length mismatch"
+      panic "addAndRenameLambdas length mismatch"
 
-checkValueSolution
+renameValue
   :: Context v
-  -> Meta.Index
-  -> Domain.Environment v'
-  -> Flexibility
+  -> PartialRenaming v'
   -> Domain.Value
   -> M (Syntax.Term v')
-checkValueSolution outerContext occurs env flexibility value = do
+renameValue outerContext renaming value = do
   value' <- Context.forceHeadGlue outerContext value
   case value' of
     Domain.Neutral (Domain.Var var) spine ->
-      case Environment.lookupVarIndex var env of
+      case Environment.lookupVarIndex var $ environment renaming of
         Nothing ->
           throwIO $ Error.TypeMismatch mempty
 
         Just i ->
-          checkSpineSolution outerContext occurs env flexibility (Syntax.Var i) spine
+          renameSpine outerContext renaming (Syntax.Var i) spine
 
     Domain.Neutral (Domain.Global global) spine ->
-      checkSpineSolution outerContext occurs env flexibility (Syntax.Global global) spine
+      renameSpine outerContext renaming (Syntax.Global global) spine
 
     Domain.Neutral (Domain.Meta meta) spine -> do
-      metaWeight <- Meta.entryWeight <$> Context.lookupMeta outerContext meta
-      occursWeight <- Meta.entryWeight <$> Context.lookupMeta outerContext occurs
-      case compare occursWeight metaWeight of
-        LT ->
-          Context.moveMetaBefore outerContext occurs meta
+      case occurs renaming of
+        Nothing -> pure ()
+        Just occursMeta -> do
+          metaWeight <- Meta.entryWeight <$> Context.lookupMeta outerContext meta
+          occursWeight <- Meta.entryWeight <$> Context.lookupMeta outerContext occursMeta
+          case compare occursWeight metaWeight of
+            LT ->
+              case renamingFlexibility renaming of
+                Flexibility.Rigid ->
+                  Context.moveMetaBefore outerContext occursMeta meta
 
-        EQ ->
-          throwIO $ Error.OccursCheck mempty
+                Flexibility.Flexible ->
+                  throwIO $ Error.TypeMismatch mempty
 
-        GT ->
-          pure ()
+            EQ ->
+              throwIO $ Error.OccursCheck mempty
+
+            GT ->
+              pure ()
       case spine of
-        Domain.Apps args -> do
-          args' <- mapM (Context.forceHead outerContext . snd) args
-          case traverse Domain.singleVarView args' of
-            Just vars
-              | allowedVars <- map (\v -> isJust (Environment.lookupVarIndex v env) && isNothing (Environment.lookupVarValue v env)) vars
-              , any not allowedVars
-              -> do
-                pruneMeta outerContext meta allowedVars
-                checkValueSolution outerContext occurs env flexibility $ Domain.Neutral (Domain.Meta meta) spine
+        Domain.Apps args
+          | Flexibility.Rigid <- renamingFlexibility renaming -> do
+            args' <- mapM (Context.forceHead outerContext . snd) args
+            case traverse Domain.singleVarView args' of
+              Just vars
+                | allowedVars <- map (\v -> isJust (Environment.lookupVarIndex v $ environment renaming) && isNothing (Environment.lookupVarValue v $ environment renaming)) vars
+                , any not allowedVars
+                -> do
+                  pruneMeta outerContext meta allowedVars
+                  renameValue outerContext renaming $ Domain.Neutral (Domain.Meta meta) spine
 
-            _ ->
-              checkSpineSolution outerContext occurs env flexibility (Syntax.Meta meta) spine
+              _ ->
+                renameSpine outerContext renaming (Syntax.Meta meta) spine
 
         _ ->
-          checkSpineSolution outerContext occurs env flexibility (Syntax.Meta meta) spine
+          renameSpine outerContext renaming (Syntax.Meta meta) spine
 
     Domain.Con con args ->
-      Syntax.apps (Syntax.Con con) <$> mapM (mapM $ checkValueSolution outerContext occurs env flexibility) args
+      Syntax.apps (Syntax.Con con) <$> mapM (mapM $ renameValue outerContext renaming) args
 
     Domain.Lit lit ->
       pure $ Syntax.Lit lit
 
     Domain.Glued (Domain.Global global) spine value'' ->
-      checkSpineSolution outerContext occurs env Flexibility.Flexible (Syntax.Global global) spine `catch` \(_ :: Error.Elaboration) -> do
+      renameSpine outerContext renaming { renamingFlexibility = Flexibility.Flexible } (Syntax.Global global) spine `catch` \(_ :: Error.Elaboration) -> do
         value''' <- force value''
-        checkValueSolution outerContext occurs env flexibility value'''
+        renameValue outerContext renaming value'''
 
     Domain.Glued (Domain.Meta meta) spine value'' -> do
-      occursWeight <- Meta.entryWeight <$> Context.lookupMeta outerContext occurs
-      metaWeight <- Meta.entryWeight <$> Context.lookupMeta outerContext meta
-      if metaWeight < occursWeight then
-        -- The solved meta (`meta`) does not have the meta we're solving
-        -- (`occurs`) in scope, so we can try without unfolding `meta`.
-        checkSpineSolution outerContext occurs env Flexibility.Flexible (Syntax.Meta meta) spine `catch` \(_ :: Error.Elaboration) -> do
+      case occurs renaming of
+        Just occursMeta -> do
+          occursWeight <- Meta.entryWeight <$> Context.lookupMeta outerContext occursMeta
+          metaWeight <- Meta.entryWeight <$> Context.lookupMeta outerContext meta
+          if metaWeight < occursWeight then
+            -- The solved meta (`meta`) does not have the meta we're solving
+            -- (`occurs`) in scope, so we can try without unfolding `meta`.
+            renameSpine outerContext renaming { renamingFlexibility = Flexibility.Flexible } (Syntax.Meta meta) spine `catch` \(_ :: Error.Elaboration) -> do
+              value''' <- force value''
+              renameValue outerContext renaming value'''
+
+          else do
+            -- The meta solution might contain `occurs`, so we need to force.
+            value''' <- force value''
+            renameValue outerContext renaming value'''
+
+        Nothing -> do
           value''' <- force value''
-          checkValueSolution outerContext occurs env flexibility value'''
-      else do
-        -- The meta solution might contain `occurs`, so we need to force.
-        value''' <- force value''
-        checkValueSolution outerContext occurs env flexibility value'''
+          renameValue outerContext renaming value'''
 
     Domain.Glued (Domain.Var _) _ value'' -> do
       -- The variable's value might contain `occurs`, so we need to force
       value''' <- force value''
-      checkValueSolution outerContext occurs env flexibility value'''
+      renameValue outerContext renaming value'''
 
     Domain.Lam bindings type_ plicity closure ->
       Syntax.Lam bindings
-        <$> checkValueSolution outerContext occurs env flexibility type_
+        <$> renameValue outerContext renaming type_
         <*> pure plicity
-        <*> checkClosureSolution outerContext occurs env flexibility closure
+        <*> renameClosure outerContext renaming closure
 
     Domain.Pi binding type_ plicity closure ->
       Syntax.Pi binding
-        <$> checkValueSolution outerContext occurs env flexibility type_
+        <$> renameValue outerContext renaming type_
         <*> pure plicity
-        <*> checkClosureSolution outerContext occurs env flexibility closure
+        <*> renameClosure outerContext renaming closure
 
     Domain.Fun domain plicity target ->
       Syntax.Fun
-        <$> checkValueSolution outerContext occurs env flexibility domain
+        <$> renameValue outerContext renaming domain
         <*> pure plicity
-        <*> checkValueSolution outerContext occurs env flexibility target
+        <*> renameValue outerContext renaming target
 
-checkBranchSolution
-  :: Context outer
-  -> Meta.Index
-  -> Domain.Environment v
-  -> Domain.Environment v'
-  -> Flexibility
-  -> Telescope Bindings Syntax.Type Syntax.Term v'
-  -> M (Telescope Bindings Syntax.Type Syntax.Term v)
-checkBranchSolution outerContext occurs outerEnv innerEnv flexibility tele =
-  case tele of
-    Telescope.Empty term -> do
-      value <- Evaluation.evaluate innerEnv term
-      term' <- checkValueSolution outerContext occurs outerEnv flexibility value
-      pure $ Telescope.Empty term'
-
-    Telescope.Extend bindings domain plicity tele' -> do
-      domain' <- Evaluation.evaluate innerEnv domain
-      domain'' <- checkValueSolution outerContext occurs outerEnv flexibility domain'
-      (outerEnv', var) <- Environment.extend outerEnv
-      let
-        innerEnv' =
-          Environment.extendVar innerEnv var
-      tele'' <- checkBranchSolution outerContext occurs outerEnv' innerEnv' flexibility tele'
-      pure $ Telescope.Extend bindings domain'' plicity tele''
-
-checkClosureSolution
+renameClosure
   :: Context v
-  -> Meta.Index
-  -> Domain.Environment v'
-  -> Flexibility
+  -> PartialRenaming v'
   -> Domain.Closure
   -> M (Scope Syntax.Term v')
-checkClosureSolution outerContext occurs env flexibility closure = do
-  (env', v) <- Environment.extend env
+renameClosure outerContext renaming closure = do
+  (env', v) <- Environment.extend $ environment renaming
   closure' <- Evaluation.evaluateClosure closure $ Domain.var v
-  checkValueSolution outerContext occurs env' flexibility closure'
+  renameValue outerContext renaming { environment = env' } closure'
 
-checkSpineSolution
+renameSpine
   :: Context v
-  -> Meta.Index
-  -> Domain.Environment v'
-  -> Flexibility
+  -> PartialRenaming v'
   -> Syntax.Term v'
   -> Domain.Spine
   -> M (Syntax.Term v')
-checkSpineSolution outerContext occurs env flexibility head spine =
+renameSpine outerContext renaming head spine =
   case spine of
     Domain.Empty ->
       pure head
 
     spine' Domain.:> elim -> do
-      inner <- checkSpineSolution outerContext occurs env flexibility head spine'
-      checkEliminationSolution outerContext occurs env flexibility inner elim
+      inner <- renameSpine outerContext renaming head spine'
+      renameElimination outerContext renaming inner elim
 
-checkEliminationSolution
+renameElimination
   :: Context v
-  -> Meta.Index
-  -> Domain.Environment v'
-  -> Flexibility
+  -> PartialRenaming v'
   -> Syntax.Term v'
   -> Domain.Elimination
   -> M (Syntax.Term v')
-checkEliminationSolution outerContext occurs env flexibility eliminee elimination =
+renameElimination outerContext renaming eliminee elimination =
   case elimination of
     Domain.App plicity arg ->
       Syntax.App eliminee plicity <$>
-        checkValueSolution outerContext occurs env flexibility arg
+        renameValue outerContext renaming arg
 
     Domain.Case (Domain.Branches env' branches defaultBranch) -> do
       branches' <- case branches of
         Syntax.ConstructorBranches constructorTypeName constructorBranches ->
           fmap (Syntax.ConstructorBranches constructorTypeName) $
             OrderedHashMap.forMUnordered constructorBranches $ mapM $
-              checkBranchSolution outerContext occurs env env' flexibility
+              renameBranch outerContext renaming env'
 
         Syntax.LiteralBranches literalBranches ->
           fmap Syntax.LiteralBranches $
             OrderedHashMap.forMUnordered literalBranches $ mapM $ \branch -> do
               branch' <- Evaluation.evaluate env' branch
-              checkValueSolution outerContext occurs env flexibility branch'
+              renameValue outerContext renaming branch'
 
       defaultBranch' <- forM defaultBranch $ \branch -> do
         branch' <- Evaluation.evaluate env' branch
-        checkValueSolution outerContext occurs env flexibility branch'
+        renameValue outerContext renaming branch'
       pure $ Syntax.Case eliminee branches' defaultBranch'
+
+renameBranch
+  :: Context outer
+  -> PartialRenaming v
+  -> Domain.Environment v'
+  -> Telescope Bindings Syntax.Type Syntax.Term v'
+  -> M (Telescope Bindings Syntax.Type Syntax.Term v)
+renameBranch outerContext renaming innerEnv tele =
+  case tele of
+    Telescope.Empty term -> do
+      value <- Evaluation.evaluate innerEnv term
+      term' <- renameValue outerContext renaming value
+      pure $ Telescope.Empty term'
+
+    Telescope.Extend bindings domain plicity tele' -> do
+      domain' <- Evaluation.evaluate innerEnv domain
+      domain'' <- renameValue outerContext renaming domain'
+      (outerEnv', var) <- Environment.extend $ environment renaming
+      let
+        innerEnv' =
+          Environment.extendVar innerEnv var
+      tele'' <- renameBranch outerContext renaming { environment = outerEnv' } innerEnv' tele'
+      pure $ Telescope.Extend bindings domain'' plicity tele''
 
 pruneMeta
   :: Context v
@@ -904,18 +916,25 @@ pruneMeta context meta allowedArgs = do
 
   where
     go :: [Bool] -> Context v -> Domain.Type -> M (Syntax.Term v)
-    go alloweds context' type_ =
+    go alloweds context' type_ = do
+      let
+        renaming =
+          PartialRenaming
+            { occurs = Nothing
+            , environment = Context.toEnvironment context'
+            , renamingFlexibility = Flexibility.Rigid
+            }
       case alloweds of
         [] -> do
           (meta', _, v) <- Context.newMetaReturningIndex context' type_
-          Context.moveMetaBefore context meta meta'
-          checkValueSolution context' meta (Context.toEnvironment context') Flexibility.Rigid v
+          Context.moveMetaBefore context' meta meta'
+          renameValue context' renaming v
 
         allowed:alloweds' -> do
           type' <- Context.forceHead context type_
           case type' of
             Domain.Fun domain plicity target -> do
-              domain' <- checkValueSolution context' meta (Context.toEnvironment context') Flexibility.Rigid domain
+              domain' <- renameValue context' renaming domain
               (context'', _) <-
                 if allowed then
                   Context.extend context' "x" domain
@@ -949,7 +968,7 @@ pruneMeta context meta allowedArgs = do
                 Evaluation.evaluateClosure
                   targetClosure
                   (Domain.var v)
-              domain' <- checkValueSolution context' meta (Context.toEnvironment context') Flexibility.Rigid domain
+              domain' <- renameValue context' renaming domain
               body <- go alloweds' context'' target
               pure $ Syntax.Lam (Bindings.Unspanned name) domain' plicity body
 
