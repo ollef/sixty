@@ -5,7 +5,7 @@
 {-# language ViewPatterns #-}
 module Elaboration.Context where
 
-import Protolude hiding (IntMap, IntSet, catch, check, force)
+import Protolude hiding (IntMap, IntSet, catch, check, force, state)
 
 import Control.Exception.Lifted
 import Control.Monad.Base
@@ -452,13 +452,21 @@ toPrettyablePattern context = do
 
 newMeta :: Context v -> Domain.Type -> M Domain.Value
 newMeta context type_ = do
-  (closedType, arity) <- piBoundVars context type_
-  i <- atomicModifyIORef' (metas context) $ Meta.insert closedType arity (span context)
-  pure $ Domain.Neutral (Domain.Meta i) $ Domain.Apps ((,) Explicit . Domain.var <$> IntSeq.toTsil (boundVars context))
+  (_, _, value) <- newMetaReturningIndex context type_
+  pure value
 
 newMetaType :: Context v -> M Domain.Value
 newMetaType context =
   newMeta context Builtin.Type
+
+newMetaReturningIndex :: Context v -> Domain.Type -> M (Meta.Index, Tsil (Plicity, Var), Domain.Value)
+newMetaReturningIndex context type_ = do
+  (closedType, arity) <- piBoundVars context type_
+  i <- atomicModifyIORef' (metas context) $ Meta.new closedType arity (span context)
+  let
+    args =
+      (,) Explicit <$> IntSeq.toTsil (boundVars context)
+  pure (i, args, Domain.Neutral (Domain.Meta i) $ Domain.Apps (second Domain.var <$> args))
 
 piBoundVars :: Context v -> Domain.Type -> M (Syntax.Type Void, Int)
 piBoundVars context type_ = do
@@ -562,6 +570,10 @@ lazilySolveMeta context meta lazyTerm = do
       Just newBlockingMeta ->
         addPostponementsBlockedOnMeta context unblocked newBlockingMeta
 
+moveMetaBefore :: Context v -> Meta.Index -> Meta.Index -> M ()
+moveMetaBefore context index1 index2 =
+  atomicModifyIORef' (metas context) $ \state -> (Meta.moveBefore index1 index2 state, ())
+
 -------------------------------------------------------------------------------
 
 -- | Evaluate the head of a value further, if (now) possible due to meta
@@ -581,7 +593,7 @@ forceHead context value =
       meta <- lookupEagerMeta context metaIndex
 
       case meta of
-        Meta.EagerSolved headValue _ -> do
+        Meta.EagerSolved _ headValue _ -> do
           headValue' <- Evaluation.evaluate (Environment.empty $ scopeKey context) headValue
           value' <- Evaluation.applySpine headValue' spine
           forceHead context value'
@@ -614,7 +626,7 @@ forceHeadGlue context value =
     Domain.Neutral (Domain.Meta metaIndex) spine -> do
       meta <- lookupEagerMeta context metaIndex
       case meta of
-        Meta.EagerSolved headValue _ -> do
+        Meta.EagerSolved _ headValue _ -> do
           value' <- lazy $ do
             headValue' <- Evaluation.evaluate (Environment.empty $ scopeKey context) headValue
             value' <- Evaluation.applySpine headValue' spine
@@ -711,7 +723,7 @@ zonk context term = do
                 (IntMap.insert index Nothing indexMap', ())
               pure Nothing
 
-            Meta.EagerSolved term' _ -> do
+            Meta.EagerSolved _ term' _ -> do
               term'' <- Zonking.zonkTerm (Environment.empty $ scopeKey context) zonkMeta zonkPostponed term'
               atomicModifyIORef' metasRef $ \indexMap' ->
                 (IntMap.insert index (Just term'') indexMap', ())

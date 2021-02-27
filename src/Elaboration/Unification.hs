@@ -3,7 +3,7 @@
 {-# language ScopedTypeVariables #-}
 module Elaboration.Unification where
 
-import Protolude hiding (catch, check, evaluate, force, throwIO)
+import Protolude hiding (catch, check, evaluate, force, head, throwIO)
 
 import Control.Exception.Lifted
 import Rock
@@ -547,7 +547,7 @@ instantiatedMetaType
 instantiatedMetaType context meta args = do
   solution <- Context.lookupMeta context meta
   case solution of
-    Meta.Unsolved metaType _ _ _ -> do
+    Meta.Unsolved _ metaType _ _ _ -> do
       metaType' <-
         Evaluation.evaluate
           (Environment.empty $ Context.scopeKey context)
@@ -699,8 +699,45 @@ checkValueSolution
 checkValueSolution outerContext occurs env flexibility value = do
   value' <- Context.forceHeadGlue outerContext value
   case value' of
-    Domain.Neutral hd spine ->
-      checkNeutralSolution outerContext occurs env flexibility hd spine
+    Domain.Neutral (Domain.Var var) spine ->
+      case Environment.lookupVarIndex var env of
+        Nothing ->
+          throwIO $ Error.TypeMismatch mempty
+
+        Just i ->
+          checkSpineSolution outerContext occurs env flexibility (Syntax.Var i) spine
+
+    Domain.Neutral (Domain.Global global) spine ->
+      checkSpineSolution outerContext occurs env flexibility (Syntax.Global global) spine
+
+    Domain.Neutral (Domain.Meta meta) spine -> do
+      metaWeight <- Meta.entryWeight <$> Context.lookupMeta outerContext meta
+      occursWeight <- Meta.entryWeight <$> Context.lookupMeta outerContext occurs
+      case compare occursWeight metaWeight of
+        LT ->
+          Context.moveMetaBefore outerContext occurs meta
+
+        EQ ->
+          throwIO $ Error.OccursCheck mempty
+
+        GT ->
+          pure ()
+      case spine of
+        Domain.Apps args -> do
+          args' <- mapM (Context.forceHead outerContext . snd) args
+          case traverse Domain.singleVarView args' of
+            Just vars
+              | allowedVars <- map (\v -> isJust (Environment.lookupVarIndex v env) && isNothing (Environment.lookupVarValue v env)) vars
+              , any not allowedVars
+              -> do
+                pruneMeta outerContext meta allowedVars
+                checkValueSolution outerContext occurs env flexibility $ Domain.Neutral (Domain.Meta meta) spine
+
+            _ ->
+              checkSpineSolution outerContext occurs env flexibility (Syntax.Meta meta) spine
+
+        _ ->
+          checkSpineSolution outerContext occurs env flexibility (Syntax.Meta meta) spine
 
     Domain.Con con args ->
       Syntax.apps (Syntax.Con con) <$> mapM (mapM $ checkValueSolution outerContext occurs env flexibility) args
@@ -708,18 +745,27 @@ checkValueSolution outerContext occurs env flexibility value = do
     Domain.Lit lit ->
       pure $ Syntax.Lit lit
 
-    Domain.Glued hd@(Domain.Global _) spine value'' ->
-      checkNeutralSolution outerContext occurs env Flexibility.Flexible hd spine `catch` \(_ :: Error.Elaboration) -> do
+    Domain.Glued (Domain.Global global) spine value'' ->
+      checkSpineSolution outerContext occurs env Flexibility.Flexible (Syntax.Global global) spine `catch` \(_ :: Error.Elaboration) -> do
         value''' <- force value''
         checkValueSolution outerContext occurs env flexibility value'''
 
-    Domain.Glued (Domain.Meta _) _ value'' -> do
-      -- The meta solution might contain other metas, so we need to force
-      value''' <- force value''
-      checkValueSolution outerContext occurs env flexibility value'''
+    Domain.Glued (Domain.Meta meta) spine value'' -> do
+      occursWeight <- Meta.entryWeight <$> Context.lookupMeta outerContext occurs
+      metaWeight <- Meta.entryWeight <$> Context.lookupMeta outerContext meta
+      if metaWeight < occursWeight then
+        -- The solved meta (`meta`) does not have the meta we're solving
+        -- (`occurs`) in scope, so we can try without unfolding `meta`.
+        checkSpineSolution outerContext occurs env Flexibility.Flexible (Syntax.Meta meta) spine `catch` \(_ :: Error.Elaboration) -> do
+          value''' <- force value''
+          checkValueSolution outerContext occurs env flexibility value'''
+      else do
+        -- The meta solution might contain `occurs`, so we need to force.
+        value''' <- force value''
+        checkValueSolution outerContext occurs env flexibility value'''
 
     Domain.Glued (Domain.Var _) _ value'' -> do
-      -- The variable's value might contain other metas, so we need to force
+      -- The variable's value might contain `occurs`, so we need to force
       value''' <- force value''
       checkValueSolution outerContext occurs env flexibility value'''
 
@@ -778,41 +824,22 @@ checkClosureSolution outerContext occurs env flexibility closure = do
   closure' <- Evaluation.evaluateClosure closure $ Domain.var v
   checkValueSolution outerContext occurs env' flexibility closure'
 
-checkNeutralSolution
+checkSpineSolution
   :: Context v
   -> Meta.Index
   -> Domain.Environment v'
   -> Flexibility
-  -> Domain.Head
+  -> Syntax.Term v'
   -> Domain.Spine
   -> M (Syntax.Term v')
-checkNeutralSolution outerContext occurs env flexibility hd spine = do
-  let
-    defaultCase =
-      case (hd, spine) of
-        (_, Domain.Empty) ->
-          checkHeadSolution occurs env hd
+checkSpineSolution outerContext occurs env flexibility head spine =
+  case spine of
+    Domain.Empty ->
+      pure head
 
-        (_, spine' Domain.:> elim) -> do
-          inner <- checkNeutralSolution outerContext occurs env flexibility hd spine'
-          checkEliminationSolution outerContext occurs env flexibility inner elim
-
-  case (hd, spine) of
-    (Domain.Meta i, Domain.Apps args)
-      | Flexibility.Rigid <- flexibility -> do
-        args' <- mapM (Context.forceHead outerContext . snd) args
-        case traverse Domain.singleVarView args' of
-          Just vars
-            | allowedVars <- map (\v -> isJust (Environment.lookupVarIndex v env) && isNothing (Environment.lookupVarValue v env)) vars
-            , any not allowedVars
-            -> do
-              pruneMeta outerContext i allowedVars
-              checkValueSolution outerContext occurs env flexibility $ Domain.Neutral hd spine
-
-          _ ->
-            defaultCase
-    _ ->
-      defaultCase
+    spine' Domain.:> elim -> do
+      inner <- checkSpineSolution outerContext occurs env flexibility head spine'
+      checkEliminationSolution outerContext occurs env flexibility inner elim
 
 checkEliminationSolution
   :: Context v
@@ -846,42 +873,17 @@ checkEliminationSolution outerContext occurs env flexibility eliminee eliminatio
         checkValueSolution outerContext occurs env flexibility branch'
       pure $ Syntax.Case eliminee branches' defaultBranch'
 
-checkHeadSolution
-  :: Meta.Index
-  -> Domain.Environment v'
-  -> Domain.Head
-  -> M (Syntax.Term v')
-checkHeadSolution occurs env hd =
-  case hd of
-    Domain.Var v ->
-      case Environment.lookupVarIndex v env of
-        Nothing ->
-          throwIO $ Error.TypeMismatch mempty
-
-        Just i ->
-          pure $ Syntax.Var i
-
-    Domain.Global g ->
-      pure $ Syntax.Global g
-
-    Domain.Meta m
-      | m == occurs ->
-        throwIO $ Error.OccursCheck mempty
-
-      | otherwise ->
-        pure $ Syntax.Meta m
-
 pruneMeta
   :: Context v
   -> Meta.Index
   -> Tsil Bool
   -> M ()
 pruneMeta context meta allowedArgs = do
-  solution <- Context.lookupMeta context meta
+  entry <- Context.lookupMeta context meta
   -- putText $ "pruneMeta " <> show meta
   -- putText $ "pruneMeta " <> show allowedArgs
-  case solution of
-    Meta.Unsolved metaType _ _ _ -> do
+  case entry of
+    Meta.Unsolved _ metaType _ _ _ -> do
       -- putText $ show metaType
       metaType' <-
         Evaluation.evaluate
@@ -905,7 +907,8 @@ pruneMeta context meta allowedArgs = do
     go alloweds context' type_ =
       case alloweds of
         [] -> do
-          v <- Context.newMeta context' type_
+          (meta', _, v) <- Context.newMetaReturningIndex context' type_
+          Context.moveMetaBefore context meta meta'
           checkValueSolution context' meta (Context.toEnvironment context') Flexibility.Rigid v
 
         allowed:alloweds' -> do

@@ -159,7 +159,7 @@ inferDefinition context def =
     Surface.ConstantDefinition clauses -> do
       let
         clauses' =
-          [ Clauses.Clause clause mempty | (_, clause) <- clauses]
+          [Clauses.Clause clause mempty | (_, clause) <- clauses]
       (term', type_) <- Clauses.infer context clauses'
       def' <- postProcessDefinition context $ Syntax.ConstantDefinition term'
       pure (def', type_)
@@ -800,14 +800,9 @@ postponeInference
   -> Surface.UnspannedTerm
   -> M (Inferred (Syntax.Term v))
 postponeInference context surfaceTerm = do
-  expectedType <- Context.newMetaType context
-  case expectedType of
-    Domain.Neutral (Domain.Meta blockingMeta) _ -> do
-      Checked term <- postponeCheck context surfaceTerm expectedType blockingMeta
-      pure $ Inferred term expectedType
-
-    _ ->
-      panic "postponeInfer non-meta"
+  (blockingMeta, _, expectedType) <- Context.newMetaReturningIndex context Builtin.Type
+  Checked term <- postponeCheck context surfaceTerm expectedType blockingMeta
+  pure $ Inferred term expectedType
 
 inferLiteral :: Literal -> Domain.Type
 inferLiteral literal =
@@ -917,43 +912,38 @@ postpone
   -> (Postponement.CanPostpone -> M (Syntax.Term v))
   -> M (Syntax.Term v)
 postpone context expectedType blockingMeta check_ = do
-  resultMetaValue <- Context.newMeta context expectedType
+  (resultMeta, resultMetaArgs, resultMetaValue) <- Context.newMetaReturningIndex context expectedType
   resultMetaTerm <- readback context resultMetaValue
-  case resultMetaValue of
-    Domain.Neutral (Domain.Meta resultMeta) (Domain.Apps (traverse (traverse Domain.singleVarView) -> Just resultMetaArgs)) -> do
-      postponementIndex <- Context.newPostponedCheck context blockingMeta $ \canPostpone -> do
-        resultTerm <- check_ canPostpone
-        metaValue <- Context.lookupEagerMeta context resultMeta
-        let
-          metaSolution = do
-            resultValue <- evaluate context resultTerm
-            Unification.checkSolution context resultMeta resultMetaArgs resultValue
+  postponementIndex <- Context.newPostponedCheck context blockingMeta $ \canPostpone -> do
+    resultTerm <- check_ canPostpone
+    metaValue <- Context.lookupEagerMeta context resultMeta
+    let
+      metaSolution = do
+        resultValue <- evaluate context resultTerm
+        Unification.checkSolution context resultMeta resultMetaArgs resultValue
 
-        success <- case metaValue of
-          Meta.EagerSolved _ _ -> do
-            resultValue <- evaluate context resultTerm
-            Context.try_ context $ Unification.unify context Flexibility.Rigid resultValue resultMetaValue
+    success <- case metaValue of
+      Meta.EagerSolved _ _ _ -> do
+        resultValue <- evaluate context resultTerm
+        Context.try_ context $ Unification.unify context Flexibility.Rigid resultValue resultMetaValue
 
-          Meta.EagerUnsolved _ _ postponements _
-            | IntSet.null postponements -> do
-              lazySolution <- lazy metaSolution
-              Context.lazilySolveMeta context resultMeta lazySolution
-              pure True
+      Meta.EagerUnsolved _ _ _ postponements _
+        | IntSet.null postponements -> do
+          lazySolution <- lazy metaSolution
+          Context.lazilySolveMeta context resultMeta lazySolution
+          pure True
 
-            | otherwise -> do
-              solution <- metaSolution
-              Context.solveMeta context resultMeta solution
-              pure True
+        | otherwise -> do
+          solution <- metaSolution
+          Context.solveMeta context resultMeta solution
+          pure True
 
-        if success then
-          pure resultTerm
+    if success then
+      pure resultTerm
 
-        else
-          readback context $ Builtin.Fail expectedType
-      pure $ Syntax.PostponedCheck postponementIndex resultMetaTerm
-
-    _ ->
-      panic "Elaboration.postpone: malformed meta value"
+    else
+      readback context $ Builtin.Fail expectedType
+  pure $ Syntax.PostponedCheck postponementIndex resultMetaTerm
 
 -------------------------------------------------------------------------------
 -- Constructor name resolution
@@ -1181,7 +1171,7 @@ checkMetaSolutions
 checkMetaSolutions context metaVars =
   flip IntMap.traverseWithKey (Meta.eagerEntries metaVars) $ \index entry ->
     case entry of
-      Meta.EagerUnsolved type_ _ _ span -> do
+      Meta.EagerUnsolved _ type_ _ _ span -> do
         ptype <- Context.toPrettyableClosedTerm context type_
         Context.report (Context.spanned span context) $
           Error.UnsolvedMetaVariable index ptype
@@ -1189,7 +1179,7 @@ checkMetaSolutions context metaVars =
         failTerm <- addLambdas (Context.emptyFrom context) type'
         pure (failTerm, type_)
 
-      Meta.EagerSolved solution type_ ->
+      Meta.EagerSolved _ solution type_ ->
         pure (solution, type_)
   where
     addLambdas :: Context v -> Domain.Type -> M (Syntax.Term v)
