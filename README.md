@@ -23,7 +23,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Elaboration of meta variable solutions to local definitions
   - [x] Case expression inversion
 - [x] Basic type checking
-- [x] Elaboration postponement
+- [x] Elaboration postponement ("impredicative polymorphism" inference)
   - [x] Lazily written solutions
 - [x] Query architecture
   - [x] Parallel type checking
