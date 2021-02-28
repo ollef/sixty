@@ -22,7 +22,7 @@ import qualified Telescope
 data Entry m
   = Unsolved (Syntax.Type Void) !Int (IntSet Postponement.Index) !Span.Relative
   | Solved (Syntax.Term Void) !CachedMetas (Syntax.Type Void)
-  | LazilySolved !(m (Syntax.Term Void)) !(m (IntSet Meta.Index)) (Syntax.Type Void)
+  | LazilySolved !(m (Syntax.Term Void)) (Syntax.Type Void)
 
 data CachedMetas = CachedMetas
   { direct :: IntSet Meta.Index
@@ -46,7 +46,7 @@ entryType entry =
     Solved _ _ type_ ->
       type_
 
-    LazilySolved _ _ type_ ->
+    LazilySolved _ type_ ->
       type_
 
 data State m = State
@@ -102,7 +102,7 @@ solve index term state =
         Just LazilySolved {} ->
           panic "Solving an already solved meta variable"
 
-lazilySolve :: Functor m => Meta.Index -> m (Syntax.Term Void) -> State m -> (State m, (Int, IntSet Postponement.Index))
+lazilySolve :: Meta.Index -> m (Syntax.Term Void) -> State m -> (State m, (Int, IntSet Postponement.Index))
 lazilySolve index mterm state =
   (state { entries = entries' }, data_)
   where
@@ -115,7 +115,7 @@ lazilySolve index mterm state =
           panic "Solving non-existent meta variable"
 
         Just (Unsolved type_ arity' postponed' _) ->
-          ((arity', postponed'), Just $ LazilySolved mterm (termMetas <$> mterm) type_)
+          ((arity', postponed'), Just $ LazilySolved mterm type_)
 
         Just Solved {} ->
           panic "Solving an already solved meta variable"
@@ -191,9 +191,11 @@ toEagerEntry entry =
     Solved solution metas type_ ->
       pure $ EagerSolved solution metas type_
 
-    LazilySolved msolution mmetas type_ -> do
+    LazilySolved msolution type_ -> do
       solution <- msolution
-      metas <- mmetas
+      let
+        metas =
+          termMetas solution <> termMetas type_
       pure $ EagerSolved solution mempty { direct = metas, unsolved = metas } type_
 
 toEagerState :: Monad m => State m -> Syntax.Definition -> Maybe (Syntax.Type Void) -> m EagerState
@@ -265,9 +267,11 @@ solutionMetas metaIndex state = do
 
         pure (Just metas')
 
-    LazilySolved msolution mmetas type_ -> do
+    LazilySolved msolution type_ -> do
       solution <- msolution
-      metas <- mmetas
+      let
+        metas =
+          termMetas solution <> termMetas type_
       solutionMetas metaIndex state
         { entries =
           IntMap.insert metaIndex (Solved solution CachedMetas { direct = metas, unsolved = metas, solved = mempty } type_) $ entries state
