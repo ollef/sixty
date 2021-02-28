@@ -44,17 +44,17 @@ inlineSolutions
   -> Syntax.Type Void
   -> M (Syntax.Definition, Syntax.Type Void)
 inlineSolutions scopeKey solutions def type_ = do
-  solutionValues <- forM solutions $ \(metaTerm, metaType) -> do
+  solutionValues <- forM solutions $ \(metaTerm, metaType, metaOccurrences) -> do
     metaValue <- evaluate (Environment.empty scopeKey) metaTerm
     metaType' <- evaluate (Environment.empty scopeKey) metaType
-    pure (metaValue, metaType')
+    pure (metaValue, metaType', metaOccurrences)
 
   let
     sortedSolutions =
       acyclic <$>
       topoSortWith
         fst
-        (\(_, (metaValue, metaType)) -> fst <$> IntMap.toList (void $ unoccurrences $ occurrences metaValue <> occurrences metaType))
+        (\(_, (_, _, metaOccurrences)) -> IntSet.toList metaOccurrences)
         (IntMap.toList solutionValues)
 
     lookupMetaIndex metas index =
@@ -66,8 +66,8 @@ inlineSolutions scopeKey solutions def type_ = do
     inlineTermSolutions :: Domain.Environment v -> Syntax.Term v -> M (Syntax.Term v)
     inlineTermSolutions env term = do
       let
-        go :: (Meta.Index, (Value, Type)) -> (Value, IntMap Meta.Index (Var, [Maybe DuplicableValue])) -> M (Value, IntMap Meta.Index (Var, [Maybe DuplicableValue]))
-        go (index, (solutionValue, solutionType)) (value, metaVars) =
+        go :: (Meta.Index, (Value, Type, unused)) -> (Value, IntMap Meta.Index (Var, [Maybe DuplicableValue])) -> M (Value, IntMap Meta.Index (Var, [Maybe DuplicableValue]))
+        go (index, (solutionValue, solutionType, _)) (value, metaVars) =
           case IntMap.lookup index $ occurrencesMap value of
             Nothing ->
               pure (value, metaVars)

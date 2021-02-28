@@ -2,7 +2,7 @@
 {-# language DeriveGeneric #-}
 module Core.Syntax where
 
-import Protolude hiding (Type, IntMap)
+import Protolude hiding (Type, IntMap, IntSet)
 
 import Data.OrderedHashMap (OrderedHashMap)
 import Data.Persist
@@ -10,6 +10,7 @@ import Unsafe.Coerce
 
 import Boxity
 import Core.Binding (Binding)
+import Data.IntSet (IntSet)
 import Core.Bindings (Bindings)
 import Data.IntMap (IntMap)
 import Data.Tsil (Tsil)
@@ -119,7 +120,7 @@ coerce =
   unsafeCoerce
 
 type MetaSolutions =
-  IntMap Meta.Index (Term Void, Type Void)
+  IntMap Meta.Index (Term Void, Type Void, IntSet Meta.Index)
 
 data Definition
   = TypeDeclaration !(Type Void)

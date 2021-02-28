@@ -1177,10 +1177,10 @@ checkMetaSolutions context metaVars =
           Error.UnsolvedMetaVariable index ptype
         type' <- evaluate (Context.emptyFrom context) type_
         failTerm <- addLambdas (Context.emptyFrom context) type'
-        pure (failTerm, type_)
+        pure (failTerm, type_, Meta.termMetas failTerm)
 
-      Meta.EagerSolved solution _ type_ ->
-        pure (solution, type_)
+      Meta.EagerSolved solution metas type_ ->
+        pure (solution, type_, Meta.direct metas)
   where
     addLambdas :: Context v -> Domain.Type -> M (Syntax.Term v)
     addLambdas context' type_ = do
