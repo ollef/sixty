@@ -9,6 +9,7 @@ import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
+import Data.List (partition)
 import Data.Persist
 import qualified Meta
 import Orphans ()
@@ -19,30 +20,27 @@ import Telescope (Telescope)
 import qualified Telescope
 
 data Entry m
-  = Unsolved !Link (Syntax.Type Void) !Int (IntSet Postponement.Index) !Span.Relative
-  | Solved !Link (Syntax.Term Void) (Syntax.Type Void)
-  | LazilySolved !Link !(m (Syntax.Term Void)) (Syntax.Type Void)
+  = Unsolved (Syntax.Type Void) !Int (IntSet Postponement.Index) !Span.Relative
+  | Solved (Syntax.Term Void) !CachedMetas (Syntax.Type Void)
+  | LazilySolved !(m (Syntax.Term Void)) !(m (IntSet Meta.Index)) (Syntax.Type Void)
 
-entryLink :: Entry m -> Link
-entryLink entry =
-  case entry of
-    Unsolved l _ _ _ _ ->
-      l
+data CachedMetas = CachedMetas
+  { direct :: IntSet Meta.Index
+  , unsolved :: IntSet Meta.Index -- Or unknown
+  , solved :: IntSet Meta.Index
+  } deriving (Eq, Show, Generic, Persist, Hashable)
 
-    Solved l _ _ ->
-      l
+instance Semigroup CachedMetas where
+  CachedMetas a1 b1 c1 <> CachedMetas a2 b2 c2 =
+    CachedMetas (a1 <> a2) (b1 <> b2) (c1 <> c2)
 
-    LazilySolved l _ _ ->
-      l
-
-entryWeight :: Entry m -> Double
-entryWeight =
-  weight . entryLink
+instance Monoid CachedMetas where
+  mempty = CachedMetas mempty mempty mempty
 
 entryType :: Entry m -> Syntax.Type Void
 entryType entry =
   case entry of
-    Unsolved _ type_ _ _ _ ->
+    Unsolved type_ _ _ _ ->
       type_
 
     Solved _ _ type_ ->
@@ -51,36 +49,16 @@ entryType entry =
     LazilySolved _ _ type_ ->
       type_
 
-mapEntryLink :: (Link -> Link) -> Entry m -> Entry m
-mapEntryLink f entry =
-  case entry of
-    Unsolved l a b c d ->
-      Unsolved (f l) a b c d
-
-    Solved l a b ->
-      Solved (f l) a b
-
-    LazilySolved l a b ->
-      LazilySolved (f l) a b
-
 data State m = State
-  { entries :: IntMap Meta.Index (Entry m) -- invariant: weights <= greatestMeta < nextIndex
+  { entries :: IntMap Meta.Index (Entry m)
   , nextIndex :: !Meta.Index
-  , greatest :: Maybe Meta.Index
   }
-
-data Link = Link
-  { previous :: Maybe Meta.Index
-  , weight :: !Double
-  , next :: Maybe Meta.Index
-  } deriving (Eq, Generic, Persist, Hashable)
 
 empty :: State m
 empty =
   State
     { entries = mempty
     , nextIndex = Meta.Index 0
-    , greatest = Nothing
     }
 
 lookup :: Meta.Index -> State m -> Entry m
@@ -90,20 +68,12 @@ lookup index state =
 new :: Syntax.Term Void -> Int -> Span.Relative -> State m -> (State m, Meta.Index)
 new type_ arity span state =
   let
-    index@(Meta.Index indexInt) =
+    index =
       nextIndex state
-
-    link =
-      Link
-        { previous = greatest state
-        , weight = fromIntegral indexInt
-        , next = Nothing
-        }
   in
   ( State
-    { entries = IntMap.insert index (Unsolved link type_ arity mempty span) $ entries state
+    { entries = IntMap.insert index (Unsolved type_ arity mempty span) $ entries state
     , nextIndex = nextIndex state + 1
-    , greatest = Just index
     }
   , index
   )
@@ -120,8 +90,11 @@ solve index term state =
         Nothing ->
           panic "Solving non-existent meta variable"
 
-        Just (Unsolved link type_ arity' postponed' _) ->
-          ((arity', postponed'), Just $ Solved link term type_)
+        Just (Unsolved type_ arity' postponed' _) -> do
+          let
+            metas =
+              termMetas term
+          ((arity', postponed'), Just $ Solved term mempty { direct = metas, unsolved = metas } type_)
 
         Just Solved {} ->
           panic "Solving an already solved meta variable"
@@ -129,7 +102,7 @@ solve index term state =
         Just LazilySolved {} ->
           panic "Solving an already solved meta variable"
 
-lazilySolve :: Meta.Index -> m (Syntax.Term Void) -> State m -> (State m, (Int, IntSet Postponement.Index))
+lazilySolve :: Functor m => Meta.Index -> m (Syntax.Term Void) -> State m -> (State m, (Int, IntSet Postponement.Index))
 lazilySolve index mterm state =
   (state { entries = entries' }, data_)
   where
@@ -141,8 +114,8 @@ lazilySolve index mterm state =
         Nothing ->
           panic "Solving non-existent meta variable"
 
-        Just (Unsolved link type_ arity' postponed' _) ->
-          ((arity', postponed'), Just $ LazilySolved link mterm type_)
+        Just (Unsolved type_ arity' postponed' _) ->
+          ((arity', postponed'), Just $ LazilySolved mterm (termMetas <$> mterm) type_)
 
         Just Solved {} ->
           panic "Solving an already solved meta variable"
@@ -156,8 +129,8 @@ addPostponedIndex index postponementIndex state =
   where
     adjust entry =
       case entry of
-        Unsolved link type_ arity postponed span ->
-          Unsolved link type_ arity (IntSet.insert postponementIndex postponed) span
+        Unsolved type_ arity postponed span ->
+          Unsolved type_ arity (IntSet.insert postponementIndex postponed) span
 
         Solved {} ->
           panic "Adding postponement index to an already solved meta variable"
@@ -171,8 +144,8 @@ addPostponedIndices index postponementIndices state =
   where
     adjust entry =
       case entry of
-        Unsolved link type_ arity postponed span ->
-          Unsolved link type_ arity (postponementIndices <> postponed) span
+        Unsolved type_ arity postponed span ->
+          Unsolved type_ arity (postponementIndices <> postponed) span
 
         Solved {} ->
           panic "Adding postponement index to an already solved meta variable"
@@ -181,132 +154,47 @@ addPostponedIndices index postponementIndices state =
           panic "Adding postponement index to an already solved meta variable"
 
 -------------------------------------------------------------------------------
--- Weights
-
--- | `moveBefore m1 m2` moves m2 just before m1 in the state.
-moveBefore :: Meta.Index -> Meta.Index -> State m -> State m
-moveBefore index1 index2 state
-  | previousWeight < newWeight2
-  , newWeight2 < weight link1 =
-    state
-      { entries =
-        mapMaybeLink (previous link1) (\link -> link { next = Just index2 }) $
-        mapLink index2 (const Link { previous = previous link1, weight = newWeight2, next = Just index1 }) $
-        mapLink index1 (\link -> link { previous = Just index2 }) $
-        mapMaybeLink (previous link2) (\link -> link { next = next link2 }) $
-        mapMaybeLink (next link2) (\link -> link { previous = previous link2 }) $
-        entries state
-      , greatest =
-        if Just index2 == greatest state then
-          previous link2
-        else
-          greatest state
-      }
-  | otherwise =
-    moveBefore index1 index2 $ reassignWeights state
-  where
-    entry1 =
-      lookup index1 state
-
-    entry2 =
-      lookup index2 state
-
-    link1 =
-      entryLink entry1
-
-    link2 =
-      entryLink entry2
-
-    previousWeight =
-      case previous link1 of
-        Nothing ->
-          -1
-
-        Just prev ->
-          weight $ entryLink $ lookup prev state
-
-    newWeight2 =
-      (previousWeight + weight link1) / 2
-
-    mapMaybeLink :: Maybe Meta.Index -> (Link -> Link) -> IntMap Meta.Index (Entry m) -> IntMap Meta.Index (Entry m)
-    mapMaybeLink maybeIndex f =
-      maybe identity (`mapLink` f) maybeIndex
-
-    mapLink :: Meta.Index -> (Link -> Link) -> IntMap Meta.Index (Entry m) -> IntMap Meta.Index (Entry m)
-    mapLink index f =
-      IntMap.adjust (mapEntryLink f) index
-
-reassignWeights :: State m -> State m
-reassignWeights state =
-  state
-    { entries =
-      IntMap.fromList $
-      zipWith (\newWeight (index, entry) -> (index, mapEntryLink (\link -> link { weight = newWeight }) entry)) [0..] $
-      sortOn (entryWeight . snd) $
-      IntMap.toList $
-      entries state
-    }
-
--------------------------------------------------------------------------------
 -- Eager entries
 
 data EagerEntry
-  = EagerUnsolved !Link (Syntax.Type Void) !Int (IntSet Postponement.Index) !Span.Relative
-  | EagerSolved !Link (Syntax.Term Void) (Syntax.Type Void)
+  = EagerUnsolved (Syntax.Type Void) !Int (IntSet Postponement.Index) !Span.Relative
+  | EagerSolved (Syntax.Term Void) CachedMetas (Syntax.Type Void)
   deriving (Eq, Generic, Persist, Hashable)
 
 data EagerState = EagerState
   { eagerEntries :: IntMap Meta.Index EagerEntry
   , eagerNextIndex :: !Meta.Index
-  , eagerGreatest :: Maybe Meta.Index
   } deriving (Eq, Generic, Persist, Hashable)
-
-dependencyOrderedEagerEntries :: EagerState -> [(Meta.Index, EagerEntry)]
-dependencyOrderedEagerEntries =
-  sortOn (eagerEntryWeight . snd) . IntMap.toList . eagerEntries
-
-eagerEntryLink :: EagerEntry -> Link
-eagerEntryLink entry =
-  case entry of
-    EagerUnsolved l _ _ _ _ ->
-      l
-
-    EagerSolved l _ _ ->
-      l
-
-eagerEntryWeight :: EagerEntry -> Double
-eagerEntryWeight =
-  weight . eagerEntryLink
 
 fromEagerState :: EagerState -> State m
 fromEagerState state =
   State
     { entries = fromEagerEntry <$> eagerEntries state
     , nextIndex = eagerNextIndex state
-    , greatest = eagerGreatest state
     }
 
 fromEagerEntry :: EagerEntry -> Entry m
 fromEagerEntry entry =
   case entry of
-    EagerUnsolved link type_ arity postponements span ->
-      Unsolved link type_ arity postponements span
+    EagerUnsolved type_ arity postponements span ->
+      Unsolved type_ arity postponements span
 
-    EagerSolved link term type_ ->
-      Solved link term type_
+    EagerSolved term metas type_ ->
+      Solved term metas type_
 
 toEagerEntry :: Monad m => Entry m -> m EagerEntry
 toEagerEntry entry =
   case entry of
-    Unsolved link type_ arity postponements span ->
-      pure $ EagerUnsolved link type_ arity postponements span
+    Unsolved type_ arity postponements span ->
+      pure $ EagerUnsolved type_ arity postponements span
 
-    Solved link solution type_ ->
-      pure $ EagerSolved link solution type_
+    Solved solution metas type_ ->
+      pure $ EagerSolved solution metas type_
 
-    LazilySolved link msolution type_ -> do
+    LazilySolved msolution mmetas type_ -> do
       solution <- msolution
-      pure $ EagerSolved link solution type_
+      metas <- mmetas
+      pure $ EagerSolved solution mempty { direct = metas, unsolved = metas } type_
 
 toEagerState :: Monad m => State m -> Syntax.Definition -> Maybe (Syntax.Type Void) -> m EagerState
 toEagerState state definition maybeType = do
@@ -314,7 +202,6 @@ toEagerState state definition maybeType = do
   pure EagerState
     { eagerEntries = entries_
     , eagerNextIndex = nextIndex state
-    , eagerGreatest = greatest state
     }
   where
     go todo done
@@ -328,11 +215,11 @@ toEagerState state definition maybeType = do
           newTodo =
             foldMap
               (\case
-                EagerUnsolved _link type_ _arity _postponements _span ->
+                EagerUnsolved type_ _arity _postponements _span ->
                   termMetas type_
 
-                EagerSolved _link solution _ ->
-                  termMetas solution
+                EagerSolved _solution metas _type ->
+                  direct metas
               )
               newlyDone
 
@@ -340,6 +227,51 @@ toEagerState state definition maybeType = do
       where
         todo' =
           IntMap.difference (IntMap.fromSet (entries state IntMap.!) todo) done
+
+-------------------------------------------------------------------------------
+
+solutionMetas :: Monad m => Meta.Index -> State m -> m (Maybe CachedMetas, State m)
+solutionMetas metaIndex state = do
+  case lookup metaIndex state of
+    Unsolved {} ->
+      pure (Nothing, state)
+
+    Solved solution metas type_ ->
+      flip runStateT state $ do
+        indirects <- forM (IntSet.toList $ unsolved metas) $ \i ->
+          (,) i <$> StateT (solutionMetas i)
+
+        let
+          (directUnsolvedMetas, directSolvedMetas) =
+            bimap (IntSet.fromList . map fst) (IntSet.fromList . map fst) $
+            partition (isNothing . snd) indirects
+
+          indirectMetas =
+            foldMap (fold . snd) indirects
+
+          solved' =
+            solved metas <> directSolvedMetas <> solved indirectMetas
+
+          unsolved' =
+            directUnsolvedMetas <> unsolved indirectMetas
+
+          metas' =
+            metas
+              { unsolved = unsolved'
+              , solved = solved'
+              }
+
+        modify $ \s -> s { entries = IntMap.insert metaIndex (Solved solution metas' type_) $ entries s }
+
+        pure (Just metas')
+
+    LazilySolved msolution mmetas type_ -> do
+      solution <- msolution
+      metas <- mmetas
+      solutionMetas metaIndex state
+        { entries =
+          IntMap.insert metaIndex (Solved solution CachedMetas { direct = metas, unsolved = metas, solved = mempty } type_) $ entries state
+        }
 
 definitionMetas :: Syntax.Definition -> IntSet Meta.Index
 definitionMetas definition =

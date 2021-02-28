@@ -22,7 +22,6 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Solution inlining
   - [x] Elaboration of meta variable solutions to local definitions
   - [x] Case expression inversion
-  - [x] Ordered meta variables
 - [x] Basic type checking
 - [x] Elaboration postponement
   - [x] Lazily written solutions

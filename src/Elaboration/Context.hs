@@ -570,9 +570,12 @@ lazilySolveMeta context meta lazyTerm = do
       Just newBlockingMeta ->
         addPostponementsBlockedOnMeta context unblocked newBlockingMeta
 
-moveMetaBefore :: Context v -> Meta.Index -> Meta.Index -> M ()
-moveMetaBefore context index1 index2 =
-  atomicModifyIORef' (metas context) $ \state -> (Meta.moveBefore index1 index2 state, ())
+metaSolutionMetas :: Context v -> Meta.Index -> M (IntSet Meta.Index)
+metaSolutionMetas context index = do
+  m <- readIORef $ metas context
+  (result, m') <- Meta.solutionMetas index m
+  writeIORef (metas context) m'
+  pure $ foldMap (Meta.unsolved <> Meta.solved) result
 
 -------------------------------------------------------------------------------
 
@@ -593,7 +596,7 @@ forceHead context value =
       meta <- lookupEagerMeta context metaIndex
 
       case meta of
-        Meta.EagerSolved _ headValue _ -> do
+        Meta.EagerSolved headValue _ _ -> do
           headValue' <- Evaluation.evaluate (Environment.empty $ scopeKey context) headValue
           value' <- Evaluation.applySpine headValue' spine
           forceHead context value'
@@ -626,7 +629,7 @@ forceHeadGlue context value =
     Domain.Neutral (Domain.Meta metaIndex) spine -> do
       meta <- lookupEagerMeta context metaIndex
       case meta of
-        Meta.EagerSolved _ headValue _ -> do
+        Meta.EagerSolved headValue _ _ -> do
           value' <- lazy $ do
             headValue' <- Evaluation.evaluate (Environment.empty $ scopeKey context) headValue
             value' <- Evaluation.applySpine headValue' spine
@@ -723,7 +726,7 @@ zonk context term = do
                 (IntMap.insert index Nothing indexMap', ())
               pure Nothing
 
-            Meta.EagerSolved _ term' _ -> do
+            Meta.EagerSolved term' _ _ -> do
               term'' <- Zonking.zonkTerm (Environment.empty $ scopeKey context) zonkMeta zonkPostponed term'
               atomicModifyIORef' metasRef $ \indexMap' ->
                 (IntMap.insert index (Just term'') indexMap', ())

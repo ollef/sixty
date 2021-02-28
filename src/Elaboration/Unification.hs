@@ -15,17 +15,18 @@ import Core.Bindings (Bindings)
 import qualified Core.Bindings as Bindings
 import qualified Core.Domain as Domain
 import qualified Core.Evaluation as Evaluation
-import qualified Elaboration.Meta as Meta
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
 import Data.IntSeq (IntSeq)
 import qualified Data.IntSeq as IntSeq
+import qualified Data.IntSet as IntSet
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Tsil as Tsil
 import Data.Tsil (Tsil)
 import Elaboration.Context (Context)
 import qualified Elaboration.Context as Context
+import qualified Elaboration.Meta as Meta
 import Environment (Environment(Environment))
 import qualified Environment
 import qualified Error
@@ -547,7 +548,7 @@ instantiatedMetaType
 instantiatedMetaType context meta args = do
   solution <- Context.lookupMeta context meta
   case solution of
-    Meta.Unsolved _ metaType _ _ _ -> do
+    Meta.Unsolved metaType _ _ _ -> do
       metaType' <-
         Evaluation.evaluate
           (Environment.empty $ Context.scopeKey context)
@@ -714,43 +715,28 @@ renameValue outerContext renaming value = do
     Domain.Neutral (Domain.Global global) spine ->
       renameSpine outerContext renaming (Syntax.Global global) spine
 
-    Domain.Neutral (Domain.Meta meta) spine -> do
-      case occurs renaming of
-        Nothing -> pure ()
-        Just occursMeta -> do
-          metaWeight <- Meta.entryWeight <$> Context.lookupMeta outerContext meta
-          occursWeight <- Meta.entryWeight <$> Context.lookupMeta outerContext occursMeta
-          case compare occursWeight metaWeight of
-            LT ->
-              case renamingFlexibility renaming of
-                Flexibility.Rigid ->
-                  Context.moveMetaBefore outerContext occursMeta meta
+    Domain.Neutral (Domain.Meta meta) spine
+      | Just meta == occurs renaming ->
+        throwIO $ Error.OccursCheck mempty
 
-                Flexibility.Flexible ->
-                  throwIO $ Error.TypeMismatch mempty
+      | otherwise ->
+        case spine of
+          Domain.Apps args
+            | Flexibility.Rigid <- renamingFlexibility renaming -> do
+              args' <- mapM (Context.forceHead outerContext . snd) args
+              case traverse Domain.singleVarView args' of
+                Just vars
+                  | allowedVars <- map (\v -> isJust (Environment.lookupVarIndex v $ environment renaming) && isNothing (Environment.lookupVarValue v $ environment renaming)) vars
+                  , any not allowedVars
+                  -> do
+                    pruneMeta outerContext meta allowedVars
+                    renameValue outerContext renaming $ Domain.Neutral (Domain.Meta meta) spine
 
-            EQ ->
-              throwIO $ Error.OccursCheck mempty
+                _ ->
+                  renameSpine outerContext renaming (Syntax.Meta meta) spine
 
-            GT ->
-              pure ()
-      case spine of
-        Domain.Apps args
-          | Flexibility.Rigid <- renamingFlexibility renaming -> do
-            args' <- mapM (Context.forceHead outerContext . snd) args
-            case traverse Domain.singleVarView args' of
-              Just vars
-                | allowedVars <- map (\v -> isJust (Environment.lookupVarIndex v $ environment renaming) && isNothing (Environment.lookupVarValue v $ environment renaming)) vars
-                , any not allowedVars
-                -> do
-                  pruneMeta outerContext meta allowedVars
-                  renameValue outerContext renaming $ Domain.Neutral (Domain.Meta meta) spine
-
-              _ ->
-                renameSpine outerContext renaming (Syntax.Meta meta) spine
-
-        _ ->
-          renameSpine outerContext renaming (Syntax.Meta meta) spine
+          _ ->
+            renameSpine outerContext renaming (Syntax.Meta meta) spine
 
     Domain.Con con args ->
       Syntax.apps (Syntax.Con con) <$> mapM (mapM $ renameValue outerContext renaming) args
@@ -766,19 +752,18 @@ renameValue outerContext renaming value = do
     Domain.Glued (Domain.Meta meta) spine value'' -> do
       case occurs renaming of
         Just occursMeta -> do
-          occursWeight <- Meta.entryWeight <$> Context.lookupMeta outerContext occursMeta
-          metaWeight <- Meta.entryWeight <$> Context.lookupMeta outerContext meta
-          if metaWeight < occursWeight then
-            -- The solved meta (`meta`) does not have the meta we're solving
-            -- (`occurs`) in scope, so we can try without unfolding `meta`.
-            renameSpine outerContext renaming { renamingFlexibility = Flexibility.Flexible } (Syntax.Meta meta) spine `catch` \(_ :: Error.Elaboration) -> do
-              value''' <- force value''
-              renameValue outerContext renaming value'''
-
-          else do
+          metas <- Context.metaSolutionMetas outerContext meta
+          if IntSet.member occursMeta metas then do
             -- The meta solution might contain `occurs`, so we need to force.
             value''' <- force value''
             renameValue outerContext renaming value'''
+          else
+            -- The solved meta (`meta`) does contain the meta we're solving
+            -- (`occursMeta`) in scope, so we can try without unfolding
+            -- `meta`.
+            renameSpine outerContext renaming { renamingFlexibility = Flexibility.Flexible } (Syntax.Meta meta) spine `catch` \(_ :: Error.Elaboration) -> do
+              value''' <- force value''
+              renameValue outerContext renaming value'''
 
         Nothing -> do
           value''' <- force value''
@@ -895,7 +880,7 @@ pruneMeta context meta allowedArgs = do
   -- putText $ "pruneMeta " <> show meta
   -- putText $ "pruneMeta " <> show allowedArgs
   case entry of
-    Meta.Unsolved _ metaType _ _ _ -> do
+    Meta.Unsolved metaType _ _ _ -> do
       -- putText $ show metaType
       metaType' <-
         Evaluation.evaluate
@@ -926,8 +911,7 @@ pruneMeta context meta allowedArgs = do
             }
       case alloweds of
         [] -> do
-          (meta', _, v) <- Context.newMetaReturningIndex context' type_
-          Context.moveMetaBefore context' meta meta'
+          v <- Context.newMeta context' type_
           renameValue context' renaming v
 
         allowed:alloweds' -> do
