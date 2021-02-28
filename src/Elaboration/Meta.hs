@@ -93,7 +93,7 @@ solve index term state =
         Just (Unsolved type_ arity' postponed' _) -> do
           let
             metas =
-              termMetas term
+              termMetas term <> termMetas type_
           ((arity', postponed'), Just $ Solved term mempty { direct = metas, unsolved = metas } type_)
 
         Just Solved {} ->
