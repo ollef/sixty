@@ -322,20 +322,7 @@ toEagerState state definition maybeType = do
         pure done
 
       | otherwise = do
-        newlyDone <-
-          traverse
-            (\case
-              Unsolved link type_ arity postponements span ->
-                pure $ EagerUnsolved link type_ arity postponements span
-
-              Solved link solution type_ ->
-                pure $ EagerSolved link solution type_
-
-              LazilySolved link msolution type_ -> do
-                solution <- msolution
-                pure $ EagerSolved link solution type_
-            )
-            todo'
+        newlyDone <- traverse toEagerEntry todo'
 
         let
           newTodo =
