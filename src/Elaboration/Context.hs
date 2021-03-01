@@ -472,7 +472,7 @@ piBoundVars :: Context v -> Domain.Type -> M (Syntax.Type Void, Int)
 piBoundVars context type_ = do
   let
     arity =
-      IntSeq.size $ boundVars context
+      IntSeq.length $ boundVars context
   type' <-
     Readback.readback
       Environment
@@ -502,7 +502,7 @@ piBoundVars context type_ = do
                 { scopeKey = scopeKey context
                 , indices = Index.Map vars'
                 , values = values context
-                , glueableBefore = Index $ IntSeq.size vars'
+                , glueableBefore = Index $ IntSeq.length vars'
                 }
               varType
           let

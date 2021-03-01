@@ -644,7 +644,7 @@ checkSolution outerContext meta vars value = do
           { scopeKey = Context.scopeKey outerContext
           , indices = Index.Map indices
           , values = Context.values outerContext
-          , glueableBefore = Index $ IntSeq.size indices
+          , glueableBefore = Index $ IntSeq.length indices
           }
         , renamingFlexibility = Flexibility.Rigid
         }
@@ -682,7 +682,7 @@ addAndRenameLambdas outerContext meta plicities vars term =
               { scopeKey = Context.scopeKey outerContext
               , indices = Index.Map vars'
               , values = Context.values outerContext
-              , glueableBefore = Index $ IntSeq.size vars'
+              , glueableBefore = Index $ IntSeq.length vars'
               }
             , renamingFlexibility = Flexibility.Rigid
             }

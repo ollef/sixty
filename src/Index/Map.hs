@@ -26,13 +26,13 @@ pattern as :> a <- Map ((Map -> as) IntSeq.:> a)
 
 {-# COMPLETE Empty, (:>) #-}
 
-length :: (Coercible a Data.IntMap.Key) => Map v a -> Index (Succ v)
+length :: Map v a -> Index (Succ v)
 length (Map m) = Index $ IntSeq.length m
 
 elemIndex :: (Coercible a Data.IntMap.Key) => a -> Map v a -> Maybe (Index v)
 elemIndex a (Map m) =
   (\i -> Index $ IntSeq.length m - i - 1) <$> IntSeq.elemIndex a m
 
-index :: (Coercible a Data.IntMap.Key) => Map v a -> Index v -> a
+index :: Map v a -> Index v -> a
 index (Map m) (Index i) =
   IntSeq.index m (IntSeq.length m - i - 1)

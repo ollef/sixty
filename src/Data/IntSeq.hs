@@ -9,11 +9,9 @@
 module Data.IntSeq where
 
 import Prelude (Show(showsPrec), showParen, showString, shows)
-import Protolude hiding (IntMap)
+import Protolude hiding (IntMap, unsnoc, seq, splitAt)
 
-import Data.Coerce
-import Data.FingerTree (FingerTree)
-import qualified Data.FingerTree as FingerTree
+import qualified Data.Sequence as Seq
 import qualified "containers" Data.IntMap
 
 import Data.IntMap (IntMap)
@@ -21,103 +19,76 @@ import qualified Data.IntMap as IntMap
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 
-data IndexMap a = IndexMap !Int (IntMap a Int)
+data IntSeq a = IntSeq !(Seq a) (IntMap a Int)
 
-instance Semigroup (IndexMap a) where
-  IndexMap 0 _ <> indexMap =
-    indexMap
-  indexMap <> IndexMap 0 _ =
-    indexMap
-  IndexMap n1 m1 <> IndexMap n2 m2 =
-    IndexMap (n1 + n2) (m1 <> ((+ n1) <$> m2))
-
-instance Monoid (IndexMap a) where
-  mempty = IndexMap 0 mempty
-
-newtype IndexMapped a = IndexMapped a
-
-instance (Coercible a Data.IntMap.Key) => FingerTree.Measured (IndexMap a) (IndexMapped a) where
-  measure (IndexMapped a) = IndexMap 1 (IntMap.singleton a 0)
-
-newtype IntSeq a = IntSeq (FingerTree (IndexMap a) (IndexMapped a))
-
-deriving instance (Coercible a Data.IntMap.Key) => Semigroup (IntSeq a)
-deriving instance (Coercible a Data.IntMap.Key) => Monoid (IntSeq a)
-
-instance Foldable IntSeq where
-  foldMap f (IntSeq ft) = foldMap (coerce f) ft
+instance Semigroup (IntSeq a) where
+  IntSeq seq1 indices1 <> IntSeq seq2 indices2 =
+    IntSeq (seq1 <> seq2) (indices1 <> map (+ Seq.length seq1) indices2)
 
 instance Show a => Show (IntSeq a) where
   showsPrec p xs = showParen (p > 10) $
     showString "fromList " . shows (toList xs)
 
+instance Monoid (IntSeq a) where
+  mempty =
+    IntSeq mempty mempty
+
+instance Foldable IntSeq where
+  foldMap f =
+    foldMap f . toList
+
 pattern Empty :: (Coercible a Data.IntMap.Key) => IntSeq a
-pattern Empty <- IntSeq (FingerTree.null -> True)
+pattern Empty <- IntSeq Seq.Empty _
   where
     Empty = mempty
 
 pattern (:>) :: (Coercible a Data.IntMap.Key) => IntSeq a -> a -> IntSeq a
-pattern as :> a <- IntSeq (FingerTree.viewr -> (IntSeq -> as) FingerTree.:> IndexMapped a)
+pattern as :> a <- (unsnoc -> Just (as, a))
   where
-    IntSeq ft :> a = IntSeq (ft FingerTree.|> IndexMapped a)
+    IntSeq seq indices :> a = IntSeq (seq Seq.:|> a) (IntMap.insert a (Seq.length seq) indices)
+
+unsnoc :: (Coercible a Data.IntMap.Key) => IntSeq a -> Maybe (IntSeq a, a)
+unsnoc (IntSeq seq indices) =
+  case seq of
+    seq' Seq.:|> a ->
+      Just (IntSeq seq' $ IntMap.delete a indices, a)
+
+    _ -> Nothing
 
 {-# COMPLETE Empty, (:>) #-}
 
-size :: (Coercible a Data.IntMap.Key) => IntSeq a -> Int
-size (IntSeq ft) =
-  n
-  where
-    IndexMap n _ = FingerTree.measure ft
+length :: IntSeq a -> Int
+length (IntSeq seq _) =
+  Seq.length seq
 
 singleton :: (Coercible a Data.IntMap.Key) => a -> IntSeq a
 singleton a =
   Empty :> a
 
-length :: (Coercible a Data.IntMap.Key) => IntSeq a -> Int
-length (IntSeq ft) =
-  let
-    IndexMap len _ = FingerTree.measure ft
-  in
-  len
-
 member :: (Coercible a Data.IntMap.Key) => a -> IntSeq a -> Bool
-member a (IntSeq ft) =
-  let
-    IndexMap _ m = FingerTree.measure ft
-  in
-  IntMap.member a m
+member a (IntSeq _ indices) =
+  IntMap.member a indices
 
 elemIndex :: (Coercible a Data.IntMap.Key) => a -> IntSeq a -> Maybe Int
-elemIndex a (IntSeq ft) =
-  let
-    IndexMap _ m = FingerTree.measure ft
-  in
-  IntMap.lookup a m
+elemIndex a (IntSeq _ indices) =
+  IntMap.lookup a indices
 
-index :: (Coercible a Data.IntMap.Key) => IntSeq a -> Int -> a
-index (IntSeq ft) i =
-  let
-    r = FingerTree.dropUntil (\(IndexMap len _) -> len > i) ft
-  in
-  case FingerTree.viewl r of
-    FingerTree.EmptyL ->
-      panic "Sequence.index: out of bounds"
+index :: IntSeq a -> Int -> a
+index (IntSeq seq _) =
+  Seq.index seq
 
-    IndexMapped a FingerTree.:< _ ->
-      a
-
-splitAt :: (Coercible a Data.IntMap.Key) => Int -> IntSeq a -> (IntSeq a, IntSeq a)
-splitAt i (IntSeq ft) =
-  coerce $ FingerTree.split (\(IndexMap len _) -> len > i) ft
+splitAt :: Int -> IntSeq a -> (IntSeq a, IntSeq a)
+splitAt i (IntSeq seq indices) =
+  (IntSeq seq1 indices1, IntSeq seq2 indices2)
+  where
+    (seq1, seq2) = Seq.splitAt i seq
+    (indices1, indices2) = IntMap.mapEither (\j -> if j < i then Left j else Right $ j - i) indices
 
 insertAt :: (Coercible a Data.IntMap.Key) => Int -> a -> IntSeq a -> IntSeq a
-insertAt i a as =
-  let
-    (l, r) =
-      Data.IntSeq.splitAt i as
-
-  in
-  l <> singleton a <> r
+insertAt i a (IntSeq seq indices) =
+  IntSeq (Seq.insertAt i a seq) (IntMap.insert a i indices')
+  where
+    indices' = map (\j -> if j < i then j else j + 1) indices
 
 delete :: (Coercible a Data.IntMap.Key) => a -> IntSeq a -> IntSeq a
 delete a as =
@@ -128,18 +99,24 @@ delete a as =
     Just i ->
       deleteAt i as
 
-deleteAt :: (Coercible a Data.IntMap.Key) => Int -> IntSeq a -> IntSeq a
-deleteAt i (IntSeq ft) =
-  let
-    (l, r) = FingerTree.split (\(IndexMap len _) -> len > i) ft
-  in
-  coerce $
-    case FingerTree.viewl r of
-      FingerTree.EmptyL ->
-        l
+deleteAt :: Int -> IntSeq a -> IntSeq a
+deleteAt i (IntSeq seq indices) =
+  IntSeq (Seq.deleteAt i seq) indices'
+  where
+    indices' =
+      IntMap.mapMaybe
+        (\j ->
+          case compare j i of
+            LT ->
+              Just j
 
-      _ FingerTree.:< r' ->
-        l <> r'
+            EQ ->
+              Nothing
+
+            GT ->
+              Just $ j - 1
+        )
+        indices
 
 fromTsil :: (Coercible a Data.IntMap.Key) => Tsil a -> IntSeq a
 fromTsil tsil =
@@ -150,11 +127,14 @@ fromTsil tsil =
     as Tsil.:> a ->
       fromTsil as :> a
 
-toTsil :: (Coercible a Data.IntMap.Key) => IntSeq a -> Tsil a
-toTsil as =
-  case as of
-    Empty ->
-      Tsil.Empty
+toTsil :: IntSeq a -> Tsil a
+toTsil (IntSeq seq _) =
+  go seq
+  where
+  go as =
+    case as of
+      Seq.Empty ->
+        Tsil.Empty
 
-    as' :> a ->
-      toTsil as' Tsil.:> a
+      as' Seq.:|> a ->
+        go as' Tsil.:> a
