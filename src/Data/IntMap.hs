@@ -102,3 +102,11 @@ keys (IntMap m) =
 elems :: IntMap key value -> [value]
 elems (IntMap m) =
   Containers.elems m
+
+mapMaybe :: (value1 -> Maybe value2) -> IntMap key value1 -> IntMap key value2
+mapMaybe f (IntMap m) =
+  coerce $ Containers.mapMaybe f m
+
+mapEither :: (value -> Either value1 value2) -> IntMap key value -> (IntMap key value1, IntMap key value2)
+mapEither f (IntMap m) =
+  coerce $ Containers.mapEither f m
