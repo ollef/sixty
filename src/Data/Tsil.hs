@@ -41,7 +41,7 @@ instance Monad Tsil where
 
 instance IsList (Tsil a) where
   type Item (Tsil a) = a
-  fromList = foldr (flip (:>)) Empty . reverse
+  fromList = reverseFromList . reverse
   toList = Protolude.toList
 
 instance Foldable Tsil where
@@ -52,6 +52,9 @@ instance Foldable Tsil where
     where
       go Empty = []
       go (xs :> x) = x : go xs
+
+reverseFromList :: [a] -> Tsil a
+reverseFromList = foldr (flip (:>)) Empty
 
 lookup :: Eq a => a -> Tsil (a, b) -> Maybe b
 lookup _ Empty = Nothing
