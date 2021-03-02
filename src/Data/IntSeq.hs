@@ -11,7 +11,6 @@ module Data.IntSeq where
 import Prelude (Show(showsPrec), showParen, showString, shows)
 import Protolude hiding (IntMap, unsnoc, seq, splitAt)
 
-import qualified Data.Sequence as Seq
 import qualified "containers" Data.IntMap
 
 import Data.IntMap (IntMap)
@@ -19,11 +18,11 @@ import qualified Data.IntMap as IntMap
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 
-data IntSeq a = IntSeq !(Seq a) (IntMap a Int)
+data IntSeq a = IntSeq !Int (IntMap Int a) (IntMap a Int)
 
 instance Semigroup (IntSeq a) where
-  IntSeq seq1 indices1 <> IntSeq seq2 indices2 =
-    IntSeq (seq1 <> seq2) (indices1 <> map (+ Seq.length seq1) indices2)
+  IntSeq length1 values1 indices1 <> IntSeq length2 values2 indices2 =
+    IntSeq (length1 + length2) (values1 <> IntMap.mapKeysMonotonic (+ length1) values2) (indices1 <> map (+ length1) indices2)
 
 instance Show a => Show (IntSeq a) where
   showsPrec p xs = showParen (p > 10) $
@@ -31,63 +30,78 @@ instance Show a => Show (IntSeq a) where
 
 instance Monoid (IntSeq a) where
   mempty =
-    IntSeq mempty mempty
+    IntSeq 0 mempty mempty
 
 instance Foldable IntSeq where
   foldMap f =
     foldMap f . toList
 
 pattern Empty :: (Coercible a Data.IntMap.Key) => IntSeq a
-pattern Empty <- IntSeq Seq.Empty _
+pattern Empty <- IntSeq 0 _ _
   where
     Empty = mempty
 
 pattern (:>) :: (Coercible a Data.IntMap.Key) => IntSeq a -> a -> IntSeq a
 pattern as :> a <- (unsnoc -> Just (as, a))
   where
-    IntSeq seq indices :> a = IntSeq (seq Seq.:|> a) (IntMap.insert a (Seq.length seq) indices)
+    IntSeq length_ values indices :> a = IntSeq (length_ + 1) (IntMap.insert length_ a values) (IntMap.insert a length_ indices)
 
 unsnoc :: (Coercible a Data.IntMap.Key) => IntSeq a -> Maybe (IntSeq a, a)
-unsnoc (IntSeq seq indices) =
-  case seq of
-    seq' Seq.:|> a ->
-      Just (IntSeq seq' $ IntMap.delete a indices, a)
+unsnoc (IntSeq length_ values indices) =
+  case length_ of
+    0 ->
+      Nothing
 
-    _ -> Nothing
+    _ -> do
+      let
+        (a, values') =
+          IntMap.alterF alter (length_ - 1) values
+
+        indices' =
+          IntMap.delete a indices
+      Just (IntSeq (length_ - 1) values' indices', a)
+  where
+    alter Nothing =
+      panic "Data.IntSeq.unsnoc"
+
+    alter (Just a) =
+      (a, Nothing)
 
 {-# COMPLETE Empty, (:>) #-}
 
 length :: IntSeq a -> Int
-length (IntSeq seq _) =
-  Seq.length seq
+length (IntSeq length_ _ _) =
+  length_
 
 singleton :: (Coercible a Data.IntMap.Key) => a -> IntSeq a
 singleton a =
   Empty :> a
 
 member :: (Coercible a Data.IntMap.Key) => a -> IntSeq a -> Bool
-member a (IntSeq _ indices) =
+member a (IntSeq _ _ indices) =
   IntMap.member a indices
 
 elemIndex :: (Coercible a Data.IntMap.Key) => a -> IntSeq a -> Maybe Int
-elemIndex a (IntSeq _ indices) =
+elemIndex a (IntSeq _ _ indices) =
   IntMap.lookup a indices
 
 index :: IntSeq a -> Int -> a
-index (IntSeq seq _) =
-  Seq.index seq
+index (IntSeq _ values _) i =
+  values IntMap.! i
 
 splitAt :: Int -> IntSeq a -> (IntSeq a, IntSeq a)
-splitAt i (IntSeq seq indices) =
-  (IntSeq seq1 indices1, IntSeq seq2 indices2)
+splitAt i (IntSeq length_ values indices) =
+  (IntSeq i values1 indices1, IntSeq (length_ - i) values2' indices2)
   where
-    (seq1, seq2) = Seq.splitAt i seq
+    (values1, values2) = IntMap.mapEitherWithKey (\j -> if j < i then Left else Right) values
+    values2' = IntMap.mapKeysMonotonic (subtract i) values2
     (indices1, indices2) = IntMap.mapEither (\j -> if j < i then Left j else Right $ j - i) indices
 
 insertAt :: (Coercible a Data.IntMap.Key) => Int -> a -> IntSeq a -> IntSeq a
-insertAt i a (IntSeq seq indices) =
-  IntSeq (Seq.insertAt i a seq) (IntMap.insert a i indices')
+insertAt i a (IntSeq length_ values indices) =
+  IntSeq (length_ + 1) (IntMap.insert i a values') (IntMap.insert a i indices')
   where
+    values' = IntMap.mapKeysMonotonic (\j-> if j < i then j else j + 1) values
     indices' = map (\j -> if j < i then j else j + 1) indices
 
 delete :: (Coercible a Data.IntMap.Key) => a -> IntSeq a -> IntSeq a
@@ -100,9 +114,13 @@ delete a as =
       deleteAt i as
 
 deleteAt :: Int -> IntSeq a -> IntSeq a
-deleteAt i (IntSeq seq indices) =
-  IntSeq (Seq.deleteAt i seq) indices'
+deleteAt i (IntSeq length_ values indices) =
+  IntSeq (length_ - 1) values' indices'
   where
+    values' =
+      IntMap.mapKeysMonotonic (\j -> if j < i then j else j - 1) $
+      IntMap.delete i values
+
     indices' =
       IntMap.mapMaybe
         (\j ->
@@ -128,13 +146,5 @@ fromTsil tsil =
       fromTsil as :> a
 
 toTsil :: IntSeq a -> Tsil a
-toTsil (IntSeq seq _) =
-  go seq
-  where
-  go as =
-    case as of
-      Seq.Empty ->
-        Tsil.Empty
-
-      as' Seq.:|> a ->
-        go as' Tsil.:> a
+toTsil (IntSeq _ values _) =
+  Tsil.reverseFromList $ snd <$> IntMap.toDescList values
