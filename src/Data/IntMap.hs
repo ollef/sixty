@@ -42,6 +42,10 @@ toList :: Coercible key Containers.Key => IntMap key value -> [(key, value)]
 toList (IntMap m) =
   coerce $ Containers.toList m
 
+toDescList :: Coercible key Containers.Key => IntMap key value -> [(key, value)]
+toDescList (IntMap m) =
+  coerce $ Containers.toDescList m
+
 insert :: Coercible key Containers.Key => key -> value -> IntMap key value -> IntMap key value
 insert key value =
   coerce $ Containers.insert (coerce key) value
@@ -107,6 +111,26 @@ mapMaybe :: (value1 -> Maybe value2) -> IntMap key value1 -> IntMap key value2
 mapMaybe f (IntMap m) =
   coerce $ Containers.mapMaybe f m
 
+mapMaybeWithKey :: Coercible key Containers.Key => (key -> value1 -> Maybe value2) -> IntMap key value1 -> IntMap key value2
+mapMaybeWithKey f (IntMap m) =
+  IntMap $ Containers.mapMaybeWithKey (coerce f) m
+
 mapEither :: (value -> Either value1 value2) -> IntMap key value -> (IntMap key value1, IntMap key value2)
 mapEither f (IntMap m) =
   coerce $ Containers.mapEither f m
+
+mapEitherWithKey
+  :: (Coercible key Containers.Key)
+  => (key -> value -> Either value1 value2)
+  -> IntMap key value
+  -> (IntMap key value1, IntMap key value2)
+mapEitherWithKey f (IntMap m) =
+  bimap IntMap IntMap $ Containers.mapEitherWithKey (coerce f) m
+
+mapKeysMonotonic
+  :: (Coercible key1 Containers.Key, Coercible key2 Containers.Key)
+  => (key1 -> key2)
+  -> IntMap key1 value
+  -> IntMap key2 value
+mapKeysMonotonic f (IntMap m) =
+  IntMap $ Containers.mapKeysMonotonic (coerce f) m
