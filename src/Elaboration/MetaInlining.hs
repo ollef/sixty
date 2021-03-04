@@ -3,6 +3,7 @@
 {-# language DeriveTraversable #-}
 {-# language FlexibleContexts #-}
 {-# language OverloadedStrings #-}
+{-# language TupleSections #-}
 module Elaboration.MetaInlining where
 
 import Prelude (Show (showsPrec))
@@ -85,9 +86,10 @@ inlineSolutions scopeKey solutions def type_ = do
                     ]
 
                 (inlinedSolutionValue, inlinedSolutionType) =
-                  inlineArguments solutionValue solutionType duplicableArgsList mempty
+                  unShared $ inlineArguments solutionValue solutionType duplicableArgsList mempty
 
-                Shared _ value' =
+                value' =
+                  unShared $
                   sharing value $
                     inlineIndex index duplicableVars (solutionVar, duplicableArgsList, inlinedSolutionValue, inlinedSolutionType) value
 
@@ -522,11 +524,11 @@ inlineArguments
   -> Value
   -> [Maybe DuplicableValue]
   -> IntMap Var Value
-  -> (Value, Value)
+  -> Shared (Value, Value)
 inlineArguments value@(Value innerValue _) type_@(Value innerType _) args subst =
   case args of
     [] ->
-      (substitute subst value, substitute subst type_)
+      (,) <$> substitute subst value <*> substitute subst type_
 
     Just arg:args' ->
       case (innerValue, innerType) of
@@ -539,93 +541,96 @@ inlineArguments value@(Value innerValue _) type_@(Value innerType _) args subst 
           inlineArguments body target args' subst'
 
         _ ->
-          (substitute subst value, substitute subst type_)
+          (,) <$> substitute subst value <*> substitute subst type_
 
     Nothing:args' ->
       case (innerValue, innerType) of
         (Lam name var argType plicity1 body, Pi name' var' domain plicity2 target)
           | plicity1 == plicity2 ->
-            let
-              argType' =
-                substitute subst argType
-
-              domain' =
-                substitute subst domain
-
-              (body', target') =
-                inlineArguments body target args' subst
-            in
-            ( makeLam name var argType' plicity1 body'
-            , makePi name' var' domain' plicity1 target'
-            )
+            sharing (value, type_) $ do
+              argType' <- substitute subst argType
+              domain' <- substitute subst domain
+              (body', target') <- inlineArguments body target args' subst
+              pure
+                ( makeLam name var argType' plicity1 body'
+                , makePi name' var' domain' plicity1 target'
+                )
 
         _ ->
-          (substitute subst value, substitute subst type_)
+          (,) <$> substitute subst value <*> substitute subst type_
 
-substitute :: IntMap Var Value -> Value -> Value
+substitute :: IntMap Var Value -> Value -> Shared Value
 substitute subst
   | IntMap.null subst =
-    identity
+    pure
   | otherwise =
     go
   where
     go value@(Value innerValue occs) =
-      case innerValue of
-        Var var ->
-          IntMap.lookupDefault value var subst
+      sharing value $
+        case innerValue of
+          Var var ->
+            case IntMap.lookup var subst of
+              Nothing ->
+                pure value
 
-        Global _ ->
-          value
+              Just value' -> do
+                modified
+                pure value'
 
-        Con _ ->
-          value
+          Global _ ->
+            pure value
 
-        Lit _ ->
-          value
+          Con _ ->
+            pure value
 
-        Meta index args ->
-          makeMeta index $ go <$> args
+          Lit _ ->
+            pure value
 
-        PostponedCheck index value' ->
-          makePostponedCheck index $ go value'
+          Meta index args ->
+            makeMeta index <$> mapM go args
 
-        Let name var value' type_ body ->
-          makeLet name var (go value') (go type_) (go body)
+          PostponedCheck index value' ->
+            makePostponedCheck index <$> go value'
 
-        Pi name var domain plicity target ->
-          makePi name var (go domain) plicity (go target)
+          Let name var value' type_ body ->
+            makeLet name var <$> go value' <*> go type_ <*> go body
 
-        Fun domain plicity target ->
-          makeFun (go domain) plicity (go target)
+          Pi name var domain plicity target ->
+            makePi name var <$> go domain <*> pure plicity <*> go target
 
-        Lam name var type_ plicity body ->
-          makeLam name var (go type_) plicity (go body)
+          Fun domain plicity target ->
+            makeFun <$> go domain <*> pure plicity <*> go target
 
-        App function plicity argument ->
-          makeApp (go function) plicity (go argument)
+          Lam name var type_ plicity body ->
+            makeLam name var <$> go type_ <*> pure plicity <*> go body
 
-        Case scrutinee branches defaultBranch ->
-          makeCase
-            (go scrutinee)
-            (case branches of
-              ConstructorBranches constructorTypeName constructorBranches ->
-                ConstructorBranches constructorTypeName $
-                  foreach constructorBranches $ \(span, (bindings, body)) ->
-                    ( span
-                    , ( [ (name, var, go type_, plicity)
-                        | (name, var, type_, plicity) <- bindings
-                        ]
-                      , go body
-                      )
+          App function plicity argument ->
+            makeApp <$> go function <*> pure plicity <*> go argument
+
+          Case scrutinee branches defaultBranch ->
+            makeCase <$>
+              go scrutinee <*>
+              (case branches of
+                ConstructorBranches constructorTypeName constructorBranches ->
+                  ConstructorBranches constructorTypeName <$>
+                    OrderedHashMap.forMUnordered constructorBranches (\(span, (bindings, body)) -> do
+                      bindings' <- forM bindings $ \(name, var, type_, plicity) ->
+                        (name, var, , plicity) <$> go type_
+
+                      body' <- go body
+                      pure (span, (bindings', body'))
                     )
-              LiteralBranches literalBranches ->
-                LiteralBranches $
-                  foreach literalBranches $ second go
-            )
-            (go <$> defaultBranch)
 
-        Spanned span value' ->
-          makeSpanned span $ go (Value value' occs)
+                LiteralBranches literalBranches ->
+                  LiteralBranches <$>
+                    OrderedHashMap.mapMUnordered (mapM go) literalBranches
+              )
+              <*>
+              mapM go defaultBranch
+
+          Spanned span value' ->
+            makeSpanned span <$> go (Value value' occs)
 
 data Shared a = Shared !Bool a
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
@@ -656,6 +661,10 @@ sharing a (Shared modified_ a') =
 
     else
       a
+
+unShared :: Shared a -> a
+unShared (Shared _ a) =
+  a
 
 inlineIndex
   :: Meta.Index
