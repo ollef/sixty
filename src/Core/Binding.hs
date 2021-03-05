@@ -6,11 +6,12 @@ module Core.Binding where
 import Protolude
 
 import Data.Persist
+import Data.String
 
-import qualified Surface.Syntax as Surface
 import Name (Name(Name))
 import qualified Name
 import qualified Span
+import qualified Surface.Syntax as Surface
 
 data Binding
   = Spanned !Span.Relative !Name
@@ -38,3 +39,7 @@ spans binding =
 
     Unspanned _ ->
       []
+
+instance IsString Binding where
+  fromString =
+    Unspanned . fromString
