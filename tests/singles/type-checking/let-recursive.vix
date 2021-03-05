@@ -1,0 +1,32 @@
+data Bool = False | True
+data Nat = Z | S Nat
+
+data Equals forall a. (x y : a) where
+  Refl : Equals x x
+
+even3 : Bool
+even3 =
+  let
+    even : Nat -> Bool
+    even Z = True
+    even (S Z) = False
+    even (S (S n)) = even n
+  in
+  even (S (S (S Z)))
+
+test : Equals even3 False
+test = Refl
+
+data List a = Nil | Cons a (List a)
+
+map : forall a b. (a -> b) -> List a -> List b
+map f =
+  let
+    go : List _ -> List _
+    go Nil = Nil
+    go (Cons a as) = Cons (f a) (go as)
+  in
+  go
+
+test2 : Equals (map S (Cons Z (Cons (S Z) Nil))) (Cons (S Z) (Cons (S (S Z)) Nil))
+test2 = Refl
