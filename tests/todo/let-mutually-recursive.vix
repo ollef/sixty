@@ -1,0 +1,20 @@
+data Nat = Z | S Nat
+data Bool = False | True
+
+even3 : Bool
+even3 =
+  let
+    even : Nat -> Bool
+    odd : Nat -> Bool
+    even Z = True
+    even (S n) = odd n
+    odd Z = False
+    odd (S n) = even n
+  in
+  even (S (S (S n)))
+
+data Equals forall a. (x y : a) where
+  Refl :: Equals x x
+
+test : Equals even3 False
+test = Refl
