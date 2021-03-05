@@ -922,7 +922,7 @@ postpone context expectedType blockingMeta check_ = do
         Unification.checkSolution context resultMeta resultMetaArgs resultValue
 
     success <- case metaValue of
-      Meta.EagerSolved _ _ _ -> do
+      Meta.EagerSolved {} -> do
         resultValue <- evaluate context resultTerm
         Context.try_ context $ Unification.unify context Flexibility.Rigid resultValue resultMetaValue
 
