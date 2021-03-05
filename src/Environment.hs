@@ -69,6 +69,10 @@ extendValue env value = do
     , var
     )
 
+define :: Environment value v -> Var -> value -> Environment value v
+define env var value =
+  env { values = IntMap.insert var value (values env) }
+
 lookupVarIndex :: Var -> Environment value v -> Maybe (Index v)
 lookupVarIndex var context =
   Index.Map.elemIndex var (indices context)

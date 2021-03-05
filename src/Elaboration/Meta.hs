@@ -319,8 +319,8 @@ termMetas term =
     Syntax.PostponedCheck {} ->
       panic "Elaboration.Meta.termMetas: PostponedCheck"
 
-    Syntax.Let _binding term' type_ body ->
-      termMetas term' <> termMetas type_ <> termMetas body
+    Syntax.Lets lets ->
+      letsMetas lets
 
     Syntax.Pi _binding domain _plicity target ->
       termMetas domain <> termMetas target
@@ -357,3 +357,15 @@ telescopeMetas tele =
 
     Telescope.Extend _binding type_ _plixity tele' ->
       termMetas type_ <> telescopeMetas tele'
+
+letsMetas :: Syntax.Lets v -> IntSet Meta.Index
+letsMetas lets =
+  case lets of
+    Syntax.LetType _ type_ lets' ->
+      termMetas type_ <> letsMetas lets'
+
+    Syntax.Let _ _ term lets' ->
+      termMetas term <> letsMetas lets'
+
+    Syntax.In term ->
+      termMetas term

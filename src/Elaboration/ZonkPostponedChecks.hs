@@ -60,8 +60,8 @@ zonkTerm postponed term =
         Postponed.Checked term'' ->
           zonkTerm postponed $ Syntax.coerce term''
 
-    Syntax.Let binding term' type_ scope ->
-      Syntax.Let binding (zonkTerm postponed term') (zonkTerm postponed type_) (zonkTerm postponed scope)
+    Syntax.Lets lets ->
+      Syntax.Lets $ zonkLets postponed lets
 
     Syntax.Pi binding domain plicity targetScope ->
       Syntax.Pi binding (zonkTerm postponed domain) plicity (zonkTerm postponed targetScope)
@@ -80,6 +80,18 @@ zonkTerm postponed term =
 
     Syntax.Spanned span term' ->
       Syntax.Spanned span $ zonkTerm postponed term'
+
+zonkLets :: Postponed.Checks -> Syntax.Lets v -> Syntax.Lets v
+zonkLets postponed lets =
+  case lets of
+    Syntax.LetType binding type_ lets' ->
+      Syntax.LetType binding (zonkTerm postponed type_) (zonkLets postponed lets')
+
+    Syntax.Let binding index term lets' ->
+      Syntax.Let binding index (zonkTerm postponed term) (zonkLets postponed lets')
+
+    Syntax.In term ->
+      Syntax.In $ zonkTerm postponed term
 
 zonkBranches :: Postponed.Checks -> Syntax.Branches v -> Syntax.Branches v
 zonkBranches postponed branches =

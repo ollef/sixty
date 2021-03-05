@@ -157,13 +157,24 @@ data InnerValue
   | Lit !Literal
   | Meta !Meta.Index (Tsil Value)
   | PostponedCheck !Postponement.Index !Value
-  | Let !Bindings !Var !Value !Type !Value
+  | LetsValue !InnerLets
   | Pi !Binding !Var !Type !Plicity !Type
   | Fun !Type !Plicity !Type
   | Lam !Bindings !Var !Type !Plicity !Value
   | App !Value !Plicity !Value
   | Case !Value Branches !(Maybe Value)
   | Spanned !Span.Relative !InnerValue
+  deriving Show
+
+data Lets = Lets !InnerLets Occurrences
+
+instance Show Lets where
+  showsPrec d (Lets l _) = showsPrec d l
+
+data InnerLets
+  = LetType !Binding !Var !Type !Lets
+  | Let !Bindings !Var !Value !Lets
+  | In !InnerValue
   deriving Show
 
 data DuplicableValue
@@ -227,6 +238,9 @@ instance Monoid Occurrences where
 occurrences :: Value -> Occurrences
 occurrences (Value _ occs) = occs
 
+letOccurrences :: Lets -> Occurrences
+letOccurrences (Lets _ occs) = occs
+
 occurrencesMap :: Value -> IntMap Meta.Index (Tsil (Maybe DuplicableValue))
 occurrencesMap = unoccurrences . occurrences
 
@@ -259,12 +273,25 @@ makePostponedCheck index value =
   Value (PostponedCheck index value) $
     occurrences value
 
-makeLet :: Bindings -> Var -> Value -> Type -> Value -> Value
-makeLet bindings var value type_ body =
-  Value (Let bindings var value type_ body) $
-    occurrences value <>
+makeLets :: Lets -> Value
+makeLets (Lets lets occs) =
+  Value (LetsValue lets) occs
+
+makeLetType :: Binding -> Var -> Type -> Lets -> Lets
+makeLetType bindings var type_ lets =
+  Lets (LetType bindings var type_ lets) $
     occurrences type_ <>
-    occurrences body
+    letOccurrences lets
+
+makeLet :: Bindings -> Var -> Value -> Lets -> Lets
+makeLet bindings var value lets =
+  Lets (Let bindings var value lets) $
+    occurrences value <>
+    letOccurrences lets
+
+makeIn :: Value -> Lets
+makeIn (Value value occs) =
+  Lets (In value) occs
 
 makePi :: Binding -> Var -> Type -> Plicity -> Value -> Value
 makePi binding var domain plicity target =
@@ -347,12 +374,8 @@ evaluate env term =
     Syntax.PostponedCheck index term' ->
       makePostponedCheck index <$> evaluate env term'
 
-    Syntax.Let name value type_ body -> do
-      (env', var) <- Environment.extend env
-      makeLet name var <$>
-        evaluate env value <*>
-        evaluate env type_ <*>
-        evaluate env' body
+    Syntax.Lets lets ->
+      makeLets <$> evaluateLets env lets
 
     Syntax.Pi name domain plicity target -> do
       (env', var) <- Environment.extend env
@@ -388,6 +411,23 @@ evaluate env term =
 
     Syntax.Spanned span term' ->
       makeSpanned span <$> evaluate env term'
+
+evaluateLets :: Domain.Environment v -> Syntax.Lets v -> M Lets
+evaluateLets env lets =
+  case lets of
+    Syntax.LetType name type_ lets' -> do
+      (env', var) <- Environment.extend env
+      makeLetType name var <$>
+        evaluate env type_ <*>
+        evaluateLets env' lets'
+
+    Syntax.Let name index value lets' ->
+      makeLet name (Environment.lookupIndexVar index env) <$>
+        evaluate env value <*>
+        evaluateLets env lets'
+
+    Syntax.In term ->
+      makeIn <$> evaluate env term
 
 evaluateBranches
   :: Domain.Environment v
@@ -451,12 +491,8 @@ readback env metas (Value value occs) =
     PostponedCheck index value' ->
       Syntax.PostponedCheck index $ readback env metas value'
 
-    Let name var value' type_ body ->
-      Syntax.Let
-        name
-        (readback env metas value')
-        (readback env metas type_)
-        (readback (Environment.extendVar env var) metas body)
+    LetsValue lets ->
+      Syntax.Lets $ readbackLets env metas $ Lets lets occs
 
     Pi name var domain plicity target ->
       Syntax.Pi
@@ -486,6 +522,29 @@ readback env metas (Value value occs) =
 
     Spanned span value' ->
       Syntax.Spanned span (readback env metas (Value value' occs))
+
+readbackLets
+  :: Domain.Environment v
+  -> (Meta.Index -> (Var, [Maybe var]))
+  -> Lets
+  -> Syntax.Lets v
+readbackLets env metas (Lets lets occs) =
+  case lets of
+    LetType name var type_ lets' ->
+      Syntax.LetType
+        name
+        (readback env metas type_)
+        (readbackLets (Environment.extendVar env var) metas lets')
+
+    Let name var value lets' ->
+      Syntax.Let
+        name
+        (fromMaybe (panic "Elaboration.MetaInlining: indexless let") $ Environment.lookupVarIndex var env)
+        (readback env metas value)
+        (readbackLets env metas lets')
+
+    In term ->
+      Syntax.In $ readback env metas $ Value term occs
 
 readbackBranches
   :: Domain.Environment v
@@ -593,8 +652,8 @@ substitute subst
           PostponedCheck index value' ->
             makePostponedCheck index <$> go value'
 
-          Let name var value' type_ body ->
-            makeLet name var <$> go value' <*> go type_ <*> go body
+          LetsValue lets ->
+            makeLets <$> goLets (Lets lets occs)
 
           Pi name var domain plicity target ->
             makePi name var <$> go domain <*> pure plicity <*> go target
@@ -631,6 +690,19 @@ substitute subst
 
           Spanned span value' ->
             makeSpanned span <$> go (Value value' occs)
+
+    goLets :: Lets -> Shared Lets
+    goLets lets@(Lets innerLets occs) =
+      sharing lets $
+        case innerLets of
+          LetType name var type_ lets' ->
+            makeLetType name var <$> go type_ <*> goLets lets'
+
+          Let name var value lets' ->
+            makeLet name var <$> go value <*> goLets lets'
+
+          In value ->
+            makeIn <$> go (Value value occs)
 
 data Shared a = Shared !Bool a
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
@@ -696,7 +768,11 @@ inlineIndex index targetScope solution@ ~(solutionVar, duplicableArgs, solutionV
     _ | IntSet.null targetScope ->
       if index `IntMap.member` occurrencesMap value then do
         modified
-        pure $ makeLet "meta" solutionVar solutionValue solutionType value
+        pure $
+          makeLets $
+          makeLetType "meta" solutionVar solutionType $
+          makeLet "meta" solutionVar solutionValue $
+          makeIn value
 
       else
         pure value
@@ -720,11 +796,8 @@ inlineIndex index targetScope solution@ ~(solutionVar, duplicableArgs, solutionV
     PostponedCheck index' value' ->
       makePostponedCheck index' <$> recurse value'
 
-    Let name var value' type_ body -> do
-      value'' <- recurse value'
-      type' <- recurse type_
-      body' <- recurseScope var body
-      pure $ makeLet name var value'' type' body'
+    LetsValue lets ->
+      makeLets <$> inlineLetsIndex index targetScope solution (Lets lets occs)
 
     Pi name var domain plicity target -> do
       domain' <- recurse domain
@@ -773,3 +846,25 @@ inlineIndex index targetScope solution@ ~(solutionVar, duplicableArgs, solutionV
 
     Spanned span value' ->
       makeSpanned span <$> recurse (Value value' occs)
+
+inlineLetsIndex :: Meta.Index -> IntSet Var -> (Var, [Maybe DuplicableValue], Value, Value) -> Lets -> Shared Lets
+inlineLetsIndex index targetScope solution lets@(Lets innerLets occs) =
+  sharing lets $
+    case innerLets of
+      LetType name var type_ lets' ->
+        makeLetType name var <$> recurseValue type_ <*> recurseScope var lets'
+
+      Let name var value lets' ->
+        makeLet name var <$> recurseValue value <*> recurseLets lets'
+
+      In value ->
+        makeIn <$> recurseValue (Value value occs)
+  where
+    recurseLets lets' =
+      inlineLetsIndex index targetScope solution lets'
+
+    recurseScope var lets' =
+      inlineLetsIndex index (IntSet.delete var targetScope) solution lets'
+
+    recurseValue value =
+      inlineIndex index targetScope solution value

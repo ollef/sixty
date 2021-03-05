@@ -1,4 +1,5 @@
 {-# language OverloadedStrings #-}
+{-# language RecursiveDo #-}
 module Core.Evaluation where
 
 import Protolude hiding (Seq, head, force, evaluate)
@@ -87,10 +88,8 @@ evaluate env term =
     Syntax.PostponedCheck _ term' ->
       evaluate env term'
 
-    Syntax.Let _ term' _ body -> do
-      term'' <- lazyEvaluate env term'
-      (env', _) <- Environment.extendValue env term''
-      evaluate env' body
+    Syntax.Lets lets ->
+      evaluateLets env lets
 
     Syntax.Pi binding domain plicity target -> do
       domain' <- evaluate env domain
@@ -120,6 +119,25 @@ evaluate env term =
 lazyEvaluate :: Domain.Environment v -> Syntax.Term v -> M Domain.Value
 lazyEvaluate env =
   map Domain.Lazy . lazy . evaluate env
+
+evaluateLets :: Domain.Environment v -> Syntax.Lets v -> M Domain.Value
+evaluateLets env lets =
+  case lets of
+    Syntax.LetType _ _ lets' -> do
+      (env', _) <- Environment.extend env
+      evaluateLets env' lets'
+
+    Syntax.Let _ index term lets' -> mdo
+      let
+        var =
+          Environment.lookupIndexVar index env
+        env' =
+          Environment.define env var value
+      value <- lazyEvaluate env' term
+      evaluateLets env' lets'
+
+    Syntax.In term ->
+      evaluate env term
 
 chooseConstructorBranch
   :: Domain.Environment v

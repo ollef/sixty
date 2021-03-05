@@ -221,12 +221,8 @@ termAction k env term =
     Syntax.PostponedCheck {} ->
       empty
 
-    Syntax.Let bindings term' type_ body -> do
-      (env', var) <- extendDef env bindings term' type_
-      bindingsAction k env' bindings var <|>
-        termAction k env term' <|>
-        termAction k env type_ <|>
-        termAction k env' body
+    Syntax.Lets lets ->
+      letsAction k env lets
 
     Syntax.Pi binding domain _ target -> do
       (env', var) <- extendBinding env binding domain
@@ -257,6 +253,23 @@ termAction k env term =
       termAction k env term' <|> do
         guard $ span `Span.relativeContains` _actionPosition env
         k ExpressionContext env term' span
+
+letsAction :: RelativeCallback a -> Environment v -> Syntax.Lets v -> MaybeT M a
+letsAction k env lets =
+  case lets of
+    Syntax.LetType binding type_ lets' -> do
+      (env', var) <- extendBinding env binding type_
+      bindingAction k env' binding var <|>
+        termAction k env type_ <|>
+        letsAction k env' lets'
+
+    Syntax.Let bindings index term lets' ->
+      definingBindingsAction k env bindings (Context.lookupIndexVar index $ _context env) <|>
+        termAction k env term <|>
+          letsAction k env lets'
+
+    Syntax.In term ->
+      termAction k env term
 
 dataDefinitionAction
   :: RelativeCallback a
@@ -366,7 +379,16 @@ bindingsAction
   -> Bindings
   -> Var
   -> MaybeT M a
-bindingsAction k env binding var =
+bindingsAction =
+  definingBindingsAction
+
+definingBindingsAction
+  :: RelativeCallback a
+  -> Environment v
+  -> Bindings
+  -> Var
+  -> MaybeT M a
+definingBindingsAction k env binding var =
   case binding of
     Bindings.Spanned spannedNames ->
       case Context.lookupVarIndex var $ _context env of

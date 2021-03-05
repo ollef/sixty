@@ -11,6 +11,7 @@ import qualified Core.Syntax as Syntax
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Environment
+import qualified Index
 import Literal (Literal)
 import qualified Meta
 import Monad
@@ -73,7 +74,7 @@ data Value
   | Con !Name.QualifiedConstructor
   | Lit !Literal
   | Meta !Meta.Index
-  | Let !Bindings !Var !Value !Type !Value
+  | Lets !Lets
   | Pi !Binding !Var !Type !Plicity !Type
   | Fun !Type !Plicity !Type
   | Lam !Bindings !Var !Type !Plicity !Value
@@ -84,6 +85,12 @@ data Value
 
 type Environment = Environment.Environment Value
 
+data Lets
+  = LetType !Binding !Var !Type !Lets
+  | Let !Bindings !Var !Value !Lets
+  | In !Value
+  deriving Show
+
 data Branches
   = ConstructorBranches !Name.Qualified (OrderedHashMap Name.Constructor ([Span.Relative], ([(Bindings, Var, Type, Plicity)], Value)))
   | LiteralBranches (OrderedHashMap Literal ([Span.Relative], Value))
@@ -93,7 +100,7 @@ type Type = Value
 
 -------------------------------------------------------------------------------
 
-type Duplicable = forall v. Syntax.Term v -> Bool
+type Duplicable = forall v. Syntax.Term (Index.Succ v) -> Maybe (Syntax.Term v)
 
 evaluate :: Duplicable -> Environment v -> Syntax.Term v -> M Value
 evaluate dup env term =
@@ -124,18 +131,14 @@ evaluate dup env term =
     Syntax.PostponedCheck {} ->
       panic "Inlining: Can't handle postponed check"
 
-    Syntax.Let name term' type_ body
-      | dup term' -> do
-        value <- evaluate dup env term'
-        (env', _) <- Environment.extendValue env value
-        evaluate dup env' body
+    Syntax.Lets lets -> do
+      lets' <- evaluateLets dup env lets
+      case lets' of
+        In value ->
+          pure value
 
-      | otherwise -> do
-        (env', var) <- Environment.extend env
-        Let name var <$>
-          evaluate dup env term' <*>
-          evaluate dup env type_ <*>
-          evaluate dup env' body
+        _ ->
+          pure $ Lets lets'
 
     Syntax.Pi name domain plicity target -> do
       (env', var) <- Environment.extend env
@@ -166,6 +169,34 @@ evaluate dup env term =
 
     Syntax.Spanned span term' ->
       Spanned span <$> evaluate dup env term'
+
+evaluateLets
+  :: Duplicable
+  -> Environment v
+  -> Syntax.Lets v
+  -> M Lets
+evaluateLets dup env lets =
+  case lets of
+    Syntax.LetType _ _ (Syntax.Let _ Index.Zero term lets')
+      | Just term' <- dup term -> do
+        value <- evaluate dup env term'
+        (env', _) <- Environment.extendValue env value
+        evaluateLets dup env' lets'
+
+    Syntax.LetType name type_ lets' -> do
+      (env', var) <- Environment.extend env
+      LetType name var <$> evaluate dup env type_ <*> evaluateLets dup env' lets'
+
+    Syntax.Let name index term' lets' -> do
+      let
+        var =
+          Environment.lookupIndexVar index env
+      Let name var <$>
+        evaluate dup env term' <*>
+        evaluateLets dup env lets'
+
+    Syntax.In term ->
+      In <$> evaluate dup env term
 
 evaluateBranches
   :: Duplicable
@@ -220,11 +251,8 @@ readback env value =
     Meta meta ->
       Syntax.Meta meta
 
-    Let name var term type_ body -> do
-      let
-        env' =
-          Environment.extendVar env var
-      Syntax.Let name (readback env term) (readback env type_) (readback env' body)
+    Lets lets ->
+      Syntax.Lets $ readbackLets env lets
 
     Pi name var domain plicity target -> do
       let
@@ -252,6 +280,25 @@ readback env value =
 
     Spanned span value' ->
       Syntax.Spanned span (readback env value')
+
+readbackLets :: Environment v -> Lets -> Syntax.Lets v
+readbackLets env lets =
+  case lets of
+    LetType name var type_ lets' -> do
+      let
+        env' =
+          Environment.extendVar env var
+      Syntax.LetType name (readback env type_) (readbackLets env' lets')
+
+    Let name var term lets' ->
+      Syntax.Let
+        name
+        (fromMaybe (panic "Inlining: indexless let") $ Environment.lookupVarIndex var env)
+        (readback env term)
+        (readbackLets env lets')
+
+    In term ->
+      Syntax.In $ readback env term
 
 readbackBranches
   :: Environment v
@@ -283,44 +330,47 @@ readbackTelescope env bindings body =
           Environment.extendVar env var
       Telescope.Extend name (readback env type_) plicity (readbackTelescope env' bindings' body)
 
-duplicable :: Syntax.Term v -> Bool
+duplicable :: Syntax.Term (Index.Succ v) -> Maybe (Syntax.Term v)
 duplicable term =
   case term of
-    Syntax.Var {} ->
-      True
+    Syntax.Var (Index.Succ index) ->
+      Just $ Syntax.Var index
 
-    Syntax.Global {} ->
-      True
+    Syntax.Var Index.Zero ->
+      Nothing
 
-    Syntax.Con {} ->
-      True
+    Syntax.Global global ->
+      Just $ Syntax.Global global
 
-    Syntax.Lit {} ->
-      True
+    Syntax.Con con ->
+      Just $ Syntax.Con con
 
-    Syntax.Meta {} ->
-      True
+    Syntax.Lit lit ->
+      Just $ Syntax.Lit lit
+
+    Syntax.Meta meta ->
+      Just $ Syntax.Meta meta
 
     Syntax.PostponedCheck {} ->
-      False
+      Nothing
 
-    Syntax.Let {} ->
-      False
+    Syntax.Lets {} ->
+      Nothing
 
     Syntax.Pi {} ->
-      False
+      Nothing
 
     Syntax.Fun {} ->
-      False
+      Nothing
 
     Syntax.Lam {} ->
-      False
+      Nothing
 
     Syntax.App {} ->
-      False
+      Nothing
 
     Syntax.Case {} ->
-      False
+      Nothing
 
     Syntax.Spanned _ term' ->
       duplicable term'

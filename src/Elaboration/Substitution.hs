@@ -16,9 +16,9 @@ let_ context term body = do
   let
     env =
       createEnvironment context
-  value <- Inlining.evaluate (const False) env term
+  value <- Inlining.evaluate (const Nothing) env term
   (env', _) <- Environment.extendValue env value
-  bodyValue <- Inlining.evaluate (const False) env' body
+  bodyValue <- Inlining.evaluate (const Nothing) env' body
   pure $ Inlining.readback env bodyValue
 
 createEnvironment :: Context v -> Inlining.Environment v

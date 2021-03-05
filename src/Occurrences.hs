@@ -121,12 +121,8 @@ termOccurrences env maybeSpan term =
     Syntax.PostponedCheck {} ->
       mempty
 
-    Syntax.Let bindings term' type_ body -> do
-      (env', var) <- extend env
-      bindingsOccurrences bindings var <>
-        termOccurrences env Nothing term' <>
-        termOccurrences env Nothing type_ <>
-        termOccurrences env' Nothing body
+    Syntax.Lets lets ->
+      letsOccurrences env lets
 
     Syntax.Pi binding domain _ target -> do
       (env', var) <- extend env
@@ -160,6 +156,23 @@ termOccurrences env maybeSpan term =
 
     Syntax.Spanned span term' ->
       termOccurrences env (Just span) term'
+
+letsOccurrences :: Domain.Environment v -> Syntax.Lets v -> M Intervals
+letsOccurrences env lets =
+  case lets of
+    Syntax.LetType binding type_ lets' -> do
+      (env', var) <- extend env
+      bindingOccurrences binding var <>
+        termOccurrences env Nothing type_ <>
+        letsOccurrences env' lets'
+
+    Syntax.Let bindings index term lets' ->
+      bindingsOccurrences bindings (Environment.lookupIndexVar index env) <>
+        termOccurrences env Nothing term <>
+        letsOccurrences env lets'
+
+    Syntax.In term ->
+      termOccurrences env Nothing term
 
 dataDefinitionOccurrences
   :: Domain.Environment v

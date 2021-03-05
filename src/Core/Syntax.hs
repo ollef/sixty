@@ -31,7 +31,7 @@ data Term v
   | Lit !Literal
   | Meta !Meta.Index
   | PostponedCheck !Postponement.Index !(Term v)
-  | Let !Bindings !(Term v) !(Type v) !(Scope Term v)
+  | Lets !(Lets v)
   | Pi !Binding !(Type v) !Plicity !(Scope Type v)
   | Fun !(Type v) !Plicity !(Type v)
   | Lam !Bindings !(Type v) !Plicity !(Scope Term v)
@@ -45,6 +45,12 @@ type Type = Term
 data Branches v
   = ConstructorBranches !Name.Qualified (ConstructorBranches v)
   | LiteralBranches (LiteralBranches v)
+  deriving (Eq, Show, Generic, Persist, Hashable)
+
+data Lets v
+  = LetType !Binding !(Type v) !(Scope Lets v)
+  | Let !Bindings !(Index v) !(Term v) !(Lets v) -- ^ index must refer to a variable introduced in a LetType in the same Lets block
+  | In !(Term v)
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 type ConstructorBranches v =

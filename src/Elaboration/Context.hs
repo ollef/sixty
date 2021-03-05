@@ -245,6 +245,11 @@ defineWellOrdered context var value =
     , boundVars = IntSeq.delete var $ boundVars context
     }
 
+skip :: Context v -> M (Context (Succ v))
+skip context = do
+  (context', _) <- extendDef context "skip" Builtin.Type Builtin.Type
+  pure context'
+
 define :: Context v -> Var -> Domain.Value -> M (Context v)
 define context var value = do
   deps <- evalStateT (dependencies context value) mempty

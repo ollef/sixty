@@ -112,18 +112,10 @@ prettyTerm prec env term =
     Syntax.PostponedCheck index term' ->
       "postponed" <+> pretty index <+> "is" <+> prettyTerm prec env term'
 
-    Syntax.Let bindings term' type_ body ->
+    Syntax.Lets lets ->
       prettyParen (prec > letPrec) $
-        let
-          (env', name) = extendBindings env bindings
-        in
         "let"
-        <> line <> indent 2
-          (pretty name <+> ":" <+> prettyTerm 0 env type_
-          <> line <> pretty name <+> "=" <+> prettyTerm 0 env term'
-          )
-        <> line <> "in"
-        <> line <> prettyTerm letPrec env' body
+        <> line <> indent 2 (prettyLets env lets)
 
     Syntax.Pi _ _ Implicit _ ->
       prettyParen (prec > funPrec) $
@@ -259,6 +251,24 @@ prettyPiTerm env plicity term separator =
 
     t ->
       separator <+> prettyTerm funPrec env t
+
+prettyLets :: Environment v -> Syntax.Lets v -> Doc ann
+prettyLets env lets =
+  case lets of
+    Syntax.LetType binding type_ lets' ->
+        let
+          (env', name) = extendBinding env binding
+        in
+        pretty name <+> ":" <+> prettyTerm letPrec env type_
+        <> line <> prettyLets env' lets'
+
+    Syntax.Let _ index term lets' ->
+      prettyTerm letPrec env (Syntax.Var index) <+> "=" <+> prettyTerm letPrec env term
+      <> line <> prettyLets env lets'
+
+    Syntax.In term ->
+      "in" <> line <>
+      prettyTerm letPrec env term
 
 prettyBranch
   :: Environment v

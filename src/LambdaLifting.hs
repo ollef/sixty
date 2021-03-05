@@ -187,7 +187,7 @@ emptyState =
 
 type Lift = StateT LiftState M
 
-type Environment = Environment.Environment Value
+type Environment = Environment.Environment Type
 
 extend :: Environment v -> Type -> Lift (Environment (Index.Succ v), Var)
 extend env type_ =
@@ -216,14 +216,9 @@ evaluate env term args =
     Syntax.PostponedCheck {} ->
       panic "LambdaLifting.evaluate postponed check"
 
-    Syntax.Let bindings value type_ body ->
-      applyArgs $ do
-        type' <- evaluate env type_ []
-        (env', var) <- extend env type'
-        makeLet (Bindings.toName bindings) var <$>
-          evaluate env value [] <*>
-          pure type' <*>
-          evaluate env' body []
+    Syntax.Lets lets ->
+      applyArgs $
+        evaluateLets env lets
 
     Syntax.Pi binding domain _plicity target -> do
       domain' <- evaluate env domain []
@@ -271,6 +266,18 @@ evaluate env term args =
       args' <- mapM (\(_, term') -> evaluate env term' []) args
       result <- mresult
       pure $ makeApps result args'
+
+evaluateLets :: Environment v -> Syntax.Lets v -> Lift Value
+evaluateLets =
+  panic "TODO lambda lifting lets not yet supported"
+  -- Syntax.Let bindings value type_ body ->
+  --     type' <- evaluate env type_ []
+  --     (env', var) <- extend env type'
+  --     makeLet (Bindings.toName bindings) var <$>
+  --       evaluate env value [] <*>
+  --       pure type' <*>
+  --       evaluate env' body []
+
 
 saturatedConstructorApp
   :: Environment v

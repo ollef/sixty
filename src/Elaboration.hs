@@ -669,23 +669,44 @@ elaborateUnspanned context term mode canPostpone = do
 
         clauses' =
           [ Clauses.Clause clause mempty | (_, clause) <- clauses]
-      (bindings, boundTerm, typeTerm, typeValue) <-
-        case maybeType of
-          Nothing -> do
-            (boundTerm, typeValue) <- Clauses.infer context clauses'
-            typeTerm <- readback context typeValue
-            pure (Bindings.fromName (map fst clauses) name, boundTerm, typeTerm, typeValue)
 
-          Just (span, type_) -> do
-            typeTerm <- check context type_ Builtin.Type
-            typeValue <- evaluate context typeTerm
-            boundTerm <- Clauses.check context clauses' typeValue
-            pure (Bindings.fromName (span : map fst clauses) name, boundTerm, typeTerm, typeValue)
+      case maybeType of
+        Nothing -> do
+          skipContext <- Context.skip context
+          (boundTerm, typeValue) <- Clauses.infer skipContext clauses'
+          boundValue <- evaluate skipContext boundTerm
+          typeTerm <- readback context typeValue
+          let
+            bindings =
+              Bindings.fromName (map fst clauses) name
+          (context', _) <- Context.extendSurfaceDef context surfaceName boundValue typeValue
+          body' <- elaborate context' body mode
+          pure $
+            Syntax.Lets .
+            Syntax.LetType (Binding.Unspanned name) typeTerm .
+            Syntax.Let bindings Index.Zero boundTerm .
+            Syntax.In <$>
+            body'
 
-      boundValue <- evaluate context boundTerm
-      (context', _) <- Context.extendSurfaceDef context surfaceName boundValue typeValue
-      body' <- elaborate context' body mode
-      pure $ Syntax.Let bindings boundTerm typeTerm <$> body'
+        Just (span, type_) -> do
+          typeTerm <- check context type_ Builtin.Type
+          typeValue <- evaluate context typeTerm
+          (context', var) <- Context.extendSurface context surfaceName typeValue
+          boundTerm <- Clauses.check context' clauses' typeValue
+          let
+            bindings =
+              Bindings.fromName (map fst clauses) name
+          boundValue <- evaluate context' boundTerm
+          let
+            context'' =
+              Context.defineWellOrdered context' var boundValue
+          body' <- elaborate context'' body mode
+          pure $
+            Syntax.Lets .
+            Syntax.LetType (Binding.Spanned span name) typeTerm .
+            Syntax.Let bindings Index.Zero boundTerm .
+            Syntax.In <$>
+            body'
 
     (Surface.Pi spannedName@(Surface.SpannedName _ name) plicity domain target, _) -> do
       domain' <- check context domain Builtin.Type
@@ -702,7 +723,8 @@ elaborateUnspanned context term mode canPostpone = do
       result context mode (Syntax.Fun domain' Explicit target') Builtin.Type
 
     (Surface.Case scrutinee branches, _) -> do
-      (scrutinee', scrutineeType) <- inferAndInsertMetas context UntilExplicit scrutinee $ pure Nothing
+      skipContext <- Context.skip context
+      (scrutinee', scrutineeType) <- inferAndInsertMetas skipContext UntilExplicit scrutinee $ pure Nothing
       case mode of
         Infer _ -> do
           expectedType <- Context.newMetaType context

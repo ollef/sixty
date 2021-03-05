@@ -47,6 +47,7 @@ import qualified Environment
 import qualified Error
 import qualified Flexibility
 import GHC.Exts (fromList)
+import qualified Index
 import Literal (Literal)
 import qualified Meta
 import Monad
@@ -177,14 +178,15 @@ resolvePattern context unspannedPattern type_ canPostpone = do
 
 checkCase
   :: Context v
-  -> Syntax.Term v
+  -> Syntax.Term (Index.Succ v)
   -> Domain.Type
   -> [(Surface.Pattern, Surface.Term)]
   -> Domain.Type
   -> Postponement.CanPostpone
   -> M (Syntax.Term v)
 checkCase context scrutinee scrutineeType branches expectedType canPostpone = do
-  scrutineeValue <- Elaboration.evaluate context scrutinee
+  skippedContext <- Context.skip context
+  scrutineeValue <- Elaboration.evaluate skippedContext scrutinee
   blockingMetaOrIsPatternScrutinee <- runExceptT $ isPatternValue context scrutineeValue
   case (canPostpone, blockingMetaOrIsPatternScrutinee) of
     (Postponement.CanPostpone, Left blockingMeta) ->
@@ -217,11 +219,15 @@ checkCase context scrutinee scrutineeType branches expectedType canPostpone = do
         , _matchKind = Error.Branch
         }
       scrutineeType' <- Readback.readback (Context.toEnvironment context) scrutineeType
-      pure $ Syntax.Let "scrutinee" scrutinee scrutineeType' term
+      pure $
+        Syntax.Lets $
+        Syntax.LetType "scrutinee" scrutineeType' $
+        Syntax.Let "scrutinee" Index.Zero scrutinee $
+        Syntax.In term
 
 postponeCaseCheck
   :: Context v
-  -> Syntax.Term v
+  -> Syntax.Term (Index.Succ v)
   -> Domain.Type
   -> [(Surface.Pattern, Surface.Term)]
   -> Domain.Type

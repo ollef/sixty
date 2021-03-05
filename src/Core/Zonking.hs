@@ -122,13 +122,8 @@ zonk env metas postponed term =
         Just term'' ->
           pure $ Right term''
 
-    Syntax.Let binding term' type_ scope -> do
-      (env', _) <- Environment.extend env
-      result <- Syntax.Let binding <$>
-        zonkTerm env metas postponed term' <*>
-        zonkTerm env metas postponed type_ <*>
-        zonkTerm env' metas postponed scope
-      pure $ Right result
+    Syntax.Lets lets ->
+      Right . Syntax.Lets <$> zonkLets env metas postponed lets
 
     Syntax.Pi binding domain plicity targetScope -> do
       (env', _) <- Environment.extend env
@@ -175,6 +170,28 @@ zonk env metas postponed term =
     Syntax.Spanned span term' -> do
       result <- zonk env metas postponed term'
       pure $ Syntax.Spanned span <$> result
+
+zonkLets
+  :: Domain.Environment v
+  -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
+  -> Syntax.Lets v
+  -> M (Syntax.Lets v)
+zonkLets env metas postponed lets =
+  case lets of
+    Syntax.LetType binding type_ lets' -> do
+      (env', _) <- Environment.extend env
+      Syntax.LetType binding <$>
+        zonkTerm env metas postponed type_ <*>
+        zonkLets env' metas postponed lets'
+
+    Syntax.Let binding index term' lets' ->
+      Syntax.Let binding index <$>
+        zonkTerm env metas postponed term' <*>
+        zonkLets env metas postponed lets'
+
+    Syntax.In term ->
+      Syntax.In <$> zonkTerm env metas postponed term
 
 zonkBranches
   :: Domain.Environment v
