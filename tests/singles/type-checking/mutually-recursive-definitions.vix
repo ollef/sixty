@@ -1,0 +1,20 @@
+data Bool = False | True
+data Nat = Z | S Nat
+
+even : Nat -> Bool
+odd : Nat -> Bool
+
+even Z = True
+even (S n) = odd n
+
+odd Z = False
+odd (S n) = even n
+
+data Equals forall a. (x y : a) where
+  Refl : Equals x x
+
+test1 : Equals (even (S (S (S Z)))) False
+test1 = Refl
+
+test2 : Equals (odd (S (S (S Z)))) True
+test2 = Refl
