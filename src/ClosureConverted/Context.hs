@@ -32,7 +32,7 @@ empty scopeKey_ =
     , indices = Index.Map.Empty
     , values = mempty
     , types = mempty
-    , glueableBefore = Index.zero
+    , glueableBefore = Index.Zero
     }
 
 emptyFrom :: Context v -> Context Void
@@ -70,7 +70,7 @@ extend context type_ = do
     ( context
       { indices = indices context Index.Map.:> var
       , types = IntMap.insert var type_ (types context)
-      , glueableBefore = Index.succ $ glueableBefore context
+      , glueableBefore = Index.Succ $ glueableBefore context
       }
     , var
     )

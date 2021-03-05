@@ -85,7 +85,7 @@ toEnvironment context =
     { scopeKey = scopeKey context
     , indices = indices context
     , values = values context
-    , glueableBefore = Index.zero
+    , glueableBefore = Index.Zero
     }
 
 empty :: MonadBase IO m => Scope.KeyedName -> m (Context Void)

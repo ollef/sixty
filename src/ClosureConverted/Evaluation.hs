@@ -35,7 +35,7 @@ evaluate env term =
             Domain.var var
 
           Just value
-            | Index.succ index > Environment.glueableBefore env ->
+            | Index.Succ index > Environment.glueableBefore env ->
               Domain.Glued (Domain.Var var) mempty value
 
             | otherwise ->

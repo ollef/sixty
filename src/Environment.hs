@@ -25,7 +25,7 @@ empty key =
     { scopeKey = key
     , indices = Index.Map.Empty
     , values = mempty
-    , glueableBefore = Index.zero
+    , glueableBefore = Index.Zero
     }
 
 emptyFrom :: Environment value' v -> Environment value Void
@@ -34,7 +34,7 @@ emptyFrom env =
     { scopeKey = scopeKey env
     , indices = Index.Map.Empty
     , values = mempty
-    , glueableBefore = Index.zero
+    , glueableBefore = Index.Zero
     }
 
 extend
@@ -51,7 +51,7 @@ extendVar
 extendVar env v =
   env
     { indices = indices env Index.Map.:> v
-    , glueableBefore = Index.succ $ glueableBefore env
+    , glueableBefore = Index.Succ $ glueableBefore env
     }
 
 extendValue
@@ -64,7 +64,7 @@ extendValue env value = do
     ( env
       { indices = indices env Index.Map.:> var
       , values = IntMap.insert var value (values env)
-      , glueableBefore = Index.succ $ glueableBefore env
+      , glueableBefore = Index.Succ $ glueableBefore env
       }
     , var
     )
