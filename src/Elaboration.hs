@@ -70,8 +70,7 @@ inferTopLevelDefinition
   -> M ((Syntax.Definition, Syntax.Type Void, Meta.EagerState), [Error])
 inferTopLevelDefinition key def = do
   context <- Context.empty key
-  (def', typeValue) <- inferDefinition context def
-  type_ <- readback context typeValue
+  (def', type_) <- inferDefinition context def
   postponed <- readIORef $ Context.postponed context
   metaVars <- readIORef $ Context.metas context
   errors <- readIORef $ Context.errors context
@@ -148,13 +147,13 @@ checkDefinition context def expectedType =
 inferDefinition
   :: Context Void
   -> Surface.Definition
-  -> M (Syntax.Definition, Domain.Type)
+  -> M (Syntax.Definition, Syntax.Type Void)
 inferDefinition context def =
   case def of
     Surface.TypeDeclaration _ type_ -> do
       type' <- check context type_ Builtin.Type
       def' <- postProcessDefinition context $ Syntax.TypeDeclaration type'
-      pure (def', Builtin.Type)
+      pure (def', Builtin.type_)
 
     Surface.ConstantDefinition clauses -> do
       let
@@ -162,13 +161,13 @@ inferDefinition context def =
           [Clauses.Clause clause mempty | (_, clause) <- clauses]
       (term', type_) <- Clauses.infer context clauses'
       def' <- postProcessDefinition context $ Syntax.ConstantDefinition term'
-      pure (def', type_)
+      type' <- readback context type_
+      pure (def', type')
 
     Surface.DataDefinition _span boxity params constrs -> do
       (tele, type_) <- inferDataDefinition context params constrs mempty
-      type' <- evaluate context type_
       def' <- postProcessDataDefinition context boxity tele
-      pure (def', type')
+      pure (def', type_)
 
 postProcessDefinition :: Context v -> Syntax.Definition -> M Syntax.Definition
 postProcessDefinition context def = do
