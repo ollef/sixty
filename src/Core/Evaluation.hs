@@ -66,8 +66,8 @@ evaluate env term =
         maybeDefinition <- fetch $ Query.ElaboratedDefinition name
         case maybeDefinition of
           Just (Syntax.ConstantDefinition term', _) -> do
-            value <- lazy $ evaluate (Environment.emptyFrom env) term'
-            pure $ Domain.Glued (Domain.Global name) mempty $ Domain.Lazy value
+            value <- lazyEvaluate (Environment.emptyFrom env) term'
+            pure $ Domain.Glued (Domain.Global name) mempty value
 
           _ ->
             pure $ Domain.global name
@@ -88,7 +88,7 @@ evaluate env term =
       evaluate env term'
 
     Syntax.Let _ term' _ body -> do
-      term'' <- evaluate env term'
+      term'' <- lazyEvaluate env term'
       (env', _) <- Environment.extendValue env term''
       evaluate env' body
 
@@ -116,6 +116,10 @@ evaluate env term =
 
     Syntax.Spanned _ term' ->
       evaluate env term'
+
+lazyEvaluate :: Domain.Environment v -> Syntax.Term v -> M Domain.Value
+lazyEvaluate env =
+  map Domain.Lazy . lazy . evaluate env
 
 chooseConstructorBranch
   :: Domain.Environment v

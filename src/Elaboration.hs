@@ -227,7 +227,7 @@ inferDataDefinition context preParams constrs paramVars =
 
     (spannedName@(Surface.SpannedName _ name), type_, plicity):preParams' -> do
       type' <- check context type_ Builtin.Type
-      type'' <- evaluate context type'
+      type'' <- lazyEvaluate context type'
       (context', paramVar) <- Context.extendSurface context name type''
       let
         paramVars' =
@@ -302,7 +302,7 @@ postProcessDataDefinition outerContext boxity outerTele = do
             pure $ fromMaybe (Builtin.fail Builtin.type_) maybeConstructorType
 
         Telescope.Extend name type_ plicity tele' -> do
-          typeValue <- evaluate context type_
+          typeValue <- lazyEvaluate context type_
           (context', paramVar) <- Context.extend context (Binding.toName name) typeValue
           let
             zonkedType =
@@ -317,7 +317,7 @@ addConstructorIndexEqualities context paramVars constrType =
       pure $ Syntax.Spanned span' constrType''
 
     Syntax.Pi binding domain plicity target -> do
-      domain' <- evaluate context domain
+      domain' <- lazyEvaluate context domain
       (context'', _) <- Context.extend context (Binding.toName binding) domain'
       target' <- addConstructorIndexEqualities context'' paramVars target
       pure $ Syntax.Pi binding domain plicity target'
@@ -689,7 +689,7 @@ elaborateUnspanned context term mode canPostpone = do
 
     (Surface.Pi spannedName@(Surface.SpannedName _ name) plicity domain target, _) -> do
       domain' <- check context domain Builtin.Type
-      domain'' <- evaluate context domain'
+      domain'' <- lazyEvaluate context domain'
 
       (context', _) <- Context.extendSurface context name domain''
 
@@ -719,7 +719,7 @@ elaborateUnspanned context term mode canPostpone = do
       case functionType' of
         Domain.Pi _ domain Explicit targetClosure -> do
           argument' <- check context argument domain
-          argument'' <- evaluate context argument'
+          argument'' <- lazyEvaluate context argument'
           target <- Evaluation.evaluateClosure targetClosure argument''
           result context mode (Syntax.App function' Explicit argument') target
 
@@ -739,7 +739,7 @@ elaborateUnspanned context term mode canPostpone = do
               Domain.Pi (Binding.Unspanned "x") domain Explicit targetClosure
           f <- Unification.tryUnify context functionType metaFunctionType
           argument' <- check context argument domain
-          argumentValue <- evaluate context argument'
+          argumentValue <- lazyEvaluate context argument'
           target'' <- Evaluation.evaluateClosure targetClosure argumentValue
           result context mode (Syntax.App (f function') Explicit argument') target''
 
@@ -833,7 +833,7 @@ inferImplicitApps context function functionType arguments canPostpone
         | let name = Binding.toName binding
         , name `HashMap.member` arguments -> do
           argument' <- check context (arguments HashMap.! name) domain
-          argument'' <- evaluate context argument'
+          argument'' <- lazyEvaluate context argument'
           target <- Evaluation.evaluateClosure targetClosure argument''
           inferImplicitApps
             context
@@ -854,7 +854,7 @@ inferImplicitApps context function functionType arguments canPostpone
               Domain.Pi (Binding.Unspanned name) domain Implicit targetClosure
           f <- Unification.tryUnify context functionType' metaFunctionType
           argument' <- check context argument domain
-          argumentValue <- evaluate context argument'
+          argumentValue <- lazyEvaluate context argument'
           target'' <- Evaluation.evaluateClosure targetClosure argumentValue
           pure (Syntax.App (f function'') Implicit argument', target'')
 
@@ -1215,6 +1215,13 @@ evaluate
   -> M Domain.Value
 evaluate context =
   Evaluation.evaluate (Context.toEnvironment context)
+
+lazyEvaluate
+  :: Context v
+  -> Syntax.Term v
+  -> M Domain.Value
+lazyEvaluate context =
+  Evaluation.lazyEvaluate (Context.toEnvironment context)
 
 readback :: Context v -> Domain.Value -> M (Syntax.Term v)
 readback context =
