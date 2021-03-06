@@ -43,12 +43,15 @@ readback env value =
 
         Domain.Var var -> do
           case Environment.lookupVarIndex var env of
-            Nothing -> do
-              value'' <- force value'
-              readback env value''
+            Nothing ->
+              readback env value'
 
             Just index ->
               readbackGroupedSpine env (Syntax.Var index) $ Domain.groupSpine spine
+
+    Domain.Lazy lazyValue -> do
+      value' <- force lazyValue
+      readback env value'
 
     Domain.Pi name type_ closure ->
       Syntax.Pi name <$> readback env type_ <*> readbackClosure env closure

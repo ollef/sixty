@@ -80,15 +80,13 @@ unify context flexibility untouchables value1 value2 = do
     (Domain.Glued head1 spine1 value1'', Domain.Glued head2 spine2 value2'')
       | head1 == head2 ->
         unifySpines context Flexibility.Flexible untouchables spine1 spine2 `catch` \(_ :: Error) ->
-          unifyForce context flexibility value1'' value2''
+          unify context flexibility untouchables value1'' value2''
 
-    (Domain.Glued _ _ value1'', _) -> do
-      value1''' <- force value1''
-      unify context flexibility untouchables value1''' value2'
+    (Domain.Glued _ _ value1'', _) ->
+      unify context flexibility untouchables value1'' value2'
 
-    (_, Domain.Glued _ _ value2'') -> do
-      value2''' <- force value2''
-      unify context flexibility untouchables value1' value2'''
+    (_, Domain.Glued _ _ value2'') ->
+      unify context flexibility untouchables value1' value2''
 
     (Domain.Lam bindings1 type1 plicity1 closure1, Domain.Lam _ type2 plicity2 closure2)
       | plicity1 == plicity2 ->
@@ -157,11 +155,6 @@ unify context flexibility untouchables value1 value2 = do
       throwIO Dunno
 
   where
-    unifyForce context' flexibility' lazyValue1 lazyValue2 = do
-      v1 <- force lazyValue1
-      v2 <- force lazyValue2
-      unify context' flexibility' untouchables v1 v2
-
     unifyAbstraction name type1 closure1 type2 closure2 = do
       context1 <- unify context flexibility untouchables type1 type2
 
@@ -339,11 +332,15 @@ occurs context flexibility untouchables value = do
       pure ()
 
     Domain.Glued (Domain.Var _) _ value'' ->
-      occursForce value''
+      occurs context flexibility untouchables value''
+
+    Domain.Lazy lazyValue -> do
+      value'' <- force lazyValue
+      occurs context flexibility untouchables value''
 
     Domain.Glued hd spine value'' ->
       occurs context Flexibility.Flexible untouchables (Domain.Neutral hd spine) `catch` \(_ :: Error) ->
-        occursForce value''
+        occurs context flexibility untouchables value''
 
     Domain.Lam bindings type_ _ closure ->
       occursAbstraction (Bindings.toName bindings) type_ closure
@@ -356,10 +353,6 @@ occurs context flexibility untouchables value = do
       occurs context flexibility untouchables target
 
   where
-    occursForce lazyValue = do
-      value' <- force lazyValue
-      occurs context flexibility untouchables value'
-
     occursAbstraction name type_ closure = do
       occurs context flexibility untouchables type_
       (context', var) <- Context.extend context name type_

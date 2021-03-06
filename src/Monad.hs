@@ -32,10 +32,6 @@ lazy m =
   liftBaseWith $ \runInIO ->
     pure $ Lazy $ unsafeDupablePerformIO $ runInIO m
 
-eager :: a -> Lazy a
-eager =
-  Lazy
-
 freshVar :: M Var
 freshVar = do
   ref <- asks nextVar

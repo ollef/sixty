@@ -156,9 +156,12 @@ typeRepresentation env type_ =
     Domain.Lit {} ->
       pure Representation.Indirect
 
-    Domain.Glued _ _ type' -> do
-      type'' <- force type'
-      typeRepresentation env type''
+    Domain.Glued _ _ type' ->
+      typeRepresentation env type'
+
+    Domain.Lazy lazyType -> do
+      type' <- force lazyType
+      typeRepresentation env type'
 
     Domain.Pi {} ->
       pure Representation.Direct
@@ -215,6 +218,9 @@ constructorFieldRepresentation env type_ accumulatedRepresentation = do
       pure Representation.Empty
 
     Domain.Glued {} ->
+      pure Representation.Empty
+
+    Domain.Lazy {} ->
       pure Representation.Empty
 
     Domain.Function {} ->
@@ -284,6 +290,9 @@ compileConstructorFields env type_ = do
       empty
 
     Domain.Glued {} ->
+      empty
+
+    Domain.Lazy {} ->
       empty
 
     Domain.Function {} ->

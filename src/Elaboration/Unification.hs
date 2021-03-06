@@ -193,15 +193,13 @@ unify context flexibility value1 value2 = do
     (Domain.Glued head1 spine1 value1'', Domain.Glued head2 spine2 value2'')
       | head1 == head2 ->
         unifySpines context Flexibility.Flexible spine1 spine2 `catch` \(_ :: Error.Elaboration) ->
-          unifyForce flexibility value1'' value2''
+          unify context flexibility value1'' value2''
 
     (Domain.Glued _ _ value1'', _) -> do
-      value1''' <- force value1''
-      unify context flexibility value1''' value2'
+      unify context flexibility value1'' value2'
 
     (_, Domain.Glued _ _ value2'') -> do
-      value2''' <- force value2''
-      unify context flexibility value1' value2'''
+      unify context flexibility value1' value2''
 
     -- Metas
     (Domain.Neutral (Domain.Meta metaIndex1) (Domain.Apps args1), v2)
@@ -249,11 +247,6 @@ unify context flexibility value1 value2 = do
       can'tUnify
 
   where
-    unifyForce flexibility' lazyValue1 lazyValue2 = do
-      v1 <- force lazyValue1
-      v2 <- force lazyValue2
-      unify context flexibility' v1 v2
-
     unifyAbstraction name type1 closure1 type2 closure2 = do
       unify context flexibility type1 type2
 
@@ -746,33 +739,32 @@ renameValue outerContext renaming value = do
 
     Domain.Glued (Domain.Global global) spine value'' ->
       renameSpine outerContext renaming { renamingFlexibility = Flexibility.Flexible } (Syntax.Global global) spine `catch` \(_ :: Error.Elaboration) -> do
-        value''' <- force value''
-        renameValue outerContext renaming value'''
+        renameValue outerContext renaming value''
 
     Domain.Glued (Domain.Meta meta) spine value'' -> do
       case occurs renaming of
         Just occursMeta -> do
           metas <- Context.metaSolutionMetas outerContext meta
-          if IntSet.member occursMeta metas then do
+          if IntSet.member occursMeta metas then
             -- The meta solution might contain `occurs`, so we need to force.
-            value''' <- force value''
-            renameValue outerContext renaming value'''
+            renameValue outerContext renaming value''
           else
             -- The solved meta (`meta`) does contain the meta we're solving
             -- (`occursMeta`) in scope, so we can try without unfolding
             -- `meta`.
-            renameSpine outerContext renaming { renamingFlexibility = Flexibility.Flexible } (Syntax.Meta meta) spine `catch` \(_ :: Error.Elaboration) -> do
-              value''' <- force value''
-              renameValue outerContext renaming value'''
+            renameSpine outerContext renaming { renamingFlexibility = Flexibility.Flexible } (Syntax.Meta meta) spine `catch` \(_ :: Error.Elaboration) ->
+              renameValue outerContext renaming value''
 
-        Nothing -> do
-          value''' <- force value''
-          renameValue outerContext renaming value'''
+        Nothing ->
+          renameValue outerContext renaming value''
 
-    Domain.Glued (Domain.Var _) _ value'' -> do
+    Domain.Glued (Domain.Var _) _ value'' ->
       -- The variable's value might contain `occurs`, so we need to force
-      value''' <- force value''
-      renameValue outerContext renaming value'''
+      renameValue outerContext renaming value''
+
+    Domain.Lazy lazyValue -> do
+      value'' <- force lazyValue
+      renameValue outerContext renaming value''
 
     Domain.Lam bindings type_ plicity closure ->
       Syntax.Lam bindings
@@ -923,13 +915,8 @@ pruneMeta context meta allowedArgs = do
                 if allowed then
                   Context.extend context' "x" domain
                 else do
-                  fakeVar <- freshVar
                   typeMismatch <- lazy $ throwIO $ Error.TypeMismatch mempty
-                  Context.extendDef
-                    context'
-                    "x"
-                    (Domain.Glued (Domain.Var fakeVar) mempty typeMismatch)
-                    domain
+                  Context.extendDef context' "x" (Domain.Lazy typeMismatch) domain
               body <- go alloweds' context'' target
               pure $ Syntax.Lam "x" domain' plicity body
 
@@ -941,17 +928,9 @@ pruneMeta context meta allowedArgs = do
                 if allowed then
                   Context.extend context' name domain
                 else do
-                  fakeVar <- freshVar
                   typeMismatch <- lazy $ throwIO $ Error.TypeMismatch mempty
-                  Context.extendDef
-                    context'
-                    name
-                    (Domain.Glued (Domain.Var fakeVar) mempty typeMismatch)
-                    domain
-              target <-
-                Evaluation.evaluateClosure
-                  targetClosure
-                  (Domain.var v)
+                  Context.extendDef context' name (Domain.Lazy typeMismatch) domain
+              target <- Evaluation.evaluateClosure targetClosure (Domain.var v)
               domain' <- renameValue context' renaming domain
               body <- go alloweds' context'' target
               pure $ Syntax.Lam (Bindings.Unspanned name) domain' plicity body

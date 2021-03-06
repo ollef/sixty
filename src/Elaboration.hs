@@ -1031,9 +1031,12 @@ getExpectedTypeName context type_ = do
     Domain.Lit {} ->
       pure Nothing
 
-    Domain.Glued _ _ value -> do
-      value' <- force value
-      getExpectedTypeName context value'
+    Domain.Glued _ _ value ->
+      getExpectedTypeName context value
+
+    Domain.Lazy lazyValue -> do
+      value <- force lazyValue
+      getExpectedTypeName context value
 
     Domain.Pi binding domain _ targetClosure -> do
       (context', var) <- Context.extend context (Binding.toName binding) domain

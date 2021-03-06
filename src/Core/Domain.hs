@@ -26,7 +26,8 @@ data Value
   = Neutral !Head Spine
   | Con !Name.QualifiedConstructor (Tsil (Plicity, Value))
   | Lit !Literal
-  | Glued !Head Spine !(Lazy Value)
+  | Glued !Head Spine !Value
+  | Lazy !(Lazy Value)
   | Lam !Bindings !Type !Plicity !Closure
   | Pi !Binding !Type !Plicity !Closure
   | Fun !Type !Plicity !Type

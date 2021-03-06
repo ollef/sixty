@@ -258,9 +258,12 @@ isPatternValue context value = do
 
       and <$> mapM (isPatternValue context . snd) spine'
 
-    Domain.Glued _ _ value'' -> do
-      value''' <- lift $ force value''
-      isPatternValue context value'''
+    Domain.Glued _ _ value'' ->
+      isPatternValue context value''
+
+    Domain.Lazy lazyValue -> do
+      value'' <- lift $ force lazyValue
+      isPatternValue context value''
 
     Domain.Lam {} ->
       pure False
@@ -509,9 +512,12 @@ uncoveredScrutineePatterns context value = do
         pure $ (,) plicity <$> patterns
       pure $ Domain.Pattern.Con constr <$> sequence spine''
 
-    Domain.Glued _ _ value'' -> do
-      value''' <- force value''
-      uncoveredScrutineePatterns context value'''
+    Domain.Glued _ _ value'' ->
+      uncoveredScrutineePatterns context value''
+
+    Domain.Lazy lazyValue -> do
+      value'' <- force lazyValue
+      uncoveredScrutineePatterns context value''
 
     Domain.Lam {} ->
       pure []

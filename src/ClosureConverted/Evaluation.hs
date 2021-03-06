@@ -36,7 +36,7 @@ evaluate env term =
 
           Just value
             | Index.succ index > Environment.glueableBefore env ->
-              Domain.Glued (Domain.Var var) mempty $ eager value
+              Domain.Glued (Domain.Var var) mempty value
 
             | otherwise ->
               value
@@ -46,7 +46,7 @@ evaluate env term =
       case maybeDefinition of
         Just (Syntax.ConstantDefinition term') -> do
           value <- lazy $ evaluate (Environment.emptyFrom env) term'
-          pure $ Domain.Glued (Domain.Global name) mempty value
+          pure $ Domain.Glued (Domain.Global name) mempty $ Domain.Lazy value
 
         _ ->
           pure $ Domain.global name
@@ -160,10 +160,14 @@ apply env fun args =
           pure neutral
 
     Domain.Glued hd spine value -> do
-      appliedValue <- lazy $ do
-        value' <- force value
-        apply env value' args
+      appliedValue <- apply env value args
       pure $ Domain.Glued hd (spine <> (Domain.App <$> fromList args)) appliedValue
+
+    Domain.Lazy lazyValue -> do
+      lazyValue' <- lazy $ do
+        value' <- force lazyValue
+        apply env value' args
+      pure $ Domain.Lazy lazyValue'
 
     Domain.Neutral hd spine ->
       pure $ Domain.Neutral hd $ spine <> (Domain.App <$> fromList args)
@@ -226,10 +230,14 @@ case_ scrutinee branches@(Domain.Branches env branches' defaultBranch) =
       pure $ Domain.Neutral head $ spine Tsil.:> Domain.Case branches
 
     (Domain.Glued hd spine value, _) -> do
-      casedValue <- lazy $ do
-        value' <- force value
-        case_ value' branches
+      casedValue <- case_ value branches
       pure $ Domain.Glued hd (spine Tsil.:> Domain.Case branches) casedValue
+
+    (Domain.Lazy lazyValue, _) -> do
+      lazyValue' <- lazy $ do
+        value <- force lazyValue
+        case_ value branches
+      pure $ Domain.Lazy lazyValue'
 
     _ ->
       panic "ClosureConverted.Evaluation: casing non-constructor"
@@ -254,9 +262,12 @@ forceHead
   -> M Domain.Value
 forceHead value =
   case value of
-    Domain.Glued _ _ value' -> do
-      value'' <- force value'
-      forceHead value''
+    Domain.Glued _ _ value' ->
+      forceHead value'
+
+    Domain.Lazy lazyValue -> do
+      value' <- force lazyValue
+      forceHead value'
 
     _ ->
       pure value

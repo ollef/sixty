@@ -62,15 +62,18 @@ readback env value =
             -- 2. when reading back a glued variable in an environment that
             -- doesn't bind the variable (e.g. the type of a let body in the
             -- outer scope).
-            Nothing -> do
-              value'' <- force value'
-              readback env value''
+            Nothing ->
+              readback env value'
 
         Domain.Global g ->
           readbackSpine env (Syntax.Global g) spine
 
         Domain.Meta m ->
           readbackSpine env (Syntax.Meta m) spine
+
+    Domain.Lazy lazyValue -> do
+      value' <- force lazyValue
+      readback env value'
 
     Domain.Lam binding type_ plicity closure ->
       Syntax.Lam binding <$> readback env type_ <*> pure plicity <*> readbackClosure env closure

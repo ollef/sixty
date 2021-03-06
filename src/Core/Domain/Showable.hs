@@ -22,6 +22,7 @@ data Value
   | Con !Name.QualifiedConstructor (Tsil (Plicity, Value))
   | Lit !Literal
   | Glued !Domain.Head Spine !Value
+  | Lazy !Value
   | Lam !Bindings !Type !Plicity !Closure
   | Pi !Binding !Type !Plicity !Closure
   | Fun !Type !Plicity !Type
@@ -61,7 +62,10 @@ to value =
       pure $ Lit lit
 
     Domain.Glued hd spine value' ->
-      Glued hd <$> Domain.mapM eliminationTo spine <*> lazyTo value'
+      Glued hd <$> Domain.mapM eliminationTo spine <*> to value'
+
+    Domain.Lazy lazyValue ->
+      Core.Domain.Showable.Lazy <$> lazyTo lazyValue
 
     Domain.Lam bindings type_ plicity closure ->
       Lam bindings <$> to type_ <*> pure plicity <*> closureTo closure

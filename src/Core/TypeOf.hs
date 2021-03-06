@@ -1,7 +1,7 @@
 {-# language OverloadedStrings #-}
 module Core.TypeOf where
 
-import Protolude hiding (typeOf)
+import Protolude hiding (force, typeOf)
 
 import Rock
 
@@ -45,6 +45,10 @@ typeOf context value =
 
     Domain.Glued hd spine _ ->
       typeOf context $ Domain.Neutral hd spine
+
+    Domain.Lazy lazyValue -> do
+      value' <- force lazyValue
+      typeOf context value'
 
     Domain.Lam bindings type_ plicity closure -> do
       let

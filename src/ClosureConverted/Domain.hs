@@ -19,7 +19,8 @@ data Value
   = Neutral !Head Spine
   | Con !Name.QualifiedConstructor [Value] [Value]
   | Lit !Literal
-  | Glued !Head Spine !(Lazy Value)
+  | Glued !Head Spine !Value
+  | Lazy !(Lazy Value)
   | Pi !Name !Type !Closure
   | Function !(Telescope Name Syntax.Type Syntax.Type Void)
 

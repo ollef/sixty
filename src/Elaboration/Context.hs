@@ -284,9 +284,12 @@ dependencies context value = do
     Domain.Glued (Domain.Global _) spine _ ->
       fold <$> Domain.mapM eliminationDependencies spine
 
-    Domain.Glued _ _ value'' -> do
-      value''' <- lift $ force value''
-      dependencies context value'''
+    Domain.Glued _ _ value'' ->
+      dependencies context value''
+
+    Domain.Lazy lazyValue -> do
+      value'' <- lift $ force lazyValue
+      dependencies context value''
 
     Domain.Lam bindings type' _ closure ->
       abstractionDependencies (Bindings.toName bindings) type' closure
@@ -604,9 +607,12 @@ forceHead context value =
         Meta.EagerUnsolved {} ->
           pure value
 
-    Domain.Glued _ _ value' -> do
-      value'' <- force value'
-      forceHead context value''
+    Domain.Glued _ _ value' ->
+      forceHead context value'
+
+    Domain.Lazy lazyValue -> do
+      value' <- force lazyValue
+      forceHead context value'
 
     _ ->
       pure value
@@ -621,23 +627,27 @@ forceHeadGlue context value =
   case value of
     Domain.Neutral (Domain.Var var) spine
       | Just headValue <- lookupVarValue var context -> do
-        value' <- lazy $ do
+        lazyValue <- lazy $ do
           value' <- Evaluation.applySpine headValue spine
           forceHeadGlue context value'
-        pure $ Domain.Glued (Domain.Var var) spine value'
+        pure $ Domain.Glued (Domain.Var var) spine $ Domain.Lazy lazyValue
 
     Domain.Neutral (Domain.Meta metaIndex) spine -> do
       meta <- lookupEagerMeta context metaIndex
       case meta of
         Meta.EagerSolved headValue _ _ -> do
-          value' <- lazy $ do
+          lazyValue <- lazy $ do
             headValue' <- Evaluation.evaluate (Environment.empty $ scopeKey context) headValue
             value' <- Evaluation.applySpine headValue' spine
             forceHeadGlue context value'
-          pure $ Domain.Glued (Domain.Meta metaIndex) spine value'
+          pure $ Domain.Glued (Domain.Meta metaIndex) spine $ Domain.Lazy lazyValue
 
         Meta.EagerUnsolved {} ->
           pure value
+
+    Domain.Lazy lazyValue -> do
+      value' <- force lazyValue
+      forceHeadGlue context value'
 
     _ ->
       pure value

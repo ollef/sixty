@@ -2,7 +2,7 @@
 {-# language RankNTypes #-}
 module ClosureConverted.TypeOf where
 
-import Protolude hiding (head, typeOf)
+import Protolude hiding (force, head, typeOf)
 
 import Rock
 
@@ -95,6 +95,10 @@ typeOf context value =
 
     Domain.Glued hd spine _ ->
       typeOf context $ Domain.Neutral hd spine
+
+    Domain.Lazy lazyValue -> do
+      value' <- force lazyValue
+      typeOf context value'
 
     Domain.Pi {} ->
       pure $ Domain.global $ Name.Lifted Builtin.TypeName 0
