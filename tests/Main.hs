@@ -107,6 +107,7 @@ data ExpectedError
   | NotInScope
   | Ambiguous
   | DuplicateLetName
+  | UndefinedLetName
   | TypeMismatch
   | OccursCheck
   | UnsolvedMetaVariable
@@ -146,6 +147,9 @@ errorToExpectedError err =
 
         Error.DuplicateLetName {} ->
           DuplicateLetName
+
+        Error.UndefinedLetName {} ->
+          UndefinedLetName
 
         Error.TypeMismatch {} ->
           TypeMismatch
@@ -208,6 +212,9 @@ expectedErrorsFromSource sourceText =
 
             "duplicate let name error expected" ->
               [(lineNumber, DuplicateLetName)]
+
+            "undefined let name error expected" ->
+              [(lineNumber, UndefinedLetName)]
 
             "type mismatch error expected" ->
               [(lineNumber, TypeMismatch)]

@@ -28,8 +28,8 @@ import qualified Core.Domain as Domain
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
+import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
-import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
 import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
@@ -753,7 +753,7 @@ elaborateLets
   :: Functor result
   => Context v
   -> HashMap Name.Surface (Span.Relative, Var)
-  -> IntSet Var
+  -> IntMap Var (Span.Relative, Name.Surface)
   -> Tsil (Var, LetBoundTerm)
   -> [Surface.Let]
   -> Surface.Term
@@ -762,13 +762,22 @@ elaborateLets
 elaborateLets context declaredNames undefinedVars definedVars lets body mode = do
   case lets of
     [] -> do
-      -- TODO check that all definitions are defined
       body' <- elaborate context body mode
-      pure $ Syntax.In <$> body'
+      foldlM reportUndefinedName (Syntax.In <$> body') (IntMap.toList undefinedVars)
+      where
+        reportUndefinedName lets' (var, (span, surfaceName@(Name.Surface nameText))) = do
+          Context.report (Context.spanned span context) $ Error.UndefinedLetName surfaceName
+          let
+            index =
+              fromMaybe (panic "elaborateLets: indexless var") $ Context.lookupVarIndex var context
+
+            type_ = Context.lookupVarType var context
+          term <- readback context $ Builtin.Fail type_
+          pure $ Syntax.Let (Bindings.Unspanned $ Name.Name nameText) index term <$> lets'
 
     -- Optimisation: No need to consider the rest of the bindings to be mutuals if they're all defined
     _
-      | IntSet.null undefinedVars
+      | IntMap.null undefinedVars
       , not (Tsil.null definedVars) ->
         elaborateLets context mempty mempty mempty lets body mode
 
@@ -787,7 +796,7 @@ elaborateLets context declaredNames undefinedVars definedVars lets body mode = d
               HashMap.insert surfaceName (span, var) declaredNames
 
             undefinedVars' =
-              IntSet.insert var undefinedVars
+              IntMap.insert var (span, surfaceName) undefinedVars
           lets'' <- elaborateLets context' declaredNames' undefinedVars' definedVars lets' body mode
           pure $ Syntax.LetType (Binding.fromSurface spannedName) typeTerm <$> lets''
 
@@ -844,7 +853,7 @@ elaborateLets context declaredNames undefinedVars definedVars lets body mode = d
                   fromMaybe (panic "elaborateLets: indexless var") $ Context.lookupVarIndex var context
 
                 undefinedVars' =
-                  IntSet.delete var undefinedVars
+                  IntMap.delete var undefinedVars
 
                 definedVars' =
                   definedVars Tsil.:> (var, LetBoundTerm context boundTerm)

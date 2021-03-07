@@ -40,14 +40,14 @@ test' = Refl
 noDefinition : Bool
 noDefinition =
   let
-    lol : Nat -- undefined let declaration
+    lol : Nat -- undefined let name error expected
   in
   True
 
 multipleTypes : Bool
 multipleTypes =
   let
-    lol : Nat
+    lol : Nat -- undefined let name error expected
     lol : Nat -- duplicate let name error expected
   in
   True
@@ -55,8 +55,8 @@ multipleTypes =
 multipleDefinitions1 : Bool
 multipleDefinitions1 =
   let
-    foo : Nat
-    bar : Nat
+    foo : Nat -- undefined let name error expected
+    bar : Nat -- undefined let name error expected
     foo : Nat -- duplicate let name error expected
   in
   True
@@ -65,9 +65,9 @@ multipleDefinitions2 : Bool
 multipleDefinitions2 =
   let
     foo : Nat
-    bar : Nat
+    bar : Nat -- undefined let name error expected
     foo = Z
-    baz : Nat
+    baz : Nat -- undefined let name error expected
     foo = Z -- duplicate let name error expected
   in
   True

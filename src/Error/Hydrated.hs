@@ -121,6 +121,12 @@ headingAndBody error =
             , Doc.pretty name <+> "has already been defined at" <+> Doc.pretty previousLineColumn <> "."
             )
 
+        Error.UndefinedLetName name ->
+          pure
+            ( "Undefined name in let block:" <+> Doc.pretty name
+            , "The type of" <+> Doc.pretty name <+> "was declared here, but not its value."
+            )
+
         Error.TypeMismatch mismatches -> do
           mismatches' <- forM mismatches $ \(inferred, expected) -> do
             inferred' <- prettyPrettyableTerm 0 inferred
