@@ -1,8 +1,10 @@
+{-# language GADTs #-}
 {-# language OverloadedStrings #-}
 {-# language RecursiveDo #-}
+{-# language TupleSections #-}
 module Core.Evaluation where
 
-import Protolude hiding (Seq, head, force, evaluate)
+import Protolude hiding (IntMap, Seq, head, force, evaluate)
 
 import Rock
 
@@ -14,6 +16,7 @@ import qualified Core.Domain.Telescope as Domain.Telescope
 import qualified Core.Syntax as Syntax
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
+import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Environment
 import qualified Index
@@ -24,6 +27,7 @@ import Plicity
 import qualified Query
 import Telescope (Telescope)
 import qualified Telescope
+import Var (Var)
 
 evaluateConstructorDefinitions
   :: Domain.Environment v
@@ -89,7 +93,7 @@ evaluate env term =
       evaluate env term'
 
     Syntax.Lets lets ->
-      evaluateLets env lets
+      evaluateLets env mempty lets
 
     Syntax.Pi binding domain plicity target -> do
       domain' <- evaluate env domain
@@ -120,24 +124,35 @@ lazyEvaluate :: Domain.Environment v -> Syntax.Term v -> M Domain.Value
 lazyEvaluate env =
   map Domain.Lazy . lazy . evaluate env
 
-evaluateLets :: Domain.Environment v -> Syntax.Lets v -> M Domain.Value
-evaluateLets env lets =
+data LetBoundTerm where
+  LetBoundTerm :: Domain.Environment v -> Syntax.Term v -> LetBoundTerm
+
+evaluateLets :: Domain.Environment v -> Tsil (Var, LetBoundTerm) -> Syntax.Lets v -> M Domain.Value
+evaluateLets env boundTerms lets =
   case lets of
     Syntax.LetType _ _ lets' -> do
       (env', _) <- Environment.extend env
-      evaluateLets env' lets'
+      evaluateLets env' boundTerms lets'
 
-    Syntax.Let _ index term lets' -> mdo
+    Syntax.Let _ index term lets' -> do
       let
         var =
           Environment.lookupIndexVar index env
-        env' =
-          Environment.define env var value
-      value <- lazyEvaluate env' term
-      evaluateLets env' lets'
+      evaluateLets env (boundTerms Tsil.:> (var, LetBoundTerm env term)) lets'
 
-    Syntax.In term ->
-      evaluate env term
+    Syntax.In term -> mdo
+      values <- forM boundTerms $ \(var, LetBoundTerm env' boundTerm) ->
+        (var, ) <$> lazyEvaluate (defines env' values) boundTerm
+      evaluate (defines env values) term
+
+  where
+    defines :: Domain.Environment v -> Tsil (Var, Domain.Value) -> Domain.Environment v
+    defines =
+      foldr' $ \(var, value) env' ->
+        if isJust $ Environment.lookupVarIndex var env' then
+          Environment.define env' var value
+        else
+          env'
 
 chooseConstructorBranch
   :: Domain.Environment v

@@ -92,7 +92,7 @@ headingAndBody error =
           indent 2 (Doc.pretty expectedModuleName) <> "."
         )
 
-    Error.Elaboration _ (Error.Spanned _ err') ->
+    Error.Elaboration keyedName (Error.Spanned _ err') ->
       case err' of
         Error.NotInScope name ->
           pure
@@ -108,6 +108,17 @@ headingAndBody error =
                 (punctuate comma $
                   Doc.pretty <$> toList constrCandidates <|> Doc.pretty <$> toList nameCandidates
                 )
+            )
+
+        Error.DuplicateLetName name previousSpan -> do
+          (filePath, defSpan) <- fetch $ Query.KeyedNamePosition keyedName
+          text <- fetch $ Query.FileText filePath
+          let
+            (previousLineColumn, _) =
+              Span.lineColumn (Span.absoluteFrom defSpan previousSpan) text
+          pure
+            ( "Duplicate name in let block:" <+> Doc.pretty name
+            , Doc.pretty name <+> "has already been defined at" <+> Doc.pretty previousLineColumn <> "."
             )
 
         Error.TypeMismatch mismatches -> do

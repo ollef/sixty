@@ -106,6 +106,7 @@ data ExpectedError
   | ModuleFileNameMismatch
   | NotInScope
   | Ambiguous
+  | DuplicateLetName
   | TypeMismatch
   | OccursCheck
   | UnsolvedMetaVariable
@@ -142,6 +143,9 @@ errorToExpectedError err =
 
         Error.Ambiguous {} ->
           Ambiguous
+
+        Error.DuplicateLetName {} ->
+          DuplicateLetName
 
         Error.TypeMismatch {} ->
           TypeMismatch
@@ -201,6 +205,9 @@ expectedErrorsFromSource sourceText =
 
             "ambiguous name error expected" ->
               [(lineNumber, Ambiguous)]
+
+            "duplicate let name error expected" ->
+              [(lineNumber, DuplicateLetName)]
 
             "type mismatch error expected" ->
               [(lineNumber, TypeMismatch)]

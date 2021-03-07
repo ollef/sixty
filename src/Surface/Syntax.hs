@@ -30,7 +30,7 @@ unspanned (Term _ term) =
 data UnspannedTerm
   = Var !Name.Surface
   | Lit !Literal
-  | Let !Name.Surface !(Maybe (Span.Relative, Type)) [(Span.Relative, Clause)] !Term
+  | Lets [Let] !Term
   | Pi !SpannedName !Plicity !Type !Type
   | Fun !Type !Type
   | Lam !PlicitPattern !Term
@@ -42,6 +42,11 @@ data UnspannedTerm
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 type Type = Term
+
+data Let
+  = LetType !SpannedName !Type
+  | Let !Name.Surface [(Span.Relative, Clause)]
+  deriving (Eq, Show, Generic, Persist, Hashable)
 
 data SpannedName = SpannedName !Span.Relative !Name.Surface
   deriving (Eq, Show, Generic, Persist, Hashable)
@@ -110,10 +115,14 @@ case_ :: Span.Relative -> Term -> Span.Relative -> [(Pattern, Term)] -> Term
 case_ caseSpan scrutinee ofSpan brs =
   Term (Span.add caseSpan $ maybe ofSpan (\(_, Term span _) -> span) $ Extra.last brs) $ Case scrutinee brs
 
-
-let_ :: Span.Relative -> Name.Surface -> Maybe (Span.Relative, Type) -> [(Span.Relative, Clause)] -> Term -> Term
-let_ nameSpan name maybeType clauses rhs@(Term rhsSpan _) =
-  Term (Span.add nameSpan rhsSpan) $ Let name maybeType clauses rhs
+lets :: [Let] -> Term -> Term
+lets ls rhs@(Term rhsSpan _)  =
+  Term (maybe rhsSpan (`Span.add` rhsSpan) (nameSpan ls)) (Lets ls rhs)
+    where
+      nameSpan [] = Nothing
+      nameSpan (LetType (SpannedName span _) _:_) = Just span
+      nameSpan (Let _ ((span, _):_):_) = Just span
+      nameSpan (Let _ []:ls') = nameSpan ls'
 
 clause :: [PlicitPattern] -> Span.Relative -> Term -> Clause
 clause pats equalsSpan rhs@(Term rhsSpan _) =

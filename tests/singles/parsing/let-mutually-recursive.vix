@@ -1,0 +1,9 @@
+g : Type
+g =
+  let
+    x : Type
+    y : Type
+    x = y
+    y = x
+  in
+  x

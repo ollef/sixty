@@ -551,8 +551,7 @@ atomicTerm =
           continue $ term <* token Lexer.RightParen
 
         Lexer.Let ->
-          continue $
-            flip (foldr ($)) <$> blockOfMany letBinding <* token Lexer.In <*> term
+          continue $ Surface.lets <$> blockOfMany let_ <* token Lexer.In <*> term
 
         Lexer.Underscore ->
           continue $ pure $ Surface.Term span Surface.Wildcard
@@ -590,14 +589,12 @@ atomicTerm =
     branch =
       (,) <$> pattern_ <* token Lexer.RightArrow <*> term
 
-    letBinding :: Parser (Surface.Term -> Surface.Term)
-    letBinding = do
-      (span, nameText) <- spannedIdentifier
-      Surface.let_ span (Name.Surface nameText) . Just . (,) span <$ token Lexer.Colon <*> recoveringTerm <*>
-        sameLevel (withIndentationBlock $ do
-          span' <- token $ Lexer.Identifier nameText
-          clauses span' nameText)
-        <|> Surface.let_ span (Name.Surface nameText) Nothing <$> clauses span nameText
+let_ :: Parser Surface.Let
+let_ = do
+  (span, nameText) <- spannedIdentifier
+  Surface.LetType (Surface.SpannedName span $ Name.Surface nameText) <$ token Lexer.Colon <*> recoveringTerm
+    <|> Surface.Let (Name.Surface nameText) <$> clauses span nameText
+  <?> "let binding"
 
 plicitAtomicTerm :: Parser (Surface.Term -> Surface.Term)
 plicitAtomicTerm =

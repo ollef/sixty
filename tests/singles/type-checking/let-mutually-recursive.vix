@@ -1,0 +1,73 @@
+data Nat = Z | S Nat
+data Bool = False | True
+
+data Equals forall a. (x y : a) where
+  Refl : Equals x x
+
+even3 : Bool
+even3 =
+  let
+    even : Nat -> Bool
+    odd : Nat -> Bool
+    even Z = True
+    even (S n) = odd n
+    odd Z = False
+    odd (S n) = even n
+  in
+  even (S (S (S Z)))
+
+test : Equals even3 False
+test = Refl
+
+even3' : Bool
+even3' =
+  let
+    even : Nat -> Bool
+    odd : Nat -> Bool
+    even Z = True
+    even (S n) = odd n
+    odd Z = False
+    odd (S n) = even n
+    e3 = even (S (S (S Z)))
+    test : Equals e3 False
+    test = Refl
+  in
+  e3
+
+test' : Equals even3' False
+test' = Refl
+
+noDefinition : Bool
+noDefinition =
+  let
+    lol : Nat -- undefined let declaration
+  in
+  True
+
+multipleTypes : Bool
+multipleTypes =
+  let
+    lol : Nat
+    lol : Nat -- duplicate let name error expected
+  in
+  True
+
+multipleDefinitions1 : Bool
+multipleDefinitions1 =
+  let
+    foo : Nat
+    bar : Nat
+    foo : Nat -- duplicate let name error expected
+  in
+  True
+
+multipleDefinitions2 : Bool
+multipleDefinitions2 =
+  let
+    foo : Nat
+    bar : Nat
+    foo = Z
+    baz : Nat
+    foo = Z -- duplicate let name error expected
+  in
+  True

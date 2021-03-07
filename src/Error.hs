@@ -33,6 +33,7 @@ data Error
 data Elaboration
   = NotInScope !Name.Surface
   | Ambiguous !Name.Surface (HashSet Name.QualifiedConstructor) (HashSet Name.Qualified)
+  | DuplicateLetName !Name.Surface !Span.Relative
   | TypeMismatch (Tsil (PrettyableTerm, PrettyableTerm))
   | OccursCheck (Tsil (PrettyableTerm, PrettyableTerm))
   | UnsolvedMetaVariable !Meta.Index !PrettyableTerm

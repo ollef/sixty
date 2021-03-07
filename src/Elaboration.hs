@@ -2,6 +2,8 @@
 {-# language GADTs #-}
 {-# language LambdaCase #-}
 {-# language OverloadedStrings #-}
+{-# language RecursiveDo #-}
+{-# language TupleSections #-}
 {-# language ViewPatterns #-}
 module Elaboration where
 
@@ -26,6 +28,7 @@ import qualified Core.Domain as Domain
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
+import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import qualified Data.IntSet as IntSet
 import qualified Data.OrderedHashMap as OrderedHashMap
@@ -59,10 +62,12 @@ import Plicity
 import qualified Postponement
 import qualified Query
 import qualified Scope
+import qualified Span
 import qualified Surface.Syntax as Surface
 import Telescope (Telescope)
 import qualified Telescope
 import Var (Var)
+import qualified Var
 
 inferTopLevelDefinition
   :: Scope.KeyedName
@@ -662,51 +667,8 @@ elaborateUnspanned context term mode canPostpone = do
     (Surface.Lit lit, _) ->
       result context mode (Syntax.Lit lit) (inferLiteral lit)
 
-    (Surface.Let surfaceName@(Name.Surface nameText) maybeType clauses body, _) -> do
-      let
-        name =
-          Name.Name nameText
-
-        clauses' =
-          [ Clauses.Clause clause mempty | (_, clause) <- clauses]
-
-      case maybeType of
-        Nothing -> do
-          skipContext <- Context.skip context
-          (boundTerm, typeValue) <- Clauses.infer skipContext clauses'
-          boundValue <- evaluate skipContext boundTerm
-          typeTerm <- readback context typeValue
-          let
-            bindings =
-              Bindings.fromName (map fst clauses) name
-          (context', _) <- Context.extendSurfaceDef context surfaceName boundValue typeValue
-          body' <- elaborate context' body mode
-          pure $
-            Syntax.Lets .
-            Syntax.LetType (Binding.Unspanned name) typeTerm .
-            Syntax.Let bindings Index.Zero boundTerm .
-            Syntax.In <$>
-            body'
-
-        Just (span, type_) -> do
-          typeTerm <- check context type_ Builtin.Type
-          typeValue <- evaluate context typeTerm
-          (context', var) <- Context.extendSurface context surfaceName typeValue
-          boundTerm <- Clauses.check context' clauses' typeValue
-          let
-            bindings =
-              Bindings.fromName (map fst clauses) name
-          boundValue <- evaluate context' boundTerm
-          let
-            context'' =
-              Context.defineWellOrdered context' var boundValue
-          body' <- elaborate context'' body mode
-          pure $
-            Syntax.Lets .
-            Syntax.LetType (Binding.Spanned span name) typeTerm .
-            Syntax.Let bindings Index.Zero boundTerm .
-            Syntax.In <$>
-            body'
+    (Surface.Lets lets body, _) ->
+      map Syntax.Lets <$> elaborateLets context mempty mempty lets body mode
 
     (Surface.Pi spannedName@(Surface.SpannedName _ name) plicity domain target, _) -> do
       domain' <- check context domain Builtin.Type
@@ -783,6 +745,112 @@ elaborateUnspanned context term mode canPostpone = do
     (Surface.ParseError err, _) -> do
       Context.reportParseError context err
       elaborateUnspanned context Surface.Wildcard mode Postponement.CanPostpone
+
+data LetBoundTerm where
+  LetBoundTerm :: Context v -> Syntax.Term v -> LetBoundTerm
+
+elaborateLets
+  :: Functor result
+  => Context v
+  -> HashMap Name.Surface (Span.Relative, Var)
+  -> IntMap Var LetBoundTerm
+  -> [Surface.Let]
+  -> Surface.Term
+  -> Mode result
+  -> M (result (Syntax.Lets v))
+elaborateLets context declaredNames definedVars lets body mode = do
+  -- TODO detect well-defined points to propagate definedContext early
+  case lets of
+    [] -> do
+      -- TODO check that all definitions are defined
+      body' <- elaborate context body mode
+      pure $ Syntax.In <$> body'
+
+    Surface.LetType spannedName@(Surface.SpannedName span surfaceName) type_:lets' ->
+      case HashMap.lookup surfaceName declaredNames of
+        Just (previousSpan, _) -> do
+          Context.report (Context.spanned span context) $ Error.DuplicateLetName surfaceName previousSpan
+          elaborateLets context declaredNames definedVars lets' body mode
+
+        Nothing -> do
+          typeTerm <- check context type_ Builtin.Type
+          typeValue <- lazyEvaluate context typeTerm
+          (context', var) <- Context.extendSurface context surfaceName typeValue
+          let
+            definedNames' =
+              HashMap.insert surfaceName (span, var) declaredNames
+          lets'' <- elaborateLets context' definedNames' definedVars lets' body mode
+          pure $ Syntax.LetType (Binding.fromSurface spannedName) typeTerm <$> lets''
+
+    Surface.Let surfaceName@(Name.Surface nameText) clauses:lets' -> do
+      let
+        clauses' =
+          [ Clauses.Clause clause mempty | (_, clause) <- clauses]
+
+        name =
+          Name.Name nameText
+
+        bindings =
+          Bindings.fromName (map fst clauses) name
+
+        span =
+          case clauses of
+            (span_, _):_ ->
+              span_
+
+            _ ->
+              panic "elaborateLets: Clauseless Surface.Let"
+
+      case HashMap.lookup surfaceName declaredNames of
+        Nothing -> do
+          skipContext <- Context.skip context
+          (boundTerm, typeValue) <- Clauses.infer skipContext clauses'
+          typeTerm <- readback context typeValue
+          boundValue <- lazyEvaluate skipContext boundTerm
+          (context', var) <- Context.extendSurfaceDef context surfaceName boundValue typeValue
+          let
+            definedNames' =
+              HashMap.insert surfaceName (span, var) declaredNames
+
+            definedVars' =
+              IntMap.insert var (LetBoundTerm skipContext boundTerm) definedVars
+          lets'' <- elaborateLets context' definedNames' definedVars' lets' body mode
+          pure $
+            Syntax.LetType (Binding.Unspanned name) typeTerm .
+            Syntax.Let bindings Index.Zero boundTerm <$> lets''
+
+        Just (previousSpan, var) -> do
+          case IntMap.lookup var definedVars of
+            Just _ -> do
+              Context.report (Context.spanned span context) $ Error.DuplicateLetName surfaceName previousSpan
+              elaborateLets context declaredNames definedVars lets' body mode
+
+            Nothing -> do
+              let
+                type_ =
+                  Context.lookupVarType var context
+              boundTerm <- Clauses.check context clauses' type_
+              let
+                index =
+                  fromMaybe (panic "elaborateLets: indexless var") $ Context.lookupVarIndex var context
+
+                definedVars' =
+                  IntMap.insert var (LetBoundTerm context boundTerm) definedVars
+              redefinedContext <- mdo
+                values <- forM (IntMap.toList definedVars') $ \(var', LetBoundTerm context' boundTerm') ->
+                  (var', ) <$> lazyEvaluate (defines context' values) boundTerm'
+                pure $ defines context values
+              lets'' <- elaborateLets redefinedContext declaredNames definedVars' lets' body mode
+              pure $ Syntax.Let bindings index boundTerm <$> lets''
+
+  where
+    defines :: Context v -> [(Var, Domain.Value)] -> Context v
+    defines =
+      foldl' $ \context'' (var, value) ->
+        if isJust $ Context.lookupVarIndex var context'' then
+          Context.defineWellOrdered context'' var value
+        else
+          context''
 
 forceExpectedTypeHead :: Context v -> Mode result -> M (Mode result)
 forceExpectedTypeHead context mode =
