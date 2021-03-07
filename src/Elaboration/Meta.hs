@@ -238,34 +238,38 @@ solutionMetas metaIndex state = do
     Unsolved {} ->
       pure (Nothing, state)
 
-    Solved solution metas type_ ->
-      flip runStateT state $ do
-        indirects <- forM (IntSet.toList $ unsolved metas) $ \i ->
-          (,) i <$> StateT (solutionMetas i)
+    Solved solution metas type_
+      | IntSet.null $ unsolved metas ->
+        pure (Just metas, state)
 
-        let
-          (directUnsolvedMetas, directSolvedMetas) =
-            bimap (IntSet.fromList . map fst) (IntSet.fromList . map fst) $
-            partition (isNothing . snd) indirects
+      | otherwise ->
+        flip runStateT state $ do
+          indirects <- forM (IntSet.toList $ unsolved metas) $ \i ->
+            (,) i <$> StateT (solutionMetas i)
 
-          indirectMetas =
-            foldMap (fold . snd) indirects
+          let
+            (directUnsolvedMetas, directSolvedMetas) =
+              bimap (IntSet.fromList . map fst) (IntSet.fromList . map fst) $
+              partition (isNothing . snd) indirects
 
-          solved' =
-            solved metas <> directSolvedMetas <> solved indirectMetas
+            indirectMetas =
+              foldMap (fold . snd) indirects
 
-          unsolved' =
-            directUnsolvedMetas <> unsolved indirectMetas
+            solved' =
+              solved metas <> directSolvedMetas <> solved indirectMetas
 
-          metas' =
-            metas
-              { unsolved = unsolved'
-              , solved = solved'
-              }
+            unsolved' =
+              directUnsolvedMetas <> unsolved indirectMetas
 
-        modify $ \s -> s { entries = IntMap.insert metaIndex (Solved solution metas' type_) $ entries s }
+            metas' =
+              metas
+                { unsolved = unsolved'
+                , solved = solved'
+                }
 
-        pure (Just metas')
+          modify $ \s -> s { entries = IntMap.insert metaIndex (Solved solution metas' type_) $ entries s }
+
+          pure $ Just metas'
 
     LazilySolved msolution type_ -> do
       solution <- msolution
