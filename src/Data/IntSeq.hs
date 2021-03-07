@@ -34,8 +34,8 @@ instance Monoid (IntSeq a) where
     IntSeq mempty mempty
 
 instance Foldable IntSeq where
-  foldMap f =
-    foldMap f . toList
+  foldMap f (IntSeq seq _) =
+    foldMap f seq
 
 pattern Empty :: (Coercible a Data.IntMap.Key) => IntSeq a
 pattern Empty <- IntSeq Seq.Empty _
