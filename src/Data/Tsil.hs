@@ -53,6 +53,10 @@ instance Foldable Tsil where
       go Empty = []
       go (xs :> x) = x : go xs
 
+null :: Tsil a -> Bool
+null Empty = True
+null (_ :> _) = False
+
 reverseFromList :: [a] -> Tsil a
 reverseFromList = foldr (flip (:>)) Empty
 
