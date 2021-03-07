@@ -57,7 +57,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [x] Inductive families
 - [x] Glued evaluation
 - [x] Let definitions by clauses
-  - [ ] Recursive lets
+  - [x] Mutually recursive lets
 - [x] Command-line parser
 - [x] Language server
   - [x] Diagnostics
