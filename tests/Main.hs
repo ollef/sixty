@@ -191,7 +191,7 @@ expectedErrorsFromSource sourceText =
               [(lineNumber, ImportNotFound)]
 
             "multiple files with module name error expected" ->
-              [(lineNumber, ImportNotFound)]
+              [(lineNumber, MultipleFilesWithModuleName)]
 
             "module file name mismatch error expected" ->
               [(lineNumber, ModuleFileNameMismatch)]
