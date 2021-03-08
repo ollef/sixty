@@ -1,10 +1,11 @@
-{-# language DataKinds #-}
-{-# language PolyKinds #-}
 {-# language BlockArguments #-}
+{-# language DataKinds #-}
 {-# language DuplicateRecordFields #-}
 {-# language OverloadedStrings #-}
 {-# language PatternSynonyms #-}
+{-# language PolyKinds #-}
 {-# language RankNTypes #-}
+{-# language TupleSections #-}
 {-# language UnboxedTuples #-}
 module Parser where
 
@@ -351,7 +352,7 @@ relativeTo (Parser p) =
         Fail con inp $ err <> failed "Unexpected EOF"
 
       Token _ (Span.Absolute tokenStart _) _:_ ->
-        mapResult ((,) tokenStart) (p con inp err lineCol tokenStart)
+        mapResult (tokenStart, ) (p con inp err lineCol tokenStart)
 
 sameLevel :: Parser a -> Parser a
 sameLevel (Parser p) =
