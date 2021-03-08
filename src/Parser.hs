@@ -552,7 +552,7 @@ atomicTerm =
           continue $ term <* token Lexer.RightParen
 
         Lexer.Let ->
-          continue $ Surface.lets <$> blockOfMany let_ <* token Lexer.In <*> term
+          continue $ Surface.lets span <$> blockOfMany let_ <* token Lexer.In <*> term
 
         Lexer.Underscore ->
           continue $ pure $ Surface.Term span Surface.Wildcard
@@ -569,14 +569,14 @@ atomicTerm =
 
         Lexer.Lambda ->
           continue $
-            Surface.lams <$> some plicitPattern <* token Lexer.Dot <*> term
+            Surface.lams span <$> some plicitPattern <* token Lexer.Dot <*> term
 
         Lexer.Forall ->
           continue $
-            Surface.pis Implicit <$>
+            Surface.implicitPis span <$>
               some
-                ( (,) <$ token Lexer.LeftParen <*> some spannedName <* token Lexer.Colon <*> term <* token Lexer.RightParen
-                <|> (\spannedName_@(Surface.SpannedName span_ _) -> ([spannedName_], Surface.Term span_ Surface.Wildcard)) <$> spannedName
+                ( (,,) <$> token Lexer.LeftParen <*> some spannedName <* token Lexer.Colon <*> term <* token Lexer.RightParen
+                <|> (\spannedName_@(Surface.SpannedName span_ _) -> (span_, [spannedName_], Surface.Term span_ Surface.Wildcard)) <$> spannedName
                 )
                 <* token Lexer.Dot <*> term
 
@@ -612,15 +612,14 @@ plicitAtomicTerm =
 
 term :: Parser Surface.Term
 term =
-  Surface.pis Explicit <$>
-    some
-      ((,) <$> try (token Lexer.LeftParen *> some spannedName <* token Lexer.Colon) <*>
-        term <* token Lexer.RightParen
-      ) <*
-    token Lexer.RightArrow <*> term
+  Surface.pis Explicit <$> some typedBindings <* token Lexer.RightArrow <*> term
   <|> atomicTerm <**> (foldl' (flip (.)) identity <$> many plicitAtomicTerm) <**> fun
   <?> "term"
   where
+    typedBindings =
+      uncurry (,,) <$> try ((,) <$> token Lexer.LeftParen <*> some spannedName <* token Lexer.Colon) <*>
+        term <* token Lexer.RightParen
+
     fun =
       flip Surface.function <$ token Lexer.RightArrow <*> term
       <|> pure identity

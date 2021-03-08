@@ -85,15 +85,28 @@ implicitApp :: Term -> HashMap Name Term -> Span.Relative -> Term
 implicitApp fun@(Term funSpan _) args endSpan =
   Term (Span.add funSpan endSpan) $ ImplicitApps fun args
 
-lams :: Foldable f => f PlicitPattern -> Term -> Term
-lams vs body@(Term bodySpan _) =
-  foldr (\pat -> Term (Span.add (plicitPatternSpan pat) bodySpan) . Lam pat) body vs
+lams :: Foldable f => Span.Relative -> f PlicitPattern -> Term -> Term
+lams span vs body@(Term bodySpan _) =
+  Term (Span.add span outerSpan) result
+  where
+    Term outerSpan result =
+      foldr (\pat -> Term (Span.add (plicitPatternSpan pat) bodySpan) . Lam pat) body vs
 
-pis :: Plicity -> [([SpannedName], Type)] -> Type -> Type
+pis :: Plicity -> [(Span.Relative, [SpannedName], Type)] -> Type -> Type
 pis plicity vars target@(Term (Span.Relative _ end) _) =
-  foldr (\(vs, domain) target' ->
-    foldr (\spannedName@(SpannedName (Span.Relative start _) _) -> Term (Span.Relative start end) . Pi spannedName plicity domain) target' vs
+  foldr (\(span, vs, domain) target' -> do
+    let
+      Term outerSpan result =
+        foldr (\spannedName@(SpannedName (Span.Relative start _) _) -> Term (Span.Relative start end) . Pi spannedName plicity domain) target' vs
+    Term (Span.add span outerSpan) result
   ) target vars
+
+implicitPis :: Span.Relative -> [(Span.Relative, [SpannedName], Type)] -> Type -> Type
+implicitPis forallSpan vars target =
+  Term (Span.add forallSpan outerSpan) result
+  where
+    Term outerSpan result
+      = pis Implicit vars target
 
 function :: Term -> Term -> Term
 function domain@(Term span1 _) target@(Term span2 _) =
@@ -115,14 +128,9 @@ case_ :: Span.Relative -> Term -> Span.Relative -> [(Pattern, Term)] -> Term
 case_ caseSpan scrutinee ofSpan brs =
   Term (Span.add caseSpan $ maybe ofSpan (\(_, Term span _) -> span) $ Extra.last brs) $ Case scrutinee brs
 
-lets :: [Let] -> Term -> Term
-lets ls rhs@(Term rhsSpan _)  =
-  Term (maybe rhsSpan (`Span.add` rhsSpan) (nameSpan ls)) (Lets ls rhs)
-    where
-      nameSpan [] = Nothing
-      nameSpan (LetType (SpannedName span _) _:_) = Just span
-      nameSpan (Let _ ((span, _):_):_) = Just span
-      nameSpan (Let _ []:ls') = nameSpan ls'
+lets :: Span.Relative -> [Let] -> Term -> Term
+lets letSpan ls rhs@(Term rhsSpan _)  =
+  Term (Span.add letSpan rhsSpan) (Lets ls rhs)
 
 clause :: [PlicitPattern] -> Span.Relative -> Term -> Clause
 clause pats equalsSpan rhs@(Term rhsSpan _) =
