@@ -778,8 +778,9 @@ elaborateLets context declaredNames undefinedVars definedVars lets body mode = d
     -- Optimisation: No need to consider the rest of the bindings to be mutuals if they're all defined
     _
       | IntMap.null undefinedVars
-      , not (Tsil.null definedVars) ->
-        elaborateLets context mempty mempty mempty lets body mode
+      , not (Tsil.null definedVars) -> do
+        lets' <- elaborateLets context mempty mempty mempty lets body mode
+        pure $ Syntax.In . Syntax.Lets <$> lets'
 
     Surface.LetType spannedName@(Surface.SpannedName span surfaceName) type_:lets' ->
       case HashMap.lookup surfaceName declaredNames of
