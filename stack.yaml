@@ -1,12 +1,15 @@
-resolver: nightly-2020-11-23
+resolver: lts-17.5
 packages:
 - .
 extra-deps:
 - git: https://github.com/obsidiansystems/constraints-extras.git
   commit: 72d39c08f7b08a3a756f9019ad972d26a36fbbaa
 - dependent-hashmap-0.1.0.1
-- dependent-sum-0.7.1.0
-- dependent-sum-template-0.1.0.3
+- git: https://github.com/ollef/dependent-sum.git
+  commit: b36c84a36ffdbb4de2bf7f7977bca7246b3b881a
+  subdirs:
+  - dependent-sum
+  - dependent-sum-template
 - llvm-hs-pretty-0.9.0.0
 - rock-0.3.1.0
 - git: https://github.com/fpco/ghc-prof-flamegraph.git
