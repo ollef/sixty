@@ -1,0 +1,11 @@
+data Tuple a b = MkTuple a b
+
+data Nat = Z | S Nat
+
+test : Nat -> Nat
+test x =
+  case MkTuple x x of
+    MkTuple Z Z -> Z
+    MkTuple (S n) (S ~n) -> Z
+    MkTuple (S n) Z -> Z -- redundant match error expected
+    MkTuple Z (S n) -> Z -- redundant match error expected
