@@ -15,6 +15,12 @@ install:
 test:
 	$(STACK_TEST)
 
+.PHONY: watch-test
+watch-test:
+	$(STACK) exec --package ghcid -- ghcid \
+		--command="stack ghci sixty:lib sixty:test:test-sixty --test --ghci-options=-fno-break-on-exception --ghci-options=-fno-break-on-error --ghci-options=-v1 --ghci-options=-ferror-spans --ghci-options=-j" \
+		--test="Main.main"
+
 .PHONY: install-profile
 install-profile:
 	$(STACK_INSTALL) --profile
