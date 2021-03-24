@@ -104,3 +104,15 @@ tests:
       - tasty-hunit
       - text
       - unordered-containers
+
+benchmarks:
+  benchmark-parser:
+    main: Main.hs
+    source-dirs: benchmarks/parser
+    dependencies:
+      - directory
+      - filepath
+      - prettyprinter
+      - sixty
+      - text
+      - gauge

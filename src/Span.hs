@@ -12,7 +12,7 @@ import Data.Text.Prettyprint.Doc
 import qualified Position
 
 data Absolute = Absolute !Position.Absolute !Position.Absolute
-  deriving (Eq, Ord, Show, Generic, Hashable, Persist)
+  deriving (Eq, Ord, Show, Generic, Hashable, Persist, NFData)
 
 data Relative = Relative !Position.Relative !Position.Relative
   deriving (Eq, Ord, Show, Generic, Hashable, Persist)

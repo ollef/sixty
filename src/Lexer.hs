@@ -1,4 +1,6 @@
 {-# language QuasiQuotes #-}
+{-# language DeriveGeneric #-}
+{-# language DeriveAnyClass #-}
 {-# language RecordWildCards #-}
 {-# language OverloadedStrings #-}
 module Lexer
@@ -23,7 +25,7 @@ import qualified Span
 import qualified UTF16
 
 data Token = Token !Position.LineColumn !Span.Absolute !UnspannedToken
-  deriving Show
+  deriving (Show, Generic, NFData)
 
 data UnspannedToken
   -- Identifiers
@@ -55,7 +57,7 @@ data UnspannedToken
   | LeftImplicitBrace
   | RightImplicitBrace
   | Error
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, NFData)
 
 displayToken :: UnspannedToken -> Text
 displayToken token =
