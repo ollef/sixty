@@ -116,6 +116,11 @@ mapResult :: (a -> b) -> Result a -> Result b
 mapResult f (OK a con inp err) = OK (f a) con inp err
 mapResult _ (Fail con inp err) = Fail con inp err
 
+{-# inline setResult #-}
+setResult :: b -> Result a -> Result b
+setResult b (OK _ con inp err) = OK b con inp err
+setResult _ (Fail con inp err) = Fail con inp err
+
 instance Functor Parser where
   {-# inline fmap #-}
   fmap f (Parser p) =
@@ -152,7 +157,7 @@ instance Applicative Parser where
     Parser $ \con inp err lineCol base ->
       case p con inp err lineCol base of
         OK a con' inp' err' ->
-          mapResult (const a) (q con' inp' err' lineCol base)
+          setResult a (q con' inp' err' lineCol base)
 
         f ->
           f
