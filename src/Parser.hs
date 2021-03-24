@@ -706,23 +706,21 @@ moduleHeader =
     mkModuleHeader (mname, exposed) imports =
       (mname, Module.Header exposed imports)
     moduleExposing =
-      sameLevel (withIndentationBlock $ (\(span, name) exposed -> (Just (Span.absoluteFrom 0 span, name), exposed)) <$ token (Lexer.Identifier "module") <*> spannedModuleName <* token (Lexer.Identifier "exposing") <*> exposedNames)
+      sameLevel ((\(span, name) exposed -> (Just (Span.absoluteFrom 0 span, name), exposed)) <$ token (Lexer.Identifier "module") <*> spannedModuleName <* token (Lexer.Identifier "exposing") <*> exposedNames)
       <|> pure (Nothing, Module.AllExposed)
 
 import_ :: Parser Module.Import
 import_ =
-  sameLevel $
-  withIndentationBlock $
-    mkImport
-      <$ token (Lexer.Identifier "import") <*> spannedModuleName
-      <*>
-        (Just <$ token (Lexer.Identifier "as") <*> spannedName
-        <|> pure Nothing
-        )
-      <*>
-        (token (Lexer.Identifier "exposing") *> exposedNames
-        <|> pure mempty
-        )
+  mkImport
+    <$ token (Lexer.Identifier "import") <*> spannedModuleName
+    <*>
+      (Just <$ token (Lexer.Identifier "as") <*> spannedName
+      <|> pure Nothing
+      )
+    <*>
+      (token (Lexer.Identifier "exposing") *> exposedNames
+      <|> pure mempty
+      )
   where
     mkImport (span, n@(Name.Module text)) malias exposed =
       Module.Import
