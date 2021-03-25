@@ -230,16 +230,6 @@ try (Parser p) =
       Fail {} ->
         Fail ConsumedNone inp err
 
-eof :: Parser ()
-eof =
-  Parser $ \inp err _ _ ->
-    case inp of
-      [] ->
-        OK () ConsumedNone inp err
-
-      _:_ ->
-        Fail ConsumedNone inp $ err <> expected "EOF"
-
 (<?>) :: Parser a -> Text -> Parser a
 Parser p <?> expect =
   Parser \inp err lineCol base ->
