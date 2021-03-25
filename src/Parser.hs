@@ -33,7 +33,7 @@ import qualified Span
 
 parseTokens :: Parser a -> [Token] -> Either Error.Parsing a
 parseTokens p tokens =
-  case unParser p ConsumedNone tokens mempty (Position.LineColumn 0 0) (Position.Absolute 0) of
+  case unParser p tokens mempty (Position.LineColumn 0 0) (Position.Absolute 0) of
     OK a _ _ _ ->
       Right a
 
@@ -77,8 +77,7 @@ expected s =
 
 newtype Parser a = Parser
   { unParser
-    :: Consumed
-    -> [Token] -- input
+    :: [Token] -- input
     -> ErrorReason -- previous errors at this position
     -> Position.LineColumn -- indentation base
     -> Position.Absolute -- base position
@@ -109,6 +108,17 @@ pattern OK a con inp err = (# Some a, con, inp, err #)
 pattern Fail :: Consumed -> [Token] -> ErrorReason -> Result a
 pattern Fail con inp err = (# None, con, inp, err #)
 
+{-# inline consumedAtLeast #-}
+consumedAtLeast :: Consumed -> Result a -> Result a
+consumedAtLeast consumed result =
+  case consumed of
+    ConsumedNone -> result
+    ConsumedSome -> consumedSome result
+
+{-# inline consumedSome #-}
+consumedSome :: Result a -> Result a
+consumedSome (# res, _, inp, err #) = (# res, ConsumedSome, inp, err #)
+
 {-# complete OK, Fail #-}
 
 {-# inline mapResult #-}
@@ -124,40 +134,40 @@ setResult _ (Fail con inp err) = Fail con inp err
 instance Functor Parser where
   {-# inline fmap #-}
   fmap f (Parser p) =
-    Parser \con inp err lineCol base ->
-      mapResult f (p con inp err lineCol base)
+    Parser \inp err lineCol base ->
+      mapResult f (p inp err lineCol base)
 
 instance Applicative Parser where
   {-# inline pure #-}
   pure a =
-    Parser \con inp err _ _ -> OK a con inp err
+    Parser \inp err _ _ -> OK a ConsumedNone inp err
 
   {-# inline (<*>) #-}
   Parser p <*> Parser q =
-    Parser $ \con inp err lineCol base ->
-      case p con inp err lineCol base of
-        OK f con' inp' err' ->
-          mapResult f (q con' inp' err' lineCol base)
+    Parser $ \inp err lineCol base ->
+      case p inp err lineCol base of
+        OK f con inp' err' ->
+          consumedAtLeast con (mapResult f (q inp' err' lineCol base))
 
-        Fail con' inp' err' ->
-          Fail con' inp' err'
+        Fail con inp' err' ->
+          Fail con inp' err'
 
   {-# inline (*>) #-}
   Parser p *> Parser q =
-    Parser $ \con inp err lineCol base ->
-      case p con inp err lineCol base of
-        OK _ con' inp' err' ->
-          q con' inp' err' lineCol base
+    Parser $ \inp err lineCol base ->
+      case p inp err lineCol base of
+        OK _ con inp' err' ->
+          consumedAtLeast con (q inp' err' lineCol base)
 
-        Fail con' inp' err' ->
-          Fail con' inp' err'
+        Fail con inp' err' ->
+          Fail con inp' err'
 
   {-# inline (<*) #-}
   Parser p <* Parser q =
-    Parser $ \con inp err lineCol base ->
-      case p con inp err lineCol base of
-        OK a con' inp' err' ->
-          setResult a (q con' inp' err' lineCol base)
+    Parser $ \inp err lineCol base ->
+      case p inp err lineCol base of
+        OK a con inp' err' ->
+          consumedAtLeast con (setResult a (q inp' err' lineCol base))
 
         f ->
           f
@@ -165,17 +175,17 @@ instance Applicative Parser where
 instance Alternative Parser where
   {-# inline empty #-}
   empty =
-    Parser \con inp err _ _ -> Fail con inp err
+    Parser \inp err _ _ -> Fail ConsumedNone inp err
 
   {-# inline (<|>) #-}
   Parser p <|> Parser q =
-    Parser \con inp err lineCol base ->
-      case p ConsumedNone inp err lineCol base of
-        OK a con' inp' err' ->
-          OK a (max con con') inp' err'
+    Parser \inp err lineCol base ->
+      case p inp err lineCol base of
+        result@OK {} ->
+          result
 
         Fail ConsumedNone _inp err' ->
-          q con inp err' lineCol base
+          q inp err' lineCol base
 
         f@(Fail ConsumedSome _ _) ->
           f
@@ -183,13 +193,13 @@ instance Alternative Parser where
 instance Monad Parser where
   {-# inline (>>=) #-}
   Parser p >>= f =
-    Parser \con inp err lineCol base ->
-      case p con inp err lineCol base of
-        OK a con' inp' err' ->
-          unParser (f a) con' inp' err' lineCol base
+    Parser \inp err lineCol base ->
+      case p inp err lineCol base of
+        OK a con inp' err' ->
+          consumedAtLeast con (unParser (f a) inp' err' lineCol base)
 
-        Fail con' inp' err' ->
-          Fail con' inp' err'
+        Fail con inp' err' ->
+          Fail con inp' err'
 
   {-# inline (>>) #-}
   (>>) = (*>)
@@ -204,44 +214,44 @@ instance MonadPlus Parser where
 
 error :: ErrorReason -> Parser a
 error err =
-  Parser \con inp err' _ _ -> Fail con inp $ err' <> err
+  Parser \inp err' _ _ -> Fail ConsumedNone inp $ err' <> err
 
 try :: Parser a -> Parser a
 try (Parser p) =
-  Parser \con inp err lineCol base ->
-    case p con inp err lineCol base of
+  Parser \inp err lineCol base ->
+    case p inp err lineCol base of
       ok@OK {} ->
         ok
 
       Fail {} ->
-        Fail con inp err
+        Fail ConsumedNone inp err
 
 eof :: Parser ()
 eof =
-  Parser $ \con inp err _ _ ->
+  Parser $ \inp err _ _ ->
     case inp of
       [] ->
-        OK () con inp err
+        OK () ConsumedNone inp err
 
       _:_ ->
-        Fail con inp $ err <> expected "EOF"
+        Fail ConsumedNone inp $ err <> expected "EOF"
 
 (<?>) :: Parser a -> Text -> Parser a
 Parser p <?> expect =
-  Parser \con inp err lineCol base ->
-    case p con inp err lineCol base of
-      (# oa, con', inp', err' #) ->
-        (# oa, con', inp', err' { _expected = HashSet.insert expect $ _expected err' }#)
+  Parser \inp err lineCol base ->
+    case p inp err lineCol base of
+      (# oa, con, inp', err' #) ->
+        (# oa, con, inp', err' { _expected = HashSet.insert expect $ _expected err' }#)
 
 notFollowedBy :: Parser Text -> Parser ()
 notFollowedBy (Parser p) =
-  Parser \con inp err lineCol base ->
-    case p con inp err lineCol base of
+  Parser \inp err lineCol base ->
+    case p inp err lineCol base of
       OK a _ _ _ ->
-        Fail con inp $ err <> failed ("Unexpected '" <> a <> "'")
+        Fail ConsumedNone inp $ err <> failed ("Unexpected '" <> a <> "'")
 
       Fail {} ->
-        OK () con inp err
+        OK () ConsumedNone inp err
 
 notFollowedByToken :: UnspannedToken -> Parser ()
 notFollowedByToken token_ =
@@ -249,13 +259,13 @@ notFollowedByToken token_ =
 
 withRecovery :: (ErrorReason -> Position.Absolute -> [Token] -> Parser a) -> Parser a -> Parser a
 withRecovery recover_ (Parser p) =
-  Parser \con inp err lineCol base ->
-    case p con inp err lineCol base of
+  Parser \inp err lineCol base ->
+    case p inp err lineCol base of
       ok@OK {} ->
         ok
 
       f@(Fail _con inp' err') ->
-        case unParser (recover_ err' base inp') con inp err lineCol base of
+        case unParser (recover_ err' base inp') inp err lineCol base of
           ok@OK {} ->
             ok
 
@@ -273,15 +283,15 @@ withToken
     )
   -> Parser a
 withToken f =
-  Parser \con inp err _lineCol base ->
+  Parser \inp err _lineCol base ->
     case inp of
       [] ->
-        Fail con inp $ err <> failed "Unexpected EOF"
+        Fail ConsumedNone inp $ err <> failed "Unexpected EOF"
 
       Token _pos tokenSpan token_:inp' ->
         f
           (\a -> OK a ConsumedSome inp' mempty)
-          (Fail con inp)
+          (Fail ConsumedNone inp)
           (Span.relativeTo base tokenSpan)
           token_
 
@@ -296,21 +306,21 @@ withIndentedToken
     )
   -> Parser a
 withIndentedToken f =
-  Parser \con inp err (Position.LineColumn line col) base ->
+  Parser \inp err (Position.LineColumn line col) base ->
     case inp of
       [] ->
-        Fail con inp $ err <> failed "Unexpected EOF"
+        Fail ConsumedNone inp $ err <> failed "Unexpected EOF"
 
       Token (Position.LineColumn tokenLine tokenCol) tokenSpan token_:inp'
         | line == tokenLine || col < tokenCol ->
           f
             (\a -> OK a ConsumedSome inp' mempty)
-            (\err' -> Fail con inp $ err <> err')
+            (\err' -> Fail ConsumedNone inp $ err <> err')
             (Span.relativeTo base tokenSpan)
             token_
 
         | otherwise ->
-          Fail con inp $ err <> failed "Unexpected unindent"
+          Fail ConsumedNone inp $ err <> failed "Unexpected unindent"
 
 withIndentedTokenM
   ::
@@ -323,72 +333,72 @@ withIndentedTokenM
     )
   -> Parser a
 withIndentedTokenM f =
-  Parser \con inp err lineCol@(Position.LineColumn line col) base ->
+  Parser \inp err lineCol@(Position.LineColumn line col) base ->
     case inp of
       [] ->
-        Fail con inp $ err <> failed "Unexpected EOF"
+        Fail ConsumedNone inp $ err <> failed "Unexpected EOF"
 
       Token (Position.LineColumn tokenLine tokenCol) tokenSpan token_:inp'
         | line == tokenLine || col < tokenCol ->
           f
-            (\pa -> unParser pa ConsumedSome inp' mempty lineCol base)
-            (Fail con inp err)
+            (\pa -> consumedSome (unParser pa inp' mempty lineCol base))
+            (Fail ConsumedNone inp err)
             (Span.relativeTo base tokenSpan)
             token_
 
         | otherwise ->
-          Fail con inp $ err <> failed "Unexpected unindent"
+          Fail ConsumedNone inp $ err <> failed "Unexpected unindent"
 
 withIndentationBlock :: Parser a -> Parser a
 withIndentationBlock (Parser p) =
-  Parser \pos inp err lineCol base ->
+  Parser \inp err lineCol base ->
     case inp of
       [] ->
-        p pos inp err lineCol base
+        p inp err lineCol base
 
       Token tokenLineCol _ _:_ ->
-        p pos inp err tokenLineCol base
+        p inp err tokenLineCol base
 
 relativeTo :: Parser a -> Parser (Position.Absolute, a)
 relativeTo (Parser p) =
-  Parser \con inp err lineCol _base ->
+  Parser \inp err lineCol _base ->
     case inp of
       [] ->
-        Fail con inp $ err <> failed "Unexpected EOF"
+        Fail ConsumedNone inp $ err <> failed "Unexpected EOF"
 
       Token _ (Span.Absolute tokenStart _) _:_ ->
-        mapResult (tokenStart, ) (p con inp err lineCol tokenStart)
+        mapResult (tokenStart, ) (p inp err lineCol tokenStart)
 
 sameLevel :: Parser a -> Parser a
 sameLevel (Parser p) =
-  Parser \con inp err lineCol@(Position.LineColumn _ col) base ->
+  Parser \inp err lineCol@(Position.LineColumn _ col) base ->
     case inp of
       [] ->
-        Fail con inp $ err <> failed "Unexpected EOF"
+        Fail ConsumedNone inp $ err <> failed "Unexpected EOF"
 
       Token (Position.LineColumn _ tokenCol) _ _:_
         | col == tokenCol ->
-          p con inp err lineCol base
+          p inp err lineCol base
 
         | col > tokenCol ->
-          Fail con inp $ err <> failed "Unexpected unindent"
+          Fail ConsumedNone inp $ err <> failed "Unexpected unindent"
 
         | otherwise ->
-          Fail con inp $ err <> failed "Unexpected indent"
+          Fail ConsumedNone inp $ err <> failed "Unexpected indent"
 
 indented :: Parser a -> Parser a
 indented (Parser p) =
-  Parser \con inp err lineCol@(Position.LineColumn line col) base ->
+  Parser \inp err lineCol@(Position.LineColumn line col) base ->
     case inp of
       [] ->
-        Fail con inp $ err <> failed "Unexpected EOF"
+        Fail ConsumedNone inp $ err <> failed "Unexpected EOF"
 
       Token (Position.LineColumn tokenLine tokenCol) _ _:_
         | line == tokenLine || col < tokenCol ->
-          p con inp err lineCol base
+          p inp err lineCol base
 
         | otherwise ->
-          Fail con inp $ err <> failed "Unexpected unindent"
+          Fail ConsumedNone inp $ err <> failed "Unexpected unindent"
 
 -- | One or more at the same indentation level.
 someSame :: Parser a -> Parser [a]
@@ -468,13 +478,13 @@ recover k errorReason _base inp = do
 
 skipToBaseLevel :: Parser ()
 skipToBaseLevel =
-  Parser \con inp err (Position.LineColumn line col) _base ->
+  Parser \inp err (Position.LineColumn line col) _base ->
     case inp of
       _:inp' ->
         OK () ConsumedSome (dropWhile (\(Token (Position.LineColumn tokenLine tokenCol) _ _) -> line == tokenLine || col < tokenCol) inp') mempty
 
       _ ->
-        Fail con inp $ err <> failed "Unexpected EOF"
+        Fail ConsumedNone inp $ err <> failed "Unexpected EOF"
 
 -------------------------------------------------------------------------------
 -- Patterns
