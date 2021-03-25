@@ -5,7 +5,7 @@
 {-# language OverloadedStrings #-}
 module Lexer
   ( lexText
-  , Token(..)
+  , TokenList(..)
   , UnspannedToken(..)
   , displayToken
   ) where
@@ -24,7 +24,9 @@ import qualified Position
 import qualified Span
 import qualified UTF16
 
-data Token = Token !Position.LineColumn !Span.Absolute !UnspannedToken
+data TokenList
+  = Empty
+  | Token !Position.LineColumn !Span.Absolute !UnspannedToken !TokenList
   deriving (Show, Generic, NFData)
 
 data UnspannedToken
@@ -89,7 +91,7 @@ displayToken token =
     RightImplicitBrace -> "}"
     Error -> "[error]"
 
-lexText :: Text -> [Token]
+lexText :: Text -> TokenList
 lexText (Text.Text array offset length_) =
   lex State
     { input = array
@@ -107,20 +109,20 @@ data State = State
   , end :: !Position.Absolute
   }
 
-lex :: State -> [Token]
+lex :: State -> TokenList
 lex state@State {..}
   | position >= end =
-    []
+    Empty
 
   | otherwise =
     case index input position of
       -------------------------------------------------------------------------
       -- Parens
       [UTF16.unit1|(|] ->
-        token1 LeftParen : lex state1
+        token1 LeftParen $ lex state1
 
       [UTF16.unit1|)|] ->
-        token1 RightParen : lex state1
+        token1 RightParen $ lex state1
 
       -------------------------------------------------------------------------
       -- Comments
@@ -149,7 +151,7 @@ lex state@State {..}
       -------------------------------------------------------------------------
       -- Number
       [UTF16.unit1|\|] ->
-        token1 Lambda : lex state1
+        token1 Lambda $ lex state1
 
       -------------------------------------------------------------------------
       -- Number
@@ -168,10 +170,10 @@ lex state@State {..}
       [UTF16.unit1|@|]
         | position1 < end
         , [UTF16.unit1|{|] <- index input position1 ->
-          token2 LeftImplicitBrace : lex state2
+          token2 LeftImplicitBrace $ lex state2
 
       [UTF16.unit1|}|] ->
-        token1 RightImplicitBrace : lex state1
+        token1 RightImplicitBrace $ lex state1
 
       -------------------------------------------------------------------------
       -- Operator or identifier
@@ -216,7 +218,7 @@ lex state@State {..}
       -------------------------------------------------------------------------
       -- Error
       _ ->
-        token1 Error : lex state1
+        token1 Error $ lex state1
   where
     state1 =
       state
@@ -298,10 +300,10 @@ identifier
   :: Position.Absolute
   -> Position.LineColumn
   -> State
-  -> [Token]
+  -> TokenList
 identifier startPosition startLineColumn state@State {..}
   | position >= end =
-    [identifierToken input startPosition startLineColumn position]
+    identifierToken input startPosition startLineColumn position Empty
 
   | otherwise =
     case index input position of
@@ -325,7 +327,7 @@ identifier startPosition startLineColumn state@State {..}
           identifier startPosition startLineColumn state2
 
       _ ->
-        identifierToken input startPosition startLineColumn position :
+        identifierToken input startPosition startLineColumn position $
         lex state
   where
     state1 =
@@ -352,12 +354,11 @@ dotIdentifier
   -> Position.Absolute
   -> Position.LineColumn
   -> State
-  -> [Token]
+  -> TokenList
 dotIdentifier startPosition startLineColumn dotPosition dotLineColumn state@State {..}
   | position >= end =
-    [ identifierToken input startPosition startLineColumn position
-    , Token dotLineColumn (Span.Absolute dotPosition position) Dot
-    ]
+    identifierToken input startPosition startLineColumn position $
+    Token dotLineColumn (Span.Absolute dotPosition position) Dot Empty
 
   | otherwise =
     case index input position of
@@ -400,8 +401,8 @@ dotIdentifier startPosition startLineColumn dotPosition dotLineColumn state@Stat
           operator startPosition startLineColumn state2
 
       _ ->
-        identifierToken input startPosition startLineColumn dotPosition :
-        Token dotLineColumn (Span.Absolute dotPosition position) Dot :
+        identifierToken input startPosition startLineColumn dotPosition $
+        Token dotLineColumn (Span.Absolute dotPosition position) Dot $
         lex state
   where
     state1 =
@@ -427,7 +428,8 @@ identifierToken
   -> Position.Absolute
   -> Position.LineColumn
   -> Position.Absolute
-  -> Token
+  -> TokenList
+  -> TokenList
 identifierToken input startPosition startLineColumn position =
   Token startLineColumn (Span.Absolute startPosition position) $
     case index input startPosition of
@@ -456,10 +458,10 @@ operator
   :: Position.Absolute
   -> Position.LineColumn
   -> State
-  -> [Token]
+  -> TokenList
 operator startPosition startLineColumn state@State {..}
   | position >= end =
-    [identifierToken input startPosition startLineColumn position]
+    identifierToken input startPosition startLineColumn position Empty
 
   | otherwise =
     case index input position of
@@ -483,7 +485,7 @@ operator startPosition startLineColumn state@State {..}
           operator startPosition lineColumn state2
 
       _ ->
-        operatorToken input startPosition startLineColumn position :
+        operatorToken input startPosition startLineColumn position $
         lex state
   where
     state1 =
@@ -509,7 +511,8 @@ operatorToken
   -> Position.Absolute
   -> Position.LineColumn
   -> Position.Absolute
-  -> Token
+  -> TokenList
+  -> TokenList
 operatorToken input startPosition startLineColumn position =
   Token startLineColumn (Span.Absolute startPosition position) $
     case index input startPosition of
@@ -539,10 +542,10 @@ number
   -> State
   -> Bool
   -> Integer
-  -> [Token]
+  -> TokenList
 number startPosition startLineColumn state@State {..} shouldNegate acc
   | position >= end =
-    [token]
+    token Empty
 
   | otherwise =
     case index input position of
@@ -554,7 +557,7 @@ number startPosition startLineColumn state@State {..} shouldNegate acc
           number startPosition startLineColumn state1 shouldNegate acc'
 
       _ ->
-        token : lex state
+        token $ lex state
   where
     token =
       Token startLineColumn (Span.Absolute startPosition position) $ Number $
@@ -568,10 +571,10 @@ number startPosition startLineColumn state@State {..} shouldNegate acc
 
 -------------------------------------------------------------------------------
 
-singleLineComment :: State -> [Token]
+singleLineComment :: State -> TokenList
 singleLineComment state@State {..}
   | position >= end =
-    []
+    Empty
 
   | otherwise =
     case index input position of
@@ -585,13 +588,13 @@ singleLineComment state@State {..}
     state1 =
       state { position = Position.add position 1 }
 
-multiLineComment :: State -> Int -> [Token]
+multiLineComment :: State -> Int -> TokenList
 multiLineComment state 0 =
   lex state
 
 multiLineComment state@State {..} depth
   | position >= end =
-    []
+    Empty
 
   | otherwise =
     case index input position of

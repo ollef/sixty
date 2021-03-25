@@ -21,7 +21,7 @@ import GHC.Exts hiding (toList)
 import Boxity
 import qualified Error.Parsing as Error
 import qualified Lexer
-import Lexer (Token(Token), UnspannedToken)
+import Lexer (TokenList(..), UnspannedToken)
 import qualified Literal
 import qualified Module
 import Name (Name(Name))
@@ -31,7 +31,7 @@ import qualified Position
 import qualified Surface.Syntax as Surface
 import qualified Span
 
-parseTokens :: Parser a -> [Token] -> Either Error.Parsing a
+parseTokens :: Parser a -> TokenList -> Either Error.Parsing a
 parseTokens p tokens =
   case unParser p tokens mempty (Position.LineColumn 0 0) (Position.Absolute 0) of
     OK a _ _ _ ->
@@ -43,10 +43,10 @@ parseTokens p tokens =
         , Error.expected = toList $ _expected err
         , Error.position =
           case tokens' of
-            [] ->
+            Empty ->
               Left Error.EOF
 
-            Token _ (Span.Absolute pos _) _:_ ->
+            Token _ (Span.Absolute pos _) _ _ ->
               Right pos
         }
 
@@ -77,7 +77,7 @@ expected s =
 
 newtype Parser a = Parser
   { unParser
-    :: [Token] -- input
+    :: TokenList -- input
     -> ErrorReason -- previous errors at this position
     -> Position.LineColumn -- indentation base
     -> Position.Absolute -- base position
@@ -103,13 +103,13 @@ pattern None = (# | (##) #)
 
 {-# complete Some, None #-}
 
-type Result a = (# Option a, Consumed, [Token], ErrorReason #)
+type Result a = (# Option a, Consumed, TokenList, ErrorReason #)
 type ResultRep = 'TupleRep '[ 'SumRep '[ 'LiftedRep, 'TupleRep '[]], 'SumRep '[ 'TupleRep '[], 'TupleRep '[]], 'LiftedRep, 'LiftedRep ]
 
-pattern OK :: a -> Consumed -> [Token] -> ErrorReason -> Result a
+pattern OK :: a -> Consumed -> TokenList -> ErrorReason -> Result a
 pattern OK a con inp err = (# Some a, con, inp, err #)
 
-pattern Fail :: Consumed -> [Token] -> ErrorReason -> Result a
+pattern Fail :: Consumed -> TokenList -> ErrorReason -> Result a
 pattern Fail con inp err = (# None, con, inp, err #)
 
 {-# inline consumedAtLeast #-}
@@ -252,7 +252,7 @@ notFollowedByToken token_ =
   notFollowedBy $ Lexer.displayToken token_ <$ token token_
 
 {-# inline withRecovery #-}
-withRecovery :: (ErrorReason -> Position.Absolute -> [Token] -> Parser a) -> Parser a -> Parser a
+withRecovery :: (ErrorReason -> Position.Absolute -> TokenList -> Parser a) -> Parser a -> Parser a
 withRecovery recover_ (Parser p) =
   Parser \inp err lineCol base ->
     case p inp err lineCol base of
@@ -281,10 +281,10 @@ withToken
 withToken f =
   Parser \inp err _lineCol base ->
     case inp of
-      [] ->
+      Empty ->
         Fail ConsumedNone inp $ err <> failed "Unexpected EOF"
 
-      Token _pos tokenSpan token_:inp' ->
+      Token _pos tokenSpan token_ inp' ->
         f
           (\a -> OK a ConsumedSome inp' mempty)
           (Fail ConsumedNone inp)
@@ -305,10 +305,10 @@ withIndentedToken
 withIndentedToken f =
   Parser \inp err (Position.LineColumn line col) base ->
     case inp of
-      [] ->
+      Empty ->
         Fail ConsumedNone inp $ err <> failed "Unexpected EOF"
 
-      Token (Position.LineColumn tokenLine tokenCol) tokenSpan token_:inp'
+      Token (Position.LineColumn tokenLine tokenCol) tokenSpan token_ inp'
         | line == tokenLine || col < tokenCol ->
           f
             (\a -> OK a ConsumedSome inp' mempty)
@@ -333,10 +333,10 @@ withIndentedTokenM
 withIndentedTokenM f =
   Parser \inp err lineCol@(Position.LineColumn line col) base ->
     case inp of
-      [] ->
+      Empty ->
         Fail ConsumedNone inp $ err <> failed "Unexpected EOF"
 
-      Token (Position.LineColumn tokenLine tokenCol) tokenSpan token_:inp'
+      Token (Position.LineColumn tokenLine tokenCol) tokenSpan token_ inp'
         | line == tokenLine || col < tokenCol ->
           f
             (\pa -> consumedSome (unParser pa inp' mempty lineCol base))
@@ -352,10 +352,10 @@ withIndentationBlock :: Parser a -> Parser a
 withIndentationBlock (Parser p) =
   Parser \inp err lineCol base ->
     case inp of
-      [] ->
+      Empty ->
         p inp err lineCol base
 
-      Token tokenLineCol _ _:_ ->
+      Token tokenLineCol _ _ _ ->
         p inp err tokenLineCol base
 
 {-# inline relativeTo #-}
@@ -363,10 +363,10 @@ relativeTo :: Parser a -> Parser (Position.Absolute, a)
 relativeTo (Parser p) =
   Parser \inp err lineCol _base ->
     case inp of
-      [] ->
+      Empty ->
         Fail ConsumedNone inp $ err <> failed "Unexpected EOF"
 
-      Token _ (Span.Absolute tokenStart _) _:_ ->
+      Token _ (Span.Absolute tokenStart _) _ _ ->
         mapResult (tokenStart, ) (p inp err lineCol tokenStart)
 
 {-# inline sameLevel #-}
@@ -374,10 +374,10 @@ sameLevel :: Parser a -> Parser a
 sameLevel (Parser p) =
   Parser \inp err lineCol@(Position.LineColumn _ col) base ->
     case inp of
-      [] ->
+      Empty ->
         Fail ConsumedNone inp $ err <> failed "Unexpected EOF"
 
-      Token (Position.LineColumn _ tokenCol) _ _:_
+      Token (Position.LineColumn _ tokenCol) _ _ _
         | col == tokenCol ->
           p inp err lineCol base
 
@@ -392,10 +392,10 @@ indented :: Parser a -> Parser a
 indented (Parser p) =
   Parser \inp err lineCol@(Position.LineColumn line col) base ->
     case inp of
-      [] ->
+      Empty ->
         Fail ConsumedNone inp $ err <> failed "Unexpected EOF"
 
-      Token (Position.LineColumn tokenLine tokenCol) _ _:_
+      Token (Position.LineColumn tokenLine tokenCol) _ _ _
         | line == tokenLine || col < tokenCol ->
           p inp err lineCol base
 
@@ -469,7 +469,7 @@ spannedConstructor =
 -------------------------------------------------------------------------------
 -- Error recovery
 
-recover :: (Error.Parsing -> a) -> ErrorReason -> Position.Absolute -> [Token] -> Parser a
+recover :: (Error.Parsing -> a) -> ErrorReason -> Position.Absolute -> TokenList -> Parser a
 recover k errorReason _base inp = do
   skipToBaseLevel
   pure $
@@ -481,20 +481,27 @@ recover k errorReason _base inp = do
   where
     pos =
       case inp of
-        Token _ (Span.Absolute startPos _) _:_ ->
+        Token _ (Span.Absolute startPos _) _ _ ->
           Right startPos
 
-        _ ->
+        Empty ->
           Left Error.EOF
 
 skipToBaseLevel :: Parser ()
 skipToBaseLevel =
   Parser \inp err (Position.LineColumn line col) _base ->
     case inp of
-      _:inp' ->
-        OK () ConsumedSome (dropWhile (\(Token (Position.LineColumn tokenLine tokenCol) _ _) -> line == tokenLine || col < tokenCol) inp') mempty
+      Token _ _ _ inp' -> do
+        let
+          go Empty = Empty
+          go inp''@(Token (Position.LineColumn tokenLine tokenCol) _ _ inp''')
+            | line == tokenLine || col < tokenCol =
+              go inp'''
+            | otherwise =
+              inp''
+        OK () ConsumedSome (go inp') mempty
 
-      _ ->
+      Empty ->
         Fail ConsumedNone inp $ err <> failed "Unexpected EOF"
 
 -------------------------------------------------------------------------------
@@ -561,10 +568,10 @@ recoveringTerm =
   withRecovery
     (\errorInfo base inp' -> 
       case inp' of
-        Token _ tokenSpan _:_ ->
+        Token _ tokenSpan _ _ ->
           recover (Surface.Term (Span.relativeTo base tokenSpan) . Surface.ParseError) errorInfo base inp'
 
-        _ ->
+        Empty ->
           empty
     )
     term
