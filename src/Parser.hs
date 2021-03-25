@@ -84,10 +84,14 @@ newtype Parser a = Parser
     -> Result a
   }
 
-data Consumed
-  = ConsumedNone
-  | ConsumedSome
-  deriving (Eq, Ord, Show)
+type Consumed = (# (##) | (##) #)
+
+pattern ConsumedNone :: Consumed
+pattern ConsumedNone = (# (##) | #)
+pattern ConsumedSome :: Consumed
+pattern ConsumedSome = (# | (##) #)
+
+{-# complete ConsumedNone, ConsumedSome #-}
 
 type Option a = (# a | (##) #)
 
@@ -100,7 +104,7 @@ pattern None = (# | (##) #)
 {-# complete Some, None #-}
 
 type Result a = (# Option a, Consumed, [Token], ErrorReason #)
-type ResultRep = 'TupleRep '[ 'SumRep '[ 'LiftedRep, 'TupleRep '[]], 'LiftedRep, 'LiftedRep, 'LiftedRep ]
+type ResultRep = 'TupleRep '[ 'SumRep '[ 'LiftedRep, 'TupleRep '[]], 'SumRep '[ 'TupleRep '[], 'TupleRep '[]], 'LiftedRep, 'LiftedRep ]
 
 pattern OK :: a -> Consumed -> [Token] -> ErrorReason -> Result a
 pattern OK a con inp err = (# Some a, con, inp, err #)
