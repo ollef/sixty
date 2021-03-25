@@ -1,7 +1,7 @@
 RELEASE ?= 0
 STACK := stack
-STACK_BENCH := $(STACK) bench
-STACK_TEST := $(STACK) build --test
+STACK_BENCH := $(STACK) build --bench --test --no-run-tests
+STACK_TEST := $(STACK) build --bench --test --no-run-benchmarks
 ifneq ($(RELEASE), 1)
   STACK_TEST += --fast
 endif
@@ -30,6 +30,10 @@ install-profile:
 profile-tests:
 	$(STACK_TEST) --profile
 	$(STACK) exec --package ghc-prof-flamegraph -- ghc-prof-flamegraph test-sixty.prof
+
+.PHONY: profile-bench
+bench:
+	$(STACK_BENCH)
 
 .PHONY: profile-bench
 profile-bench:
