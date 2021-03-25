@@ -251,6 +251,7 @@ notFollowedByToken :: UnspannedToken -> Parser ()
 notFollowedByToken token_ =
   notFollowedBy $ Lexer.displayToken token_ <$ token token_
 
+{-# inline withRecovery #-}
 withRecovery :: (ErrorReason -> Position.Absolute -> [Token] -> Parser a) -> Parser a -> Parser a
 withRecovery recover_ (Parser p) =
   Parser \inp err lineCol base ->
@@ -266,6 +267,7 @@ withRecovery recover_ (Parser p) =
           Fail {} ->
             f
 
+{-# inline withToken #-}
 withToken
   ::
     (forall (r :: TYPE ResultRep)
@@ -289,6 +291,7 @@ withToken f =
           (Span.relativeTo base tokenSpan)
           token_
 
+{-# inline withIndentedToken #-}
 withIndentedToken
   ::
     (forall (r :: TYPE ResultRep)
@@ -316,6 +319,7 @@ withIndentedToken f =
         | otherwise ->
           Fail ConsumedNone inp $ err <> failed "Unexpected unindent"
 
+{-# inline withIndentedTokenM #-}
 withIndentedTokenM
   ::
     (forall (r :: TYPE ResultRep)
@@ -343,6 +347,7 @@ withIndentedTokenM f =
         | otherwise ->
           Fail ConsumedNone inp $ err <> failed "Unexpected unindent"
 
+{-# inline withIndentationBlock #-}
 withIndentationBlock :: Parser a -> Parser a
 withIndentationBlock (Parser p) =
   Parser \inp err lineCol base ->
@@ -353,6 +358,7 @@ withIndentationBlock (Parser p) =
       Token tokenLineCol _ _:_ ->
         p inp err tokenLineCol base
 
+{-# inline relativeTo #-}
 relativeTo :: Parser a -> Parser (Position.Absolute, a)
 relativeTo (Parser p) =
   Parser \inp err lineCol _base ->
@@ -363,6 +369,7 @@ relativeTo (Parser p) =
       Token _ (Span.Absolute tokenStart _) _:_ ->
         mapResult (tokenStart, ) (p inp err lineCol tokenStart)
 
+{-# inline sameLevel #-}
 sameLevel :: Parser a -> Parser a
 sameLevel (Parser p) =
   Parser \inp err lineCol@(Position.LineColumn _ col) base ->
@@ -380,6 +387,7 @@ sameLevel (Parser p) =
         | otherwise ->
           Fail ConsumedNone inp $ err <> failed "Unexpected indent"
 
+{-# inline indented #-}
 indented :: Parser a -> Parser a
 indented (Parser p) =
   Parser \inp err lineCol@(Position.LineColumn line col) base ->
@@ -394,21 +402,25 @@ indented (Parser p) =
         | otherwise ->
           Fail ConsumedNone inp $ err <> failed "Unexpected unindent"
 
+{-# inline someSame #-}
 -- | One or more at the same indentation level.
 someSame :: Parser a -> Parser [a]
 someSame p =
   some (sameLevel $ withIndentationBlock p)
 
+{-# inline manySame #-}
 -- | Zero or more at the same indentation level.
 manySame :: Parser a -> Parser [a]
 manySame p =
   many (sameLevel $ withIndentationBlock p)
 
+{-# inline blockOfMany #-}
 blockOfMany :: Parser a -> Parser [a]
 blockOfMany p =
   indented (withIndentationBlock $ someSame p)
   <|> pure []
 
+{-# inline token #-}
 token :: UnspannedToken -> Parser Span.Relative
 token t =
   withIndentedToken $ \continue break span t' ->
@@ -418,6 +430,7 @@ token t =
     else
       break $ expected $ "'" <> Lexer.displayToken t <> "'"
 
+{-# inline uncheckedToken #-}
 uncheckedToken :: UnspannedToken -> Parser Span.Relative
 uncheckedToken t =
   withToken $ \continue break span t' ->
@@ -427,6 +440,7 @@ uncheckedToken t =
     else
       break $ expected $ "'" <> Lexer.displayToken t <> "'"
 
+{-# inline spannedIdentifier #-}
 spannedIdentifier :: Parser (Span.Relative, Text)
 spannedIdentifier =
   withIndentedToken $ \continue break span token_ ->
@@ -437,14 +451,17 @@ spannedIdentifier =
       _ ->
         break $ expected "identifier"
 
+{-# inline spannedModuleName #-}
 spannedModuleName :: Parser (Span.Relative, Name.Module)
 spannedModuleName =
   second Name.Module <$> spannedIdentifier
 
+{-# inline spannedName #-}
 spannedName :: Parser Surface.SpannedName
 spannedName =
   uncurry Surface.SpannedName . second Name.Surface <$> spannedIdentifier
 
+{-# inline spannedConstructor #-}
 spannedConstructor :: Parser (Span.Relative, Name.Constructor)
 spannedConstructor =
   second Name.Constructor <$> spannedIdentifier
