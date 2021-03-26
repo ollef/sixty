@@ -565,7 +565,7 @@ plicitPattern =
 recoveringTerm :: Parser Surface.Term
 recoveringTerm =
   withRecovery
-    (\errorInfo base inp' -> 
+    (\errorInfo base inp' ->
       case inp' of
         Token _ tokenSpan _ _ ->
           recover (Surface.Term (Span.relativeTo base tokenSpan) . Surface.ParseError) errorInfo base inp'
