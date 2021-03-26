@@ -324,7 +324,7 @@ withIndentedTokenM
   ::
     (forall (r :: TYPE ResultRep)
     . (Parser a -> r)
-    -> r
+    -> (ErrorReason -> r)
     -> Span.Relative
     -> UnspannedToken
     -> r
@@ -340,7 +340,7 @@ withIndentedTokenM f =
         | line == tokenLine || col < tokenCol ->
           f
             (\pa -> consumedSome (unParser pa inp' mempty lineCol base))
-            (Fail ConsumedNone inp err)
+            (\err' -> Fail ConsumedNone inp $ err <> err')
             (Span.relativeTo base tokenSpan)
             token_
 
@@ -509,29 +509,28 @@ skipToBaseLevel =
 
 atomicPattern :: Parser Surface.Pattern
 atomicPattern =
-  (<?> "pattern") $
-    withIndentedTokenM \continue break span token_ ->
-      case token_ of
-        Lexer.LeftParen ->
-          continue $ pattern_ <* token Lexer.RightParen
+  withIndentedTokenM \continue break span token_ ->
+    case token_ of
+      Lexer.LeftParen ->
+        continue $ pattern_ <* token Lexer.RightParen
 
-        Lexer.QuestionMark ->
-          continue $ pure $ Surface.Pattern span $ Surface.ConOrVar (Surface.SpannedName span "?") mempty
+      Lexer.QuestionMark ->
+        continue $ pure $ Surface.Pattern span $ Surface.ConOrVar (Surface.SpannedName span "?") mempty
 
-        Lexer.Underscore ->
-          continue $ pure $ Surface.Pattern span Surface.WildcardPattern
+      Lexer.Underscore ->
+        continue $ pure $ Surface.Pattern span Surface.WildcardPattern
 
-        Lexer.Forced ->
-          continue $ (\term_@(Surface.Term termSpan _) -> Surface.Pattern termSpan $ Surface.Forced term_) <$> atomicTerm
+      Lexer.Forced ->
+        continue $ (\term_@(Surface.Term termSpan _) -> Surface.Pattern (Span.add span termSpan) $ Surface.Forced term_) <$> atomicTerm
 
-        Lexer.Identifier name_ ->
-          continue $ pure $ Surface.Pattern span $ Surface.ConOrVar (Surface.SpannedName span $ Name.Surface name_) mempty
+      Lexer.Identifier name_ ->
+        continue $ pure $ Surface.Pattern span $ Surface.ConOrVar (Surface.SpannedName span $ Name.Surface name_) mempty
 
-        Lexer.Number int ->
-          continue $ pure $ Surface.Pattern span $ Surface.LitPattern $ Literal.Integer int
+      Lexer.Number int ->
+        continue $ pure $ Surface.Pattern span $ Surface.LitPattern $ Literal.Integer int
 
-        _ ->
-          break
+      _ ->
+        break $ expected "pattern"
 
 pattern_ :: Parser Surface.Pattern
 pattern_ =
@@ -578,46 +577,45 @@ recoveringTerm =
 
 atomicTerm :: Parser Surface.Term
 atomicTerm =
-  (<?> "term") $
-    withIndentedTokenM $ \continue break span token_ ->
-      case token_ of
-        Lexer.LeftParen ->
-          continue $ term <* token Lexer.RightParen
+  withIndentedTokenM $ \continue break span token_ ->
+    case token_ of
+      Lexer.LeftParen ->
+        continue $ term <* token Lexer.RightParen
 
-        Lexer.Let ->
-          continue $ Surface.lets span <$> blockOfMany let_ <* token Lexer.In <*> term
+      Lexer.Let ->
+        continue $ Surface.lets span <$> blockOfMany let_ <* token Lexer.In <*> term
 
-        Lexer.Underscore ->
-          continue $ pure $ Surface.Term span Surface.Wildcard
+      Lexer.Underscore ->
+        continue $ pure $ Surface.Term span Surface.Wildcard
 
-        Lexer.QuestionMark ->
-          continue $ pure $ Surface.Term span Surface.Wildcard
+      Lexer.QuestionMark ->
+        continue $ pure $ Surface.Term span Surface.Wildcard
 
-        Lexer.Identifier ident ->
-          continue $ pure $ Surface.Term span $ Surface.Var $ Name.Surface ident
+      Lexer.Identifier ident ->
+        continue $ pure $ Surface.Term span $ Surface.Var $ Name.Surface ident
 
-        Lexer.Case ->
-          continue $
-            Surface.case_ span <$> term <*> token Lexer.Of <*> blockOfMany branch
+      Lexer.Case ->
+        continue $
+          Surface.case_ span <$> term <*> token Lexer.Of <*> blockOfMany branch
 
-        Lexer.Lambda ->
-          continue $
-            Surface.lams span <$> some plicitPattern <* token Lexer.Dot <*> term
+      Lexer.Lambda ->
+        continue $
+          Surface.lams span <$> some plicitPattern <* token Lexer.Dot <*> term
 
-        Lexer.Forall ->
-          continue $
-            Surface.implicitPis span <$>
-              some
-                ( (,,) <$> token Lexer.LeftParen <*> some spannedName <* token Lexer.Colon <*> term <* token Lexer.RightParen
-                <|> (\spannedName_@(Surface.SpannedName span_ _) -> (span_, [spannedName_], Surface.Term span_ Surface.Wildcard)) <$> spannedName
-                )
-                <* token Lexer.Dot <*> term
+      Lexer.Forall ->
+        continue $
+          Surface.implicitPis span <$>
+            some
+              ( (,,) <$> token Lexer.LeftParen <*> some spannedName <* token Lexer.Colon <*> term <* token Lexer.RightParen
+              <|> (\spannedName_@(Surface.SpannedName span_ _) -> (span_, [spannedName_], Surface.Term span_ Surface.Wildcard)) <$> spannedName
+              )
+              <* token Lexer.Dot <*> term
 
-        Lexer.Number int ->
-          continue $ pure $ Surface.Term span $ Surface.Lit $ Literal.Integer int
+      Lexer.Number int ->
+        continue $ pure $ Surface.Term span $ Surface.Lit $ Literal.Integer int
 
-        _ ->
-          break
+      _ ->
+        break $ expected "term"
   where
     branch :: Parser (Surface.Pattern, Surface.Term)
     branch =
