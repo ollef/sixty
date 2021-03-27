@@ -106,7 +106,7 @@ makeVar :: Environment v -> Var -> Value
 makeVar env var =
   Value (Var var) $
     IntSet.singleton var <>
-    foldMap occurrences (Environment.lookupVarValue var env)
+    foldMap (occurrences . snd) (Environment.lookupVarValue var env)
 
 makeGlobal :: Name.Lifted -> Value
 makeGlobal global =
@@ -187,19 +187,32 @@ emptyState =
 
 type Lift = StateT LiftState M
 
-type Environment = Environment.Environment Type
+type Environment = Environment.Environment (Maybe Value, Type)
 
 extend :: Environment v -> Type -> Lift (Environment (Index.Succ v), Var)
 extend env type_ =
-  lift $ Environment.extendValue env type_
+  lift $ Environment.extendValue env (Nothing, type_)
+
+extendValue :: Environment v -> Value -> Type -> Lift (Environment (Index.Succ v), Var)
+extendValue env value type_ =
+  lift $ Environment.extendValue env (Just value, type_)
 
 -------------------------------------------------------------------------------
 
 evaluate :: Environment v -> Syntax.Term v -> [(Plicity, Syntax.Term v)] -> Lift Value
 evaluate env term args =
   case term of
-    Syntax.Var index ->
-      applyArgs $ pure $ makeVar env $ Environment.lookupIndexVar index env
+    Syntax.Var index -> do
+      let
+        var =
+          Environment.lookupIndexVar index env
+      applyArgs $
+        case Environment.lookupVarValue var env of
+          Just (Just value, _) ->
+            pure value
+
+          _ ->
+            pure $ makeVar env $ Environment.lookupIndexVar index env
 
     Syntax.Global global ->
       applyArgs $ pure $ makeGlobal $ Name.Lifted global 0
@@ -418,7 +431,7 @@ liftLambda env term = do
       acyclic <$>
         topoSortWith
           identity
-          (\var -> IntSet.toList $ foldMap occurrences $ Environment.lookupVarValue var env)
+          (\var -> IntSet.toList $ foldMap (occurrences . snd) $ Environment.lookupVarValue var env)
           (IntSet.toList occs)
 
     occurrenceTele =
@@ -426,7 +439,7 @@ liftLambda env term = do
       | var <- sortedOccs
       , let
           type_ =
-            fromMaybe (panic "liftLambda no type") $ Environment.lookupVarValue var env
+            snd $ fromMaybe (panic "liftLambda no type") $ Environment.lookupVarValue var env
       ]
 
     emptyEnv =
