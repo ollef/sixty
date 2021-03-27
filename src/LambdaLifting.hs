@@ -281,15 +281,24 @@ evaluate env term args =
       pure $ makeApps result args'
 
 evaluateLets :: Environment v -> Syntax.Lets v -> Lift Value
-evaluateLets =
-  panic "TODO lambda lifting lets not yet supported"
-  -- Syntax.Let bindings value type_ body ->
-  --     type' <- evaluate env type_ []
-  --     (env', var) <- extend env type'
-  --     makeLet (Bindings.toName bindings) var <$>
-  --       evaluate env value [] <*>
-  --       pure type' <*>
-  --       evaluate env' body []
+evaluateLets env lets =
+  case lets of
+    Syntax.LetType _binding type_ (Syntax.Let bindings Index.Zero term lets') -> do
+      type' <- evaluate env type_ []
+      (env', var) <- extend env type'
+      makeLet (Bindings.toName bindings) var <$>
+        evaluate env' term [] <*>
+        pure type' <*>
+        evaluateLets env' lets'
+
+    Syntax.In body ->
+      evaluate env body []
+
+    _ ->
+      panic "TODO lambda lifting mutually recursive lets not yet supported"
+      -- * Sort definitions by dependency
+      -- * Make values in recursive groups functions from unit
+      -- * Lambda lift
 
 
 saturatedConstructorApp
