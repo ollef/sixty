@@ -12,6 +12,7 @@ module Lexer
 
 import Protolude hiding (State, state, ord)
 
+
 import qualified Data.Char as Char
 import Data.Coerce
 import qualified Data.Text.Array as Array

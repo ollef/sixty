@@ -74,11 +74,13 @@ library:
     - template-haskell
     - temporary
     - text
+    - th-lift-instances
     - time
     - transformers
     - transformers-base
     - unboxed-ref
     - unordered-containers
+    - vector
 
 executables:
   sixty:
@@ -111,6 +113,7 @@ benchmarks:
     main: Main.hs
     source-dirs: benchmarks/parser
     dependencies:
+      - bytestring
       - directory
       - filepath
       - prettyprinter

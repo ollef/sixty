@@ -5,6 +5,8 @@ import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
 import qualified Gauge
 import qualified Lexer
+import qualified Lexer2
+import qualified Data.ByteString as ByteString
 import qualified Parser
 import Protolude
 import System.Directory
@@ -18,15 +20,18 @@ main = do
   multiFiles <- listDirectoriesWithFilesMatching isSourceFile multisDirectory
   let
     files =
-      singleFiles <> concatMap snd multiFiles
-      -- ["lol.vix"]
+      -- singleFiles <> concatMap snd multiFiles
+      ["lol.vix"]
   Gauge.defaultMain
     [ Gauge.BenchGroup file
       [ -- Gauge.bench "read file" $ Gauge.nfAppIO readFile file
-      -- , Gauge.env (readFile file) $ Gauge.bench "lex" . Gauge.nf Lexer.lexText
+      -- ,
+      Gauge.env (ByteString.readFile file) $ Gauge.bench "lex2" . Gauge.nf Lexer2.lexByteString
+        ,
+      Gauge.env (readFile file) $ Gauge.bench "lex" . Gauge.nf Lexer.lexText
       -- , Gauge.env (Lexer.lexText <$> readFile file) $ Gauge.bench "parse" . Gauge.whnf (Parser.parseTokens Parser.module_)
       -- ,
-      Gauge.env (readFile file) $ Gauge.bench "parse and lex" . Gauge.whnf (Parser.parseTokens Parser.module_ . Lexer.lexText)
+      -- Gauge.env (readFile file) $ Gauge.bench "parse and lex" . Gauge.whnf (Parser.parseTokens Parser.module_ . Lexer.lexText)
       ]
     | file <- files
     ]
