@@ -1,32 +1,32 @@
 {-# language TemplateHaskell #-}
+{-# language MagicHash #-}
 {-# language OverloadedStrings #-}
 module Lexer2.Tables where
 
-import Data.Vector.Unboxed (Vector)
-import qualified Data.Vector.Unboxed as Vector
-import GHC.Exts
 import Instances.TH.Lift ()
-import Language.Haskell.TH.Syntax
+import Language.Haskell.TH.Lib
+import GHC.Exts
 import Lexer2.Class
+import qualified Lexer2.ByteString as ByteString
 import Lexer2.State
 import Protolude hiding (State, state, length, lift)
 
-newlineMultiplierTable :: Vector Int
-newlineMultiplierTable =
-  $(lift
-  (
-  (Vector.generate (fromIntegral $ unpremultipliedClass $ premultiply ClassCount) $ \pc ->
-    case unpremultiply $ PremultipliedClass $ fromIntegral pc of
-      NewlineClass -> 1
-      _ -> 0
-  ) :: Vector Int
-  ))
+newlineMultiplierTable :: Int -> Word#
+newlineMultiplierTable (I# off) =
+  indexWord8OffAddr#
+    $(litE $ bytesPrimL $ ByteString.bytesFromByteString $
+    ByteString.generate (fromIntegral $ unpremultipliedClass $ premultiply ClassCount) $ \pc ->
+      case unpremultiply $ PremultipliedClass $ fromIntegral pc of
+        NewlineClass -> 1
+        _ -> 0
+     )
+     off
 
-tokenLengthMultiplierTable :: Vector Int
-tokenLengthMultiplierTable =
-  $(lift
-    (
-      (Vector.generate (fromIntegral $ unstate StateCount) $ \s -> case State $ fromIntegral s of
+tokenLengthMultiplierTable :: Int -> Word#
+tokenLengthMultiplierTable (I# off) =
+  indexWord8OffAddr#
+    $(litE $ bytesPrimL $ ByteString.bytesFromByteString $
+      ByteString.generate (fromIntegral $ unstate StateCount) $ \s -> case State $ fromIntegral s of
         InitialState -> 0
         IdentifierState -> 1
         IdentifierDotState -> 1
@@ -50,16 +50,14 @@ tokenLengthMultiplierTable =
         ErrorDone -> 0
         EndOfFileDone -> 0
         _ -> panic $ " tokenLengthShouldIncreaseTable: no such state " <> show s
-      )
-     :: Vector Int
     )
-  )
+  off
 
-nextStateTable :: Vector Word8
-nextStateTable =
-  $(lift
-    (
-    (Vector.generate (fromIntegral $ unstate StateCount * unclass ClassCount) $ \i -> do
+nextStateTable :: Int -> Word#
+nextStateTable (I# off) =
+  indexWord8OffAddr#
+  $(litE $ bytesPrimL $ ByteString.bytesFromByteString $
+    ByteString.generate (fromIntegral $ unstate StateCount * unclass ClassCount) $ \i -> do
       let
         (class_, state) =
           unpremultiplyClassState $ PremultipliedClassState $ fromIntegral i
@@ -147,54 +145,53 @@ nextStateTable =
 
           _ ->
             panic $ "stateTable: no such state " <> show state
-    ) :: Vector Word8
     )
+  off
+
+classify1Table :: Int -> Word#
+classify1Table (I# off) =
+  indexWord8OffAddr#
+  $(litE $ bytesPrimL $ ByteString.bytesFromByteString $
+    ByteString.generate 128 $ \c -> unpremultipliedClass $ premultiply $
+      case c of
+        0 -> EndOfFileClass
+        _ ->
+          case chr c of
+            _ | ord 'a' <= c && c <= ord 'z' -> AlphaClass
+            _ | ord 'A' <= c && c <= ord 'Z' -> AlphaClass
+            '_' -> AlphaClass
+            _ | ord '0' <= c && c <= ord '9' -> NumericClass
+            '.' -> DotClass
+            '\n' -> NewlineClass
+            ' ' -> WhitespaceClass
+            '\t' -> WhitespaceClass
+            '-' -> MinusClass
+            '\'' -> PrimeClass
+            '!' -> OperatorClass
+            '#' -> OperatorClass
+            '$' -> OperatorClass
+            '%' -> OperatorClass
+            '&' -> OperatorClass
+            '*' -> OperatorClass
+            '+' -> OperatorClass
+            ',' -> OperatorClass
+            '/' -> OperatorClass
+            ':' -> OperatorClass
+            ';' -> OperatorClass
+            '<' -> OperatorClass
+            '=' -> OperatorClass
+            '>' -> OperatorClass
+            '?' -> OperatorClass
+            '@' -> OperatorClass
+            '\\' -> OperatorClass
+            '^' -> OperatorClass
+            '`' -> OperatorClass
+            '|' -> OperatorClass
+            '~' -> OperatorClass
+            '(' -> LeftParenClass
+            ')' -> RightParenClass
+            '{' -> LeftBraceClass
+            '}' -> RightBraceClass
+            _ -> ErrorClass
   )
-
-classify1Table :: Vector Word8
-classify1Table =
-  $(lift ((
-  Vector.generate 128 $ \c -> unpremultipliedClass $ premultiply $
-    case c of
-      0 -> EndOfFileClass
-      _ ->
-        case chr c of
-          _ | ord 'a' <= c && c <= ord 'z' -> AlphaClass
-          _ | ord 'A' <= c && c <= ord 'Z' -> AlphaClass
-          '_' -> AlphaClass
-          _ | ord '0' <= c && c <= ord '9' -> NumericClass
-          '.' -> DotClass
-          '\n' -> NewlineClass
-          ' ' -> WhitespaceClass
-          '\t' -> WhitespaceClass
-          '-' -> MinusClass
-          '\'' -> PrimeClass
-          '!' -> OperatorClass
-          '#' -> OperatorClass
-          '$' -> OperatorClass
-          '%' -> OperatorClass
-          '&' -> OperatorClass
-          '*' -> OperatorClass
-          '+' -> OperatorClass
-          ',' -> OperatorClass
-          '/' -> OperatorClass
-          ':' -> OperatorClass
-          ';' -> OperatorClass
-          '<' -> OperatorClass
-          '=' -> OperatorClass
-          '>' -> OperatorClass
-          '?' -> OperatorClass
-          '@' -> OperatorClass
-          '\\' -> OperatorClass
-          '^' -> OperatorClass
-          '`' -> OperatorClass
-          '|' -> OperatorClass
-          '~' -> OperatorClass
-          '(' -> LeftParenClass
-          ')' -> RightParenClass
-          '{' -> LeftBraceClass
-          '}' -> RightBraceClass
-          _ -> ErrorClass
-
-  ) :: Vector Word8
-         ))
+  off

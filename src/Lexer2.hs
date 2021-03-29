@@ -14,16 +14,15 @@ module Lexer2 where
 import qualified Data.ByteString as ByteString
 import qualified Data.ByteString.Internal as ByteString
 import qualified Data.Char as Char
-import qualified Data.Vector.Unboxed as Vector
 import GHC.Exts
 import GHC.ForeignPtr (ForeignPtr(..))
+import Lexer2.Class
+import Lexer2.State
+import Lexer2.Tables
 import qualified Position
 import Protolude hiding (State, state, length)
 import qualified Span
 import UTF8
-import Lexer2.State
-import Lexer2.Class
-import Lexer2.Tables
 
 data TokenList
   = Empty
@@ -63,8 +62,9 @@ data Token
   deriving (Eq, Show, Generic, NFData)
 
 lexByteString :: ByteString -> TokenList
-lexByteString bs =
-  lexNullTerminatedByteString $ bs <> "\0"
+lexByteString bs
+  | ByteString.length bs > 0 && ByteString.last bs == 0 = lexNullTerminatedByteString bs
+  | otherwise = lexNullTerminatedByteString $ bs <> "\0"
 
 lexNullTerminatedByteString :: ByteString -> TokenList
 lexNullTerminatedByteString (ByteString.PS source@(ForeignPtr sourceAddress _) (I# offset) _) =
@@ -151,18 +151,20 @@ toByteString source@(ForeignPtr sourceAddress _) endPosition length@(I# length_)
     startPosition =
       I# (sourceAddress `minusAddr#` (endPosition `plusAddr#` negateInt# length_))
 
+{-# inline tokenLengthMultiplier #-}
 tokenLengthMultiplier :: State -> Int
 tokenLengthMultiplier s =
-  tokenLengthMultiplierTable `Vector.unsafeIndex` fromIntegral (unstate s)
+  fromIntegral $ W# (tokenLengthMultiplierTable $ fromIntegral (unstate s))
 
+{-# inline newlineMultiplier #-}
 newlineMultiplier :: PremultipliedClass -> Int
 newlineMultiplier c =
-  newlineMultiplierTable `Vector.unsafeIndex` fromIntegral (unpremultipliedClass c)
+  fromIntegral $ W# (newlineMultiplierTable $ fromIntegral (unpremultipliedClass c))
 
 {-# inline nextState #-}
 nextState :: PremultipliedClassState -> State
 nextState (PremultipliedClassState cs) =
-  State $ nextStateTable `Vector.unsafeIndex` fromIntegral cs
+  State $ fromIntegral $ W# (nextStateTable $ fromIntegral cs)
 
 {-# inline classify #-}
 classify :: Addr# -> (# PremultipliedClass, Int# #)
@@ -188,7 +190,7 @@ classify position = do
 
 {-# inline classify1 #-}
 classify1 :: Char# -> PremultipliedClass
-classify1 c = PremultipliedClass $ classify1Table `Vector.unsafeIndex` ord (C# c)
+classify1 c = PremultipliedClass $ fromIntegral $ W# (classify1Table $ ord (C# c))
 
 {-# inline classifyChar #-}
 classifyChar :: Char -> PremultipliedClass

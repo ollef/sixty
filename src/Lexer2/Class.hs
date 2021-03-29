@@ -10,6 +10,7 @@ newtype Class = Class { unclass :: Word8 }
   deriving Show
 
 newtype PremultipliedClass = PremultipliedClass { unpremultipliedClass :: Word8 }
+  deriving Eq
 
 {-# inline premultiply #-}
 premultiply :: Class -> PremultipliedClass
