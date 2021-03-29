@@ -13,25 +13,27 @@ module Lexer2 where
 
 import qualified Data.ByteString as ByteString
 import qualified Data.ByteString.Internal as ByteString
-import qualified Data.Char as Char
 import GHC.Exts
 import GHC.ForeignPtr (ForeignPtr(..))
-import Lexer2.Class
+import Lexer2.Classification
 import Lexer2.State
-import Lexer2.Tables
+import Lexer2.Transition
 import qualified Position
 import Protolude hiding (State, state, length)
 import qualified Span
-import UTF8
 
 data TokenList
   = Empty
-  | Token !Position.LineColumn !Span.Absolute !Token TokenList
+  | Token !Token_ !Position.LineColumn !ByteString TokenList
   deriving (Show, Generic, NFData)
+
+newtype Token_ = Token_ Int
+  deriving (Show, Generic)
+  deriving newtype NFData
 
 data Token
   -- Identifiers
-  = Identifier !ByteString
+  = Identifier
   -- Reserved identifiers
   | Let
   | In
@@ -42,7 +44,7 @@ data Token
   | Of
   | Underscore
   -- Operators
-  | Operator !ByteString
+  | Operator
   -- Reserved operators
   | Equals
   | Dot
@@ -52,14 +54,18 @@ data Token
   | QuestionMark
   | Forced
   -- Special
-  | Number !Integer
+  | Number
   | Lambda
   | LeftParen
   | RightParen
   | LeftImplicitBrace
   | RightImplicitBrace
   | Error
-  deriving (Eq, Show, Generic, NFData)
+  deriving (Enum, Eq, Show, Generic, NFData)
+
+tokenSpan :: ByteString -> Span.Absolute
+tokenSpan (ByteString.PS _ offset length) =
+  Span.Absolute (Position.Absolute offset) (Position.Absolute $ offset + length)
 
 lexByteString :: ByteString -> TokenList
 lexByteString bs
@@ -67,8 +73,8 @@ lexByteString bs
   | otherwise = lexNullTerminatedByteString $ bs <> "\0"
 
 lexNullTerminatedByteString :: ByteString -> TokenList
-lexNullTerminatedByteString (ByteString.PS source@(ForeignPtr sourceAddress _) (I# offset) _) =
-  lex source (sourceAddress `plusAddr#` offset)
+lexNullTerminatedByteString (ByteString.PS source@(ForeignPtr sourceAddress _) 0 _) = lex source sourceAddress
+lexNullTerminatedByteString bs@(ByteString.PS _ (I# _offset) _) = lexNullTerminatedByteString $ ByteString.copy bs
 
 lex :: ForeignPtr Word8 -> Addr# -> TokenList
 lex !source = do
@@ -79,13 +85,13 @@ lex !source = do
         !(# premultipliedClass, units #) = classify position
         state' = nextState $ premultipliedClassState premultipliedClass state
       case state' of
-        NumberDone -> token number source position tokenLength line column $ go 0 line column InitialState position
+        NumberDone -> token Number source position tokenLength line column $ go 0 line column InitialState position
         IdentifierDone -> token Identifier source position tokenLength line column $ go 0 line column InitialState position
         IdentifierDotDone -> identifierDot source position tokenLength line column $ go 0 line column InitialState position
         OperatorDone -> token Operator source position tokenLength line column $ go 0 line column InitialState position
-        LeftParenDone -> token_ LeftParen source position tokenLength line column $ go 0 line column InitialState position
-        RightParenDone -> token_ RightParen source position tokenLength line column $ go 0 line column InitialState position
-        ErrorDone -> token_ Error source position tokenLength line column $ go 0 line column InitialState position
+        LeftParenDone -> token LeftParen source position tokenLength line column $ go 0 line column InitialState position
+        RightParenDone -> token RightParen source position tokenLength line column $ go 0 line column InitialState position
+        ErrorDone -> token Error source position tokenLength line column $ go 0 line column InitialState position
         EndOfFileDone -> Empty
         _ -> do
           let
@@ -97,34 +103,34 @@ lex !source = do
           go tokenLength' line' column' state' position'
 
 {-# inline token #-}
-token :: (ByteString -> Token) -> ForeignPtr Word8 -> Addr# -> Int -> Int -> Int -> TokenList -> TokenList
-token makeToken source@(ForeignPtr sourceAddress _) position length line column =
+token :: Token -> ForeignPtr Word8 -> Addr# -> Int -> Int -> Int -> TokenList -> TokenList
+token tok source@(ForeignPtr sourceAddress _) position length line column =
   Token
+    (Token_ $ fromEnum tok)
     (Position.LineColumn line (column - length))
-    (Span.Absolute (Position.Absolute startPosition) (Position.Absolute endPosition))
-    (makeToken $ ByteString.PS source startPosition length)
+    (ByteString.PS source startPosition length)
   where
     endPosition =
       I# (position `minusAddr#` sourceAddress)
     startPosition =
       endPosition - length
 
-{-# inline token_ #-}
-token_ :: Token -> ForeignPtr Word8 -> Addr# -> Int -> Int -> Int -> TokenList -> TokenList
-token_ makeToken (ForeignPtr sourceAddress _) position length line column =
-  Token
-    (Position.LineColumn line (column - length))
-    (Span.Absolute (Position.Absolute startPosition) (Position.Absolute endPosition))
-    makeToken
-  where
-    endPosition =
-      I# (position `minusAddr#` sourceAddress)
-    startPosition =
-      endPosition - length
+{-# inline identifierDot #-}
+identifierDot :: ForeignPtr Word8 -> Addr# -> Int -> Int -> Int -> TokenList -> TokenList
+identifierDot source position length line column =
+  token Identifier source (position `plusAddr#` -1#) (length - 1) line (column - 1) .
+  token Dot source position 1 line column
 
-number :: ByteString -> Token
-number =
-  Number . go 0
+toByteString :: ForeignPtr Word8 -> Addr# -> Int -> ByteString
+toByteString source@(ForeignPtr sourceAddress _) endPosition length@(I# length_) =
+  ByteString.PS source startPosition length
+  where
+    startPosition =
+      I# (sourceAddress `minusAddr#` (endPosition `plusAddr#` negateInt# length_))
+
+parseNumber :: ByteString -> Integer
+parseNumber =
+  go 0
   where
     go :: Integer -> ByteString -> Integer
     go !acc bs =
@@ -138,65 +144,3 @@ number =
 
           | otherwise ->
             go (acc * 10 + fromIntegral b - fromIntegral (ord '0')) bs'
-
-{-# inline identifierDot #-}
-identifierDot :: ForeignPtr Word8 -> Addr# -> Int -> Int -> Int -> TokenList -> TokenList
-identifierDot source position length line column =
-  token Identifier source (position `plusAddr#` -1#) (length - 1) line (column - 1) .
-  token_ Dot source position 1 line column
-
-toByteString :: ForeignPtr Word8 -> Addr# -> Int -> ByteString
-toByteString source@(ForeignPtr sourceAddress _) endPosition length@(I# length_) =
-  ByteString.PS source startPosition length
-  where
-    startPosition =
-      I# (sourceAddress `minusAddr#` (endPosition `plusAddr#` negateInt# length_))
-
-{-# inline tokenLengthMultiplier #-}
-tokenLengthMultiplier :: State -> Int
-tokenLengthMultiplier s =
-  fromIntegral $ W# (tokenLengthMultiplierTable $ fromIntegral (unstate s))
-
-{-# inline newlineMultiplier #-}
-newlineMultiplier :: PremultipliedClass -> Int
-newlineMultiplier c =
-  fromIntegral $ W# (newlineMultiplierTable $ fromIntegral (unpremultipliedClass c))
-
-{-# inline nextState #-}
-nextState :: PremultipliedClassState -> State
-nextState (PremultipliedClassState cs) =
-  State $ fromIntegral $ W# (nextStateTable $ fromIntegral cs)
-
-{-# inline classify #-}
-classify :: Addr# -> (# PremultipliedClass, Int# #)
-classify position = do
-  let
-    c1 = indexCharOffAddr# position 0#
-  if UTF8.validate1 c1 then
-    (# classify1 c1, 1# #)
-  else do
-    let
-      c2 = indexCharOffAddr# position 1#
-    if UTF8.validate2 c1 then
-      (# classifyChar $ UTF8.chr2 c1 c2, 2# #)
-    else do
-      let
-        c3 = indexCharOffAddr# position 2#
-      if UTF8.validate3 c1 then
-        (# classifyChar $ UTF8.chr3 c1 c2 c3, 3# #)
-      else do
-        let
-          c4 = indexCharOffAddr# position 3#
-        (# classifyChar $ UTF8.chr4 c1 c2 c3 c4, 4# #)
-
-{-# inline classify1 #-}
-classify1 :: Char# -> PremultipliedClass
-classify1 c = PremultipliedClass $ fromIntegral $ W# (classify1Table $ ord (C# c))
-
-{-# inline classifyChar #-}
-classifyChar :: Char -> PremultipliedClass
-classifyChar c
-  | Char.isAlphaNum c = premultiply AlphaClass
-  | Char.isSymbol c = premultiply OperatorClass
-  | Char.isPunctuation c = premultiply OperatorClass
-  | otherwise = premultiply ErrorClass

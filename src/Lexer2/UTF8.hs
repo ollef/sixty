@@ -1,5 +1,5 @@
 {-# language MagicHash #-}
-module UTF8 where
+module Lexer2.UTF8 where
 
 import GHC.Exts
 import Protolude

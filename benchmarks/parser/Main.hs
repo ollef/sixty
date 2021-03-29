@@ -29,9 +29,9 @@ main = do
       Gauge.env (ByteString.readFile file) $ Gauge.bench "lex2" . Gauge.nf Lexer2.lexByteString
         ,
       Gauge.env (readFile file) $ Gauge.bench "lex" . Gauge.nf Lexer.lexText
-      -- , Gauge.env (Lexer.lexText <$> readFile file) $ Gauge.bench "parse" . Gauge.whnf (Parser.parseTokens Parser.module_)
-      -- ,
-      -- Gauge.env (readFile file) $ Gauge.bench "parse and lex" . Gauge.whnf (Parser.parseTokens Parser.module_ . Lexer.lexText)
+      , Gauge.env (Lexer.lexText <$> readFile file) $ Gauge.bench "parse" . Gauge.whnf (Parser.parseTokens Parser.module_)
+      ,
+      Gauge.env (readFile file) $ Gauge.bench "parse and lex" . Gauge.whnf (Parser.parseTokens Parser.module_ . Lexer.lexText)
       ]
     | file <- files
     ]
