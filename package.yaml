@@ -80,7 +80,6 @@ library:
     - transformers-base
     - unboxed-ref
     - unordered-containers
-    - vector
 
 executables:
   sixty:

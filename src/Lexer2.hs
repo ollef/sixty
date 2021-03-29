@@ -29,6 +29,13 @@ data TokenList
   | Token !Position.LineColumn !Span.Absolute !Token !TokenList
   deriving (Show, Generic, NFData)
 
+reverseTokenList :: TokenList -> TokenList
+reverseTokenList =
+  go Empty
+  where
+    go !acc Empty = acc
+    go !acc (Token lineColumn span tok rest) = go (Token lineColumn span tok acc) rest
+
 data Token
   -- Identifiers
   = Identifier !ByteString
@@ -68,32 +75,33 @@ lexByteString bs
 
 lexNullTerminatedByteString :: ByteString -> TokenList
 lexNullTerminatedByteString (ByteString.PS source@(ForeignPtr sourceAddress _) (I# offset) _) =
-  lex source (sourceAddress `plusAddr#` offset) 0 0 0 InitialState
+  reverseTokenList $ lex source (sourceAddress `plusAddr#` offset)
 
-lex :: ForeignPtr Word8 -> Addr# -> Int -> Int -> Int -> State -> TokenList
-lex !source !position !tokenLength !line !column !state = do
-  let
-    !(# premultipliedClass, units #) = classify position
-    state' = nextState $ premultipliedClassState premultipliedClass state
-  if state' < FirstDone then do
-    let
-      position' = position `plusAddr#` units
-      tokenLength' = tokenLengthMultiplier state' * (tokenLength + I# units)
-      newlineMultiplier_ = newlineMultiplier premultipliedClass
-      line' = line + newlineMultiplier_
-      column' = (column + I# units) * (1 - newlineMultiplier_)
-    lex source position' tokenLength' line' column' state'
-  else
-    case state' of
-      NumberDone -> token number source position tokenLength line column $ lex source position 0 line column InitialState
-      IdentifierDone -> token Identifier source position tokenLength line column $ lex source position 0 line column InitialState
-      IdentifierDotDone -> identifierDot source position tokenLength line column $ lex source position 0 line column InitialState
-      OperatorDone -> token Operator source position tokenLength line column $ lex source position 0 line column InitialState
-      LeftParenDone -> token_ LeftParen source position tokenLength line column $ lex source position 0 line column InitialState
-      RightParenDone -> token_ RightParen source position tokenLength line column $ lex source position 0 line column InitialState
-      ErrorDone -> token_ Error source position tokenLength line column $ lex source position 0 line column InitialState
-      EndOfFileDone -> Empty
-      _ -> panic "lex non-done done state"
+lex :: ForeignPtr Word8 -> Addr# -> TokenList
+lex !source = do
+  go Empty 0 0 0 InitialState
+  where
+    go result !tokenLength !line !column !state !position = do
+      let
+        !(# premultipliedClass, units #) = classify position
+        state' = nextState $ premultipliedClassState premultipliedClass state
+      case state' of
+        NumberDone -> go (token number source position tokenLength line column result) 0 line column InitialState position
+        IdentifierDone -> go (token Identifier source position tokenLength line column result) 0 line column InitialState position
+        IdentifierDotDone -> go (identifierDot source position tokenLength line column result) 0 line column InitialState position
+        OperatorDone -> go (token Operator source position tokenLength line column result) 0 line column InitialState position
+        LeftParenDone -> go (token_ LeftParen source position tokenLength line column result) 0 line column InitialState position
+        RightParenDone -> go (token_ RightParen source position tokenLength line column result) 0 line column InitialState position
+        ErrorDone -> go (token_ Error source position tokenLength line column result) 0 line column InitialState position
+        EndOfFileDone -> result
+        _ -> do
+          let
+            position' = position `plusAddr#` units
+            tokenLength' = tokenLengthMultiplier state' * (tokenLength + I# units)
+            newlineMultiplier_ = newlineMultiplier premultipliedClass
+            line' = line + newlineMultiplier_
+            column' = (column + I# units) * (1 - newlineMultiplier_)
+          go result tokenLength' line' column' state' position'
 
 {-# inline token #-}
 token :: (ByteString -> Token) -> ForeignPtr Word8 -> Addr# -> Int -> Int -> Int -> TokenList -> TokenList
