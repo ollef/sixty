@@ -17,7 +17,7 @@ newlineMultiplier (PremultipliedClass (fromIntegral -> (I# off))) =
   W#
   (indexWord8OffAddr#
     $(litE $ bytesPrimL $ ByteString.bytesFromByteString $
-    ByteString.generate (fromIntegral $ unpremultipliedClass $ premultiply ClassCount) $ \pc ->
+    ByteString.generate (fromIntegral $ premultipliedClassToWord16 $ premultiply ClassCount) $ \pc ->
       case unpremultiply $ PremultipliedClass $ fromIntegral pc of
         NewlineClass -> 1
         _ -> 0
@@ -31,7 +31,7 @@ tokenLengthMultiplier (State (fromIntegral -> I# off)) =
   W#
   (indexWord8OffAddr#
     $(litE $ bytesPrimL $ ByteString.bytesFromByteString $
-      ByteString.generate (fromIntegral $ unstate StateCount) $ \s -> case State $ fromIntegral s of
+      ByteString.generate (fromIntegral $ stateToWord8 StateCount) $ \s -> case State $ fromIntegral s of
         InitialState -> 0
         IdentifierState -> 1
         IdentifierDotState -> 1
@@ -66,11 +66,11 @@ nextState (PremultipliedClassState (fromIntegral -> (I# off))) =
   W#
   (indexWord8OffAddr#
     $(litE $ bytesPrimL $ ByteString.bytesFromByteString $
-      ByteString.generate (fromIntegral $ unstate StateCount * unclass ClassCount) $ \i -> do
+      ByteString.generate (fromIntegral $ stateToWord8 StateCount * classToWord8 ClassCount) $ \i -> do
         let
           (class_, state) =
             unpremultiplyClassState $ PremultipliedClassState $ fromIntegral i
-        unstate $
+        stateToWord8 $
           case state of
             InitialState ->
               case class_ of

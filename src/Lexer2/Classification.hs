@@ -40,9 +40,9 @@ classify1 char =
   PremultipliedClass $
   fromIntegral $
   W#
-  (indexWord8OffAddr#
+  (indexWord16OffAddr#
     $(litE $ bytesPrimL $ ByteString.bytesFromByteString $
-      ByteString.generate 128 $ \c -> unpremultipliedClass $ premultiply $
+      ByteString.generate16 128 $ \c -> premultipliedClassToWord16 $ premultiply $
         case c of
           0 -> EndOfFileClass
           _ ->
@@ -86,6 +86,7 @@ classify1 char =
     )
     (ord# char)
   )
+
 
 {-# inline classifyChar #-}
 classifyChar :: Char -> PremultipliedClass

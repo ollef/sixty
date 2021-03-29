@@ -5,33 +5,33 @@ module Lexer2.State where
 import Data.Word
 import Protolude hiding (State)
 
-newtype Class = Class { unclass :: Word8 }
+newtype Class = Class { classToWord8 :: Word8 }
   deriving Show
 
-newtype PremultipliedClass = PremultipliedClass { unpremultipliedClass :: Word8 }
+newtype PremultipliedClass = PremultipliedClass { premultipliedClassToWord16 :: Word16 }
   deriving Eq
 
 {-# inline premultiply #-}
 premultiply :: Class -> PremultipliedClass
-premultiply (Class c) = PremultipliedClass $ unstate StateCount * c
+premultiply (Class c) = PremultipliedClass $ fromIntegral (stateToWord8 StateCount) * fromIntegral c
 
 {-# inline unpremultiply #-}
 unpremultiply :: PremultipliedClass -> Class
 unpremultiply (PremultipliedClass p) =
-  Class $ p `div` unstate StateCount
+  Class $ fromIntegral $ p `div` fromIntegral (stateToWord8 StateCount)
 
-newtype PremultipliedClassState = PremultipliedClassState { unpremultipliedClassState :: Word8 }
+newtype PremultipliedClassState = PremultipliedClassState Word16
 
 {-# inline premultipliedClassState #-}
 premultipliedClassState :: PremultipliedClass -> State -> PremultipliedClassState
-premultipliedClassState (PremultipliedClass c) (State s) = PremultipliedClassState $ c + s
+premultipliedClassState (PremultipliedClass c) (State s) = PremultipliedClassState $ c + fromIntegral s
 
 {-# inline unpremultiplyClassState #-}
 unpremultiplyClassState :: PremultipliedClassState -> (Class, State)
 unpremultiplyClassState (PremultipliedClassState cs) =
-  bimap Class State $ quotRem cs $ unstate StateCount
+  bimap (Class . fromIntegral) (State . fromIntegral) $ quotRem cs $ fromIntegral $ stateToWord8 StateCount
 
-newtype State = State { unstate :: Word8 }
+newtype State = State { stateToWord8 :: Word8 }
   deriving (Eq, Ord, Show)
 
 pattern WhitespaceClass :: Class
