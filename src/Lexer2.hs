@@ -26,15 +26,8 @@ import UTF8
 
 data TokenList
   = Empty
-  | Token !Position.LineColumn !Span.Absolute !Token !TokenList
+  | Token !Position.LineColumn !Span.Absolute !Token TokenList
   deriving (Show, Generic, NFData)
-
-reverseTokenList :: TokenList -> TokenList
-reverseTokenList =
-  go Empty
-  where
-    go !acc Empty = acc
-    go !acc (Token lineColumn span tok rest) = go (Token lineColumn span tok acc) rest
 
 data Token
   -- Identifiers
@@ -75,25 +68,25 @@ lexByteString bs
 
 lexNullTerminatedByteString :: ByteString -> TokenList
 lexNullTerminatedByteString (ByteString.PS source@(ForeignPtr sourceAddress _) (I# offset) _) =
-  reverseTokenList $ lex source (sourceAddress `plusAddr#` offset)
+  lex source (sourceAddress `plusAddr#` offset)
 
 lex :: ForeignPtr Word8 -> Addr# -> TokenList
 lex !source = do
-  go Empty 0 0 0 InitialState
+  go 0 0 0 InitialState
   where
-    go result !tokenLength !line !column !state !position = do
+    go !tokenLength !line !column !state !position = do
       let
         !(# premultipliedClass, units #) = classify position
         state' = nextState $ premultipliedClassState premultipliedClass state
       case state' of
-        NumberDone -> go (token number source position tokenLength line column result) 0 line column InitialState position
-        IdentifierDone -> go (token Identifier source position tokenLength line column result) 0 line column InitialState position
-        IdentifierDotDone -> go (identifierDot source position tokenLength line column result) 0 line column InitialState position
-        OperatorDone -> go (token Operator source position tokenLength line column result) 0 line column InitialState position
-        LeftParenDone -> go (token_ LeftParen source position tokenLength line column result) 0 line column InitialState position
-        RightParenDone -> go (token_ RightParen source position tokenLength line column result) 0 line column InitialState position
-        ErrorDone -> go (token_ Error source position tokenLength line column result) 0 line column InitialState position
-        EndOfFileDone -> result
+        NumberDone -> token number source position tokenLength line column $ go 0 line column InitialState position
+        IdentifierDone -> token Identifier source position tokenLength line column $ go 0 line column InitialState position
+        IdentifierDotDone -> identifierDot source position tokenLength line column $ go 0 line column InitialState position
+        OperatorDone -> token Operator source position tokenLength line column $ go 0 line column InitialState position
+        LeftParenDone -> token_ LeftParen source position tokenLength line column $ go 0 line column InitialState position
+        RightParenDone -> token_ RightParen source position tokenLength line column $ go 0 line column InitialState position
+        ErrorDone -> token_ Error source position tokenLength line column $ go 0 line column InitialState position
+        EndOfFileDone -> Empty
         _ -> do
           let
             position' = position `plusAddr#` units
@@ -101,7 +94,7 @@ lex !source = do
             newlineMultiplier_ = newlineMultiplier premultipliedClass
             line' = line + newlineMultiplier_
             column' = (column + I# units) * (1 - newlineMultiplier_)
-          go result tokenLength' line' column' state' position'
+          go tokenLength' line' column' state' position'
 
 {-# inline token #-}
 token :: (ByteString -> Token) -> ForeignPtr Word8 -> Addr# -> Int -> Int -> Int -> TokenList -> TokenList
