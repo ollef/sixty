@@ -13,11 +13,10 @@ import Protolude hiding (State, state, length, lift)
 
 newlineMultiplier :: PremultipliedClass -> Int
 newlineMultiplier (PremultipliedClass (fromIntegral -> (I# off))) =
-  fromIntegral $
-  W#
-  (indexWord8OffAddr#
+  I#
+  (indexInt8OffAddr#
     $(litE $ bytesPrimL $ ByteString.bytesFromByteString $
-    ByteString.generateWord8 (fromIntegral $ premultipliedClassToWord16 $ premultiply ClassCount) $ \pc ->
+    ByteString.generateInt8 (fromIntegral $ premultipliedClassToWord16 $ premultiply ClassCount) $ \pc ->
       case unpremultiply $ PremultipliedClass $ fromIntegral pc of
         NewlineClass -> 1
         _ -> 0
@@ -27,11 +26,10 @@ newlineMultiplier (PremultipliedClass (fromIntegral -> (I# off))) =
 
 tokenLengthMultiplier :: State -> Int
 tokenLengthMultiplier (State (fromIntegral -> I# off)) =
-  fromIntegral $
-  W#
-  (indexWord8OffAddr#
+  I#
+  (indexInt8OffAddr#
     $(litE $ bytesPrimL $ ByteString.bytesFromByteString $
-      ByteString.generateWord8 (fromIntegral $ stateToWord8 StateCount) $ \s -> case State $ fromIntegral s of
+      ByteString.generateInt8 (fromIntegral $ stateToWord8 StateCount) $ \s -> case State $ fromIntegral s of
         InitialState -> 0
         IdentifierState -> 1
         IdentifierDotState -> 1
