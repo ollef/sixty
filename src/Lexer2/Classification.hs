@@ -95,4 +95,3 @@ classifyChar c
   | Char.isSymbol c = premultiply OperatorClass
   | Char.isPunctuation c = premultiply OperatorClass
   | otherwise = premultiply ErrorClass
-

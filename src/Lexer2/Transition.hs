@@ -66,7 +66,7 @@ nextState (PremultipliedClassState (fromIntegral -> (I# off))) =
   W#
   (indexWord8OffAddr#
     $(litE $ bytesPrimL $ ByteString.bytesFromByteString $
-      ByteString.generate (fromIntegral $ stateToWord8 StateCount * classToWord8 ClassCount) $ \i -> do
+      ByteString.generate (fromIntegral (stateToWord8 StateCount) * fromIntegral (classToWord8 ClassCount)) $ \i -> do
         let
           (class_, state) =
             unpremultiplyClassState $ PremultipliedClassState $ fromIntegral i
@@ -153,7 +153,7 @@ nextState (PremultipliedClassState (fromIntegral -> (I# off))) =
                 _ -> ErrorDone
 
             _ ->
-              panic $ "stateTable: no such state " <> show state
+              ErrorDone
       )
     off
   )
