@@ -32,7 +32,7 @@ unpremultiplyClassState (PremultipliedClassState cs) =
   bimap (Class . fromIntegral) (State . fromIntegral) $ quotRem cs $ fromIntegral $ stateToWord8 StateCount
 
 newtype State = State { stateToWord8 :: Word8 }
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, NFData)
 
 pattern WhitespaceClass :: Class
 pattern WhitespaceClass = Class 0

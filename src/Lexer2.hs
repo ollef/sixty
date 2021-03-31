@@ -24,44 +24,8 @@ import qualified Span
 
 data TokenList
   = Empty
-  | Token !Token_ !Position.LineColumn !ByteString TokenList
+  | Token !State !Position.LineColumn !ByteString TokenList
   deriving (Show, Generic, NFData)
-
-newtype Token_ = Token_ Int
-  deriving (Show, Generic)
-  deriving newtype NFData
-
-data Token
-  -- Identifiers
-  = Identifier
-  -- Reserved identifiers
-  | Let
-  | In
-  | Data
-  | Where
-  | Forall
-  | Case
-  | Of
-  | Underscore
-  -- Operators
-  | Operator
-  -- Reserved operators
-  | Equals
-  | Dot
-  | Colon
-  | Pipe
-  | RightArrow
-  | QuestionMark
-  | Forced
-  -- Special
-  | Number
-  | Lambda
-  | LeftParen
-  | RightParen
-  | LeftImplicitBrace
-  | RightImplicitBrace
-  | Error
-  deriving (Enum, Eq, Show, Generic, NFData)
 
 tokenSpan :: ByteString -> Span.Absolute
 tokenSpan (ByteString.PS _ offset length) =
@@ -84,29 +48,25 @@ lex !source = do
       let
         !(# premultipliedClass, units #) = classify position
         state' = nextState $ premultipliedClassState premultipliedClass state
-      case state' of
-        NumberDone -> token Number source position tokenLength line column $ go 0 line column InitialState position
-        IdentifierDone -> token Identifier source position tokenLength line column $ go 0 line column InitialState position
-        IdentifierDotDone -> identifierDot source position tokenLength line column $ go 0 line column InitialState position
-        OperatorDone -> token Operator source position tokenLength line column $ go 0 line column InitialState position
-        LeftParenDone -> token LeftParen source position tokenLength line column $ go 0 line column InitialState position
-        RightParenDone -> token RightParen source position tokenLength line column $ go 0 line column InitialState position
-        ErrorDone -> token Error source position tokenLength line column $ go 0 line column InitialState position
-        EndOfFileDone -> Empty
-        _ -> do
-          let
-            position' = position `plusAddr#` units
-            tokenLength' = tokenLengthMultiplier state' * (tokenLength + I# units)
-            newlineMultiplier_ = newlineMultiplier premultipliedClass
-            line' = line + newlineMultiplier_
-            column' = (column + I# units) * (1 - newlineMultiplier_)
-          go tokenLength' line' column' state' position'
+      if state' <= LastDone then
+        case state' of
+          EndOfFileDone -> Empty
+          IdentifierDotDone -> identifierDot source position tokenLength line column $ go 0 line column InitialState position
+          _ -> token state' source position tokenLength line column $ go 0 line column InitialState position
+      else do
+        let
+          position' = position `plusAddr#` units
+          tokenLength' = tokenLengthMultiplier state' * (tokenLength + I# units)
+          newlineMultiplier_ = newlineMultiplier premultipliedClass
+          line' = line + newlineMultiplier_
+          column' = (column + I# units) * (1 - newlineMultiplier_)
+        go tokenLength' line' column' state' position'
 
 {-# inline token #-}
-token :: Token -> ForeignPtr Word8 -> Addr# -> Int -> Int -> Int -> TokenList -> TokenList
+token :: State -> ForeignPtr Word8 -> Addr# -> Int -> Int -> Int -> TokenList -> TokenList
 token tok source@(ForeignPtr sourceAddress _) position length line column =
   Token
-    (Token_ $ fromEnum tok)
+    tok
     (Position.LineColumn line (column - length))
     (ByteString.PS source startPosition length)
   where
@@ -118,8 +78,8 @@ token tok source@(ForeignPtr sourceAddress _) position length line column =
 {-# inline identifierDot #-}
 identifierDot :: ForeignPtr Word8 -> Addr# -> Int -> Int -> Int -> TokenList -> TokenList
 identifierDot source position length line column =
-  token Identifier source (position `plusAddr#` -1#) (length - 1) line (column - 1) .
-  token Dot source position 1 line column
+  token IdentifierDone source (position `plusAddr#` -1#) (length - 1) line (column - 1) .
+  token OperatorDone source position 1 line column
 
 toByteString :: ForeignPtr Word8 -> Addr# -> Int -> ByteString
 toByteString source@(ForeignPtr sourceAddress _) endPosition length@(I# length_) =
