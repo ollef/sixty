@@ -47,16 +47,14 @@ lexNullTerminatedByteString bs@(ByteString.PS _ (I# _offset) _) = lexNullTermina
 lex :: ForeignPtr Word8 -> Addr# -> TokenList
 lex !source !startPosition = go startPosition 0 0
   where
-    go position line column = do
+    go !position !line !column = do
       let
         !(Lexer position' line' column' tokenLength' state') = nextToken position line column 0 InitialState
       case state' of
         EndOfFileDone -> Empty
-        IdentifierDotDone -> identifierDot source position' tokenLength' line' column' $ go position' line' column'
         _ -> token state' source position' tokenLength' line' column' $ go position' line' column'
 
 type Lexer = (# Addr#, Int#, Int#, Int#, Word# #)
-
 
 pattern Lexer :: Addr# -> Int -> Int -> Int -> State -> Lexer
 pattern Lexer position line column tokenLength state <- (# position, I# -> line, I# -> column, I# -> tokenLength, \s -> State (W8# s) -> state #)
@@ -67,41 +65,35 @@ pattern Lexer position line column tokenLength state <- (# position, I# -> line,
 {-# complete Lexer #-}
 
 nextToken :: Addr# -> Int -> Int -> Int -> State -> Lexer
-nextToken = go
-  where 
-    go !position !line !column !tokenLength !state = do
-      let
-        !(# premultipliedClass, units #) = classify position
-        !state' = nextState $ premultipliedClassState premultipliedClass state
-      if state' <= LastDone then
-        Lexer position line column tokenLength state'
-      else do
-        let
-          position' = position `plusAddr#` units
-          tokenLength' = tokenLengthMultiplier state' * (tokenLength + I# units)
-          newlineMultiplier_ = newlineMultiplier premultipliedClass
-          !line' = line + newlineMultiplier_
-          !column' = (column + I# units) * (1 - newlineMultiplier_)
-        nextToken position' line' column' tokenLength' state'
+nextToken !position !line !column !tokenLength !state = do
+  let
+    !(# premultipliedClass, units #) = classify position
+    !state' = nextState $ premultipliedClassState premultipliedClass state
+  if state' >= FirstDone then do
+    let
+      offset = doneFromOffset state
+      position' = position `plusAddr#` offset
+      column' = column + I# offset
+      tokenLength' = tokenLength + I# offset
+    Lexer position' line column' tokenLength' state'
+  else do
+    let
+      position' = position `plusAddr#` units
+      tokenLength' = tokenLengthMultiplier state' * (tokenLength + I# units)
+      newlineMultiplier_ = newlineMultiplier premultipliedClass
+      !line' = line + newlineMultiplier_
+      !column' = (column + I# units) * (1 - newlineMultiplier_)
+    nextToken position' line' column' tokenLength' state'
 
 {-# inline token #-}
 token :: State -> ForeignPtr Word8 -> Addr# -> Int -> Int -> Int -> TokenList -> TokenList
 token tok source@(ForeignPtr sourceAddress _) position length line column =
-  Token
-    tok
-    (Position.LineColumn line (column - length))
-    (ByteString.PS source startPosition length)
+  Token tok (Position.LineColumn line (column - length)) (ByteString.PS source startPosition length)
   where
     endPosition =
       I# (position `minusAddr#` sourceAddress)
     startPosition =
       endPosition - length
-
-{-# inline identifierDot #-}
-identifierDot :: ForeignPtr Word8 -> Addr# -> Int -> Int -> Int -> TokenList -> TokenList
-identifierDot source position length line column =
-  token IdentifierDone source (position `plusAddr#` -1#) (length - 1) line (column - 1) .
-  token OperatorDone source position 1 line column
 
 toByteString :: ForeignPtr Word8 -> Addr# -> Int -> ByteString
 toByteString source@(ForeignPtr sourceAddress _) endPosition length@(I# length_) =

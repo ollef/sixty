@@ -42,7 +42,7 @@ classify1 char =
   W#
   (indexWord16OffAddr#
     $(litE $ bytesPrimL $ ByteString.bytesFromByteString $
-      ByteString.generate16 128 $ \c -> premultipliedClassToWord16 $ premultiply $
+      ByteString.generateWord16 128 $ \c -> premultipliedClassToWord16 $ premultiply $
         case c of
           0 -> EndOfFileClass
           _ ->

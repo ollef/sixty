@@ -17,7 +17,7 @@ newlineMultiplier (PremultipliedClass (fromIntegral -> (I# off))) =
   W#
   (indexWord8OffAddr#
     $(litE $ bytesPrimL $ ByteString.bytesFromByteString $
-    ByteString.generate (fromIntegral $ premultipliedClassToWord16 $ premultiply ClassCount) $ \pc ->
+    ByteString.generateWord8 (fromIntegral $ premultipliedClassToWord16 $ premultiply ClassCount) $ \pc ->
       case unpremultiply $ PremultipliedClass $ fromIntegral pc of
         NewlineClass -> 1
         _ -> 0
@@ -31,7 +31,7 @@ tokenLengthMultiplier (State (fromIntegral -> I# off)) =
   W#
   (indexWord8OffAddr#
     $(litE $ bytesPrimL $ ByteString.bytesFromByteString $
-      ByteString.generate (fromIntegral $ stateToWord8 StateCount) $ \s -> case State $ fromIntegral s of
+      ByteString.generateWord8 (fromIntegral $ stateToWord8 StateCount) $ \s -> case State $ fromIntegral s of
         InitialState -> 0
         IdentifierState -> 1
         IdentifierDotState -> 1
@@ -48,7 +48,6 @@ tokenLengthMultiplier (State (fromIntegral -> I# off)) =
         ErrorState -> 1
         NumberDone -> 0
         IdentifierDone -> 0
-        IdentifierDotDone -> 0
         OperatorDone -> 0
         LeftParenDone -> 0
         RightParenDone -> 0
@@ -59,6 +58,16 @@ tokenLengthMultiplier (State (fromIntegral -> I# off)) =
     off
   )
 
+doneFromOffset :: State -> Int#
+doneFromOffset (State (fromIntegral -> I# off)) =
+  indexInt8OffAddr#
+    $(litE $ bytesPrimL $ ByteString.bytesFromByteString $
+      ByteString.generateInt8 (fromIntegral $ stateToWord8 StateCount) $ \s -> case State $ fromIntegral s of
+        IdentifierDotState -> -1
+        _ -> 0
+    )
+    off
+
 nextState :: PremultipliedClassState -> State
 nextState (PremultipliedClassState (fromIntegral -> (I# off))) =
   State $
@@ -66,7 +75,7 @@ nextState (PremultipliedClassState (fromIntegral -> (I# off))) =
   W#
   (indexWord8OffAddr#
     $(litE $ bytesPrimL $ ByteString.bytesFromByteString $
-      ByteString.generate (fromIntegral (stateToWord8 StateCount) * fromIntegral (classToWord8 ClassCount)) $ \i -> do
+      ByteString.generateWord8 (fromIntegral (stateToWord8 StateCount) * fromIntegral (classToWord8 ClassCount)) $ \i -> do
         let
           (class_, state) =
             unpremultiplyClassState $ PremultipliedClassState $ fromIntegral i
@@ -102,7 +111,7 @@ nextState (PremultipliedClassState (fromIntegral -> (I# off))) =
                 DotClass -> OperatorState
                 MinusClass -> OperatorState
                 OperatorClass -> OperatorState
-                _ -> IdentifierDotDone
+                _ -> IdentifierDone
             NumberState ->
               case class_ of
                 NumericClass -> NumberState

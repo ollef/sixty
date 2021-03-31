@@ -9,11 +9,15 @@ import Language.Haskell.TH.Lib
 import Language.Haskell.TH.Syntax
 import Protolude
 
-generate :: Int -> (Int -> Word8) -> ByteString
-generate size f = ByteString.pack $ map f [0..size - 1]
+generateWord8 :: Int -> (Int -> Word8) -> ByteString
+generateWord8 size f = ByteString.pack $ map f [0..size - 1]
 
-generate16 :: Int -> (Int -> Word16) -> ByteString
-generate16 size f =
+generateInt8 :: Int -> (Int -> Int8) -> ByteString
+generateInt8 size f =
+  Lazy.toStrict $ Builder.toLazyByteString $ mconcat $ map (Builder.int8 . f) [0..size - 1]
+
+generateWord16 :: Int -> (Int -> Word16) -> ByteString
+generateWord16 size f =
   Lazy.toStrict $ Builder.toLazyByteString $ mconcat $ map (Builder.word16Host . f) [0..size - 1]
 
 bytesFromByteString :: ByteString -> Bytes

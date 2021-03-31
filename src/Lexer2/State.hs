@@ -65,52 +65,51 @@ pattern ErrorClass = Class 13
 pattern ClassCount :: Class
 pattern ClassCount = Class 14
 
-pattern NumberDone :: State
-pattern NumberDone = State 0
-pattern IdentifierDone :: State
-pattern IdentifierDone = State 1
-pattern IdentifierDotDone :: State
-pattern IdentifierDotDone = State 2
-pattern OperatorDone :: State
-pattern OperatorDone = State 3
-pattern LeftParenDone :: State
-pattern LeftParenDone = State 4
-pattern RightParenDone :: State
-pattern RightParenDone = State 5
-pattern ErrorDone :: State
-pattern ErrorDone = State 6
-pattern EndOfFileDone :: State
-pattern EndOfFileDone = State 7
-pattern LastDone :: State
-pattern LastDone = EndOfFileDone
-
 pattern InitialState :: State
-pattern InitialState = State 8
+pattern InitialState = State 0
 pattern IdentifierState :: State
-pattern IdentifierState = State 9
+pattern IdentifierState = State 1
 pattern IdentifierDotState :: State
-pattern IdentifierDotState = State 10
+pattern IdentifierDotState = State 2
 pattern NumberState :: State
-pattern NumberState = State 11
+pattern NumberState = State 3
 pattern MinusState :: State
-pattern MinusState = State 12
+pattern MinusState = State 4
 pattern LeftParenState :: State
-pattern LeftParenState = State 13
+pattern LeftParenState = State 5
 pattern RightParenState :: State
-pattern RightParenState = State 14
+pattern RightParenState = State 6
 pattern LeftBraceState :: State
-pattern LeftBraceState = State 15
+pattern LeftBraceState = State 7
 pattern RightBraceState :: State
-pattern RightBraceState = State 16
+pattern RightBraceState = State 8
 pattern OperatorState :: State
-pattern OperatorState = State 17
+pattern OperatorState = State 9
 pattern SingleLineCommentState :: State
-pattern SingleLineCommentState = State 18
+pattern SingleLineCommentState = State 10
 pattern MultiLineCommentState :: State
-pattern MultiLineCommentState = State 19
+pattern MultiLineCommentState = State 11
 pattern MultiLineCommentMinusState :: State
-pattern MultiLineCommentMinusState = State 20
+pattern MultiLineCommentMinusState = State 12
 pattern ErrorState :: State
-pattern ErrorState = State 21
+pattern ErrorState = State 13
 pattern StateCount :: State
-pattern StateCount = State 22
+pattern StateCount = State 14
+
+pattern FirstDone :: State
+pattern FirstDone = NumberDone
+
+pattern NumberDone :: State
+pattern NumberDone = State 15
+pattern IdentifierDone :: State
+pattern IdentifierDone = State 16
+pattern OperatorDone :: State
+pattern OperatorDone = State 17
+pattern LeftParenDone :: State
+pattern LeftParenDone = State 18
+pattern RightParenDone :: State
+pattern RightParenDone = State 19
+pattern ErrorDone :: State
+pattern ErrorDone = State 20
+pattern EndOfFileDone :: State
+pattern EndOfFileDone = State 21
