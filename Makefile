@@ -40,9 +40,9 @@ profile-bench:
 	$(STACK_BENCH) --profile
 	$(STACK) exec --package ghc-prof-flamegraph -- ghc-prof-flamegraph benchmark-parser.prof
 
-.PHONY: ddump-simpl
-ddump-simpl:
-	$(STACK_BUILD) --ghc-options='-ddump-simpl -ddump-to-file'
+.PHONY: dump
+dump:
+	$(STACK_BUILD) --ghc-options='-ddump-cmm -ddump-asm -ddump-simpl -ddump-to-file'
 
 .PHONY: ghcid
 ghcid:
