@@ -8,13 +8,17 @@
 {-# language MultiParamTypeClasses #-}
 {-# language OverloadedStrings #-}
 {-# language PatternSynonyms #-}
+{-# language PatternSynonyms #-}
 {-# language UnboxedTuples #-}
+{-# language UnliftedNewtypes #-}
+{-# language ViewPatterns #-}
 module Lexer2 where
 
 import qualified Data.ByteString as ByteString
 import qualified Data.ByteString.Internal as ByteString
 import GHC.Exts
 import GHC.ForeignPtr (ForeignPtr(..))
+import GHC.Word
 import Lexer2.Classification
 import Lexer2.State
 import Lexer2.Transition
@@ -41,26 +45,44 @@ lexNullTerminatedByteString (ByteString.PS source@(ForeignPtr sourceAddress _) 0
 lexNullTerminatedByteString bs@(ByteString.PS _ (I# _offset) _) = lexNullTerminatedByteString $ ByteString.copy bs
 
 lex :: ForeignPtr Word8 -> Addr# -> TokenList
-lex !source = do
-  go 0 0 0 InitialState
+lex !source !startPosition = go startPosition 0 0
   where
-    go !tokenLength !line !column !state !position = do
+    go position line column = do
+      let
+        !(Lexer position' line' column' tokenLength' state') = nextToken position line column 0 InitialState
+      case state' of
+        EndOfFileDone -> Empty
+        IdentifierDotDone -> identifierDot source position' tokenLength' line' column' $ go position' line' column'
+        _ -> token state' source position' tokenLength' line' column' $ go position' line' column'
+
+type Lexer = (# Addr#, Int#, Int#, Int#, Word# #)
+
+
+pattern Lexer :: Addr# -> Int -> Int -> Int -> State -> Lexer
+pattern Lexer position line column tokenLength state <- (# position, I# -> line, I# -> column, I# -> tokenLength, \s -> State (W8# s) -> state #)
+  where
+    Lexer position (I# line) (I# column) (I# tokenLength) (State (W8# state)) =
+      (# position, line, column, tokenLength, state #)
+
+{-# complete Lexer #-}
+
+nextToken :: Addr# -> Int -> Int -> Int -> State -> Lexer
+nextToken = go
+  where 
+    go !position !line !column !tokenLength !state = do
       let
         !(# premultipliedClass, units #) = classify position
-        state' = nextState $ premultipliedClassState premultipliedClass state
+        !state' = nextState $ premultipliedClassState premultipliedClass state
       if state' <= LastDone then
-        case state' of
-          EndOfFileDone -> Empty
-          IdentifierDotDone -> identifierDot source position tokenLength line column $ go 0 line column InitialState position
-          _ -> token state' source position tokenLength line column $ go 0 line column InitialState position
+        Lexer position line column tokenLength state'
       else do
         let
           position' = position `plusAddr#` units
           tokenLength' = tokenLengthMultiplier state' * (tokenLength + I# units)
           newlineMultiplier_ = newlineMultiplier premultipliedClass
-          line' = line + newlineMultiplier_
-          column' = (column + I# units) * (1 - newlineMultiplier_)
-        go tokenLength' line' column' state' position'
+          !line' = line + newlineMultiplier_
+          !column' = (column + I# units) * (1 - newlineMultiplier_)
+        nextToken position' line' column' tokenLength' state'
 
 {-# inline token #-}
 token :: State -> ForeignPtr Word8 -> Addr# -> Int -> Int -> Int -> TokenList -> TokenList
