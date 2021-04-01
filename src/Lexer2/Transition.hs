@@ -5,6 +5,7 @@
 module Lexer2.Transition where
 
 import GHC.Exts
+import GHC.Word
 import Instances.TH.Lift ()
 import Language.Haskell.TH.Lib
 import qualified Lexer2.ByteString as ByteString
@@ -69,8 +70,7 @@ doneFromOffset (State (fromIntegral -> I# off)) =
 nextState :: PremultipliedClassState -> State
 nextState (PremultipliedClassState (fromIntegral -> (I# off))) =
   State $
-  fromIntegral $
-  W#
+  W8#
   (indexWord8OffAddr#
     $(litE $ bytesPrimL $ ByteString.bytesFromByteString $
       ByteString.generateWord8 (fromIntegral (stateToWord8 StateCount) * fromIntegral (classToWord8 ClassCount)) $ \i -> do

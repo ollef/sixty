@@ -40,6 +40,7 @@ classify1 char =
   PremultipliedClass $
   fromIntegral $
   W#
+  -- W16# -- Seems to cause worse optimisation for some reason
   (indexWord16OffAddr#
     $(litE $ bytesPrimL $ ByteString.bytesFromByteString $
       ByteString.generateWord16 128 $ \c -> premultipliedClassToWord16 $ premultiply $
@@ -88,7 +89,6 @@ classify1 char =
   )
 
 
-{-# inline classifyChar #-}
 classifyChar :: Char -> PremultipliedClass
 classifyChar c
   | Char.isAlphaNum c = premultiply AlphaClass

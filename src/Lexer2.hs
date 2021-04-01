@@ -78,9 +78,9 @@ nextToken !position !line !column !tokenLength !state = do
     Lexer position' line column' tokenLength' state'
   else do
     let
-      position' = position `plusAddr#` units
-      tokenLength' = tokenLengthMultiplier state' * (tokenLength + I# units)
-      newlineMultiplier_ = newlineMultiplier premultipliedClass
+      !position' = position `plusAddr#` units
+      !tokenLength' = tokenLengthMultiplier state' * (tokenLength + I# units)
+      !newlineMultiplier_ = newlineMultiplier premultipliedClass
       !line' = line + newlineMultiplier_
       !column' = (column + I# units) * (1 - newlineMultiplier_)
     nextToken position' line' column' tokenLength' state'
