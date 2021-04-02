@@ -82,7 +82,7 @@ cursorAction filePath (Position.LineColumn line column) k =
       pos =
         Position.Absolute $
           Rope.rowColumnCodeUnits (Rope.RowColumn line column) $
-          Rope.fromText contents
+          Rope.fromText $ decodeUtf8 contents
 
     toLineColumns <- LineColumns.fromAbsolute moduleName
     asum $

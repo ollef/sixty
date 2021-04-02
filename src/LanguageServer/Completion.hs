@@ -51,7 +51,7 @@ complete filePath (Position.LineColumn line column) =
           prettyType <- Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context type'
           pure
             LSP.CompletionItem
-              { _label = name
+              { _label = decodeUtf8 name
               , _kind = Just kind
               , _detail = Just $ show $ ":" <+> prettyType
               , _documentation = Nothing
@@ -116,7 +116,7 @@ questionMark filePath (Position.LineColumn line column) =
                   filter ((== Explicit) . fst) args
               pure
                 LSP.CompletionItem
-                  { _label = name
+                  { _label = decodeUtf8 name
                   , _kind = Just kind
                   , _detail = Just $ show $ ":" <+> prettyTypeUnderCursor
                   , _documentation = Nothing
@@ -140,7 +140,7 @@ questionMark filePath (Position.LineColumn line column) =
                         }
                         , _newText =
                           (if null explicitArgs then "" else "(") <>
-                          name <>
+                          decodeUtf8 name <>
                           mconcat
                           [" ${" <> show (n :: Int) <> ":?}"
                           | (n, _) <- zip [1..] explicitArgs
@@ -154,7 +154,7 @@ questionMark filePath (Position.LineColumn line column) =
                   , _tags = mempty
                   }
 
-getUsableNames :: CursorAction.ItemContext -> Context v -> IntMap Var value -> M [(Text, Domain.Value, LSP.CompletionItemKind)]
+getUsableNames :: CursorAction.ItemContext -> Context v -> IntMap Var value -> M [(ByteString, Domain.Value, LSP.CompletionItemKind)]
 getUsableNames itemContext context varPositions = do
   hPutStrLn stderr $ "getUsableNames " ++ show itemContext
   locals <- case itemContext of

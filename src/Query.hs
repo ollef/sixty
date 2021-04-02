@@ -51,7 +51,7 @@ import Telescope (Telescope)
 data Query a where
   SourceDirectories :: Query [FileSystem.Directory]
   InputFiles :: Query (HashSet FilePath)
-  FileText :: FilePath -> Query Text
+  FileText :: FilePath -> Query ByteString
   ModuleFile :: Name.Module -> Query (Maybe FilePath)
   ParsedFile :: FilePath -> Query (Name.Module, Module.Header, [(Position.Absolute, (Name, Surface.Definition))])
   ModuleDefinitions :: Name.Module -> Query (OrderedHashSet Name)

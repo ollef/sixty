@@ -54,16 +54,18 @@ pattern MinusClass :: Class
 pattern MinusClass = Class 8
 pattern OperatorClass :: Class
 pattern OperatorClass = Class 9
+pattern AtClass :: Class
+pattern AtClass = Class 10
 pattern LeftBraceClass :: Class
-pattern LeftBraceClass = Class 10
+pattern LeftBraceClass = Class 11
 pattern RightBraceClass :: Class
-pattern RightBraceClass = Class 11
+pattern RightBraceClass = Class 12
 pattern EndOfFileClass :: Class
-pattern EndOfFileClass = Class 12
+pattern EndOfFileClass = Class 13
 pattern ErrorClass :: Class
-pattern ErrorClass = Class 13
+pattern ErrorClass = Class 14
 pattern ClassCount :: Class
-pattern ClassCount = Class 14
+pattern ClassCount = Class 15
 
 pattern InitialState :: State
 pattern InitialState = State 0
@@ -79,37 +81,43 @@ pattern LeftParenState :: State
 pattern LeftParenState = State 5
 pattern RightParenState :: State
 pattern RightParenState = State 6
+pattern AtState :: State
+pattern AtState = State 7
 pattern LeftBraceState :: State
-pattern LeftBraceState = State 7
+pattern LeftBraceState = State 8
 pattern RightBraceState :: State
-pattern RightBraceState = State 8
+pattern RightBraceState = State 9
 pattern OperatorState :: State
-pattern OperatorState = State 9
+pattern OperatorState = State 10
 pattern SingleLineCommentState :: State
-pattern SingleLineCommentState = State 10
+pattern SingleLineCommentState = State 11
 pattern MultiLineCommentState :: State
-pattern MultiLineCommentState = State 11
+pattern MultiLineCommentState = State 12
 pattern MultiLineCommentMinusState :: State
-pattern MultiLineCommentMinusState = State 12
+pattern MultiLineCommentMinusState = State 13
 pattern ErrorState :: State
-pattern ErrorState = State 13
+pattern ErrorState = State 14
 pattern StateCount :: State
-pattern StateCount = State 14
+pattern StateCount = State 15
 
 pattern FirstDone :: State
 pattern FirstDone = NumberDone
 
 pattern NumberDone :: State
-pattern NumberDone = State 15
+pattern NumberDone = State 16
 pattern IdentifierDone :: State
-pattern IdentifierDone = State 16
+pattern IdentifierDone = State 17
 pattern OperatorDone :: State
-pattern OperatorDone = State 17
+pattern OperatorDone = State 18
 pattern LeftParenDone :: State
-pattern LeftParenDone = State 18
+pattern LeftParenDone = State 19
 pattern RightParenDone :: State
-pattern RightParenDone = State 19
+pattern RightParenDone = State 20
+pattern LeftImplicitBraceDone :: State
+pattern LeftImplicitBraceDone = State 21
+pattern RightImplicitBraceDone :: State
+pattern RightImplicitBraceDone = State 22
 pattern ErrorDone :: State
-pattern ErrorDone = State 20
+pattern ErrorDone = State 23
 pattern EndOfFileDone :: State
-pattern EndOfFileDone = State 21
+pattern EndOfFileDone = State 24

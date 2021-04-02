@@ -97,7 +97,7 @@ freshName (Assembly.NameSuggestion nameSuggestion) = do
   usedNames <- gets _usedNames
   let
     bsName =
-      ShortByteString.toShort $ toUtf8 nameSuggestion
+      ShortByteString.toShort nameSuggestion
 
     i =
       HashMap.lookupDefault 0 bsName usedNames
@@ -135,7 +135,7 @@ assembleModule (Name.Module moduleNameText) definitions = do
       HashMap.difference (mconcat usedGlobals) (HashSet.toMap $ HashSet.fromList (LLVM.Global.name <$> assembledDefinitions'))
 
   LLVM.Module
-    { moduleName = ShortByteString.toShort $ toUtf8 moduleNameText
+    { moduleName = ShortByteString.toShort moduleNameText
     , moduleSourceFileName = ""
     , moduleDataLayout = Nothing
     , moduleTargetTriple = Nothing
@@ -224,7 +224,7 @@ assembleDefinition name@(Assembly.Name liftedName@(Name.Lifted _ liftedNameNumbe
 
 assembleName :: Assembly.Name -> ShortByteString
 assembleName =
-  ShortByteString.toShort . toUtf8 . Assembly.nameText
+  ShortByteString.toShort . Assembly.nameText
 
 assembleBasicBlock :: CPSAssembly.BasicBlock -> Assembler [LLVM.BasicBlock]
 assembleBasicBlock (CPSAssembly.BasicBlock instructions terminator) = do
@@ -238,7 +238,7 @@ assembleTerminator blockLabel instructions terminator =
     CPSAssembly.Switch scrutinee branches defaultBranch -> do
       (scrutinee', scrutineeInstructions) <- assembleOperand Word scrutinee
       branches' <- forM branches $ \(int, branchTerminator) -> do
-        branchLabel <- freshName $ Assembly.NameSuggestion $ "branch_" <> show int
+        branchLabel <- freshName $ Assembly.NameSuggestion $ "branch_" <> encodeUtf8 (show int)
         blocks <- assembleTerminator branchLabel [] branchTerminator
         pure (int, branchLabel, blocks)
       defaultLabel <- freshName "default"

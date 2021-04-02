@@ -52,7 +52,7 @@ references filePath (Position.LineColumn line column) = do
     pos =
       Position.Absolute $
         Rope.rowColumnCodeUnits (Rope.RowColumn line column) $
-        Rope.fromText contents
+        Rope.fromText $ decodeUtf8 contents
   toLineColumns <- LineColumns.fromAbsolute originalModuleName
   spans <- fetch $ Query.ModuleSpanMap originalModuleName
   fmap concat $ forM (HashMap.toList spans) $ \((key, name), span@(Span.Absolute defPos _)) ->

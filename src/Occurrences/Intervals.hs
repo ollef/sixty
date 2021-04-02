@@ -5,6 +5,7 @@ module Occurrences.Intervals where
 
 import Protolude hiding (IntMap)
 
+import qualified Data.ByteString as ByteString
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
@@ -14,7 +15,6 @@ import qualified Data.IntervalMap.FingerTree as IntervalMap
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import qualified Data.List as List
-import qualified Data.Text.Unsafe as Text
 import Data.Persist
 
 import Core.Binding (Binding)
@@ -23,8 +23,8 @@ import Core.Bindings (Bindings)
 import qualified Core.Bindings as Bindings
 import Literal (Literal)
 import qualified Name
-import qualified Position
 import Orphans ()
+import qualified Position
 import qualified Span
 import Var (Var)
 import qualified Var
@@ -155,12 +155,12 @@ nameSpan
   case item of
     Global (Name.Qualified _ (Name.Name name)) ->
       Span.LineColumns
-        (Position.LineColumn endLine (endColumn - Text.lengthWord16 name))
+        (Position.LineColumn endLine (endColumn - ByteString.length name))
         (Position.LineColumn endLine endColumn)
 
     Con (Name.QualifiedConstructor _ (Name.Constructor name)) ->
       Span.LineColumns
-        (Position.LineColumn endLine (endColumn - Text.lengthWord16 name))
+        (Position.LineColumn endLine (endColumn - ByteString.length name))
         (Position.LineColumn endLine endColumn)
 
     Lit _ ->

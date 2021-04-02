@@ -32,7 +32,7 @@ fromAbsolute moduleName = do
       let
         -- TODO use the rope that we get from the LSP library instead
         rope =
-          Rope.fromText contents
+          Rope.fromText $ decodeUtf8 contents
 
         toLineColumn (Position.Absolute i) =
           let

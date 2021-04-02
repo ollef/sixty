@@ -6,14 +6,15 @@ module Error.Hydrated where
 
 import Protolude hiding (moduleName)
 
+import qualified Data.ByteString as ByteString
 import Data.Coerce
 import Data.Persist
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc as Doc
-import qualified Data.Text.Unsafe as Text
 import Rock
 import qualified System.Directory as Directory
 
+import qualified Core.Pretty as Pretty
 import Error (Error)
 import qualified Error
 import qualified Error.Parsing
@@ -22,7 +23,6 @@ import Name (Name)
 import qualified Name
 import Plicity
 import qualified Position
-import qualified Core.Pretty as Pretty
 import Query (Query)
 import qualified Query
 import qualified Scope
@@ -31,7 +31,7 @@ import qualified Span
 data Hydrated = Hydrated
   { _filePath :: FilePath
   , _lineColumn :: !Span.LineColumn
-  , _lineText :: !Text
+  , _lineText :: !ByteString
   , _error :: !Error
   } deriving (Show, Generic, Persist)
 
@@ -240,19 +240,19 @@ pretty h = do
             _lineColumn h
 
         lineNumberText =
-          show (startLineNumber + 1)
+          encodeUtf8 $ show (startLineNumber + 1)
 
         lineNumberTextLength =
-          Text.lengthWord16 lineNumberText
+          ByteString.length lineNumberText
 
         (spanLength, spanEnding)
           | startLineNumber == endLineNumber =
             (endColumnNumber - startColumnNumber, mempty)
           | otherwise =
-            (Text.lengthWord16 (_lineText h) - startColumnNumber, "...")
+            (ByteString.length (_lineText h) - startColumnNumber, "...")
       in
       Doc.pretty (Text.replicate (lineNumberTextLength + 1) " ") <> "| " <> line <>
-      Doc.pretty lineNumberText <> " | " <> Doc.pretty (_lineText h) <> line <>
+      Doc.pretty (decodeUtf8 lineNumberText) <> " | " <> Doc.pretty (decodeUtf8 $ _lineText h) <> line <>
       Doc.pretty (Text.replicate (lineNumberTextLength + 1) " ") <> "| " <>
       Doc.pretty (Text.replicate startColumnNumber " " <> "^" <> Text.replicate (spanLength - 1) "~" <> spanEnding)
 
@@ -290,7 +290,7 @@ fromError err = do
         Left Error.Parsing.EOF -> do
           let
             eofPos =
-              Position.Absolute $ Text.lengthWord16 text
+              Position.Absolute $ ByteString.length text
           Span.lineColumn (Span.Absolute eofPos eofPos) text
 
         Right span ->

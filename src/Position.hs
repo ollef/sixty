@@ -9,8 +9,7 @@ import Protolude
 
 import Data.Persist
 
-import qualified Data.Text.Unsafe as Text
-import qualified Data.Text as Text
+import qualified Data.ByteString as ByteString
 
 newtype Absolute = Absolute Int
   deriving stock (Eq, Ord, Show)
@@ -38,20 +37,17 @@ addColumns :: LineColumn -> Int -> LineColumn
 addColumns (LineColumn line column) delta =
   LineColumn line $ column + delta
 
-lineColumn :: Absolute -> Text -> (LineColumn, Text)
+lineColumn :: Absolute -> ByteString -> (LineColumn, ByteString)
 lineColumn (Absolute index) text =
   let
-    prefix =
-      Text.takeWord16 index text
-
-    suffix =
-      Text.dropWord16 index text
+    (prefix, suffix) =
+      ByteString.splitAt index text
 
     linePrefixLength =
-      Text.lengthWord16 $ Text.takeWhileEnd (/= '\n') prefix
+      ByteString.length $ ByteString.takeWhileEnd (/= fromIntegral (ord '\n')) prefix
 
     lineSuffixLength =
-      Text.lengthWord16 $ Text.takeWhile (/= '\n') suffix
+      ByteString.length $ ByteString.takeWhile (/= fromIntegral (ord '\n')) suffix
 
     lineStart =
       index - linePrefixLength
@@ -60,11 +56,11 @@ lineColumn (Absolute index) text =
       linePrefixLength + lineSuffixLength
 
     line =
-      Text.takeWord16 lineLength $
-      Text.dropWord16 lineStart text
+      ByteString.take lineLength $
+      ByteString.drop lineStart text
   in
   ( LineColumn
-    (Text.count "\n" prefix)
+    (ByteString.count (fromIntegral $ ord '\n') prefix)
     linePrefixLength
   , line
   )

@@ -38,6 +38,7 @@ tokenLengthMultiplier (State (fromIntegral -> I# off)) =
         MinusState -> 1
         LeftParenState -> 1
         RightParenState -> 1
+        AtState -> 1
         LeftBraceState -> 1
         RightBraceState -> 1
         OperatorState -> 1
@@ -93,6 +94,7 @@ nextState (PremultipliedClassState (fromIntegral -> (I# off))) =
                 LeftBraceClass -> LeftBraceState
                 RightBraceClass -> RightBraceState
                 OperatorClass -> OperatorState
+                AtClass -> AtState
                 EndOfFileClass -> EndOfFileDone
                 ErrorClass -> ErrorState
                 _ -> panic $ "nextStateTable: no such class " <> show class_
@@ -131,10 +133,15 @@ nextState (PremultipliedClassState (fromIntegral -> (I# off))) =
                 MinusClass -> MultiLineCommentState
                 _ -> OperatorDone
             RightBraceState ->
-              OperatorDone
+              RightImplicitBraceDone
             OperatorState ->
               case class_ of
                 MinusClass -> OperatorState
+                OperatorClass -> OperatorState
+                _ -> OperatorDone
+            AtState ->
+              case class_ of
+                LeftBraceClass -> LeftImplicitBraceDone
                 OperatorClass -> OperatorState
                 _ -> OperatorDone
             SingleLineCommentState ->
@@ -160,7 +167,7 @@ nextState (PremultipliedClassState (fromIntegral -> (I# off))) =
                 _ -> ErrorDone
 
             _ ->
-              ErrorDone
+              panic $ "no such state" <> show state
       )
     off
   )

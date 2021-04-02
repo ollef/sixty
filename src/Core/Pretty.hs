@@ -4,6 +4,7 @@ module Core.Pretty where
 
 import Protolude
 
+import qualified Data.ByteString as ByteString
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
@@ -11,16 +12,16 @@ import qualified Data.HashSet as HashSet
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Sequence as Seq
 import Data.Text.Prettyprint.Doc
-import qualified Data.Text.Unsafe as Text
 import Rock
 
+import qualified Boxity
 import Core.Binding (Binding)
 import qualified Core.Binding as Binding
 import Core.Bindings (Bindings)
 import qualified Core.Bindings as Bindings
-import qualified Boxity
 import Core.Domain.Pattern (Pattern)
 import qualified Core.Domain.Pattern as Pattern
+import qualified Core.Syntax as Syntax
 import Index
 import Name (Name(Name))
 import qualified Name
@@ -29,7 +30,6 @@ import Query (Query)
 import qualified Query
 import qualified Query.Mapped as Mapped
 import qualified Scope
-import qualified Core.Syntax as Syntax
 import Telescope (Telescope)
 import qualified Telescope
 
@@ -45,7 +45,7 @@ data Environment v = Environment
 
 extend :: Environment v -> Name -> (Environment (Succ v), Name.Surface)
 extend env (Name name) =
-  go (Name.Surface name : [Name.Surface $ name <> show (i :: Int) | i <- [0..]])
+  go (Name.Surface name : [Name.Surface $ name <> encodeUtf8 (show (i :: Int)) | i <- [0..]])
   where
     go (name':names)
       | name' `HashMap.member` usedNames env =
@@ -174,7 +174,7 @@ prettyGlobal :: Environment v -> Name.Qualified -> Doc ann
 prettyGlobal env global = do
   let
     aliases =
-      sortOn (\(Name.Surface name) -> Text.lengthWord16 name) $
+      sortOn (\(Name.Surface name) -> ByteString.length name) $
       filter (unambiguous env) $
       HashSet.toList $
       HashMap.lookupDefault mempty global $
@@ -191,7 +191,7 @@ prettyConstr :: Environment v -> Name.QualifiedConstructor -> Doc ann
 prettyConstr env constr = do
   let
     aliases =
-      sortOn (\(Name.Surface name) -> Text.lengthWord16 name) $
+      sortOn (\(Name.Surface name) -> ByteString.length name) $
       filter (unambiguous env) $
       HashSet.toList $
       HashMap.lookupDefault mempty constr $

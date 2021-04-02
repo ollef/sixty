@@ -12,10 +12,11 @@ import Protolude hiding (State, state, getNumCapabilities)
 import Control.Concurrent.Async.Lifted.Safe
 import Control.Concurrent.Lifted
 import Control.Monad.Trans.Control
-import Data.Dependent.HashMap (DHashMap)
+import qualified Data.ByteString as ByteString
 import Data.Constraint.Extras (has')
-import Data.Dependent.Sum (DSum ((:=>)))
+import Data.Dependent.HashMap (DHashMap)
 import qualified Data.Dependent.HashMap as DHashMap
+import Data.Dependent.Sum (DSum ((:=>)))
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
@@ -74,7 +75,7 @@ runTask sourceDirectories files prettyError task = do
       -- traceFetch_ $
       writer writeErrors $
       Rules.rules sourceDirectories files $ \file ->
-        readFile file `catch` \(_ :: IOException) -> pure mempty
+        ByteString.readFile file `catch` \(_ :: IOException) -> pure mempty
 
   Rock.runTask rules $ do
   -- Rock.runMemoisedTask startedVar rules $ do
@@ -138,7 +139,7 @@ runIncrementalTask
   :: State err
   -> HashSet FilePath
   -> [FilePath]
-  -> HashMap FilePath Text
+  -> HashMap FilePath ByteString
   -> (Error.Hydrated -> Task Query err)
   -> Prune
   -> Task Query a
@@ -203,7 +204,7 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
         | Just text <- HashMap.lookup file files =
           return text
         | otherwise =
-          readFile file `catch` \(_ :: IOException) -> pure mempty
+          ByteString.readFile file `catch` \(_ :: IOException) -> pure mempty
 
       traceFetch_
         :: GenRules (Writer TaskKind Query) Query

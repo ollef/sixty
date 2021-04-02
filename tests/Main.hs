@@ -61,7 +61,7 @@ checkFiles sourceDirectories files = do
   forM_ moduleSources $ \(filePath, moduleSource) -> do
     let
       expectedErrors =
-        expectedErrorsFromSource moduleSource
+        expectedErrorsFromSource $ decodeUtf8 moduleSource
 
       moduleErrs =
         filter ((filePath ==) . Error.Hydrated._filePath . fst) errs

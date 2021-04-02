@@ -30,7 +30,7 @@ goToDefinition filePath (Position.LineColumn line column) = do
     pos =
       Position.Absolute $
         Rope.rowColumnCodeUnits (Rope.RowColumn line column) $
-        Rope.fromText contents
+        Rope.fromText $ decodeUtf8 contents
 
   runMaybeT $ asum $
     foreach (Module._imports moduleHeader) (\import_ -> do

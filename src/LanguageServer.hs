@@ -132,9 +132,9 @@ data State = State
   , _driverState :: !(Driver.State (Error.Hydrated, Doc Void))
   , _receiveMessage :: !(STM LSP.FromClientMessage)
   , _diskChangeSignalled :: !(STM ())
-  , _diskFileStateVar :: !(MVar (HashSet FilePath, [FileSystem.Directory], HashMap FilePath Text))
+  , _diskFileStateVar :: !(MVar (HashSet FilePath, [FileSystem.Directory], HashMap FilePath ByteString))
   , _sourceDirectories :: [FileSystem.Directory]
-  , _diskFiles :: HashMap FilePath Text
+  , _diskFiles :: HashMap FilePath ByteString
   , _openFiles :: HashMap FilePath Rope
   , _changedFiles :: HashSet FilePath
   }
@@ -434,7 +434,7 @@ runTask state prune task = do
       pure (err, heading <> Doc.line <> body)
 
     files =
-      fmap Rope.toText (_openFiles state) <> _diskFiles state
+      fmap (encodeUtf8 . Rope.toText) (_openFiles state) <> _diskFiles state
 
   Driver.runIncrementalTask
     (_driverState state)

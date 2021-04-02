@@ -40,7 +40,7 @@ relativeContains (Relative start end) pos =
 data LineColumn = LineColumns !Position.LineColumn !Position.LineColumn
   deriving (Show, Generic, Persist)
 
-lineColumn :: Absolute -> Text -> (LineColumn, Text)
+lineColumn :: Absolute -> ByteString -> (LineColumn, ByteString)
 lineColumn (Absolute start end) text =
   let
     (startLineColumn, lineText) =

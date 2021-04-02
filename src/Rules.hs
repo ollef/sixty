@@ -21,6 +21,7 @@ import Core.Binding (Binding)
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Syntax as Syntax
 import qualified CPSAssemblyToLLVM
+import qualified Data.ByteString as ByteString
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
@@ -28,15 +29,12 @@ import qualified Data.IntMap as IntMap
 import qualified Data.List as List
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.OrderedHashSet as OrderedHashSet
-import qualified Data.Text as Text
-import qualified Data.Text.Unsafe as Text
 import qualified Elaboration
 import qualified Environment
 import Error (Error)
 import qualified Error
 import qualified LambdaLifted.Syntax as LambdaLifted
 import qualified LambdaLifting
-import qualified Lexer
 import qualified Module
 import Monad
 import qualified Name
@@ -57,7 +55,7 @@ import System.FilePath
 import Telescope (Telescope)
 import qualified Telescope
 
-rules :: [FilePath] -> HashSet FilePath -> (FilePath -> IO Text) -> GenRules (Writer [Error] (Writer TaskKind Query)) Query
+rules :: [FilePath] -> HashSet FilePath -> (FilePath -> IO ByteString) -> GenRules (Writer [Error] (Writer TaskKind Query)) Query
 rules sourceDirectories files readFile_ (Writer (Writer query)) =
   case query of
     SourceDirectories ->
@@ -92,7 +90,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             | sourceDirectory <- sourceDirectories_
             , let
               candidate =
-                sourceDirectory </> joinPath (map toS $ Text.splitOn "." moduleNameText) <.> "vix"
+                sourceDirectory </> joinPath (map (toS . decodeUtf8) $ ByteString.split (fromIntegral $ ord '.') moduleNameText) <.> "vix"
             , candidate `HashSet.member` files_
             ]
 
@@ -115,7 +113,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
       nonInput $ do
         text <- fetch $ FileText filePath
         fileModuleName <- moduleNameFromFilePath
-        case Parser.parseTokens Parser.module_ $ Lexer.lexText text of
+        case Parser.parseByteString Parser.module_ text of
           Right ((maybeModuleName, header), errorsAndDefinitions) -> do
             let
               (parseErrors, definitions) =
@@ -159,7 +157,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
           sourceDirectories_ <- fetch SourceDirectories
           let
             candidates =
-              [ toS $
+              [ encodeUtf8 $ toS $
                 map (\c -> if isPathSeparator c then '.' else c) $
                 dropWhile isPathSeparator $
                 drop (length sourceDirectory) $
@@ -172,7 +170,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             Name.Module $
             case candidates of
               [] ->
-                toS filePath
+                encodeUtf8 $ toS filePath
 
               firstCandidate:_ ->
                 firstCandidate
@@ -239,7 +237,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                 []
 
               [(loc, (name, def))] ->
-                [((Surface.key def, name), Span.Absolute loc $ Position.Absolute $ Text.lengthWord16 text)]
+                [((Surface.key def, name), Span.Absolute loc $ Position.Absolute $ ByteString.length text)]
 
               (loc1, (name, def)):defs'@((loc2, _):_) ->
                 ((Surface.key def, name), Span.Absolute loc1 loc2) : go defs'

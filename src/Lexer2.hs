@@ -26,9 +26,103 @@ import qualified Position
 import Protolude hiding (State, state, length)
 import qualified Span
 
+newtype InnerToken = InnerToken Word8
+  deriving (Eq, Show, Generic)
+  deriving newtype NFData
+  -- Identifiers
+pattern Identifier = InnerToken 0
+pattern Let = InnerToken 1
+pattern In = InnerToken 2
+pattern Data = InnerToken 3
+pattern Where = InnerToken 4
+pattern Forall = InnerToken 5
+pattern Case = InnerToken 6
+pattern Of = InnerToken 7
+pattern Underscore = InnerToken 8
+pattern Operator = InnerToken 9
+pattern Equals = InnerToken 10
+pattern Dot = InnerToken 11
+pattern Colon = InnerToken 12
+pattern Pipe = InnerToken 13
+pattern RightArrow = InnerToken 14
+pattern QuestionMark = InnerToken 15
+pattern Forced = InnerToken 16
+pattern Number = InnerToken 17
+pattern Lambda = InnerToken 18
+pattern LeftParen = InnerToken 19
+pattern RightParen = InnerToken 20
+pattern LeftImplicitBrace = InnerToken 21
+pattern RightImplicitBrace = InnerToken 22
+pattern Error = InnerToken 23
+
+{-# inline toToken #-}
+toToken :: ForeignPtr Word8 -> State -> Span.Absolute -> InnerToken
+toToken source state (Span.Absolute (Position.Absolute startPosition) (Position.Absolute endPosition)) =
+  case state of
+    IdentifierDone ->
+      case ByteString.PS source startPosition (endPosition - startPosition) of
+        "let" -> Let
+        "in" -> In
+        "data" -> Data
+        "where" -> Where
+        "forall" -> Forall
+        "case" -> Case
+        "of" -> Of
+        "_" -> Underscore
+        _ -> Identifier
+    OperatorDone ->
+      case ByteString.PS source startPosition (endPosition - startPosition) of
+        "=" -> Equals
+        "." -> Dot
+        ":" -> Colon
+        "|" -> Pipe
+        "->" -> RightArrow
+        "?" -> QuestionMark
+        "~" -> Forced
+        "\\" -> Lambda
+        _ -> Operator
+    NumberDone -> Number
+    LeftParenDone -> LeftParen
+    RightParenDone -> RightParen
+    LeftImplicitBraceDone -> LeftImplicitBrace
+    RightImplicitBraceDone -> RightImplicitBrace
+    ErrorDone -> Error
+    _ -> panic $ "toToken: " <> show state
+
+displayToken :: InnerToken -> ByteString -> Text
+displayToken token_ bs =
+  case token_ of
+    Identifier -> decodeUtf8 bs
+    Let -> "let"
+    In -> "in"
+    Data -> "data"
+    Where -> "where"
+    Forall -> "forall"
+    Case -> "case"
+    Of -> "of"
+    Underscore -> "_"
+
+    Operator -> decodeUtf8 bs
+    Equals -> "="
+    Dot -> "."
+    Colon -> ":"
+    Pipe -> "|"
+    RightArrow -> "->"
+    QuestionMark -> "?"
+    Forced -> "~"
+
+    Number -> decodeUtf8 bs
+    Lambda -> "\\"
+    LeftParen -> "("
+    RightParen -> ")"
+    LeftImplicitBrace -> "@{"
+    RightImplicitBrace -> "}"
+    Error -> "[error]"
+    _ -> panic "No such token"
+
 data TokenList
   = Empty
-  | Token !State !Position.LineColumn !ByteString TokenList
+  | Token !InnerToken !Position.LineColumn !Span.Absolute TokenList
   deriving (Show, Generic, NFData)
 
 tokenSpan :: ByteString -> Span.Absolute
@@ -87,20 +181,21 @@ nextToken !position !line !column !tokenLength !state = do
 
 {-# inline token #-}
 token :: State -> ForeignPtr Word8 -> Addr# -> Int -> Int -> Int -> TokenList -> TokenList
-token tok source@(ForeignPtr sourceAddress _) position length line column =
-  Token tok (Position.LineColumn line (column - length)) (ByteString.PS source startPosition length)
+token st source@(ForeignPtr sourceAddress _) position length line column =
+  Token (toToken source st span) (Position.LineColumn line (column - length)) (Span.Absolute (Position.Absolute startPosition) (Position.Absolute endPosition))
   where
     endPosition =
       I# (position `minusAddr#` sourceAddress)
     startPosition =
       endPosition - length
+    span =
+      Span.Absolute (Position.Absolute startPosition) (Position.Absolute endPosition)
 
-toByteString :: ForeignPtr Word8 -> Addr# -> Int -> ByteString
-toByteString source@(ForeignPtr sourceAddress _) endPosition length@(I# length_) =
+toByteString :: ForeignPtr Word8 -> Span.Absolute -> ByteString
+toByteString source (Span.Absolute (Position.Absolute startPosition) (Position.Absolute endPosition)) =
   ByteString.PS source startPosition length
   where
-    startPosition =
-      I# (sourceAddress `minusAddr#` (endPosition `plusAddr#` negateInt# length_))
+    !length = endPosition - startPosition
 
 parseNumber :: ByteString -> Integer
 parseNumber =

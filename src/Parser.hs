@@ -7,6 +7,7 @@
 {-# language RankNTypes #-}
 {-# language TupleSections #-}
 {-# language UnboxedTuples #-}
+{-# language ViewPatterns #-}
 module Parser where
 
 import Protolude hiding (break, try, moduleName, Option)
@@ -15,25 +16,31 @@ import Control.Monad.Fail
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
-import Text.Parser.Combinators (sepBy, sepBy1)
 import GHC.Exts hiding (toList)
+import qualified Data.ByteString.Internal as ByteString
+import GHC.ForeignPtr (ForeignPtr(..))
+import Text.Parser.Combinators (sepBy, sepBy1)
 
 import Boxity
 import qualified Error.Parsing as Error
-import qualified Lexer
-import Lexer (TokenList(..), UnspannedToken)
+import qualified Lexer2 as Lexer
+import Lexer2 (TokenList(..), InnerToken(..))
 import qualified Literal
 import qualified Module
 import Name (Name(Name))
 import qualified Name
 import Plicity
 import qualified Position
-import qualified Surface.Syntax as Surface
 import qualified Span
+import qualified Surface.Syntax as Surface
 
-parseTokens :: Parser a -> TokenList -> Either Error.Parsing a
-parseTokens p tokens =
-  case unParser p tokens mempty (Position.LineColumn 0 0) (Position.Absolute 0) of
+parseByteString :: Parser a -> ByteString -> Either Error.Parsing a
+parseByteString parser bs@(ByteString.PS source _ _) =
+  parseTokens parser source $ Lexer.lexByteString bs
+
+parseTokens :: Parser a -> ForeignPtr Word8 -> TokenList -> Either Error.Parsing a
+parseTokens p source tokens =
+  case unParser p source tokens mempty (Position.LineColumn 0 0) (Position.Absolute 0) of
     OK a _ _ _ ->
       Right a
 
@@ -46,7 +53,7 @@ parseTokens p tokens =
             Empty ->
               Left Error.EOF
 
-            Token _ (Span.Absolute pos _) _ _ ->
+            Token _ _ (Span.Absolute pos _) _ ->
               Right pos
         }
 
@@ -77,7 +84,8 @@ expected s =
 
 newtype Parser a = Parser
   { unParser
-    :: TokenList -- input
+    :: ForeignPtr Word8 -- input source
+    -> TokenList -- input tokens
     -> ErrorReason -- previous errors at this position
     -> Position.LineColumn -- indentation base
     -> Position.Absolute -- base position
@@ -138,40 +146,40 @@ setResult _ (Fail con inp err) = Fail con inp err
 instance Functor Parser where
   {-# inline fmap #-}
   fmap f (Parser p) =
-    Parser \inp err lineCol base ->
-      mapResult f (p inp err lineCol base)
+    Parser \source inp err lineCol base ->
+      mapResult f (p source inp err lineCol base)
 
 instance Applicative Parser where
   {-# inline pure #-}
   pure a =
-    Parser \inp err _ _ -> OK a ConsumedNone inp err
+    Parser \_ inp err _ _ -> OK a ConsumedNone inp err
 
   {-# inline (<*>) #-}
   Parser p <*> Parser q =
-    Parser $ \inp err lineCol base ->
-      case p inp err lineCol base of
+    Parser $ \source inp err lineCol base ->
+      case p source inp err lineCol base of
         OK f con inp' err' ->
-          consumedAtLeast con (mapResult f (q inp' err' lineCol base))
+          consumedAtLeast con (mapResult f (q source inp' err' lineCol base))
 
         Fail con inp' err' ->
           Fail con inp' err'
 
   {-# inline (*>) #-}
   Parser p *> Parser q =
-    Parser $ \inp err lineCol base ->
-      case p inp err lineCol base of
+    Parser $ \source inp err lineCol base ->
+      case p source inp err lineCol base of
         OK _ con inp' err' ->
-          consumedAtLeast con (q inp' err' lineCol base)
+          consumedAtLeast con (q source inp' err' lineCol base)
 
         Fail con inp' err' ->
           Fail con inp' err'
 
   {-# inline (<*) #-}
   Parser p <* Parser q =
-    Parser $ \inp err lineCol base ->
-      case p inp err lineCol base of
+    Parser $ \source inp err lineCol base ->
+      case p source inp err lineCol base of
         OK a con inp' err' ->
-          consumedAtLeast con (setResult a (q inp' err' lineCol base))
+          consumedAtLeast con (setResult a (q source inp' err' lineCol base))
 
         f ->
           f
@@ -179,17 +187,17 @@ instance Applicative Parser where
 instance Alternative Parser where
   {-# inline empty #-}
   empty =
-    Parser \inp err _ _ -> Fail ConsumedNone inp err
+    Parser \_ inp err _ _ -> Fail ConsumedNone inp err
 
   {-# inline (<|>) #-}
   Parser p <|> Parser q =
-    Parser \inp err lineCol base ->
-      case p inp err lineCol base of
+    Parser \source inp err lineCol base ->
+      case p source inp err lineCol base of
         result@OK {} ->
           result
 
         Fail ConsumedNone _inp err' ->
-          q inp err' lineCol base
+          q source inp err' lineCol base
 
         f@(Fail ConsumedSome _ _) ->
           f
@@ -197,10 +205,10 @@ instance Alternative Parser where
 instance Monad Parser where
   {-# inline (>>=) #-}
   Parser p >>= f =
-    Parser \inp err lineCol base ->
-      case p inp err lineCol base of
+    Parser \source inp err lineCol base ->
+      case p source inp err lineCol base of
         OK a con inp' err' ->
-          consumedAtLeast con (unParser (f a) inp' err' lineCol base)
+          consumedAtLeast con (unParser (f a) source inp' err' lineCol base)
 
         Fail con inp' err' ->
           Fail con inp' err'
@@ -218,12 +226,12 @@ instance MonadPlus Parser where
 
 error :: ErrorReason -> Parser a
 error err =
-  Parser \inp err' _ _ -> Fail ConsumedNone inp $ err' <> err
+  Parser \_ inp err' _ _ -> Fail ConsumedNone inp $ err' <> err
 
 try :: Parser a -> Parser a
 try (Parser p) =
-  Parser \inp err lineCol base ->
-    case p inp err lineCol base of
+  Parser \source inp err lineCol base ->
+    case p source inp err lineCol base of
       ok@OK {} ->
         ok
 
@@ -232,35 +240,35 @@ try (Parser p) =
 
 (<?>) :: Parser a -> Text -> Parser a
 Parser p <?> expect =
-  Parser \inp err lineCol base ->
-    case p inp err lineCol base of
+  Parser \source inp err lineCol base ->
+    case p source inp err lineCol base of
       (# oa, con, inp', err' #) ->
         (# oa, con, inp', err' { _expected = HashSet.insert expect $ _expected err' }#)
 
 notFollowedBy :: Parser Text -> Parser ()
 notFollowedBy (Parser p) =
-  Parser \inp err lineCol base ->
-    case p inp err lineCol base of
+  Parser \source inp err lineCol base ->
+    case p source inp err lineCol base of
       OK a _ _ _ ->
         Fail ConsumedNone inp $ err <> failed ("Unexpected '" <> a <> "'")
 
       Fail {} ->
         OK () ConsumedNone inp err
 
-notFollowedByToken :: UnspannedToken -> Parser ()
-notFollowedByToken token_ =
-  notFollowedBy $ Lexer.displayToken token_ <$ token token_
+notFollowedByToken0 :: InnerToken -> Parser ()
+notFollowedByToken0 token_ =
+  notFollowedBy $ Lexer.displayToken token_ "" <$ token0 token_
 
 {-# inline withRecovery #-}
 withRecovery :: (ErrorReason -> Position.Absolute -> TokenList -> Parser a) -> Parser a -> Parser a
 withRecovery recover_ (Parser p) =
-  Parser \inp err lineCol base ->
-    case p inp err lineCol base of
+  Parser \source inp err lineCol base ->
+    case p source inp err lineCol base of
       ok@OK {} ->
         ok
 
       f@(Fail _con inp' err') ->
-        case unParser (recover_ err' base inp') inp err lineCol base of
+        case unParser (recover_ err' base inp') source inp err lineCol base of
           ok@OK {} ->
             ok
 
@@ -274,22 +282,22 @@ withToken
     . (a -> r)
     -> (ErrorReason -> r)
     -> Span.Relative
-    -> UnspannedToken
+    -> InnerToken
     -> r
     )
   -> Parser a
 withToken f =
-  Parser \inp err _lineCol base ->
+  Parser \_ inp err _lineCol base ->
     case inp of
       Empty ->
         Fail ConsumedNone inp $ err <> failed "Unexpected EOF"
 
-      Token _pos tokenSpan token_ inp' ->
+      Token tok _pos span inp' ->
         f
           (\a -> OK a ConsumedSome inp' mempty)
           (Fail ConsumedNone inp)
-          (Span.relativeTo base tokenSpan)
-          token_
+          (Span.relativeTo base span)
+          tok
 
 {-# inline withIndentedToken #-}
 withIndentedToken
@@ -298,23 +306,25 @@ withIndentedToken
     . (a -> r)
     -> (ErrorReason -> r)
     -> Span.Relative
-    -> UnspannedToken
+    -> InnerToken
+    -> ByteString
     -> r
     )
   -> Parser a
 withIndentedToken f =
-  Parser \inp err (Position.LineColumn line col) base ->
+  Parser \source inp err (Position.LineColumn line col) base ->
     case inp of
       Empty ->
         Fail ConsumedNone inp $ err <> failed "Unexpected EOF"
 
-      Token (Position.LineColumn tokenLine tokenCol) tokenSpan token_ inp'
+      Token tok (Position.LineColumn tokenLine tokenCol) tokenSpan inp'
         | line == tokenLine || col < tokenCol ->
           f
             (\a -> OK a ConsumedSome inp' mempty)
             (\err' -> Fail ConsumedNone inp $ err <> err')
             (Span.relativeTo base tokenSpan)
-            token_
+            tok
+            (Lexer.toByteString source tokenSpan)
 
         | otherwise ->
           Fail ConsumedNone inp $ err <> failed "Unexpected unindent"
@@ -326,23 +336,25 @@ withIndentedTokenM
     . (Parser a -> r)
     -> (ErrorReason -> r)
     -> Span.Relative
-    -> UnspannedToken
+    -> InnerToken
+    -> ByteString
     -> r
     )
   -> Parser a
 withIndentedTokenM f =
-  Parser \inp err lineCol@(Position.LineColumn line col) base ->
+  Parser \source inp err lineCol@(Position.LineColumn line col) base ->
     case inp of
       Empty ->
         Fail ConsumedNone inp $ err <> failed "Unexpected EOF"
 
-      Token (Position.LineColumn tokenLine tokenCol) tokenSpan token_ inp'
+      Token tok (Position.LineColumn tokenLine tokenCol) tokenSpan inp'
         | line == tokenLine || col < tokenCol ->
           f
-            (\pa -> consumedSome (unParser pa inp' mempty lineCol base))
+            (\pa -> consumedSome (unParser pa source inp' mempty lineCol base))
             (\err' -> Fail ConsumedNone inp $ err <> err')
             (Span.relativeTo base tokenSpan)
-            token_
+            tok
+            (Lexer.toByteString source tokenSpan)
 
         | otherwise ->
           Fail ConsumedNone inp $ err <> failed "Unexpected unindent"
@@ -350,36 +362,36 @@ withIndentedTokenM f =
 {-# inline withIndentationBlock #-}
 withIndentationBlock :: Parser a -> Parser a
 withIndentationBlock (Parser p) =
-  Parser \inp err lineCol base ->
+  Parser \source inp err lineCol base ->
     case inp of
       Empty ->
-        p inp err lineCol base
+        p source inp err lineCol base
 
-      Token tokenLineCol _ _ _ ->
-        p inp err tokenLineCol base
+      Token _ tokenLineCol _ _ ->
+        p source inp err tokenLineCol base
 
 {-# inline relativeTo #-}
 relativeTo :: Parser a -> Parser (Position.Absolute, a)
 relativeTo (Parser p) =
-  Parser \inp err lineCol _base ->
+  Parser \source inp err lineCol _base ->
     case inp of
       Empty ->
         Fail ConsumedNone inp $ err <> failed "Unexpected EOF"
 
-      Token _ (Span.Absolute tokenStart _) _ _ ->
-        mapResult (tokenStart, ) (p inp err lineCol tokenStart)
+      Token _ _ (Span.Absolute tokenStart _) _ ->
+        mapResult (tokenStart, ) (p source inp err lineCol tokenStart)
 
 {-# inline sameLevel #-}
 sameLevel :: Parser a -> Parser a
 sameLevel (Parser p) =
-  Parser \inp err lineCol@(Position.LineColumn _ col) base ->
+  Parser \source inp err lineCol@(Position.LineColumn _ col) base ->
     case inp of
       Empty ->
         Fail ConsumedNone inp $ err <> failed "Unexpected EOF"
 
-      Token (Position.LineColumn _ tokenCol) _ _ _
+      Token _ (Position.LineColumn _ tokenCol) _ _
         | col == tokenCol ->
-          p inp err lineCol base
+          p source inp err lineCol base
 
         | col > tokenCol ->
           Fail ConsumedNone inp $ err <> failed "Unexpected unindent"
@@ -390,14 +402,14 @@ sameLevel (Parser p) =
 {-# inline indented #-}
 indented :: Parser a -> Parser a
 indented (Parser p) =
-  Parser \inp err lineCol@(Position.LineColumn line col) base ->
+  Parser \source inp err lineCol@(Position.LineColumn line col) base ->
     case inp of
       Empty ->
         Fail ConsumedNone inp $ err <> failed "Unexpected EOF"
 
-      Token (Position.LineColumn tokenLine tokenCol) _ _ _
+      Token _ (Position.LineColumn tokenLine tokenCol) _ _
         | line == tokenLine || col < tokenCol ->
-          p inp err lineCol base
+          p source inp err lineCol base
 
         | otherwise ->
           Fail ConsumedNone inp $ err <> failed "Unexpected unindent"
@@ -420,32 +432,42 @@ blockOfMany p =
   indented (withIndentationBlock $ someSame p)
   <|> pure []
 
-{-# inline token #-}
-token :: UnspannedToken -> Parser Span.Relative
-token t =
-  withIndentedToken $ \continue break span t' ->
+{-# inline token0 #-}
+token0 :: InnerToken -> Parser Span.Relative
+token0 t =
+  withIndentedToken $ \continue break span t' _ ->
     if t == t' then
       continue span
 
     else
-      break $ expected $ "'" <> Lexer.displayToken t <> "'"
+      break $ expected $ "'" <> Lexer.displayToken t "" <> "'"
 
-{-# inline uncheckedToken #-}
-uncheckedToken :: UnspannedToken -> Parser Span.Relative
-uncheckedToken t =
+{-# inline token #-}
+token :: InnerToken -> ByteString -> Parser Span.Relative
+token t bs =
+  withIndentedToken $ \continue break span t' bs' ->
+    if t == t' && bs == bs' then
+      continue span
+
+    else
+      break $ expected $ "'" <> Lexer.displayToken t bs <> "'"
+
+{-# inline uncheckedToken0 #-}
+uncheckedToken0 :: InnerToken -> Parser Span.Relative
+uncheckedToken0 t =
   withToken $ \continue break span t' ->
     if t == t' then
       continue span
 
     else
-      break $ expected $ "'" <> Lexer.displayToken t <> "'"
+      break $ expected $ "'" <> Lexer.displayToken t "" <> "'"
 
 {-# inline spannedIdentifier #-}
-spannedIdentifier :: Parser (Span.Relative, Text)
+spannedIdentifier :: Parser (Span.Relative, ByteString)
 spannedIdentifier =
-  withIndentedToken $ \continue break span token_ ->
+  withIndentedToken $ \continue break span token_ name_ ->
     case token_ of
-      Lexer.Identifier name_ ->
+      Lexer.Identifier ->
         continue (span, name_)
 
       _ ->
@@ -481,7 +503,7 @@ recover k errorReason _base inp = do
   where
     pos =
       case inp of
-        Token _ (Span.Absolute startPos _) _ _ ->
+        Token _ _ (Span.Absolute startPos _) _ ->
           Right startPos
 
         Empty ->
@@ -489,12 +511,12 @@ recover k errorReason _base inp = do
 
 skipToBaseLevel :: Parser ()
 skipToBaseLevel =
-  Parser \inp err (Position.LineColumn line col) _base ->
+  Parser \_ inp err (Position.LineColumn line col) _base ->
     case inp of
       Token _ _ _ inp' -> do
         let
           go Empty = Empty
-          go inp''@(Token (Position.LineColumn tokenLine tokenCol) _ _ inp''')
+          go inp''@(Token _ (Position.LineColumn tokenLine tokenCol) _ inp''')
             | line == tokenLine || col < tokenCol =
               go inp'''
             | otherwise =
@@ -509,10 +531,10 @@ skipToBaseLevel =
 
 atomicPattern :: Parser Surface.Pattern
 atomicPattern =
-  withIndentedTokenM \continue break span token_ ->
+  withIndentedTokenM \continue break span token_ bs ->
     case token_ of
       Lexer.LeftParen ->
-        continue $ pattern_ <* token Lexer.RightParen
+        continue $ pattern_ <* token0 Lexer.RightParen
 
       Lexer.QuestionMark ->
         continue $ pure $ Surface.Pattern span $ Surface.ConOrVar (Surface.SpannedName span "?") mempty
@@ -523,11 +545,11 @@ atomicPattern =
       Lexer.Forced ->
         continue $ (\term_@(Surface.Term termSpan _) -> Surface.Pattern (Span.add span termSpan) $ Surface.Forced term_) <$> atomicTerm
 
-      Lexer.Identifier name_ ->
-        continue $ pure $ Surface.Pattern span $ Surface.ConOrVar (Surface.SpannedName span $ Name.Surface name_) mempty
+      Lexer.Identifier ->
+        continue $ pure $ Surface.Pattern span $ Surface.ConOrVar (Surface.SpannedName span $ Name.Surface bs) mempty
 
-      Lexer.Number int ->
-        continue $ pure $ Surface.Pattern span $ Surface.LitPattern $ Literal.Integer int
+      Lexer.Number ->
+        continue $ pure $ Surface.Pattern span $ Surface.LitPattern $ Literal.Integer $ Lexer.parseNumber bs
 
       _ ->
         break $ expected "pattern"
@@ -538,16 +560,16 @@ pattern_ =
     <|> atomicPattern
   )
   <**>
-  ( flip Surface.anno <$ token Lexer.Colon <*> term
+  ( flip Surface.anno <$ token0 Lexer.Colon <*> term
     <|> pure identity
   ) <?> "pattern"
 
 plicitPattern :: Parser Surface.PlicitPattern
 plicitPattern =
   mkImplicitPattern <$>
-    token Lexer.LeftImplicitBrace <*>
-    sepBy patName (token $ Lexer.Operator ",") <*>
-    token Lexer.RightImplicitBrace
+    token0 Lexer.LeftImplicitBrace <*>
+    sepBy patName (token Lexer.Operator ",") <*>
+    token0 Lexer.RightImplicitBrace
   <|> Surface.ExplicitPattern <$> atomicPattern
   <?> "explicit or implicit pattern"
   where
@@ -555,7 +577,7 @@ plicitPattern =
       Surface.ImplicitPattern (Span.add span1 span2) $ HashMap.fromList pats
     patName =
       spannedIdentifier <**>
-        ((\pat (_, nameText) -> (Name nameText, pat)) <$ token Lexer.Equals <*> pattern_
+        ((\pat (_, nameText) -> (Name nameText, pat)) <$ token0 Lexer.Equals <*> pattern_
         <|> pure (\(span, nameText) -> (Name nameText, Surface.Pattern span $ Surface.ConOrVar (Surface.SpannedName span (Name.Surface nameText)) mempty))
         )
 
@@ -567,7 +589,7 @@ recoveringTerm =
   withRecovery
     (\errorInfo base inp' ->
       case inp' of
-        Token _ tokenSpan _ _ ->
+        Token _ _ tokenSpan _ ->
           recover (Surface.Term (Span.relativeTo base tokenSpan) . Surface.ParseError) errorInfo base inp'
 
         Empty ->
@@ -577,13 +599,13 @@ recoveringTerm =
 
 atomicTerm :: Parser Surface.Term
 atomicTerm =
-  withIndentedTokenM $ \continue break span token_ ->
+  withIndentedTokenM $ \continue break span token_ bs ->
     case token_ of
       Lexer.LeftParen ->
-        continue $ term <* token Lexer.RightParen
+        continue $ term <* token0 Lexer.RightParen
 
       Lexer.Let ->
-        continue $ Surface.lets span <$> blockOfMany let_ <* token Lexer.In <*> term
+        continue $ Surface.lets span <$> blockOfMany let_ <* token0 Lexer.In <*> term
 
       Lexer.Underscore ->
         continue $ pure $ Surface.Term span Surface.Wildcard
@@ -591,68 +613,68 @@ atomicTerm =
       Lexer.QuestionMark ->
         continue $ pure $ Surface.Term span Surface.Wildcard
 
-      Lexer.Identifier ident ->
-        continue $ pure $ Surface.Term span $ Surface.Var $ Name.Surface ident
+      Lexer.Identifier ->
+        continue $ pure $ Surface.Term span $ Surface.Var $ Name.Surface bs
 
       Lexer.Case ->
         continue $
-          Surface.case_ span <$> term <*> token Lexer.Of <*> blockOfMany branch
+          Surface.case_ span <$> term <*> token0 Lexer.Of <*> blockOfMany branch
 
       Lexer.Lambda ->
         continue $
-          Surface.lams span <$> some plicitPattern <* token Lexer.Dot <*> term
+          Surface.lams span <$> some plicitPattern <* token0 Lexer.Dot <*> term
 
       Lexer.Forall ->
         continue $
           Surface.implicitPis span <$>
             some
-              ( (,,) <$> token Lexer.LeftParen <*> some spannedName <* token Lexer.Colon <*> term <* token Lexer.RightParen
+              ( (,,) <$> token0 Lexer.LeftParen <*> some spannedName <* token0 Lexer.Colon <*> term <* token0 Lexer.RightParen
               <|> (\spannedName_@(Surface.SpannedName span_ _) -> (span_, [spannedName_], Surface.Term span_ Surface.Wildcard)) <$> spannedName
               )
-              <* token Lexer.Dot <*> term
+              <* token0 Lexer.Dot <*> term
 
-      Lexer.Number int ->
-        continue $ pure $ Surface.Term span $ Surface.Lit $ Literal.Integer int
+      Lexer.Number ->
+        continue $ pure $ Surface.Term span $ Surface.Lit $ Literal.Integer $ Lexer.parseNumber bs
 
       _ ->
         break $ expected "term"
   where
     branch :: Parser (Surface.Pattern, Surface.Term)
     branch =
-      (,) <$> pattern_ <* token Lexer.RightArrow <*> term
+      (,) <$> pattern_ <* token0 Lexer.RightArrow <*> term
 
 let_ :: Parser Surface.Let
 let_ = do
   (span, nameText) <- spannedIdentifier
-  Surface.LetType (Surface.SpannedName span $ Name.Surface nameText) <$ token Lexer.Colon <*> recoveringTerm
+  Surface.LetType (Surface.SpannedName span $ Name.Surface nameText) <$ token0 Lexer.Colon <*> recoveringTerm
     <|> Surface.Let (Name.Surface nameText) <$> clauses span nameText
   <?> "let binding"
 
 plicitAtomicTerm :: Parser (Surface.Term -> Surface.Term)
 plicitAtomicTerm =
-  (\args span fun -> Surface.implicitApp fun (HashMap.fromList args) span) <$ token Lexer.LeftImplicitBrace <*>
-    sepBy implicitArgument (token $ Lexer.Operator ",") <*>
-    token Lexer.RightImplicitBrace
+  (\args span fun -> Surface.implicitApp fun (HashMap.fromList args) span) <$ token0 Lexer.LeftImplicitBrace <*>
+    sepBy implicitArgument (token Lexer.Operator ",") <*>
+    token0 Lexer.RightImplicitBrace
   <|> flip Surface.app <$> atomicTerm
   where
     implicitArgument =
       spannedIdentifier <**>
-        ((\t (_, nameText) -> (Name nameText, t)) <$ token Lexer.Equals <*> term
+        ((\t (_, nameText) -> (Name nameText, t)) <$ token0 Lexer.Equals <*> term
         <|> pure (\(span, nameText) -> (Name nameText, Surface.Term span $ Surface.Var $ Name.Surface nameText))
         )
 
 term :: Parser Surface.Term
 term =
-  Surface.pis Explicit <$> some typedBindings <* token Lexer.RightArrow <*> term
+  Surface.pis Explicit <$> some typedBindings <* token0 Lexer.RightArrow <*> term
   <|> atomicTerm <**> (foldl' (flip (.)) identity <$> many plicitAtomicTerm) <**> fun
   <?> "term"
   where
     typedBindings =
-      uncurry (,,) <$> try ((,) <$> token Lexer.LeftParen <*> some spannedName <* token Lexer.Colon) <*>
-        term <* token Lexer.RightParen
+      uncurry (,,) <$> try ((,) <$> token0 Lexer.LeftParen <*> some spannedName <* token0 Lexer.Colon) <*>
+        term <* token0 Lexer.RightParen
 
     fun =
-      flip Surface.function <$ token Lexer.RightArrow <*> term
+      flip Surface.function <$ token0 Lexer.RightArrow <*> term
       <|> pure identity
 
 -------------------------------------------------------------------------------
@@ -669,31 +691,31 @@ definition =
     <|> do
       (span, nameText) <- spannedIdentifier
       (,) (Name nameText) <$>
-        (Surface.TypeDeclaration span <$ token Lexer.Colon <*> recoveringTerm
+        (Surface.TypeDeclaration span <$ token0 Lexer.Colon <*> recoveringTerm
         <|> Surface.ConstantDefinition <$> clauses span nameText
         )
     <?> "definition"
 
-clauses :: Span.Relative -> Text -> Parser [(Span.Relative, Surface.Clause)]
+clauses :: Span.Relative -> ByteString -> Parser [(Span.Relative, Surface.Clause)]
 clauses firstSpan nameText =
   (:) <$>
     ((,) firstSpan <$> clause) <*>
-    manySame ((,) <$> try (token (Lexer.Identifier nameText) <* notFollowedByToken Lexer.Colon) <*> clause)
+    manySame ((,) <$> try (token Lexer.Identifier nameText <* notFollowedByToken0 Lexer.Colon) <*> clause)
 
 clause :: Parser Surface.Clause
 clause =
-  Surface.clause <$> many plicitPattern <*> token Lexer.Equals <*> recoveringTerm
+  Surface.clause <$> many plicitPattern <*> token0 Lexer.Equals <*> recoveringTerm
 
 dataDefinition :: Parser (Name, Surface.Definition)
 dataDefinition =
   mkDataDefinition <$> boxity <*> spannedIdentifier <*> parameters <*>
-    (token Lexer.Where *> blockOfMany gadtConstructors
-    <|> token Lexer.Equals *> sepBy1 adtConstructor (token Lexer.Pipe)
+    (token0 Lexer.Where *> blockOfMany gadtConstructors
+    <|> token0 Lexer.Equals *> sepBy1 adtConstructor (token0 Lexer.Pipe)
     )
   where
     boxity =
-      Boxed <$ token (Lexer.Identifier "boxed") <* uncheckedToken Lexer.Data
-      <|> Unboxed <$ token Lexer.Data
+      Boxed <$ token Lexer.Identifier "boxed" <* uncheckedToken0 Lexer.Data
+      <|> Unboxed <$ token0 Lexer.Data
 
     mkDataDefinition boxity_ (span, nameText) params constrs =
       (Name nameText, Surface.DataDefinition span boxity_ params constrs)
@@ -705,19 +727,19 @@ dataDefinition =
       <|> (<>) <$> explicitParameter <*> parameters
 
     explicitParameter =
-      (\spannedNames type_ -> [(spannedName_, type_, Explicit) | spannedName_ <- spannedNames]) <$ token Lexer.LeftParen <*> some spannedName <* token Lexer.Colon <*> recoveringTerm <* token Lexer.RightParen
+      (\spannedNames type_ -> [(spannedName_, type_, Explicit) | spannedName_ <- spannedNames]) <$ token0 Lexer.LeftParen <*> some spannedName <* token0 Lexer.Colon <*> recoveringTerm <* token0 Lexer.RightParen
       <|> (\spannedName_@(Surface.SpannedName span _) -> pure (spannedName_, Surface.Term span Surface.Wildcard, Explicit)) <$> spannedName
 
     implicitParameters =
-      (<>) . concat <$ token Lexer.Forall <*>
+      (<>) . concat <$ token0 Lexer.Forall <*>
         some
-          ((\spannedNames type_ -> [(spannedName_, type_, Implicit) | spannedName_ <- spannedNames]) <$ token Lexer.LeftParen <*> some spannedName <* token Lexer.Colon <*> term <* token Lexer.RightParen
+          ((\spannedNames type_ -> [(spannedName_, type_, Implicit) | spannedName_ <- spannedNames]) <$ token0 Lexer.LeftParen <*> some spannedName <* token0 Lexer.Colon <*> term <* token0 Lexer.RightParen
           <|> (\spannedName_@(Surface.SpannedName span _) -> [(spannedName_, Surface.Term span Surface.Wildcard, Implicit)]) <$> spannedName
-          ) <* token Lexer.Dot <*> parameters1
+          ) <* token0 Lexer.Dot <*> parameters1
 
     gadtConstructors =
       withIndentationBlock $
-        Surface.GADTConstructors <$> some spannedConstructor <* token Lexer.Colon <*> recoveringTerm
+        Surface.GADTConstructors <$> some spannedConstructor <* token0 Lexer.Colon <*> recoveringTerm
 
     adtConstructor =
       uncurry Surface.ADTConstructor <$> spannedConstructor <*> many atomicTerm
@@ -737,19 +759,19 @@ moduleHeader =
     mkModuleHeader (mname, exposed) imports =
       (mname, Module.Header exposed imports)
     moduleExposing =
-      sameLevel ((\(span, name) exposed -> (Just (Span.absoluteFrom 0 span, name), exposed)) <$ token (Lexer.Identifier "module") <*> spannedModuleName <* token (Lexer.Identifier "exposing") <*> exposedNames)
+      sameLevel ((\(span, name) exposed -> (Just (Span.absoluteFrom 0 span, name), exposed)) <$ token Lexer.Identifier "module" <*> spannedModuleName <* token Lexer.Identifier "exposing" <*> exposedNames)
       <|> pure (Nothing, Module.AllExposed)
 
 import_ :: Parser Module.Import
 import_ =
   mkImport
-    <$ token (Lexer.Identifier "import") <*> spannedModuleName
+    <$ token Lexer.Identifier "import" <*> spannedModuleName
     <*>
-      (Just <$ token (Lexer.Identifier "as") <*> spannedName
+      (Just <$ token Lexer.Identifier "as" <*> spannedName
       <|> pure Nothing
       )
     <*>
-      (token (Lexer.Identifier "exposing") *> exposedNames
+      (token Lexer.Identifier "exposing" *> exposedNames
       <|> pure mempty
       )
   where
@@ -770,8 +792,8 @@ import_ =
 
 exposedNames :: Parser Module.ExposedNames
 exposedNames =
-  token Lexer.LeftParen *> inner <* token Lexer.RightParen
+  token0 Lexer.LeftParen *> inner <* token0 Lexer.RightParen
   where
     inner =
-      Module.AllExposed <$ token (Lexer.Operator "..")
-      <|> Module.Exposed . HashSet.fromList <$> sepBy ((\(Surface.SpannedName _ name) -> name) <$> spannedName) (token $ Lexer.Operator ",")
+      Module.AllExposed <$ token Lexer.Operator ".."
+      <|> Module.Exposed . HashSet.fromList <$> sepBy ((\(Surface.SpannedName _ name) -> name) <$> spannedName) (token Lexer.Operator ",")

@@ -7,26 +7,26 @@ module Name where
 
 import Protolude hiding (Constructor)
 
-import Data.String
-import qualified Data.Text as Text
-import Data.Text.Prettyprint.Doc
+import qualified Data.ByteString as ByteString
 import Data.Persist
+import Data.String
+import Data.Text.Prettyprint.Doc
 
 import Extra
 
-newtype Surface = Surface Text
+newtype Surface = Surface ByteString
   deriving stock (Eq, Ord, Show)
   deriving newtype (IsString, Semigroup, Hashable, Persist)
 
-newtype Name = Name Text
+newtype Name = Name ByteString
   deriving stock (Eq, Ord, Show)
   deriving newtype (IsString, Hashable, Persist)
 
-newtype Constructor = Constructor Text
+newtype Constructor = Constructor ByteString
   deriving stock (Eq, Ord, Show)
   deriving newtype (IsString, Hashable, Persist)
 
-newtype Module = Module Text
+newtype Module = Module ByteString
   deriving stock (Eq, Ord, Show)
   deriving newtype (IsString, Hashable, Persist)
 
@@ -51,9 +51,9 @@ instance IsString Qualified where
         fromString s
 
       (moduleDot, name) =
-        Text.breakOnEnd "." t
+        ByteString.breakEnd (== fromIntegral (ord '.')) t
     in
-    case Text.stripSuffix "." moduleDot of
+    case ByteString.stripSuffix "." moduleDot of
       Nothing ->
         Qualified (Module mempty) (Name t)
 
@@ -62,26 +62,26 @@ instance IsString Qualified where
 
 instance Pretty Surface where
   pretty (Surface t) =
-    pretty t
+    pretty $ decodeUtf8 t
 
 instance Pretty Name where
   pretty (Name t) =
-    pretty t
+    pretty $ decodeUtf8 t
 
 instance Pretty Constructor where
   pretty (Constructor c) =
-    pretty c
+    pretty $ decodeUtf8 c
 
 instance Pretty Module where
   pretty (Module t) =
-    pretty t
+    pretty $ decodeUtf8 t
 
 instance Pretty Qualified where
   pretty (Qualified (Module module_) name)
-    | Text.null module_ =
+    | ByteString.null module_ =
       pretty name
     | otherwise =
-      pretty module_ <> "." <> pretty name
+      pretty (decodeUtf8 module_) <> "." <> pretty name
 
 instance Hashable Qualified where
   hashWithSalt =

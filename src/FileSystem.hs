@@ -6,9 +6,10 @@ module FileSystem where
 
 import Protolude
 
+import qualified Data.Aeson as Aeson
+import qualified Data.ByteString as ByteString
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
-import qualified Data.Aeson as Aeson
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import qualified System.Directory as Directory
@@ -120,7 +121,7 @@ bindForM (Watcher watchKeys) watchKey =
 
 -------------------------------------------------------------------------------
 
-watcherFromArguments :: [FilePath] -> IO (Watcher (HashSet FilePath, [Directory], HashMap FilePath Text))
+watcherFromArguments :: [FilePath] -> IO (Watcher (HashSet FilePath, [Directory], HashMap FilePath ByteString))
 watcherFromArguments files =
   case files of
     [] -> do
@@ -165,14 +166,14 @@ watcherFromArguments files =
                 -- TODO report error?
                 mempty
 
-projectWatcher :: FilePath -> Watcher (HashSet FilePath, [Directory], HashMap FilePath Text)
+projectWatcher :: FilePath -> Watcher (HashSet FilePath, [Directory], HashMap FilePath ByteString)
 projectWatcher file =
   bindForM (foldMap (HashSet.fromList . Project._sourceDirectories) <$> jsonFileWatcher file) $ \sourceDirectory -> do
     sourceDirectory' <- liftIO $ Directory.canonicalizePath sourceDirectory
     (changedFiles, files) <- directoryWatcher Project.isSourcePath sourceDirectory'
     pure (changedFiles, [sourceDirectory'], files)
 
-fileWatcher :: FilePath -> Watcher (Maybe Text)
+fileWatcher :: FilePath -> Watcher (Maybe ByteString)
 fileWatcher filePath = Watcher $ \manager onChange -> do
   maybeOriginalText <- readFileText filePath
   onChange maybeOriginalText
@@ -201,7 +202,7 @@ jsonFileWatcher filePath = Watcher $ \manager onChange -> do
 directoryWatcher
   :: (FilePath -> Bool)
   -> FilePath
-  -> Watcher (HashSet FilePath, HashMap FilePath Text)
+  -> Watcher (HashSet FilePath, HashMap FilePath ByteString)
 directoryWatcher predicate directory = Watcher $ \manager onChange -> do
   filesVar <- newEmptyMVar
   stopListening <-
@@ -221,7 +222,7 @@ directoryWatcher predicate directory = Watcher $ \manager onChange -> do
   onChange (HashSet.fromMap $ void files, files)
   pure stopListening
 
-listDirectoryRecursive :: (FilePath -> Bool) -> FilePath -> IO (HashMap FilePath Text)
+listDirectoryRecursive :: (FilePath -> Bool) -> FilePath -> IO (HashMap FilePath ByteString)
 listDirectoryRecursive predicate directory = do
   files <- Directory.listDirectory directory
   fmap mconcat $ forM files $ \file -> do
@@ -231,15 +232,15 @@ listDirectoryRecursive predicate directory = do
       listDirectoryRecursive predicate path
 
     else if predicate path then do
-      text <- readFile path
+      text <- ByteString.readFile path
       pure $ HashMap.singleton path text
 
     else
       mempty
 
-readFileText :: FilePath -> IO (Maybe Text)
+readFileText :: FilePath -> IO (Maybe ByteString)
 readFileText file =
-  (Just <$> readFile file)
+  (Just <$> ByteString.readFile file)
   `catch` \(_ :: IOException) ->
     pure Nothing
 

@@ -21,7 +21,7 @@ import Representation (Representation)
 data Local = Local !Int !NameSuggestion
   deriving (Eq, Ord, Show, Generic, Hashable, Persist)
 
-newtype NameSuggestion = NameSuggestion Text
+newtype NameSuggestion = NameSuggestion ByteString
   deriving stock (Show, Generic)
   deriving newtype (IsString, Persist)
 
@@ -89,7 +89,7 @@ instance Hashable NameSuggestion where
 
 instance Pretty Local where
   pretty (Local i (NameSuggestion l)) =
-    "%" <> pretty l <> "$" <> pretty i
+    "%" <> pretty (decodeUtf8 l) <> "$" <> pretty i
 
 instance Pretty Operand where
   pretty operand =
@@ -193,17 +193,17 @@ instance Pretty Result where
 
 -------------------------------------------------------------------------------
 
-nameText :: Assembly.Name -> Text
+nameText :: Assembly.Name -> ByteString
 nameText name =
   case name of
     Assembly.Name (Name.Lifted (Name.Qualified (Name.Module moduleName) (Name.Name name_)) 0) 0 ->
       moduleName <> "." <> name_
 
     Assembly.Name (Name.Lifted (Name.Qualified (Name.Module moduleName) (Name.Name name_)) 0) j ->
-      moduleName <> "." <> name_ <> "$" <> show j
+      moduleName <> "." <> name_ <> "$" <> encodeUtf8 (show j)
 
     Assembly.Name (Name.Lifted (Name.Qualified (Name.Module moduleName) (Name.Name name_)) i) j ->
-      moduleName <> "." <> name_ <> "$" <> show i <> "$" <> show j
+      moduleName <> "." <> name_ <> "$" <> encodeUtf8 (show i) <> "$" <> encodeUtf8 (show j)
 
 -------------------------------------------------------------------------------
 

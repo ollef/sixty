@@ -29,7 +29,7 @@ compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel = d
     llvmModule <- fetch $ Query.LLVMModule moduleName
     let
       llvmFileName =
-        moduleAssemblyDir </> toS moduleNameText <.> "ll"
+        moduleAssemblyDir </> toS (decodeUtf8 moduleNameText) <.> "ll"
     liftIO $ Lazy.writeFile llvmFileName $ ppllvm llvmModule
     pure llvmFileName
 

@@ -42,9 +42,9 @@ watch argumentFiles = do
 
 waitForChanges
   :: MVar ()
-  -> MVar (HashSet FilePath, [FileSystem.Directory], HashMap FilePath Text)
+  -> MVar (HashSet FilePath, [FileSystem.Directory], HashMap FilePath ByteString)
   -> Driver.State (Doc ann)
-  -> IO (HashSet FilePath, [FileSystem.Directory], HashMap FilePath Text)
+  -> IO (HashSet FilePath, [FileSystem.Directory], HashMap FilePath ByteString)
 waitForChanges signalChangeVar fileStateVar driverState = do
   (changedFiles, sourceDirectories, files) <-
     modifyMVar fileStateVar $ \(changedFiles, sourceDirectories, files) ->
@@ -61,7 +61,8 @@ checkAndPrintErrors
   :: Driver.State (Doc ann)
   -> HashSet FilePath
   -> [FileSystem.Directory]
-  -> HashMap FilePath Text -> IO ()
+  -> HashMap FilePath ByteString
+  -> IO ()
 checkAndPrintErrors driverState changedFiles sourceDirectories files = do
   startTime <- getCurrentTime
   (_, errs) <-
