@@ -1,8 +1,9 @@
-{-# language QuasiQuotes #-}
-{-# language DeriveGeneric #-}
+{-# language BangPatterns #-}
 {-# language DeriveAnyClass #-}
-{-# language RecordWildCards #-}
+{-# language DeriveGeneric #-}
 {-# language OverloadedStrings #-}
+{-# language QuasiQuotes #-}
+{-# language RecordWildCards #-}
 module Lexer
   ( lexText
   , TokenList(..)
@@ -301,7 +302,7 @@ identifier
   -> Position.LineColumn
   -> State
   -> TokenList
-identifier startPosition startLineColumn state@State {..}
+identifier !startPosition !startLineColumn state@State {..}
   | position >= end =
     identifierToken input startPosition startLineColumn position Empty
 
@@ -355,7 +356,7 @@ dotIdentifier
   -> Position.LineColumn
   -> State
   -> TokenList
-dotIdentifier startPosition startLineColumn dotPosition dotLineColumn state@State {..}
+dotIdentifier !startPosition !startLineColumn !dotPosition !dotLineColumn state@State {..}
   | position >= end =
     identifierToken input startPosition startLineColumn position $
     Token dotLineColumn (Span.Absolute dotPosition position) Dot Empty
@@ -430,7 +431,7 @@ identifierToken
   -> Position.Absolute
   -> TokenList
   -> TokenList
-identifierToken input startPosition startLineColumn position =
+identifierToken !input !startPosition !startLineColumn !position =
   Token startLineColumn (Span.Absolute startPosition position) $
     case index input startPosition of
       [UTF16.unit1|_|] | len == 1 -> Underscore
@@ -459,7 +460,7 @@ operator
   -> Position.LineColumn
   -> State
   -> TokenList
-operator startPosition startLineColumn state@State {..}
+operator !startPosition !startLineColumn state@State {..}
   | position >= end =
     identifierToken input startPosition startLineColumn position Empty
 
@@ -513,7 +514,7 @@ operatorToken
   -> Position.Absolute
   -> TokenList
   -> TokenList
-operatorToken input startPosition startLineColumn position =
+operatorToken !input !startPosition !startLineColumn !position =
   Token startLineColumn (Span.Absolute startPosition position) $
     case index input startPosition of
       [UTF16.unit1|=|] | len == 1 -> Equals
@@ -543,7 +544,7 @@ number
   -> Bool
   -> Integer
   -> TokenList
-number startPosition startLineColumn state@State {..} shouldNegate acc
+number !startPosition !startLineColumn state@State {..} !shouldNegate !acc
   | position >= end =
     token Empty
 
@@ -589,10 +590,10 @@ singleLineComment state@State {..}
       state { position = Position.add position 1 }
 
 multiLineComment :: State -> Int -> TokenList
-multiLineComment state 0 =
+multiLineComment !state 0 =
   lex state
 
-multiLineComment state@State {..} depth
+multiLineComment state@State {..} !depth
   | position >= end =
     Empty
 
