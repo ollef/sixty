@@ -18,14 +18,14 @@ main = do
   multiFiles <- listDirectoriesWithFilesMatching isSourceFile multisDirectory
   let
     files =
-      singleFiles <> concatMap snd multiFiles
-      -- ["lol.vix"]
+      -- singleFiles <> concatMap snd multiFiles
+      ["lol.vix"]
   Gauge.defaultMain
     [ Gauge.BenchGroup file
       [ -- Gauge.bench "read file" $ Gauge.nfAppIO readFile file
-      -- , Gauge.env (readFile file) $ Gauge.bench "lex" . Gauge.nf Lexer.lexText
-      -- , Gauge.env (Lexer.lexText <$> readFile file) $ Gauge.bench "parse" . Gauge.whnf (Parser.parseTokens Parser.module_)
-      -- ,
+       Gauge.env (readFile file) $ Gauge.bench "lex" . Gauge.nf Lexer.lexText
+      , Gauge.env (Lexer.lexText <$> readFile file) $ Gauge.bench "parse" . Gauge.whnf (Parser.parseTokens Parser.module_)
+      ,
       Gauge.env (readFile file) $ Gauge.bench "parse and lex" . Gauge.whnf (Parser.parseTokens Parser.module_ . Lexer.lexText)
       ]
     | file <- files
