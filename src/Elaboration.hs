@@ -552,20 +552,36 @@ elaborateUnspanned context term mode canPostpone = do
         binding <- SuggestedName.patternBinding context pat name
         pure $ Checked $ Syntax.Lam binding domain' Implicit body''
 
-    (_, Check (Domain.Pi binding domain plicity targetClosure))
-      | case plicity of
-          Explicit -> False
-          Implicit -> True
-          Constraint -> True
+    (_, Check expectedType@(Domain.Pi binding domain plicity targetClosure))
+      | isImplicitish plicity
       -> do
         let
-          name =
-            Binding.toName binding
-        (context', var) <- Context.extend context name domain
-        target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
-        domain' <- readback context domain
-        Checked term' <- elaborateUnspanned context' term (Check target) Postponement.CanPostpone
-        pure $ Checked $ Syntax.Lam (Bindings.Unspanned name) domain' plicity term'
+          checkUnderBinder = do
+            let
+              name =
+                Binding.toName binding
+            (context', var) <- Context.extend context name domain
+            target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
+            domain' <- readback context domain
+            Checked term' <- elaborateUnspanned context' term (Check target) Postponement.CanPostpone
+            pure $ Checked $ Syntax.Lam (Bindings.Unspanned name) domain' plicity term'
+
+        case term of
+          Surface.Var varName
+            | Just (value, type_) <- Context.lookupSurfaceName varName context -> do
+              type' <- Context.forceHead context type_
+              case type' of
+                -- Approximate polymorphic variable inference
+                Domain.Neutral (Domain.Meta _) _ -> do
+                  success <- Context.try_ context $ Unification.unify context Flexibility.Rigid type' expectedType
+                  term' <- readback context $ if success then value else Builtin.Fail expectedType
+                  pure $ Checked term'
+
+                _ ->
+                  checkUnderBinder
+
+          _ ->
+            checkUnderBinder
 
     (_, Check expectedType@(Domain.Neutral (Domain.Meta blockingMeta) _))
       | Postponement.CanPostpone <- canPostpone ->

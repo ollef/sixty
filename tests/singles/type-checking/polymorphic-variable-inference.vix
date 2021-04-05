@@ -1,0 +1,7 @@
+data Nat = Zero | Succ Nat
+
+NatElim : (P : Nat -> Type) -> P Zero -> (forall n. P n -> P (Succ n)) -> (n : Nat) -> P n
+NatElim P P0 s Zero = P0
+NatElim P P0 s (Succ n) = s (NatElim P P0 s n)
+
+etaExpanded P P0 s n = NatElim P P0 s n

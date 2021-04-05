@@ -26,6 +26,18 @@ instance Pretty Plicity where
       Constraint ->
         "constraint"
 
+isImplicitish :: Plicity -> Bool
+isImplicitish plicity =
+  case plicity of
+    Implicit ->
+      True
+
+    Explicit ->
+      False
+
+    Constraint ->
+      True
+
 prettyAnnotation :: Plicity -> Doc ann
 prettyAnnotation plicity =
   case plicity of
