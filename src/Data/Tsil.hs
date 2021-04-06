@@ -1,14 +1,15 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveFunctor #-}
-{-# language DeriveGeneric #-}
-{-# language DeriveTraversable #-}
-{-# language TypeFamilies #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE TypeFamilies #-}
+
 module Data.Tsil where
 
 import Data.Persist
 import GHC.Exts
-import qualified Prelude
 import Protolude
+import qualified Prelude
 
 data Tsil a
   = Empty

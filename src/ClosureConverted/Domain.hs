@@ -1,7 +1,6 @@
-{-# language GADTs #-}
-module ClosureConverted.Domain where
+{-# LANGUAGE GADTs #-}
 
-import Protolude hiding (Type, evaluate)
+module ClosureConverted.Domain where
 
 import qualified ClosureConverted.Syntax as Syntax
 import Data.Tsil (Tsil)
@@ -12,6 +11,7 @@ import Literal (Literal)
 import Monad
 import Name (Name)
 import qualified Name
+import Protolude hiding (Type, evaluate)
 import Telescope (Telescope)
 import Var (Var)
 
@@ -47,6 +47,7 @@ global g =
   Neutral (Global g) mempty
 
 -------------------------------------------------------------------------------
+
 -- * Elimination spines
 
 type Spine = Tsil Elimination

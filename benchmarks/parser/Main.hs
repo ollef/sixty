@@ -1,4 +1,5 @@
-{-# language OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module Main where
 
 import qualified Data.Text as Text
@@ -16,17 +17,17 @@ main = do
   multisDirectory <- canonicalizePath "tests/multis"
   singleFiles <- listDirectoryRecursive isSourceFile singlesDirectory
   multiFiles <- listDirectoriesWithFilesMatching isSourceFile multisDirectory
-  let
-    files =
-      singleFiles <> concatMap snd multiFiles
-      -- ["lol.vix"]
+  let files =
+        singleFiles <> concatMap snd multiFiles
+  -- ["lol.vix"]
   Gauge.defaultMain
-    [ Gauge.BenchGroup file
+    [ Gauge.BenchGroup
+      file
       [ -- Gauge.bench "read file" $ Gauge.nfAppIO readFile file
-      -- , Gauge.env (readFile file) $ Gauge.bench "lex" . Gauge.nf Lexer.lexText
-      -- , Gauge.env (Lexer.lexText <$> readFile file) $ Gauge.bench "parse" . Gauge.whnf (Parser.parseTokens Parser.module_)
-      -- ,
-      Gauge.env (readFile file) $ Gauge.bench "parse and lex" . Gauge.whnf (Parser.parseTokens Parser.module_ . Lexer.lexText)
+        -- , Gauge.env (readFile file) $ Gauge.bench "lex" . Gauge.nf Lexer.lexText
+        -- , Gauge.env (Lexer.lexText <$> readFile file) $ Gauge.bench "parse" . Gauge.whnf (Parser.parseTokens Parser.module_)
+        -- ,
+        Gauge.env (readFile file) $ Gauge.bench "parse and lex" . Gauge.whnf (Parser.parseTokens Parser.module_ . Lexer.lexText)
       ]
     | file <- files
     ]
@@ -39,32 +40,28 @@ main = do
 listDirectoryRecursive :: (FilePath -> Bool) -> FilePath -> IO [FilePath]
 listDirectoryRecursive p dir = do
   files <- listDirectory dir
-  fmap concat $ forM files $ \file -> do
-    let path = dir </> file
-    isDir <- doesDirectoryExist path
-    if isDir then
-      listDirectoryRecursive p path
+  fmap concat $
+    forM files $ \file -> do
+      let path = dir </> file
+      isDir <- doesDirectoryExist path
+      if isDir
+        then listDirectoryRecursive p path
+        else pure [path | p path]
 
-    else
-      pure [path | p path]
-
-listDirectoriesWithFilesMatching
-  :: (FilePath -> Bool)
-  -> FilePath
-  -> IO [(FilePath, [FilePath])]
+listDirectoriesWithFilesMatching ::
+  (FilePath -> Bool) ->
+  FilePath ->
+  IO [(FilePath, [FilePath])]
 listDirectoriesWithFilesMatching p dir = do
   files <- listDirectory dir
-  let
-    paths = (dir </>) <$> files
-  if any p paths then do
-    recursiveFiles <- listDirectoryRecursive p dir
-    pure [(dir, recursiveFiles)]
-
-  else
-    fmap concat $ forM paths $ \path -> do
-      isDir <- doesDirectoryExist path
-      if isDir then
-        listDirectoriesWithFilesMatching p path
-
-      else
-        pure []
+  let paths = (dir </>) <$> files
+  if any p paths
+    then do
+      recursiveFiles <- listDirectoryRecursive p dir
+      pure [(dir, recursiveFiles)]
+    else fmap concat $
+      forM paths $ \path -> do
+        isDir <- doesDirectoryExist path
+        if isDir
+          then listDirectoriesWithFilesMatching p path
+          else pure []

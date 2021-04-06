@@ -1,6 +1,7 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
-{-# language OverloadedStrings #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module Representation where
 
 import Data.Persist
@@ -32,20 +33,17 @@ instance Pretty Representation where
     case representation of
       Empty ->
         "empty"
-
       Direct ->
         "direct"
-
       Indirect ->
         "indirect"
 
 maxM :: Monad m => [m Representation] -> m Representation
 maxM [] = pure Empty
-maxM (m:ms) = do
+maxM (m : ms) = do
   representation <- m
   case representation of
     Indirect ->
       pure Indirect
-
     _ ->
       max representation <$> maxM ms

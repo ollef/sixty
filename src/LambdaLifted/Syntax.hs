@@ -1,19 +1,18 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
-{-# language RankNTypes #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE RankNTypes #-}
+
 module LambdaLifted.Syntax where
-
-import Protolude hiding (Type, IntMap)
-
-import Data.Persist
 
 import Boxity
 import Data.OrderedHashMap (OrderedHashMap)
+import Data.Persist
 import Index
 import Literal (Literal)
 import Name (Name)
 import qualified Name
 import Plicity
+import Protolude hiding (IntMap, Type)
 import Telescope (Telescope)
 import qualified Telescope
 
@@ -21,9 +20,11 @@ data Term v
   = Var !(Index v)
   | Global !Name.Lifted
   | Con
-    !Name.QualifiedConstructor
-    [Term v] -- ^ Type parameters
-    [Term v] -- ^ Constructor arguments
+      !Name.QualifiedConstructor
+      [Term v]
+      -- ^ Type parameters
+      [Term v]
+      -- ^ Constructor arguments
   | Lit !Literal
   | Let !Name !(Term v) !(Type v) !(Scope Term v)
   | Pi !Name !(Type v) !(Scope Type v)
@@ -38,25 +39,18 @@ pisView f type_ =
   case type_ of
     Var {} ->
       Telescope.Empty $ f type_
-
     Global {} ->
       Telescope.Empty $ f type_
-
     Con {} ->
       Telescope.Empty $ f type_
-
     Lit {} ->
       Telescope.Empty $ f type_
-
     Let {} ->
       Telescope.Empty $ f type_
-
     Pi name type' scope ->
       Telescope.Extend name (f type') Explicit $ pisView f scope
-
     App {} ->
       Telescope.Empty $ f type_
-
     Case {} ->
       Telescope.Empty $ f type_
 
@@ -71,6 +65,6 @@ data Definition
   | DataDefinition !Boxity !(Telescope Name Type ConstructorDefinitions Void)
   deriving (Eq, Show, Generic, Persist, Hashable)
 
-newtype ConstructorDefinitions v =
-  ConstructorDefinitions (OrderedHashMap Name.Constructor (Type v))
+newtype ConstructorDefinitions v
+  = ConstructorDefinitions (OrderedHashMap Name.Constructor (Type v))
   deriving (Eq, Show, Generic, Persist, Hashable)

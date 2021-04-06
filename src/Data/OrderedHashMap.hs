@@ -1,16 +1,16 @@
-{-# language DeriveFoldable #-}
-{-# language DeriveFunctor #-}
-{-# language DeriveTraversable #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveTraversable #-}
+
 module Data.OrderedHashMap where
 
-import Prelude (Show(showsPrec), showParen, showString, shows)
-import Protolude hiding (toList, get, put)
-
 import Data.HashMap.Lazy (HashMap)
-import Data.Persist
 import qualified Data.HashMap.Lazy as HashMap
+import Data.Persist
+import Protolude hiding (get, put, toList)
+import Prelude (Show (showsPrec), showParen, showString, shows)
 
-newtype OrderedHashMap k v = OrderedHashMap { toMap :: HashMap k (Ordered v) }
+newtype OrderedHashMap k v = OrderedHashMap {toMap :: HashMap k (Ordered v)}
   deriving (Functor)
 
 instance (Eq k, Eq v) => Eq (OrderedHashMap k v) where
@@ -22,14 +22,15 @@ instance (Ord k, Ord v) => Ord (OrderedHashMap k v) where
     compare `on` toList
 
 instance (Show k, Show v) => Show (OrderedHashMap k v) where
-  showsPrec p xs = showParen (p > 10) $
-    showString "fromList " . shows (toList xs)
+  showsPrec p xs =
+    showParen (p > 10) $
+      showString "fromList " . shows (toList xs)
 
 instance Foldable (OrderedHashMap k) where
   foldMap f (OrderedHashMap h) =
     foldMap (\(Ordered _ v) -> f v) $
-    sortBy (comparing $ \(Ordered n _) -> n) $
-    HashMap.elems h
+      sortBy (comparing $ \(Ordered n _) -> n) $
+        HashMap.elems h
 
 instance (Hashable k, Hashable v) => Hashable (OrderedHashMap k v) where
   hashWithSalt s =
@@ -84,34 +85,34 @@ elems =
 toList :: OrderedHashMap k v -> [(k, v)]
 toList (OrderedHashMap h) =
   map (\(k, Ordered _ v) -> (k, v)) $
-  sortBy (comparing $ \(_, Ordered n _) -> n) $
-  HashMap.toList h
+    sortBy (comparing $ \(_, Ordered n _) -> n) $
+      HashMap.toList h
 
-fromList
-  :: (Eq k, Hashable k)
-  => [(k, v)]
-  -> OrderedHashMap k v
+fromList ::
+  (Eq k, Hashable k) =>
+  [(k, v)] ->
+  OrderedHashMap k v
 fromList =
-  OrderedHashMap .
-  HashMap.fromList .
-  zipWith (\n (k, v) -> (k, Ordered n v)) [0..]
+  OrderedHashMap
+    . HashMap.fromList
+    . zipWith (\n (k, v) -> (k, Ordered n v)) [0 ..]
 
-fromListWith
-  :: (Eq k, Hashable k)
-  => (v -> v -> v)
-  -> [(k, v)]
-  -> OrderedHashMap k v
+fromListWith ::
+  (Eq k, Hashable k) =>
+  (v -> v -> v) ->
+  [(k, v)] ->
+  OrderedHashMap k v
 fromListWith f =
-  OrderedHashMap .
-  HashMap.fromListWith (\(Ordered i v1) (Ordered _ v2) -> Ordered i $ f v1 v2) .
-  zipWith (\n (k, v) -> (k, Ordered n v)) [0..]
+  OrderedHashMap
+    . HashMap.fromListWith (\(Ordered i v1) (Ordered _ v2) -> Ordered i $ f v1 v2)
+    . zipWith (\n (k, v) -> (k, Ordered n v)) [0 ..]
 
-intersectionWith
-  :: (Eq k, Hashable k)
-  => (v1 -> v2 -> v3)
-  -> OrderedHashMap k v1
-  -> OrderedHashMap k v2
-  -> OrderedHashMap k v3
+intersectionWith ::
+  (Eq k, Hashable k) =>
+  (v1 -> v2 -> v3) ->
+  OrderedHashMap k v1 ->
+  OrderedHashMap k v2 ->
+  OrderedHashMap k v3
 intersectionWith f (OrderedHashMap h1) (OrderedHashMap h2) =
   OrderedHashMap $
     HashMap.intersectionWith

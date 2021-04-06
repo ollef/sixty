@@ -1,20 +1,19 @@
-{-# language FlexibleContexts #-}
-{-# language OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module LanguageServer.Hover where
 
-import Protolude hiding (evaluate, moduleName)
-
+import qualified Core.TypeOf as TypeOf
 import Data.Text.Prettyprint.Doc (Doc, (<+>))
-import Rock
-
-import qualified Elaboration.Context as Context
 import qualified Elaboration
+import qualified Elaboration.Context as Context
 import qualified Error.Hydrated as Error
 import qualified LanguageServer.CursorAction as CursorAction
 import qualified Position
+import Protolude hiding (evaluate, moduleName)
 import Query (Query)
+import Rock
 import qualified Span
-import qualified Core.TypeOf as TypeOf
 
 hover :: FilePath -> Position.LineColumn -> Task Query (Maybe (Span.LineColumn, Doc ann))
 hover filePath pos =
@@ -30,6 +29,5 @@ hover filePath pos =
           ( lineColumn
           , prettyTerm <+> ":" <+> prettyType
           )
-
       CursorAction.Import _ ->
         empty

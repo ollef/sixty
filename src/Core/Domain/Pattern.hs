@@ -1,14 +1,13 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+
 module Core.Domain.Pattern where
 
-import Protolude
-
 import Data.Persist
-
 import Literal (Literal)
 import qualified Name
 import Plicity
+import Protolude
 
 data Pattern
   = Wildcard

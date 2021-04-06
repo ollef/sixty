@@ -1,15 +1,14 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
-{-# language TupleSections #-}
-module Core.Binding where
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TupleSections #-}
 
-import Protolude
+module Core.Binding where
 
 import Data.Persist
 import Data.String
-
-import Name (Name(Name))
+import Name (Name (Name))
 import qualified Name
+import Protolude
 import qualified Span
 import qualified Surface.Syntax as Surface
 
@@ -23,7 +22,6 @@ toName bindings =
   case bindings of
     Spanned _ name ->
       name
-
     Unspanned name ->
       name
 
@@ -36,7 +34,6 @@ spans binding =
   case binding of
     Spanned span _ ->
       [span]
-
     Unspanned _ ->
       []
 

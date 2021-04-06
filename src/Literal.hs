@@ -1,11 +1,11 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
 module Literal where
 
-import Protolude
-
-import Data.Text.Prettyprint.Doc
 import Data.Persist
+import Data.Text.Prettyprint.Doc
+import Protolude
 
 newtype Literal
   = Integer Integer

@@ -1,16 +1,16 @@
-{-# language OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module LambdaLifting where
-
-import Protolude hiding (Type, IntSet, IntMap, evaluate, state)
-
-import Data.Graph (SCC(AcyclicSCC))
-import Rock
 
 import Core.Binding (Binding)
 import qualified Core.Binding as Binding
 import Core.Bindings (Bindings)
 import qualified Core.Bindings as Bindings
+import qualified Core.Domain as Domain
+import qualified Core.Evaluation as Evaluation
+import qualified Core.Readback as Readback
+import qualified Core.Syntax as Syntax
+import Data.Graph (SCC (AcyclicSCC))
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.IntSet (IntSet)
@@ -19,9 +19,7 @@ import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
-import qualified Core.Domain as Domain
 import qualified Environment
-import qualified Core.Evaluation as Evaluation
 import Extra (topoSortWith)
 import qualified Index
 import qualified LambdaLifted.Syntax as LambdaLifted
@@ -30,45 +28,41 @@ import Monad
 import Name (Name)
 import qualified Name
 import Plicity
+import Protolude hiding (IntMap, IntSet, Type, evaluate, state)
 import qualified Query
-import qualified Core.Readback as Readback
+import Rock
 import qualified Scope
-import qualified Core.Syntax as Syntax
 import Telescope (Telescope)
 import qualified Telescope
 import Var (Var)
 import qualified Var
 
-liftDefinition
-  :: Name.Qualified
-  -> Syntax.Definition
-  -> M (LambdaLifted.Definition, IntMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void))
+liftDefinition ::
+  Name.Qualified ->
+  Syntax.Definition ->
+  M (LambdaLifted.Definition, IntMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void))
 liftDefinition name def = do
-  let
-    env =
-      Environment.empty $ Scope.KeyedName Scope.Definition name
+  let env =
+        Environment.empty $ Scope.KeyedName Scope.Definition name
   case def of
     Syntax.TypeDeclaration type_ -> do
-      let
-        typeEnv =
-          Environment.empty $ Scope.KeyedName Scope.Type name
+      let typeEnv =
+            Environment.empty $ Scope.KeyedName Scope.Type name
       (type', state) <-
         runStateT
-          (do
-            type' <- evaluate typeEnv type_ []
-            pure $ readback typeEnv type'
+          ( do
+              type' <- evaluate typeEnv type_ []
+              pure $ readback typeEnv type'
           )
           emptyState
 
       pure (LambdaLifted.TypeDeclaration type', _liftedDefinitions state)
-
     Syntax.ConstantDefinition term -> do
       ((vars, def'), state) <- runStateT (liftLambda env term) emptyState
       unless (null vars) $
         panic "lift definition: non-closed constant definition"
 
       pure (LambdaLifted.ConstantDefinition def', _liftedDefinitions state)
-
     Syntax.DataDefinition boxity tele -> do
       (tele', state) <- runStateT (liftDataDefinition env tele) emptyState
       pure (LambdaLifted.DataDefinition boxity tele', _liftedDefinitions state)
@@ -76,7 +70,7 @@ liftDefinition name def = do
 -------------------------------------------------------------------------------
 
 data Value = Value !InnerValue Occurrences
-  deriving Show
+  deriving (Show)
 
 data InnerValue
   = Var !Var
@@ -87,14 +81,14 @@ data InnerValue
   | Pi !Name !Var !Type !Type
   | App !Value !Value
   | Case !Value !Branches !(Maybe Value)
-  deriving Show
+  deriving (Show)
 
 type Type = Value
 
 data Branches
   = ConstructorBranches !Name.Qualified (OrderedHashMap Name.Constructor ([(Name, Var, Type)], Value))
   | LiteralBranches (OrderedHashMap Literal Value)
-  deriving Show
+  deriving (Show)
 
 type Occurrences = IntSet Var
 
@@ -105,8 +99,8 @@ occurrences (Value _ occs) =
 makeVar :: Environment v -> Var -> Value
 makeVar env var =
   Value (Var var) $
-    IntSet.singleton var <>
-    foldMap (occurrences . snd) (Environment.lookupVarValue var env)
+    IntSet.singleton var
+      <> foldMap (occurrences . snd) (Environment.lookupVarValue var env)
 
 makeGlobal :: Name.Lifted -> Value
 makeGlobal global =
@@ -115,8 +109,8 @@ makeGlobal global =
 makeCon :: Name.QualifiedConstructor -> [Value] -> [Value] -> Value
 makeCon con params args =
   Value (Con con params args) $
-    foldMap occurrences params <>
-    foldMap occurrences args
+    foldMap occurrences params
+      <> foldMap occurrences args
 
 makeLit :: Literal -> Value
 makeLit lit =
@@ -125,21 +119,21 @@ makeLit lit =
 makeLet :: Name -> Var -> Value -> Type -> Value -> Value
 makeLet name var value type_ body =
   Value (Let name var value type_ body) $
-    occurrences value <>
-    occurrences type_ <>
-    IntSet.delete var (occurrences body)
+    occurrences value
+      <> occurrences type_
+      <> IntSet.delete var (occurrences body)
 
 makePi :: Name -> Var -> Type -> Value -> Value
 makePi name var domain target =
   Value (Pi name var domain target) $
-    occurrences domain <>
-    IntSet.delete var (occurrences target)
+    occurrences domain
+      <> IntSet.delete var (occurrences target)
 
 makeApp :: Value -> Value -> Value
 makeApp fun arg =
   Value (App fun arg) $
-    occurrences fun <>
-    occurrences arg
+    occurrences fun
+      <> occurrences arg
 
 makeApps :: Foldable f => Value -> f Value -> Value
 makeApps =
@@ -148,16 +142,15 @@ makeApps =
 makeCase :: Value -> Branches -> Maybe Value -> Value
 makeCase scrutinee branches defaultBranch =
   Value (Case scrutinee branches defaultBranch) $
-    occurrences scrutinee <>
-    branchOccurrences branches <>
-    foldMap occurrences defaultBranch
+    occurrences scrutinee
+      <> branchOccurrences branches
+      <> foldMap occurrences defaultBranch
 
 branchOccurrences :: Branches -> Occurrences
 branchOccurrences branches =
   case branches of
     ConstructorBranches _ constructorBranches ->
       foldMap (uncurry telescopeOccurrences) constructorBranches
-
     LiteralBranches literalBranches ->
       foldMap occurrences literalBranches
 
@@ -166,17 +159,17 @@ telescopeOccurrences tele body =
   case tele of
     [] ->
       occurrences body
-
-    (_, var, type_):tele' ->
-      occurrences type_ <>
-      IntSet.delete var (telescopeOccurrences tele' body)
+    (_, var, type_) : tele' ->
+      occurrences type_
+        <> IntSet.delete var (telescopeOccurrences tele' body)
 
 -------------------------------------------------------------------------------
 
 data LiftState = LiftState
   { _nextIndex :: !Int
   , _liftedDefinitions :: IntMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void)
-  } deriving Show
+  }
+  deriving (Show)
 
 emptyState :: LiftState
 emptyState =
@@ -203,75 +196,61 @@ evaluate :: Environment v -> Syntax.Term v -> [(Plicity, Syntax.Term v)] -> Lift
 evaluate env term args =
   case term of
     Syntax.Var index -> do
-      let
-        var =
-          Environment.lookupIndexVar index env
+      let var =
+            Environment.lookupIndexVar index env
       applyArgs $
         case Environment.lookupVarValue var env of
           Just (Just value, _) ->
             pure value
-
           _ ->
             pure $ makeVar env $ Environment.lookupIndexVar index env
-
     Syntax.Global global ->
       applyArgs $ pure $ makeGlobal $ Name.Lifted global 0
-
     Syntax.Con con ->
       saturatedConstructorApp env con args
-
     Syntax.Lit lit ->
       pure $ makeLit lit
-
     Syntax.Meta _ ->
       panic "LambdaLifting.evaluate meta"
-
     Syntax.PostponedCheck {} ->
       panic "LambdaLifting.evaluate postponed check"
-
     Syntax.Lets lets ->
       applyArgs $
         evaluateLets env lets
-
     Syntax.Pi binding domain _plicity target -> do
       domain' <- evaluate env domain []
       (env', var) <- extend env domain'
-      makePi (Binding.toName binding) var domain' <$>
-        evaluate env' target []
-
+      makePi (Binding.toName binding) var domain'
+        <$> evaluate env' target []
     Syntax.Fun domain _plicity target -> do
       var <- lift freshVar
-      makePi "x" var <$>
-        evaluate env domain [] <*>
-        evaluate env target []
-
+      makePi "x" var
+        <$> evaluate env domain []
+        <*> evaluate env target []
     Syntax.Lam {} -> do
       (argVars, def) <- liftLambda env term
       i <- gets _nextIndex
 
-      let
-        Scope.KeyedName _ name =
-          Environment.scopeKey env
+      let Scope.KeyedName _ name =
+            Environment.scopeKey env
 
-        liftedName =
-          Name.Lifted name i
+          liftedName =
+            Name.Lifted name i
 
-      modify $ \s -> s
-        { _nextIndex = i + 1
-        , _liftedDefinitions = IntMap.insert i def $ _liftedDefinitions s
-        }
+      modify $ \s ->
+        s
+          { _nextIndex = i + 1
+          , _liftedDefinitions = IntMap.insert i def $ _liftedDefinitions s
+          }
       pure $ makeApps (makeGlobal liftedName) $ makeVar env <$> argVars
-
     Syntax.App function plicity argument ->
       evaluate env function ((plicity, argument) : args)
-
     Syntax.Case scrutinee branches defaultBranch ->
       applyArgs $
-        makeCase <$>
-          evaluate env scrutinee [] <*>
-          evaluateBranches env branches <*>
-          mapM (\branch -> evaluate env branch []) defaultBranch
-
+        makeCase
+          <$> evaluate env scrutinee []
+          <*> evaluateBranches env branches
+          <*> mapM (\branch -> evaluate env branch []) defaultBranch
     Syntax.Spanned _ term' ->
       evaluate env term' args
   where
@@ -286,85 +265,78 @@ evaluateLets env lets =
     Syntax.LetType _binding type_ (Syntax.Let bindings Index.Zero term lets') -> do
       type' <- evaluate env type_ []
       (env', var) <- extend env type'
-      makeLet (Bindings.toName bindings) var <$>
-        evaluate env' term [] <*>
-        pure type' <*>
-        evaluateLets env' lets'
-
+      makeLet (Bindings.toName bindings) var
+        <$> evaluate env' term []
+        <*> pure type'
+        <*> evaluateLets env' lets'
     Syntax.In body ->
       evaluate env body []
-
     _ ->
       panic "TODO lambda lifting mutually recursive lets not yet supported"
-      -- * Sort definitions by dependency
-      -- * Make values in recursive groups functions from unit
-      -- * Lambda lift
 
+-- - Sort definitions by dependency
+-- - Make values in recursive groups functions from unit
+-- - Lambda lift
 
-saturatedConstructorApp
-  :: Environment v
-  -> Name.QualifiedConstructor
-  -> [(Plicity, Syntax.Term v)]
-  -> Lift Value
+saturatedConstructorApp ::
+  Environment v ->
+  Name.QualifiedConstructor ->
+  [(Plicity, Syntax.Term v)] ->
+  Lift Value
 saturatedConstructorApp env con args = do
   constructorTele <- fetch $ Query.ConstructorType con
-  let
-    constructorType =
-      Telescope.fold Syntax.Pi constructorTele
+  let constructorType =
+        Telescope.fold Syntax.Pi constructorTele
 
-    paramCount =
-      Telescope.length constructorTele
+      paramCount =
+        Telescope.length constructorTele
 
-    emptyEnv =
-      Environment.emptyFrom env
+      emptyEnv =
+        Environment.emptyFrom env
 
   constructorTypeValue <- lift $ Evaluation.evaluate emptyEnv constructorType
 
   arity <- lift $ typeArity emptyEnv constructorTypeValue
 
-  if length args < arity then do
-    lambdas <- lift $ makeConstructorFunction con emptyEnv constructorTypeValue mempty
-    evaluate env (Syntax.fromVoid lambdas) args
+  if length args < arity
+    then do
+      lambdas <- lift $ makeConstructorFunction con emptyEnv constructorTypeValue mempty
+      evaluate env (Syntax.fromVoid lambdas) args
+    else do
+      args' <- mapM (\(_, arg) -> evaluate env arg []) args
+      let (params, args'') =
+            splitAt paramCount args'
+      pure $ makeCon con params args''
 
-  else do
-    args' <- mapM (\(_, arg) -> evaluate env arg []) args
-    let
-      (params, args'') =
-        splitAt paramCount args'
-    pure $ makeCon con params args''
-
-makeConstructorFunction
-  :: Name.QualifiedConstructor
-  -> Domain.Environment v
-  -> Domain.Type
-  -> Tsil (Plicity, Domain.Value)
-  -> M (Syntax.Term v)
+makeConstructorFunction ::
+  Name.QualifiedConstructor ->
+  Domain.Environment v ->
+  Domain.Type ->
+  Tsil (Plicity, Domain.Value) ->
+  M (Syntax.Term v)
 makeConstructorFunction con env type_ spine = do
   type' <- Evaluation.forceHead env type_
   case type' of
     Domain.Pi binding domain plicity targetClosure -> do
       (env', var) <- Environment.extend env
-      let
-        arg =
-          Domain.var var
+      let arg =
+            Domain.var var
       target <- Evaluation.evaluateClosure targetClosure arg
       body <- makeConstructorFunction con env' target $ spine Tsil.:> (plicity, arg)
       domain' <- Readback.readback env domain
       pure $ Syntax.Lam (Bindings.Unspanned $ Binding.toName binding) domain' plicity body
-
     Domain.Fun domain plicity target -> do
       (env', var) <- Environment.extend env
       body <- makeConstructorFunction con env' target $ spine Tsil.:> (plicity, Domain.var var)
       domain' <- Readback.readback env domain
       pure $ Syntax.Lam "x" domain' plicity body
-
     _ ->
       Readback.readback env $ Domain.Con con spine
 
-typeArity
-  :: Domain.Environment v
-  -> Domain.Type
-  -> M Int
+typeArity ::
+  Domain.Environment v ->
+  Domain.Type ->
+  M Int
 typeArity env type_ = do
   type' <- Evaluation.forceHead env type_
   case type' of
@@ -373,41 +345,37 @@ typeArity env type_ = do
       target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
       targetArity <- typeArity env' target
       pure $ targetArity + 1
-
     Domain.Fun _ _ target -> do
       targetArity <- typeArity env target
       pure $ targetArity + 1
-
     _ ->
       pure 0
 
-evaluateBranches
-  :: Environment v
-  -> Syntax.Branches v
-  -> Lift Branches
+evaluateBranches ::
+  Environment v ->
+  Syntax.Branches v ->
+  Lift Branches
 evaluateBranches env branches =
   case branches of
     Syntax.ConstructorBranches constructorTypeName constructorBranches ->
       ConstructorBranches constructorTypeName <$> OrderedHashMap.mapMUnordered (evaluateTelescope env . snd) constructorBranches
-
     Syntax.LiteralBranches literalBranches ->
       LiteralBranches <$> OrderedHashMap.mapMUnordered (\(_, branch) -> evaluate env branch []) literalBranches
 
-evaluateTelescope
-  :: Environment v
-  -> Telescope Bindings Syntax.Type Syntax.Term v
-  -> Lift ([(Name, Var, Type)], Value)
+evaluateTelescope ::
+  Environment v ->
+  Telescope Bindings Syntax.Type Syntax.Term v ->
+  Lift ([(Name, Var, Type)], Value)
 evaluateTelescope env tele =
   case tele of
     Telescope.Empty body -> do
       body' <- evaluate env body []
       pure ([], body')
-
     Telescope.Extend binding type_ _plicity tele' -> do
       type' <- evaluate env type_ []
       (env', var) <- extend env type'
       (bindings, body) <- evaluateTelescope env' tele'
-      pure ((Bindings.toName binding, var, type'):bindings, body)
+      pure ((Bindings.toName binding, var, type') : bindings, body)
 
 evaluateLambdaTelescope :: Environment v -> Syntax.Term v -> Lift ([(Name, Var, Type)], Value)
 evaluateLambdaTelescope env term =
@@ -416,43 +384,39 @@ evaluateLambdaTelescope env term =
       type' <- evaluate env type_ []
       (env', var) <- extend env type'
       (tele, body') <- evaluateLambdaTelescope env' body
-      pure ((Bindings.toName binding, var, type'):tele, body')
-
+      pure ((Bindings.toName binding, var, type') : tele, body')
     Syntax.Spanned _ term' ->
       evaluateLambdaTelescope env term'
-
     _ -> do
       term' <- evaluate env term []
       pure ([], term')
 
-liftLambda
-  :: Environment v
-  -> Syntax.Term v
-  -> Lift ([Var], Telescope Name LambdaLifted.Type LambdaLifted.Term Void)
+liftLambda ::
+  Environment v ->
+  Syntax.Term v ->
+  Lift ([Var], Telescope Name LambdaLifted.Type LambdaLifted.Term Void)
 liftLambda env term = do
   (tele, body) <- evaluateLambdaTelescope env term
 
-  let
-    occs =
-      telescopeOccurrences tele body
+  let occs =
+        telescopeOccurrences tele body
 
-    sortedOccs =
-      acyclic <$>
-        topoSortWith
-          identity
-          (\var -> IntSet.toList $ foldMap (occurrences . snd) $ Environment.lookupVarValue var env)
-          (IntSet.toList occs)
+      sortedOccs =
+        acyclic
+          <$> topoSortWith
+            identity
+            (\var -> IntSet.toList $ foldMap (occurrences . snd) $ Environment.lookupVarValue var env)
+            (IntSet.toList occs)
 
-    occurrenceTele =
-      [ ("x", var, type_)
-      | var <- sortedOccs
-      , let
-          type_ =
-            snd $ fromMaybe (panic "liftLambda no type") $ Environment.lookupVarValue var env
-      ]
+      occurrenceTele =
+        [ ("x", var, type_)
+        | var <- sortedOccs
+        , let type_ =
+                snd $ fromMaybe (panic "liftLambda no type") $ Environment.lookupVarValue var env
+        ]
 
-    emptyEnv =
-      Environment.emptyFrom env
+      emptyEnv =
+        Environment.emptyFrom env
 
   pure (sortedOccs, readbackTelescope emptyEnv (occurrenceTele <> tele) body)
   where
@@ -460,10 +424,10 @@ liftLambda env term = do
     acyclic (AcyclicSCC a) = a
     acyclic _ = panic "liftLambda cyclic"
 
-liftDataDefinition
-  :: Environment v
-  -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v
-  -> Lift (Telescope Name LambdaLifted.Type LambdaLifted.ConstructorDefinitions v)
+liftDataDefinition ::
+  Environment v ->
+  Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v ->
+  Lift (Telescope Name LambdaLifted.Type LambdaLifted.ConstructorDefinitions v)
 liftDataDefinition env tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constrDefs) -> do
@@ -471,7 +435,6 @@ liftDataDefinition env tele =
         type' <- evaluate env type_ []
         pure $ readback env type'
       pure $ Telescope.Empty $ LambdaLifted.ConstructorDefinitions constrDefs'
-
     Telescope.Extend binding type_ plicity tele' -> do
       type' <- evaluate env type_ []
       (env', _) <- extend env type'
@@ -487,62 +450,52 @@ readback env (Value value _) =
       LambdaLifted.Var $
         fromMaybe (panic "LambdaLifting.readback Var") $
           Environment.lookupVarIndex var env
-
     Global global ->
       LambdaLifted.Global global
-
     Con global params args ->
       LambdaLifted.Con global (readback env <$> params) (readback env <$> args)
-
     Lit lit ->
       LambdaLifted.Lit lit
-
     Let name var value' type_ body ->
       LambdaLifted.Let
         name
         (readback env value')
         (readback env type_)
         (readback (Environment.extendVar env var) body)
-
     Pi name var domain target ->
       LambdaLifted.Pi
         name
         (readback env domain)
         (readback (Environment.extendVar env var) target)
-
     App function argument ->
       LambdaLifted.App (readback env function) (readback env argument)
-
     Case scrutinee branches defaultBranch ->
       LambdaLifted.Case
         (readback env scrutinee)
         (readbackBranches env branches)
         (readback env <$> defaultBranch)
 
-readbackBranches
-  :: Environment v
-  -> Branches
-  -> LambdaLifted.Branches v
+readbackBranches ::
+  Environment v ->
+  Branches ->
+  LambdaLifted.Branches v
 readbackBranches env branches =
   case branches of
     ConstructorBranches constructorTypeName constructorBranches ->
       LambdaLifted.ConstructorBranches constructorTypeName $ uncurry (readbackTelescope env) <$> constructorBranches
-
     LiteralBranches literalBranches ->
       LambdaLifted.LiteralBranches $ map (readback env) literalBranches
 
-readbackTelescope
-  :: Environment v
-  -> [(Name, Var, Type)]
-  -> Value
-  -> Telescope Name LambdaLifted.Type LambdaLifted.Term v
+readbackTelescope ::
+  Environment v ->
+  [(Name, Var, Type)] ->
+  Value ->
+  Telescope Name LambdaLifted.Type LambdaLifted.Term v
 readbackTelescope env bindings body =
   case bindings of
     [] ->
       Telescope.Empty $ readback env body
-
-    (name, var, type_):bindings' -> do
-      let
-        env' =
-          Environment.extendVar env var
+    (name, var, type_) : bindings' -> do
+      let env' =
+            Environment.extendVar env var
       Telescope.Extend name (readback env type_) Explicit (readbackTelescope env' bindings' body)

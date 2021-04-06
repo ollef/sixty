@@ -1,12 +1,13 @@
-{-# language OverloadedStrings #-}
-{-# language PatternSynonyms #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
+
 module Builtin where
 
-import qualified Data.Tsil as Tsil
 import qualified Core.Domain as Domain
+import qualified Core.Syntax as Syntax
+import qualified Data.Tsil as Tsil
 import qualified Name
 import Plicity
-import qualified Core.Syntax as Syntax
 
 pattern Module :: Name.Module
 pattern Module =
@@ -40,34 +41,35 @@ pattern EqualsName :: Name.Qualified
 pattern EqualsName =
   "Sixten.Builtin.Equals"
 
-pattern Equals
-  :: Domain.Type
-  -> Domain.Value
-  -> Domain.Value
-  -> Domain.Value
+pattern Equals ::
+  Domain.Type ->
+  Domain.Value ->
+  Domain.Value ->
+  Domain.Value
 pattern Equals k a b =
   Domain.Neutral
     (Domain.Global EqualsName)
     (Domain.Apps (Tsil.Empty Tsil.:> (Implicit, k) Tsil.:> (Explicit, a) Tsil.:> (Explicit, b)))
 
-equals
-  :: Syntax.Type v
-  -> Syntax.Term v
-  -> Syntax.Term v
-  -> Syntax.Term v
+equals ::
+  Syntax.Type v ->
+  Syntax.Term v ->
+  Syntax.Term v ->
+  Syntax.Term v
 equals k a b =
-  Syntax.apps (Syntax.Global EqualsName)
+  Syntax.apps
+    (Syntax.Global EqualsName)
     [(Implicit, k), (Explicit, a), (Explicit, b)]
 
 pattern ReflName :: Name.QualifiedConstructor
 pattern ReflName =
   Name.QualifiedConstructor EqualsName "Refl"
 
-pattern Refl
-  :: Domain.Type
-  -> Domain.Value
-  -> Domain.Value
-  -> Domain.Value
+pattern Refl ::
+  Domain.Type ->
+  Domain.Value ->
+  Domain.Value ->
+  Domain.Value
 pattern Refl k a b =
   Domain.Con
     ReflName

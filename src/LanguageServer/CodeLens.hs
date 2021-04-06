@@ -1,24 +1,23 @@
-{-# language OverloadedStrings #-}
-module LanguageServer.CodeLens where
+{-# LANGUAGE OverloadedStrings #-}
 
-import Protolude hiding (IntMap, evaluate, moduleName)
+module LanguageServer.CodeLens where
 
 import Data.Text.Prettyprint.Doc (Doc)
 import qualified Data.Text.Unsafe as Text
-import Rock
-
 import qualified Elaboration.Context as Context
 import qualified Error.Hydrated as Error
 import qualified LanguageServer.LineColumns as LineColumns
 import Monad
-import Name (Name(Name))
+import Name (Name (Name))
 import qualified Name
 import qualified Position
-import qualified Surface.Syntax as Surface
+import Protolude hiding (IntMap, evaluate, moduleName)
 import Query (Query)
 import qualified Query
+import Rock
 import qualified Scope
 import qualified Span
+import qualified Surface.Syntax as Surface
 
 codeLens :: FilePath -> Task Query [(Span.LineColumn, Doc ann)]
 codeLens filePath =
@@ -26,34 +25,31 @@ codeLens filePath =
     (moduleName, _, defs) <- fetch $ Query.ParsedFile filePath
 
     toLineColumns <- LineColumns.fromAbsolute moduleName
-    let
-      previousDefs =
-        Nothing : fmap Just defs
-    fmap concat $ forM (zip previousDefs defs) $ \(previousDef, (pos, (name@(Name nameText), def))) -> do
-      let
-        qualifiedName =
-          Name.Qualified moduleName name
+    let previousDefs =
+          Nothing : fmap Just defs
+    fmap concat $
+      forM (zip previousDefs defs) $ \(previousDef, (pos, (name@(Name nameText), def))) -> do
+        let qualifiedName =
+              Name.Qualified moduleName name
 
-        go = do
-          context <- Context.empty $ Scope.KeyedName Scope.Definition qualifiedName
-          type_ <- fetch $ Query.ElaboratedType qualifiedName
-          prettyType <- Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context type_
-          pure
-            [ ( toLineColumns $ Span.Absolute pos $ pos + Position.Absolute (Text.lengthWord16 nameText)
-              , prettyType
-              )
-            ]
+            go = do
+              context <- Context.empty $ Scope.KeyedName Scope.Definition qualifiedName
+              type_ <- fetch $ Query.ElaboratedType qualifiedName
+              prettyType <- Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context type_
+              pure
+                [
+                  ( toLineColumns $ Span.Absolute pos $ pos + Position.Absolute (Text.lengthWord16 nameText)
+                  , prettyType
+                  )
+                ]
 
-      case (previousDef, def) of
-        (Just (_, (previousName, Surface.TypeDeclaration {})), _)
-          | previousName == name ->
+        case (previousDef, def) of
+          (Just (_, (previousName, Surface.TypeDeclaration {})), _)
+            | previousName == name ->
+              pure []
+          (_, Surface.TypeDeclaration {}) ->
             pure []
-
-        (_, Surface.TypeDeclaration {}) ->
-          pure []
-
-        (_, Surface.ConstantDefinition {}) ->
-          go
-
-        (_, Surface.DataDefinition {}) ->
-          go
+          (_, Surface.ConstantDefinition {}) ->
+            go
+          (_, Surface.DataDefinition {}) ->
+            go

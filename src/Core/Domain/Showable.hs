@@ -1,21 +1,21 @@
-{-# language DuplicateRecordFields #-}
-{-# language GADTs #-}
-{-# language StandaloneDeriving #-}
-module Core.Domain.Showable where
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
-import Protolude hiding (Type, IntMap, force, to)
+module Core.Domain.Showable where
 
 import Core.Binding (Binding)
 import Core.Bindings (Bindings)
-import Data.Tsil (Tsil)
 import qualified Core.Domain as Domain
+import qualified Core.Syntax as Syntax
+import Data.Tsil (Tsil)
 import qualified Environment
 import Index
 import Literal (Literal)
 import Monad
 import qualified Name
 import Plicity
-import qualified Core.Syntax as Syntax
+import Protolude hiding (IntMap, Type, force, to)
 
 data Value
   = Neutral !Domain.Head Spine
@@ -26,7 +26,7 @@ data Value
   | Lam !Bindings !Type !Plicity !Closure
   | Pi !Binding !Type !Plicity !Closure
   | Fun !Type !Plicity !Type
-  deriving Show
+  deriving (Show)
 
 type Type = Value
 
@@ -35,7 +35,7 @@ type Spine = Tsil Elimination
 data Elimination
   = App Plicity Value
   | Case !Branches
-  deriving Show
+  deriving (Show)
 
 type Environment = Environment.Environment Value
 
@@ -54,25 +54,18 @@ to value =
   case value of
     Domain.Neutral hd spine ->
       Neutral hd <$> Domain.mapM eliminationTo spine
-
     Domain.Con con args ->
       Con con <$> mapM (mapM to) args
-
     Domain.Lit lit ->
       pure $ Lit lit
-
     Domain.Glued hd spine value' ->
       Glued hd <$> Domain.mapM eliminationTo spine <*> to value'
-
     Domain.Lazy lazyValue ->
       Core.Domain.Showable.Lazy <$> lazyTo lazyValue
-
     Domain.Lam bindings type_ plicity closure ->
       Lam bindings <$> to type_ <*> pure plicity <*> closureTo closure
-
     Domain.Pi binding type_ plicity closure ->
       Pi binding <$> to type_ <*> pure plicity <*> closureTo closure
-
     Domain.Fun domain plicity target ->
       Fun <$> to domain <*> pure plicity <*> to target
 
@@ -81,7 +74,6 @@ eliminationTo elimination =
   case elimination of
     Domain.App plicity arg ->
       App plicity <$> to arg
-
     Domain.Case branches ->
       Case <$> branchesTo branches
 
@@ -101,9 +93,10 @@ branchesTo (Domain.Branches env branches defaultBranch) = do
 environmentTo :: Domain.Environment v -> M (Environment v)
 environmentTo env = do
   values' <- mapM to $ Environment.values env
-  pure Environment.Environment
-    { scopeKey = Environment.scopeKey env
-    , indices = Environment.indices env
-    , values = values'
-    , glueableBefore = Environment.glueableBefore env
-    }
+  pure
+    Environment.Environment
+      { scopeKey = Environment.scopeKey env
+      , indices = Environment.indices env
+      , values = values'
+      , glueableBefore = Environment.glueableBefore env
+      }

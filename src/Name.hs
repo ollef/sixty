@@ -1,18 +1,17 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
-{-# language DerivingStrategies #-}
-{-# language GeneralizedNewtypeDeriving #-}
-{-# language OverloadedStrings #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module Name where
 
-import Protolude hiding (Constructor)
-
+import Data.Persist
 import Data.String
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
-import Data.Persist
-
 import Extra
+import Protolude hiding (Constructor)
 
 newtype Surface = Surface Text
   deriving stock (Eq, Ord, Show)
@@ -46,19 +45,16 @@ unqualifyConstructor (QualifiedConstructor _ c) = c
 
 instance IsString Qualified where
   fromString s =
-    let
-      t =
-        fromString s
+    let t =
+          fromString s
 
-      (moduleDot, name) =
-        Text.breakOnEnd "." t
-    in
-    case Text.stripSuffix "." moduleDot of
-      Nothing ->
-        Qualified (Module mempty) (Name t)
-
-      Just module_ ->
-        Qualified (Module module_) (Name name)
+        (moduleDot, name) =
+          Text.breakOnEnd "." t
+     in case Text.stripSuffix "." moduleDot of
+          Nothing ->
+            Qualified (Module mempty) (Name t)
+          Just module_ ->
+            Qualified (Module module_) (Name name)
 
 instance Pretty Surface where
   pretty (Surface t) =
@@ -104,7 +100,6 @@ instance Hashable QualifiedConstructor where
 instance Pretty Lifted where
   pretty (Lifted name 0) =
     pretty name
-
   pretty (Lifted name n) =
     pretty name <> "$" <> pretty n
 

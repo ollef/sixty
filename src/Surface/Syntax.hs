@@ -1,14 +1,12 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
-{-# language LambdaCase #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE LambdaCase #-}
+
 module Surface.Syntax where
 
-import Protolude hiding (Type)
-
+import Boxity
 import Data.HashMap.Lazy (HashMap)
 import Data.Persist
-
-import Boxity
 import qualified Error.Parsing as Error
 import qualified Extra
 import Literal (Literal)
@@ -16,6 +14,7 @@ import Name (Name)
 import qualified Name
 import Orphans ()
 import Plicity
+import Protolude hiding (Type)
 import qualified Scope
 import qualified Span
 
@@ -73,7 +72,6 @@ plicitPatternSpan pat =
   case pat of
     ExplicitPattern (Pattern span _) ->
       span
-
     ImplicitPattern span _ ->
       span
 
@@ -94,19 +92,21 @@ lams span vs body@(Term bodySpan _) =
 
 pis :: Plicity -> [(Span.Relative, [SpannedName], Type)] -> Type -> Type
 pis plicity vars target@(Term (Span.Relative _ end) _) =
-  foldr (\(span, vs, domain) target' -> do
-    let
-      Term outerSpan result =
-        foldr (\spannedName@(SpannedName (Span.Relative start _) _) -> Term (Span.Relative start end) . Pi spannedName plicity domain) target' vs
-    Term (Span.add span outerSpan) result
-  ) target vars
+  foldr
+    ( \(span, vs, domain) target' -> do
+        let Term outerSpan result =
+              foldr (\spannedName@(SpannedName (Span.Relative start _) _) -> Term (Span.Relative start end) . Pi spannedName plicity domain) target' vs
+        Term (Span.add span outerSpan) result
+    )
+    target
+    vars
 
 implicitPis :: Span.Relative -> [(Span.Relative, [SpannedName], Type)] -> Type -> Type
 implicitPis forallSpan vars target =
   Term (Span.add forallSpan outerSpan) result
   where
-    Term outerSpan result
-      = pis Implicit vars target
+    Term outerSpan result =
+      pis Implicit vars target
 
 function :: Term -> Term -> Term
 function domain@(Term span1 _) target@(Term span2 _) =
@@ -118,18 +118,16 @@ anno pat@(Pattern span1 _) type_@(Term span2 _) =
 
 conOrVar :: SpannedName -> [PlicitPattern] -> Pattern
 conOrVar spannedName@(SpannedName nameSpan _) patterns =
-  let
-    span =
-      maybe nameSpan (Span.add nameSpan . plicitPatternSpan) $ Extra.last patterns
-  in
-  Pattern span $ ConOrVar spannedName patterns
+  let span =
+        maybe nameSpan (Span.add nameSpan . plicitPatternSpan) $ Extra.last patterns
+   in Pattern span $ ConOrVar spannedName patterns
 
 case_ :: Span.Relative -> Term -> Span.Relative -> [(Pattern, Term)] -> Term
 case_ caseSpan scrutinee ofSpan brs =
   Term (Span.add caseSpan $ maybe ofSpan (\(_, Term span _) -> span) $ Extra.last brs) $ Case scrutinee brs
 
 lets :: Span.Relative -> [Let] -> Term -> Term
-lets letSpan ls rhs@(Term rhsSpan _)  =
+lets letSpan ls rhs@(Term rhsSpan _) =
   Term (Span.add letSpan rhsSpan) (Lets ls rhs)
 
 clause :: [PlicitPattern] -> Span.Relative -> Term -> Clause
@@ -137,8 +135,7 @@ clause pats equalsSpan rhs@(Term rhsSpan _) =
   case pats of
     [] ->
       Clause (Span.add equalsSpan rhsSpan) pats rhs
-
-    pat:_ ->
+    pat : _ ->
       Clause (Span.add (plicitPatternSpan pat) rhsSpan) pats rhs
 
 data Definition
@@ -151,7 +148,8 @@ data Clause = Clause
   { _span :: !Span.Relative
   , _patterns :: [PlicitPattern]
   , _rhs :: !Term
-  } deriving (Eq, Show, Generic, Persist, Hashable)
+  }
+  deriving (Eq, Show, Generic, Persist, Hashable)
 
 data ConstructorDefinition
   = GADTConstructors [(Span.Relative, Name.Constructor)] Type
@@ -163,10 +161,8 @@ spans def =
   case def of
     TypeDeclaration span _ ->
       [span]
-
     ConstantDefinition clauses ->
       fst <$> clauses
-
     DataDefinition span _ _ _ ->
       [span]
 
@@ -175,15 +171,12 @@ constructorSpans def =
   case def of
     TypeDeclaration _ _ ->
       []
-
     ConstantDefinition _ ->
       []
-
     DataDefinition _ _ _ constrDefs ->
       constrDefs >>= \case
         GADTConstructors cs _ ->
           cs
-
         ADTConstructor span constr _ ->
           [(span, constr)]
 
@@ -192,9 +185,7 @@ key def =
   case def of
     TypeDeclaration {} ->
       Scope.Type
-
     ConstantDefinition {} ->
       Scope.Definition
-
     DataDefinition {} ->
       Scope.Definition

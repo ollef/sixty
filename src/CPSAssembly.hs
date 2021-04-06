@@ -1,6 +1,7 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
-{-# language OverloadedStrings #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module CPSAssembly where
 
 import Assembly (Local, Operand)
@@ -37,25 +38,18 @@ instance Pretty Instruction where
     case instruction of
       Copy dst src size ->
         voidInstr "copy" [dst, src, size]
-
       Load dst src ->
         returningInstr dst "load" [src]
-
       Store dst src ->
         voidInstr "store" [dst, src]
-
       SetUndefined dst size ->
         voidInstr "set undefined" [dst, size]
-
       InitGlobal dst representation src ->
         "init" <+> pretty representation <+> "global" <+> hsep [pretty dst, pretty src]
-
       Add dst arg1 arg2 ->
         returningInstr dst "add" [arg1, arg2]
-
       Sub dst arg1 arg2 ->
         returningInstr dst "sub" [arg1, arg2]
-
       HeapAllocate dst size ->
         returningInstr dst "gcmalloc" [size]
     where
@@ -70,16 +64,19 @@ instance Pretty Terminator where
     case terminator of
       TailCall fun args ->
         "tail call" <+> pretty fun <> tupled (pretty <$> args)
-
       Switch scrutinee branches default_ ->
-        "switch" <+> pretty scrutinee <> line <>
-          indent 2
-            (vsep
-              [ pretty i <+> "->" <> line <>
-                indent 2 (pretty basicBlock)
-              | (i, basicBlock) <- branches
-              ] <> line <>
-              "_ -> " <> line <> indent 2 (pretty default_)
+        "switch" <+> pretty scrutinee <> line
+          <> indent
+            2
+            ( vsep
+                [ pretty i <+> "->" <> line
+                  <> indent 2 (pretty basicBlock)
+                | (i, basicBlock) <- branches
+                ]
+                <> line
+                <> "_ -> "
+                <> line
+                <> indent 2 (pretty default_)
             )
 
 instance Pretty BasicBlock where

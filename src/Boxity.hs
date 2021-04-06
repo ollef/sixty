@@ -1,12 +1,12 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
-{-# language OverloadedStrings #-}
-module Boxity where
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
 
-import Protolude
+module Boxity where
 
 import Data.Persist
 import Data.Text.Prettyprint.Doc
+import Protolude
 
 data Boxity
   = Unboxed
@@ -18,7 +18,6 @@ instance Pretty Boxity where
     case boxity of
       Unboxed ->
         "unboxed"
-
       Boxed ->
         "boxed"
 
@@ -27,6 +26,5 @@ prettyAnnotation boxity =
   case boxity of
     Unboxed ->
       identity
-
     Boxed ->
       ("boxed" <+>)

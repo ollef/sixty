@@ -1,5 +1,6 @@
-{-# language GADTs #-}
-{-# language OverloadedStrings #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module Elaboration.Postponed where
 
 import qualified Core.Syntax as Syntax
@@ -36,16 +37,15 @@ insert check p =
 
 update :: Postponement.Index -> Check -> Checks -> Checks
 update index newCheck p =
-  p { checks = IntMap.insert index newCheck $ checks p }
+  p {checks = IntMap.insert index newCheck $ checks p}
 
 adjustF :: Functor f => (Check -> f Check) -> Postponement.Index -> Checks -> f Checks
 adjustF adjust index p =
-  (\checks' -> p { checks = checks' }) <$> IntMap.alterF alter index (checks p)
+  (\checks' -> p {checks = checks'}) <$> IntMap.alterF alter index (checks p)
   where
     alter maybeCheck =
       case maybeCheck of
         Nothing ->
           panic "Elaboration.Postponement.adjustF: adjusting non-existent index"
-
         Just check ->
           Just <$> adjust check

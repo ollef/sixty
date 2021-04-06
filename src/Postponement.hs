@@ -1,8 +1,9 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
-{-# language DerivingStrategies #-}
-{-# language GeneralizedNewtypeDeriving #-}
-{-# language OverloadedStrings #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module Postponement where
 
 import Data.Persist
@@ -21,4 +22,4 @@ instance Pretty Index where
 data CanPostpone
   = Can'tPostpone
   | CanPostpone
-  deriving Show
+  deriving (Show)

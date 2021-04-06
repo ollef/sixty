@@ -1,19 +1,18 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+
 module ClosureConverted.Syntax where
-
-import Protolude hiding (Type, IntMap)
-
-import Data.Persist
-import Unsafe.Coerce
 
 import Boxity
 import Data.OrderedHashMap (OrderedHashMap)
+import Data.Persist
 import Index
 import Literal (Literal)
 import Name (Name)
 import qualified Name
+import Protolude hiding (IntMap, Type)
 import Telescope (Telescope)
+import Unsafe.Coerce
 
 {-
 General idea:
@@ -41,14 +40,19 @@ ApplyClosure cl ts : ys[ts/xs] -> T[ts/xs]
 data Term v
   = Var !(Index v)
   | Global !Name.Lifted
-  | Con -- ^ Saturated constructor application
-    !Name.QualifiedConstructor
-    [Term v] -- ^ Type parameters
-    [Term v] -- ^ Constructor arguments
+  | -- | Saturated constructor application
+    Con
+      !Name.QualifiedConstructor
+      [Term v]
+      -- ^ Type parameters
+      [Term v]
+      -- ^ Constructor arguments
   | Lit !Literal
   | Let !Name !(Term v) !(Type v) !(Scope Term v)
-  | Function !(Telescope Name Type Type Void) -- ^ The type of a top-level function definition
-  | Apply !Name.Lifted [Term v] -- ^ Saturated application of a top-level function
+  | -- | The type of a top-level function definition
+    Function !(Telescope Name Type Type Void)
+  | -- | Saturated application of a top-level function
+    Apply !Name.Lifted [Term v]
   | Pi !Name !(Type v) !(Scope Type v)
   | Closure !Name.Lifted [Term v]
   | ApplyClosure !(Term v) [Term v]
@@ -76,8 +80,8 @@ data Definition
   | ParameterisedDataDefinition !Boxity !(Telescope Name Type ConstructorDefinitions Void)
   deriving (Eq, Show, Generic, Persist, Hashable)
 
-newtype ConstructorDefinitions v =
-  ConstructorDefinitions (OrderedHashMap Name.Constructor (Type v))
+newtype ConstructorDefinitions v
+  = ConstructorDefinitions (OrderedHashMap Name.Constructor (Type v))
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 fromVoid :: Term Void -> Term v

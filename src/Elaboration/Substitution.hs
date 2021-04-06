@@ -1,7 +1,6 @@
-{-# language ScopedTypeVariables #-}
-module Elaboration.Substitution where
+{-# LANGUAGE ScopedTypeVariables #-}
 
-import Protolude
+module Elaboration.Substitution where
 
 import qualified Core.Syntax as Syntax
 import Elaboration.Context (Context)
@@ -10,12 +9,12 @@ import qualified Environment
 import qualified Index
 import qualified Inlining
 import Monad
+import Protolude
 
 let_ :: Context v -> Syntax.Term v -> Syntax.Term (Index.Succ v) -> M (Syntax.Term v)
 let_ context term body = do
-  let
-    env =
-      createEnvironment context
+  let env =
+        createEnvironment context
   value <- Inlining.evaluate (const Nothing) env term
   (env', _) <- Environment.extendValue env value
   bodyValue <- Inlining.evaluate (const Nothing) env' body
@@ -23,4 +22,4 @@ let_ context term body = do
 
 createEnvironment :: Context v -> Inlining.Environment v
 createEnvironment context =
-  (Context.toEnvironment context) { Environment.values = mempty }
+  (Context.toEnvironment context) {Environment.values = mempty}

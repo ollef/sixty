@@ -1,13 +1,9 @@
-{-# language FlexibleContexts #-}
-{-# language GeneralizedNewtypeDeriving #-}
-{-# language OverloadedStrings #-}
-{-# language TupleSections #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
 
 module ClosureConvertedToAssembly where
-
-import Protolude hiding (IntMap, typeOf, local, moduleName)
-
-import Rock
 
 import qualified Assembly
 import Boxity
@@ -27,16 +23,18 @@ import Index
 import qualified Literal
 import qualified Module
 import Monad
-import Name (Name(Name))
+import Name (Name (Name))
 import qualified Name
+import Protolude hiding (IntMap, local, moduleName, typeOf)
 import Query (Query)
 import qualified Query
 import Representation (Representation)
 import qualified Representation
+import Rock
 import qualified Scope
 import Telescope (Telescope)
 import qualified Telescope
-import Var (Var(Var))
+import Var (Var (Var))
 
 newtype Builder a = Builder (StateT BuilderState M a)
   deriving (Functor, Applicative, Monad, MonadIO, MonadFetch Query, MonadState BuilderState)
@@ -48,14 +46,16 @@ data BuilderState = BuilderState
 
 runBuilder :: Builder a -> M a
 runBuilder (Builder s) =
-  evalStateT s BuilderState
-    { _fresh = 0
-    , _instructions = mempty
-    }
+  evalStateT
+    s
+    BuilderState
+      { _fresh = 0
+      , _instructions = mempty
+      }
 
 emit :: Assembly.Instruction Assembly.BasicBlock -> Builder ()
 emit instruction =
-  modify $ \s -> s { _instructions = _instructions s Tsil.:> instruction }
+  modify $ \s -> s {_instructions = _instructions s Tsil.:> instruction}
 
 -------------------------------------------------------------------------------
 
@@ -73,41 +73,40 @@ emptyEnvironment scopeKey =
 
 extend :: Environment v -> Syntax.Type v -> Operand -> Builder (Environment (Succ v))
 extend env type_ location =
-  Builder $ lift $ do
-    type' <- Evaluation.evaluate (Context.toEnvironment $ _context env) type_
-    (context', var) <- Context.extend (_context env) type'
-    pure Environment
-      { _context = context'
-      , _varLocations = IntMap.insert var location $ _varLocations env
-      }
+  Builder $
+    lift $ do
+      type' <- Evaluation.evaluate (Context.toEnvironment $ _context env) type_
+      (context', var) <- Context.extend (_context env) type'
+      pure
+        Environment
+          { _context = context'
+          , _varLocations = IntMap.insert var location $ _varLocations env
+          }
 
 operandNameSuggestion :: Assembly.Operand -> Assembly.NameSuggestion
 operandNameSuggestion operand =
   case operand of
     Assembly.LocalOperand (Assembly.Local _ nameSuggestion) ->
       nameSuggestion
-
     Assembly.GlobalConstant global _ ->
       Assembly.NameSuggestion $ Assembly.nameText global
-
     Assembly.GlobalFunction global _ ->
       Assembly.NameSuggestion $ Assembly.nameText global
-
     Assembly.Lit _ ->
       "literal"
 
 data Operand
   = Empty
-  | Direct !Assembly.Operand -- ^ word sized
+  | -- | word sized
+    Direct !Assembly.Operand
   | Indirect !Assembly.Operand
 
 -------------------------------------------------------------------------------
 
 indexOperand :: Index v -> Environment v -> Operand
 indexOperand index env = do
-  let
-    var =
-      Context.lookupIndexVar index $ _context env
+  let var =
+        Context.lookupIndexVar index $ _context env
   fromMaybe (panic "ClosureConvertedToAssembly.indexOperand") $
     IntMap.lookup var $ _varLocations env
 
@@ -117,7 +116,6 @@ globalConstantOperand name = do
   pure $ case maybeSignature of
     Just (Representation.ConstantSignature representation) ->
       Indirect $ Assembly.GlobalConstant (Assembly.Name name 0) representation
-
     _ ->
       panic $ "ClosureConvertedToAssembly.globalConstantLocation: global without constant signature " <> show name
 
@@ -143,10 +141,11 @@ heapAllocate nameSuggestion size = do
 
 typeOf :: Environment v -> Syntax.Term v -> Builder Operand
 typeOf env term = do
-  type_ <- Builder $ lift $ do
-    value <- Evaluation.evaluate (Context.toEnvironment $ _context env) term
-    typeValue <- TypeOf.typeOf (_context env) value
-    Readback.readback (Context.toEnvironment $ _context env) typeValue
+  type_ <- Builder $
+    lift $ do
+      value <- Evaluation.evaluate (Context.toEnvironment $ _context env) term
+      typeValue <- TypeOf.typeOf (_context env) value
+      Readback.readback (Context.toEnvironment $ _context env) typeValue
   generateType env type_
 
 sizeOfType :: Operand -> Builder Assembly.Operand
@@ -158,7 +157,7 @@ sizeOfType =
 freshLocal :: Assembly.NameSuggestion -> Builder Assembly.Local
 freshLocal nameSuggestion = do
   fresh <- gets _fresh
-  modify $ \s -> s { _fresh = fresh + 1 }
+  modify $ \s -> s {_fresh = fresh + 1}
   pure $ Assembly.Local fresh nameSuggestion
 
 copy :: Assembly.Operand -> Operand -> Assembly.Operand -> Builder ()
@@ -166,10 +165,8 @@ copy destination source size =
   case source of
     Empty ->
       pure ()
-
     Indirect indirectSource ->
       emit $ Assembly.Copy destination indirectSource size
-
     Direct directSource ->
       emit $ Assembly.Store destination directSource
 
@@ -220,11 +217,9 @@ forceIndirect operand =
   case operand of
     Empty ->
       pure (Assembly.Lit $ Literal.Integer 0, pure ())
-
     Direct directOperand -> do
       operand' <- stackAllocate (operandNameSuggestion directOperand) pointerBytesOperand
       pure (operand', stackDeallocate pointerBytesOperand)
-
     Indirect indirectOperand ->
       pure (indirectOperand, pure ())
 
@@ -233,10 +228,8 @@ forceDirect operand =
   case operand of
     Empty ->
       pure $ Assembly.Lit $ Literal.Integer 0
-
     Direct directOperand ->
       pure directOperand
-
     Indirect indirectOperand ->
       load (operandNameSuggestion indirectOperand) indirectOperand
 
@@ -302,63 +295,50 @@ generateModuleInit moduleName definitions =
       case definition of
         Assembly.KnownConstantDefinition {} ->
           pure globalPointer
-
         Assembly.ConstantDefinition {} ->
           callDirect "globals" (initDefinitionName name) [globalPointer]
-
         Assembly.FunctionDefinition {} ->
           pure globalPointer
 
 generateDefinition :: Name.Lifted -> Syntax.Definition -> M (Maybe (Assembly.Definition Assembly.BasicBlock, Int))
 generateDefinition name@(Name.Lifted qualifiedName _) definition = do
   signature <- fetch $ Query.ClosureConvertedSignature name
-  let
-    env =
-      emptyEnvironment $ Scope.KeyedName Scope.Definition qualifiedName
+  let env =
+        emptyEnvironment $ Scope.KeyedName Scope.Definition qualifiedName
   runBuilder $ do
     maybeResult <- case (definition, signature) of
       (Syntax.TypeDeclaration _, _) ->
         pure Nothing
-
       (Syntax.ConstantDefinition term, Just (Representation.ConstantSignature representation)) ->
         generateGlobal env name representation term
-
       (Syntax.ConstantDefinition {}, _) ->
         panic "ClosureConvertedToAssembly: ConstantDefinition without ConstantSignature"
-
       (Syntax.FunctionDefinition tele, Just (Representation.FunctionSignature parameterRepresentations returnRepresentation)) -> do
         Just <$> generateFunction env returnRepresentation tele parameterRepresentations mempty
-
       (Syntax.FunctionDefinition {}, _) ->
         panic "ClosureConvertedToAssembly: FunctionDefinition without FunctionSignature"
-
       (Syntax.DataDefinition boxity constructors, Just (Representation.ConstantSignature representation)) -> do
         term <- Builder $ lift $ ClosureConverted.Representation.compileData (Context.toEnvironment $ _context env) boxity constructors
         generateGlobal env name representation term
-
       (Syntax.DataDefinition {}, _) ->
         panic "ClosureConvertedToAssembly: DataDefinition without ConstantSignature"
-
       (Syntax.ParameterisedDataDefinition boxity tele, Just (Representation.FunctionSignature parameterRepresentations returnRepresentation)) -> do
         tele' <- Builder $ lift $ ClosureConverted.Representation.compileParameterisedData (Context.toEnvironment $ _context env) boxity tele
         Just <$> generateFunction env returnRepresentation tele' parameterRepresentations mempty
-
       (Syntax.ParameterisedDataDefinition {}, _) -> do
         panic "ClosureConvertedToAssembly: DataDefinition without ConstantSignature"
 
     fresh <- gets _fresh
-    pure $ (, fresh) <$> maybeResult
+    pure $ (,fresh) <$> maybeResult
 
 generateGlobal :: Environment v -> Name.Lifted -> Representation -> Syntax.Term v -> Builder (Maybe (Assembly.Definition Assembly.BasicBlock))
 generateGlobal env name representation term = do
   globalPointer <- freshLocal "globals"
-  let
-    globalPointerOperand =
-      Assembly.LocalOperand globalPointer
+  let globalPointerOperand =
+        Assembly.LocalOperand globalPointer
   case term of
     Syntax.Lit literal ->
       pure $ Just $ Assembly.KnownConstantDefinition Representation.Direct literal
-
     _ ->
       case representation of
         Representation.Empty -> do
@@ -367,11 +347,10 @@ generateGlobal env name representation term = do
           instructions <- gets _instructions
           pure $
             Just $
-            Assembly.ConstantDefinition
-              representation
-              [globalPointer]
-              (Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointerOperand)
-
+              Assembly.ConstantDefinition
+                representation
+                [globalPointer]
+                (Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointerOperand)
         Representation.Direct -> do
           -- TODO store in globals for GC?
           (result, deallocateTerm) <- generateTypedTerm env term $ Direct directTypeOperand
@@ -381,11 +360,10 @@ generateGlobal env name representation term = do
           instructions <- gets _instructions
           pure $
             Just $
-            Assembly.ConstantDefinition
-              representation
-              [globalPointer]
-              (Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointerOperand)
-
+              Assembly.ConstantDefinition
+                representation
+                [globalPointer]
+                (Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointerOperand)
         Representation.Indirect -> do
           type_ <- typeOf env term
           typeSize <- sizeOfType type_
@@ -395,18 +373,18 @@ generateGlobal env name representation term = do
           instructions <- gets _instructions
           pure $
             Just $
-            Assembly.ConstantDefinition
-              representation
-              [globalPointer]
-              (Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointer')
+              Assembly.ConstantDefinition
+                representation
+                [globalPointer]
+                (Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointer')
 
-generateFunction
-  :: Environment v
-  -> Representation
-  -> Telescope Name Syntax.Type Syntax.Term v
-  -> [Representation]
-  -> Tsil Assembly.Local
-  -> Builder (Assembly.Definition Assembly.BasicBlock)
+generateFunction ::
+  Environment v ->
+  Representation ->
+  Telescope Name Syntax.Type Syntax.Term v ->
+  [Representation] ->
+  Tsil Assembly.Local ->
+  Builder (Assembly.Definition Assembly.BasicBlock)
 generateFunction env returnRepresentation tele parameterRepresentations params =
   case (tele, parameterRepresentations) of
     (Telescope.Empty term, []) ->
@@ -419,7 +397,6 @@ generateFunction env returnRepresentation tele parameterRepresentations params =
             Assembly.FunctionDefinition
               (toList params)
               (Assembly.BasicBlock (toList instructions) Assembly.VoidResult)
-
         Representation.Direct -> do
           (result, deallocateTerm) <- generateTypedTerm env term $ Direct directTypeOperand
           directResult <- forceDirect result
@@ -429,7 +406,6 @@ generateFunction env returnRepresentation tele parameterRepresentations params =
             Assembly.FunctionDefinition
               (toList params)
               (Assembly.BasicBlock (toList instructions) $ Assembly.Result directResult)
-
         Representation.Indirect -> do
           returnLocation <- freshLocal "return_location"
           type_ <- typeOf env term
@@ -439,24 +415,20 @@ generateFunction env returnRepresentation tele parameterRepresentations params =
             Assembly.FunctionDefinition
               (returnLocation : toList params)
               (Assembly.BasicBlock (toList instructions) Assembly.VoidResult)
-
-    (Telescope.Extend (Name name) type_ _plicity tele', parameterRepresentation:parameterRepresentations') -> do
+    (Telescope.Extend (Name name) type_ _plicity tele', parameterRepresentation : parameterRepresentations') -> do
       (params', paramOperand) <-
         case parameterRepresentation of
           Representation.Empty ->
             pure (params, Empty)
-
           Representation.Direct -> do
             local <- freshLocal $ Assembly.NameSuggestion name
             pure (params Tsil.:> local, Direct $ Assembly.LocalOperand local)
-
           Representation.Indirect -> do
             local <- freshLocal $ Assembly.NameSuggestion name
-            pure (params Tsil.:>local, Indirect $ Assembly.LocalOperand local)
+            pure (params Tsil.:> local, Indirect $ Assembly.LocalOperand local)
 
       env' <- extend env type_ paramOperand
       generateFunction env' returnRepresentation tele' parameterRepresentations' params'
-
     _ ->
       panic "ClosureConvertedToAssembly.generateFunction: mismatched function telescope and signature"
 
@@ -468,7 +440,6 @@ generateType env type_ = do
   case maybeDeallocateType of
     Nothing ->
       pure type'
-
     Just deallocateType -> do
       directType <- forceDirect type'
       deallocateType
@@ -476,170 +447,140 @@ generateType env type_ = do
 
 generateTypedTerm :: Environment v -> Syntax.Term v -> Operand -> Builder (Operand, Maybe (Builder ()))
 generateTypedTerm env term type_ = do
-  let
-    stackAllocateIt = do
-      typeSize <- sizeOfType type_
-      termLocation <- stackAllocate "term_location" typeSize
-      storeTerm env term termLocation type_
-      pure (Indirect termLocation, Just $ do
-        typeSize' <- sizeOfType type_
-        stackDeallocate typeSize')
+  let stackAllocateIt = do
+        typeSize <- sizeOfType type_
+        termLocation <- stackAllocate "term_location" typeSize
+        storeTerm env term termLocation type_
+        pure
+          ( Indirect termLocation
+          , Just $ do
+              typeSize' <- sizeOfType type_
+              stackDeallocate typeSize'
+          )
 
   case term of
     Syntax.Var index ->
       pure (indexOperand index env, Nothing)
-
     Syntax.Global global -> do
       operand <- globalConstantOperand global
       pure (operand, Nothing)
-
     Syntax.Con {} ->
       stackAllocateIt -- TODO
-
     Syntax.Lit lit ->
       pure (Direct $ Assembly.Lit lit, Nothing)
-
     Syntax.Let _name term' termType body -> do
       termType' <- generateType env termType
       (term'', deallocateTerm) <- generateTypedTerm env term' termType'
       env' <- extend env termType term''
       (result, deallocateBody) <- generateTypedTerm env' body type_
       pure (result, (>>) <$> deallocateBody <*> deallocateTerm)
-
     Syntax.Function _ ->
       pure (Direct pointerBytesOperand, Nothing)
-
     Syntax.Apply global arguments -> do
       maybeSignature <- fetch $ Query.ClosureConvertedSignature global
-      let
-        (argumentRepresentations, returnRepresentation) =
-          case maybeSignature of
-            Just (Representation.FunctionSignature argumentRepresentations_ returnRepresentation_) ->
-              (argumentRepresentations_, returnRepresentation_)
-
-            _ ->
-              panic $ "ClosureConvertedToAssembly: Applying signature-less function " <> show global
+      let (argumentRepresentations, returnRepresentation) =
+            case maybeSignature of
+              Just (Representation.FunctionSignature argumentRepresentations_ returnRepresentation_) ->
+                (argumentRepresentations_, returnRepresentation_)
+              _ ->
+                panic $ "ClosureConvertedToAssembly: Applying signature-less function " <> show global
       case returnRepresentation of
         Representation.Empty -> do
           (arguments', deallocateArguments) <- generateArguments env $ zip arguments argumentRepresentations
           callVoid global arguments'
           deallocateArguments
           pure (Empty, Nothing)
-
         Representation.Direct -> do
           (arguments', deallocateArguments) <- generateArguments env $ zip arguments argumentRepresentations
           result <- callDirect "call_result" global arguments'
           deallocateArguments
           pure (Direct result, Nothing)
-
         Representation.Indirect -> do
           stackAllocateIt
-
     Syntax.Pi {} ->
       pure (Direct pointerBytesOperand, Nothing)
-
     Syntax.Closure {} ->
       stackAllocateIt
-
     Syntax.ApplyClosure {} ->
       stackAllocateIt
-
     Syntax.Case {} ->
       stackAllocateIt
 
-storeTerm
-  :: Environment v
-  -> Syntax.Term v
-  -> Assembly.Operand
-  -> Operand
-  -> Builder ()
+storeTerm ::
+  Environment v ->
+  Syntax.Term v ->
+  Assembly.Operand ->
+  Operand ->
+  Builder ()
 storeTerm env term returnLocation returnType =
   case term of
     Syntax.Var index -> do
-      let
-        varOperand =
-          indexOperand index env
+      let varOperand =
+            indexOperand index env
       returnTypeSize <- sizeOfType returnType
       copy returnLocation varOperand returnTypeSize
-
     Syntax.Global global -> do
       operand <- globalConstantOperand global
       returnTypeSize <- sizeOfType returnType
       copy returnLocation operand returnTypeSize
-
     Syntax.Con con@(Name.QualifiedConstructor typeName _) params args -> do
       maybeTag <- fetch $ Query.ConstructorTag con
-      let
-        tagArgs =
-          case maybeTag of
-            Nothing ->
-              args
+      let tagArgs =
+            case maybeTag of
+              Nothing ->
+                args
+              Just tag ->
+                Syntax.Lit (Literal.Integer $ fromIntegral tag) : args
 
-            Just tag ->
-              Syntax.Lit (Literal.Integer $ fromIntegral tag) : args
-
-        go location arg = do
-          argType <- typeOf env arg
-          storeTerm env arg location argType
-          argTypeSize <- sizeOfType argType
-          add "argument_offset" location argTypeSize
+          go location arg = do
+            argType <- typeOf env arg
+            storeTerm env arg location argType
+            argTypeSize <- sizeOfType argType
+            add "argument_offset" location argTypeSize
 
       boxity <- fetchBoxity typeName
       case boxity of
         Unboxed ->
           foldM_ go returnLocation tagArgs
-
         Boxed -> do
           size <- boxedConstructorSize env con params
           heapLocation <- heapAllocate "constructor_heap_object" size
           foldM_ go heapLocation tagArgs
           store returnLocation heapLocation
-
     Syntax.Lit lit ->
       store returnLocation (Assembly.Lit lit)
-
     Syntax.Let _name term' type_ body -> do
       type' <- generateType env type_
       (term'', deallocateTerm) <- generateTypedTerm env term' type'
       env' <- extend env type_ term''
       storeTerm env' body returnLocation returnType
       sequence_ deallocateTerm
-
     Syntax.Function _ ->
       store returnLocation pointerBytesOperand
-
     Syntax.Apply global arguments -> do
       maybeSignature <- fetch $ Query.ClosureConvertedSignature global
-      let
-        (argumentRepresentations, returnRepresentation) =
-          case maybeSignature of
-            Just (Representation.FunctionSignature argumentRepresentations_ returnRepresentation_) ->
-              (argumentRepresentations_, returnRepresentation_)
-
-            _ ->
-              panic $ "ClosureConvertedToAssembly: Applying signature-less function " <> show global
+      let (argumentRepresentations, returnRepresentation) =
+            case maybeSignature of
+              Just (Representation.FunctionSignature argumentRepresentations_ returnRepresentation_) ->
+                (argumentRepresentations_, returnRepresentation_)
+              _ ->
+                panic $ "ClosureConvertedToAssembly: Applying signature-less function " <> show global
       (arguments', deallocateArguments) <- generateArguments env (zip arguments argumentRepresentations)
       case returnRepresentation of
         Representation.Empty ->
           callVoid global arguments'
-
         Representation.Direct -> do
           result <- callDirect "call_result" global arguments'
           store returnLocation result
-
         Representation.Indirect -> do
           callIndirect global arguments' returnLocation
       deallocateArguments
-
     Syntax.Pi {} ->
       store returnLocation pointerBytesOperand
-
     Syntax.Closure {} ->
       panic "st c" -- TODO
-
     Syntax.ApplyClosure {} ->
       panic $ "st ac " <> show term -- TODO
-
     Syntax.Case {} ->
       panic "st case" -- TODO
 
@@ -650,8 +591,8 @@ generateArguments env arguments = do
   pure
     ( concat arguments'
     , do
-      sequence_ $ reverse innerDeallocators
-      sequence_ $ reverse outerDeallocators
+        sequence_ $ reverse innerDeallocators
+        sequence_ $ reverse outerDeallocators
     )
 
 generateArgument :: Environment v -> Syntax.Term v -> Representation -> Builder (Builder ([Assembly.Operand], Builder ()), Builder ())
@@ -663,25 +604,24 @@ generateArgument env term representation =
         ( pure ([], pure ())
         , sequence_ deallocateTerm
         )
-
     Representation.Direct -> do
       (term', deallocateTerm) <- generateTypedTerm env term $ Direct directTypeOperand
       pure
-        (do
-          directTerm <- forceDirect term'
-          pure ([directTerm], pure ())
+        ( do
+            directTerm <- forceDirect term'
+            pure ([directTerm], pure ())
         , sequence_ deallocateTerm
         )
-
     Representation.Indirect -> do
       type_ <- typeOf env term
       (termOperand, deallocateTermOperand) <- generateTypedTerm env term type_
       pure
         ( do
-          (termLocation, deallocateTerm) <- forceIndirect termOperand
-          pure ([termLocation], deallocateTerm)
+            (termLocation, deallocateTerm) <- forceIndirect termOperand
+            pure ([termLocation], deallocateTerm)
         , sequence_ deallocateTermOperand
         )
+
 -------------------------------------------------------------------------------
 
 fetchBoxity :: MonadFetch Query m => Name.Qualified -> m Boxity
@@ -690,14 +630,13 @@ fetchBoxity name = do
   case maybeDef of
     Just (Core.Syntax.DataDefinition boxity _, _) ->
       pure boxity
-
     _ ->
       panic "ClosureConvertedToAssembly.fetchBoxity"
 
-boxedConstructorSize
-  :: Environment v
-  -> Name.QualifiedConstructor
-  -> [Syntax.Term v]
-  -> m Assembly.Operand
+boxedConstructorSize ::
+  Environment v ->
+  Name.QualifiedConstructor ->
+  [Syntax.Term v] ->
+  m Assembly.Operand
 boxedConstructorSize =
   panic "bcs"

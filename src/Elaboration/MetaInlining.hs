@@ -1,20 +1,17 @@
-{-# language DeriveFoldable #-}
-{-# language DeriveFunctor #-}
-{-# language DeriveTraversable #-}
-{-# language FlexibleContexts #-}
-{-# language OverloadedStrings #-}
-{-# language TupleSections #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
+
 module Elaboration.MetaInlining where
-
-import Prelude (Show (showsPrec))
-import Protolude hiding (Type, IntMap, IntSet, evaluate)
-
-import Data.Graph
 
 import Core.Binding (Binding)
 import Core.Bindings (Bindings)
 import qualified Core.Domain as Domain
 import qualified Core.Syntax as Syntax
+import Data.Graph
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.IntSet (IntSet)
@@ -31,107 +28,102 @@ import Monad
 import qualified Name
 import Plicity
 import qualified Postponement
+import Protolude hiding (IntMap, IntSet, Type, evaluate)
 import qualified Scope
 import qualified Span
 import Telescope (Telescope)
 import qualified Telescope
 import Var (Var)
 import qualified Var
+import Prelude (Show (showsPrec))
 
-inlineSolutions
-  :: Scope.KeyedName
-  -> Syntax.MetaSolutions
-  -> Syntax.Definition
-  -> Syntax.Type Void
-  -> M (Syntax.Definition, Syntax.Type Void)
+inlineSolutions ::
+  Scope.KeyedName ->
+  Syntax.MetaSolutions ->
+  Syntax.Definition ->
+  Syntax.Type Void ->
+  M (Syntax.Definition, Syntax.Type Void)
 inlineSolutions scopeKey solutions def type_ = do
   solutionValues <- forM solutions $ \(metaTerm, metaType, metaOccurrences) -> do
     metaValue <- evaluate (Environment.empty scopeKey) metaTerm
     metaType' <- evaluate (Environment.empty scopeKey) metaType
     pure (metaValue, metaType', metaOccurrences)
 
-  let
-    sortedSolutions =
-      acyclic <$>
-      topoSortWith
-        fst
-        (\(_, (_, _, metaOccurrences)) -> IntSet.toList metaOccurrences)
-        (IntMap.toList solutionValues)
+  let sortedSolutions =
+        acyclic
+          <$> topoSortWith
+            fst
+            (\(_, (_, _, metaOccurrences)) -> IntSet.toList metaOccurrences)
+            (IntMap.toList solutionValues)
 
-    lookupMetaIndex metas index =
-      IntMap.lookupDefault
-        (panic "Elaboration.MetaInlining.inlineSolutions: unknown index")
-        index
-        metas
+      lookupMetaIndex metas index =
+        IntMap.lookupDefault
+          (panic "Elaboration.MetaInlining.inlineSolutions: unknown index")
+          index
+          metas
 
-    inlineTermSolutions :: Domain.Environment v -> Syntax.Term v -> M (Syntax.Term v)
-    inlineTermSolutions env term = do
-      let
-        go :: (Meta.Index, (Value, Type, unused)) -> (Value, IntMap Meta.Index (Var, [Maybe DuplicableValue])) -> M (Value, IntMap Meta.Index (Var, [Maybe DuplicableValue]))
-        go (index, (solutionValue, solutionType, _)) (value, metaVars) =
-          case IntMap.lookup index $ occurrencesMap value of
-            Nothing ->
-              pure (value, metaVars)
+      inlineTermSolutions :: Domain.Environment v -> Syntax.Term v -> M (Syntax.Term v)
+      inlineTermSolutions env term = do
+        let go :: (Meta.Index, (Value, Type, unused)) -> (Value, IntMap Meta.Index (Var, [Maybe DuplicableValue])) -> M (Value, IntMap Meta.Index (Var, [Maybe DuplicableValue]))
+            go (index, (solutionValue, solutionType, _)) (value, metaVars) =
+              case IntMap.lookup index $ occurrencesMap value of
+                Nothing ->
+                  pure (value, metaVars)
+                Just duplicableArgs -> do
+                  solutionVar <- freshVar
+                  let duplicableArgsList =
+                        toList duplicableArgs
 
-            Just duplicableArgs -> do
-              solutionVar <- freshVar
-              let
-                duplicableArgsList =
-                  toList duplicableArgs
+                      duplicableVars =
+                        IntSet.fromList
+                          [ var
+                          | Just (DuplicableVar var) <- duplicableArgsList
+                          ]
 
-                duplicableVars =
-                  IntSet.fromList
-                    [ var
-                    | Just (DuplicableVar var) <- duplicableArgsList
-                    ]
+                      (inlinedSolutionValue, inlinedSolutionType) =
+                        unShared $ inlineArguments solutionValue solutionType duplicableArgsList mempty
 
-                (inlinedSolutionValue, inlinedSolutionType) =
-                  unShared $ inlineArguments solutionValue solutionType duplicableArgsList mempty
+                      value' =
+                        unShared $
+                          sharing value $
+                            inlineIndex index duplicableVars (solutionVar, duplicableArgsList, inlinedSolutionValue, inlinedSolutionType) value
 
-                value' =
-                  unShared $
-                  sharing value $
-                    inlineIndex index duplicableVars (solutionVar, duplicableArgsList, inlinedSolutionValue, inlinedSolutionType) value
+                      metaVars' =
+                        IntMap.insert index (solutionVar, duplicableArgsList) metaVars
 
-                metaVars' =
-                  IntMap.insert index (solutionVar, duplicableArgsList) metaVars
+                  pure (value', metaVars')
+        value <- evaluate env term
+        (inlinedValue, metaVars) <- foldrM go (value, mempty) sortedSolutions
+        pure $
+          readback env (lookupMetaIndex metaVars) inlinedValue
 
-              pure (value', metaVars')
-      value <- evaluate env term
-      (inlinedValue, metaVars) <- foldrM go (value, mempty) sortedSolutions
-      pure $
-        readback env (lookupMetaIndex metaVars) inlinedValue
+      inlineDefSolutions :: Domain.Environment Void -> Syntax.Definition -> M Syntax.Definition
+      inlineDefSolutions env def' =
+        case def' of
+          Syntax.TypeDeclaration declaredType -> do
+            declaredType' <- inlineTermSolutions env declaredType
+            pure $ Syntax.TypeDeclaration declaredType'
+          Syntax.ConstantDefinition term -> do
+            term' <- inlineTermSolutions env term
+            pure $ Syntax.ConstantDefinition term'
+          Syntax.DataDefinition boxity tele -> do
+            tele' <- inlineTeleSolutions env tele
+            pure $ Syntax.DataDefinition boxity tele'
 
-    inlineDefSolutions :: Domain.Environment Void -> Syntax.Definition -> M Syntax.Definition
-    inlineDefSolutions env def' =
-      case def' of
-        Syntax.TypeDeclaration declaredType -> do
-          declaredType' <- inlineTermSolutions env declaredType
-          pure $ Syntax.TypeDeclaration declaredType'
-
-        Syntax.ConstantDefinition term -> do
-          term' <- inlineTermSolutions env term
-          pure $ Syntax.ConstantDefinition term'
-
-        Syntax.DataDefinition boxity tele -> do
-          tele' <- inlineTeleSolutions env tele
-          pure $ Syntax.DataDefinition boxity tele'
-
-    inlineTeleSolutions
-      :: Domain.Environment v
-      -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v
-      -> M (Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v)
-    inlineTeleSolutions env tele =
-      case tele of
-        Telescope.Empty (Syntax.ConstructorDefinitions constrs) -> do
-          constrs' <- OrderedHashMap.forMUnordered constrs $ inlineTermSolutions env
-          pure $ Telescope.Empty (Syntax.ConstructorDefinitions constrs')
-
-        Telescope.Extend name paramType plicity tele' -> do
-          paramType' <- inlineTermSolutions env paramType
-          (env', _) <- Environment.extend env
-          tele'' <- inlineTeleSolutions env' tele'
-          pure $ Telescope.Extend name paramType' plicity tele''
+      inlineTeleSolutions ::
+        Domain.Environment v ->
+        Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v ->
+        M (Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v)
+      inlineTeleSolutions env tele =
+        case tele of
+          Telescope.Empty (Syntax.ConstructorDefinitions constrs) -> do
+            constrs' <- OrderedHashMap.forMUnordered constrs $ inlineTermSolutions env
+            pure $ Telescope.Empty (Syntax.ConstructorDefinitions constrs')
+          Telescope.Extend name paramType plicity tele' -> do
+            paramType' <- inlineTermSolutions env paramType
+            (env', _) <- Environment.extend env
+            tele'' <- inlineTeleSolutions env' tele'
+            pure $ Telescope.Extend name paramType' plicity tele''
 
   inlinedType <- inlineTermSolutions (Environment.empty scopeKey) type_
   inlinedDef <- inlineDefSolutions (Environment.empty scopeKey) def
@@ -140,7 +132,6 @@ inlineSolutions scopeKey solutions def type_ = do
     ( inlinedDef
     , inlinedType
     )
-
   where
     acyclic (AcyclicSCC x) = x
     acyclic (CyclicSCC xs) = panic $ "Elaboration.MetaInlining.CyclicSCC " <> show (fst <$> xs)
@@ -164,7 +155,7 @@ data InnerValue
   | App !Value !Plicity !Value
   | Case !Value Branches !(Maybe Value)
   | Spanned !Span.Relative !InnerValue
-  deriving Show
+  deriving (Show)
 
 data Lets = Lets !InnerLets Occurrences
 
@@ -175,7 +166,7 @@ data InnerLets
   = LetType !Binding !Var !Type !Lets
   | Let !Bindings !Var !Value !Lets
   | In !InnerValue
-  deriving Show
+  deriving (Show)
 
 data DuplicableValue
   = DuplicableVar !Var
@@ -189,16 +180,12 @@ duplicableView (Value value _) =
   case value of
     Var var ->
       Just $ DuplicableVar var
-
     Global global ->
       Just $ DuplicableGlobal global
-
     Con con ->
       Just $ DuplicableCon con
-
     Lit lit ->
       Just $ DuplicableLit lit
-
     _ ->
       Nothing
 
@@ -207,22 +194,19 @@ unduplicable duplicableValue =
   case duplicableValue of
     DuplicableVar var ->
       makeVar var
-
     DuplicableGlobal global ->
       makeGlobal global
-
     DuplicableCon con ->
       makeCon con
-
     DuplicableLit lit ->
       makeLit lit
 
 data Branches
   = ConstructorBranches !Name.Qualified (OrderedHashMap Name.Constructor ([Span.Relative], ([(Bindings, Var, Type, Plicity)], Value)))
   | LiteralBranches (OrderedHashMap Literal ([Span.Relative], Value))
-  deriving Show
+  deriving (Show)
 
-newtype Occurrences = Occurrences { unoccurrences :: IntMap Meta.Index (Tsil (Maybe DuplicableValue)) }
+newtype Occurrences = Occurrences {unoccurrences :: IntMap Meta.Index (Tsil (Maybe DuplicableValue))}
 
 instance Semigroup Occurrences where
   Occurrences occs1 <> Occurrences occs2 =
@@ -265,8 +249,8 @@ makeLit lit =
 makeMeta :: Meta.Index -> Tsil Value -> Value
 makeMeta index arguments =
   Value (Meta index arguments) $
-    Occurrences (IntMap.singleton index (duplicableView <$> arguments)) <>
-    foldMap occurrences arguments
+    Occurrences (IntMap.singleton index (duplicableView <$> arguments))
+      <> foldMap occurrences arguments
 
 makePostponedCheck :: Postponement.Index -> Value -> Value
 makePostponedCheck index value =
@@ -280,14 +264,14 @@ makeLets (Lets lets occs) =
 makeLetType :: Binding -> Var -> Type -> Lets -> Lets
 makeLetType bindings var type_ lets =
   Lets (LetType bindings var type_ lets) $
-    occurrences type_ <>
-    letOccurrences lets
+    occurrences type_
+      <> letOccurrences lets
 
 makeLet :: Bindings -> Var -> Value -> Lets -> Lets
 makeLet bindings var value lets =
   Lets (Let bindings var value lets) $
-    occurrences value <>
-    letOccurrences lets
+    occurrences value
+      <> letOccurrences lets
 
 makeIn :: Value -> Lets
 makeIn (Value value occs) =
@@ -296,56 +280,54 @@ makeIn (Value value occs) =
 makePi :: Binding -> Var -> Type -> Plicity -> Value -> Value
 makePi binding var domain plicity target =
   Value (Pi binding var domain plicity target) $
-    occurrences domain <>
-    occurrences target
+    occurrences domain
+      <> occurrences target
 
 makeFun :: Type -> Plicity -> Type -> Value
 makeFun domain plicity target =
   Value (Fun domain plicity target) $
-    occurrences domain <>
-    occurrences target
+    occurrences domain
+      <> occurrences target
 
 makeLam :: Bindings -> Var -> Type -> Plicity -> Value -> Value
 makeLam bindings var type_ plicity body =
   Value (Lam bindings var type_ plicity body) $
-    occurrences type_ <>
-    occurrences body
+    occurrences type_
+      <> occurrences body
 
 makeApp0 :: Value -> Plicity -> Value -> Value
 makeApp0 fun@(Value fun' (Occurrences occs)) plicity arg =
   case (fun', plicity) of
     (Meta index args, Explicit) ->
       Value (Meta index (args Tsil.:> arg)) $
-        Occurrences (IntMap.adjust (Tsil.:> duplicableView arg) index occs) <>
-        occurrences arg
-
+        Occurrences (IntMap.adjust (Tsil.:> duplicableView arg) index occs)
+          <> occurrences arg
     _ ->
       makeApp fun plicity arg
 
 makeApp :: Value -> Plicity -> Value -> Value
 makeApp fun plicity arg =
   Value (App fun plicity arg) $
-    occurrences fun <>
-    occurrences arg
+    occurrences fun
+      <> occurrences arg
 
 makeCase :: Value -> Branches -> Maybe Value -> Value
 makeCase scrutinee branches defaultBranch =
   Value (Case scrutinee branches defaultBranch) $
-    occurrences scrutinee <>
-    branchOccurrences branches <>
-    foldMap occurrences defaultBranch
+    occurrences scrutinee
+      <> branchOccurrences branches
+      <> foldMap occurrences defaultBranch
 
 branchOccurrences :: Branches -> Occurrences
 branchOccurrences branches =
   case branches of
     ConstructorBranches _ constructorBranches ->
       foldMap
-        (\(_, (bindings, body)) ->
-          foldMap (\(_, _, type_, _) -> occurrences type_) bindings <>
-            occurrences body
+        ( \(_, (bindings, body)) ->
+            foldMap (\(_, _, type_, _) -> occurrences type_) bindings
+              <> occurrences body
         )
         constructorBranches
-
     LiteralBranches literalBranches ->
       foldMap (occurrences . snd) literalBranches
 
@@ -358,57 +340,45 @@ evaluate env term =
   case term of
     Syntax.Var index ->
       pure $ makeVar $ Environment.lookupIndexVar index env
-
     Syntax.Global global ->
       pure $ makeGlobal global
-
     Syntax.Con con ->
       pure $ makeCon con
-
     Syntax.Lit lit ->
       pure $ makeLit lit
-
     Syntax.Meta index ->
       pure $ makeMeta index mempty
-
     Syntax.PostponedCheck index term' ->
       makePostponedCheck index <$> evaluate env term'
-
     Syntax.Lets lets ->
       makeLets <$> evaluateLets env lets
-
     Syntax.Pi name domain plicity target -> do
       (env', var) <- Environment.extend env
-      makePi name var <$>
-        evaluate env domain <*>
-        pure plicity <*>
-        evaluate env' target
-
+      makePi name var
+        <$> evaluate env domain
+        <*> pure plicity
+        <*> evaluate env' target
     Syntax.Fun domain plicity target ->
-      makeFun <$>
-        evaluate env domain <*>
-        pure plicity <*>
-        evaluate env target
-
+      makeFun
+        <$> evaluate env domain
+        <*> pure plicity
+        <*> evaluate env target
     Syntax.Lam name type_ plicity body -> do
       (env', var) <- Environment.extend env
-      makeLam name var <$>
-        evaluate env type_ <*>
-        pure plicity <*>
-        evaluate env' body
-
+      makeLam name var
+        <$> evaluate env type_
+        <*> pure plicity
+        <*> evaluate env' body
     Syntax.App function plicity argument ->
-      makeApp0 <$>
-        evaluate env function <*>
-        pure plicity <*>
-        evaluate env argument
-
+      makeApp0
+        <$> evaluate env function
+        <*> pure plicity
+        <*> evaluate env argument
     Syntax.Case scrutinee branches defaultBranch ->
-      makeCase <$>
-        evaluate env scrutinee <*>
-        evaluateBranches env branches <*>
-        mapM (evaluate env) defaultBranch
-
+      makeCase
+        <$> evaluate env scrutinee
+        <*> evaluateBranches env branches
+        <*> mapM (evaluate env) defaultBranch
     Syntax.Spanned span term' ->
       makeSpanned span <$> evaluate env term'
 
@@ -417,45 +387,41 @@ evaluateLets env lets =
   case lets of
     Syntax.LetType name type_ lets' -> do
       (env', var) <- Environment.extend env
-      makeLetType name var <$>
-        evaluate env type_ <*>
-        evaluateLets env' lets'
-
+      makeLetType name var
+        <$> evaluate env type_
+        <*> evaluateLets env' lets'
     Syntax.Let name index value lets' ->
-      makeLet name (Environment.lookupIndexVar index env) <$>
-        evaluate env value <*>
-        evaluateLets env lets'
-
+      makeLet name (Environment.lookupIndexVar index env)
+        <$> evaluate env value
+        <*> evaluateLets env lets'
     Syntax.In term ->
       makeIn <$> evaluate env term
 
-evaluateBranches
-  :: Domain.Environment v
-  -> Syntax.Branches v
-  -> M Branches
+evaluateBranches ::
+  Domain.Environment v ->
+  Syntax.Branches v ->
+  M Branches
 evaluateBranches env branches =
   case branches of
     Syntax.ConstructorBranches constructorTypeName constructorBranches ->
       ConstructorBranches constructorTypeName <$> OrderedHashMap.mapMUnordered (mapM $ evaluateTelescope env) constructorBranches
-
     Syntax.LiteralBranches literalBranches ->
       LiteralBranches <$> OrderedHashMap.mapMUnordered (mapM $ evaluate env) literalBranches
 
-evaluateTelescope
-  :: Domain.Environment v
-  -> Telescope Bindings Syntax.Type Syntax.Term v
-  -> M ([(Bindings, Var, Type, Plicity)], Value)
+evaluateTelescope ::
+  Domain.Environment v ->
+  Telescope Bindings Syntax.Type Syntax.Term v ->
+  M ([(Bindings, Var, Type, Plicity)], Value)
 evaluateTelescope env tele =
   case tele of
     Telescope.Empty body -> do
       body' <- evaluate env body
       pure ([], body')
-
     Telescope.Extend name type_ plicity tele' -> do
       type' <- evaluate env type_
       (env', var) <- Environment.extend env
       (bindings, body) <- evaluateTelescope env' tele'
-      pure ((name, var, type', plicity):bindings, body)
+      pure ((name, var, type', plicity) : bindings, body)
 
 readback :: Domain.Environment v -> (Meta.Index -> (Var, [Maybe x])) -> Value -> Syntax.Term v
 readback env metas (Value value occs) =
@@ -464,70 +430,57 @@ readback env metas (Value value occs) =
       Syntax.Var $
         fromMaybe (panic "Elaboration.MetaInlining.readback Var") $
           Environment.lookupVarIndex var env
-
     Global global ->
       Syntax.Global global
-
     Con con ->
       Syntax.Con con
-
     Lit lit ->
       Syntax.Lit lit
-
     Meta index arguments ->
-      let
-        (var, duplicableArgs) =
-          metas index
+      let (var, duplicableArgs) =
+            metas index
 
-        arguments' =
-          snd <$> filter (isNothing . fst) (zip (duplicableArgs <> repeat Nothing) (toList arguments))
-      in
-      Syntax.apps
-        (Syntax.Var $
-          fromMaybe (panic $ "Elaboration.MetaInlining.readback Meta " <> show index) $
-          Environment.lookupVarIndex var env)
-        ((,) Explicit . readback env metas <$> arguments')
-
+          arguments' =
+            snd <$> filter (isNothing . fst) (zip (duplicableArgs <> repeat Nothing) (toList arguments))
+       in Syntax.apps
+            ( Syntax.Var $
+                fromMaybe (panic $ "Elaboration.MetaInlining.readback Meta " <> show index) $
+                  Environment.lookupVarIndex var env
+            )
+            ((,) Explicit . readback env metas <$> arguments')
     PostponedCheck index value' ->
       Syntax.PostponedCheck index $ readback env metas value'
-
     LetsValue lets ->
       Syntax.Lets $ readbackLets env metas $ Lets lets occs
-
     Pi name var domain plicity target ->
       Syntax.Pi
         name
         (readback env metas domain)
         plicity
         (readback (Environment.extendVar env var) metas target)
-
     Fun domain plicity target ->
       Syntax.Fun (readback env metas domain) plicity (readback env metas target)
-
     Lam name var type_ plicity body ->
       Syntax.Lam
         name
         (readback env metas type_)
         plicity
         (readback (Environment.extendVar env var) metas body)
-
     App function plicity argument ->
       Syntax.App (readback env metas function) plicity (readback env metas argument)
-
     Case scrutinee branches defaultBranch ->
       Syntax.Case
         (readback env metas scrutinee)
         (readbackBranches env metas branches)
         (readback env metas <$> defaultBranch)
-
     Spanned span value' ->
       Syntax.Spanned span (readback env metas (Value value' occs))
 
-readbackLets
-  :: Domain.Environment v
-  -> (Meta.Index -> (Var, [Maybe var]))
-  -> Lets
-  -> Syntax.Lets v
+readbackLets ::
+  Domain.Environment v ->
+  (Meta.Index -> (Var, [Maybe var])) ->
+  Lets ->
+  Syntax.Lets v
 readbackLets env metas (Lets lets occs) =
   case lets of
     LetType name var type_ lets' ->
@@ -535,74 +488,64 @@ readbackLets env metas (Lets lets occs) =
         name
         (readback env metas type_)
         (readbackLets (Environment.extendVar env var) metas lets')
-
     Let name var value lets' ->
       Syntax.Let
         name
         (fromMaybe (panic "Elaboration.MetaInlining: indexless let") $ Environment.lookupVarIndex var env)
         (readback env metas value)
         (readbackLets env metas lets')
-
     In term ->
       Syntax.In $ readback env metas $ Value term occs
 
-readbackBranches
-  :: Domain.Environment v
-  -> (Meta.Index -> (Var, [Maybe var]))
-  -> Branches
-  -> Syntax.Branches v
+readbackBranches ::
+  Domain.Environment v ->
+  (Meta.Index -> (Var, [Maybe var])) ->
+  Branches ->
+  Syntax.Branches v
 readbackBranches env metas branches =
   case branches of
     ConstructorBranches constructorTypeName constructorBranches ->
       Syntax.ConstructorBranches constructorTypeName $
         fmap (uncurry $ readbackTelescope env metas) <$> constructorBranches
-
     LiteralBranches literalBranches ->
       Syntax.LiteralBranches $
         fmap (readback env metas) <$> literalBranches
 
-readbackTelescope
-  :: Domain.Environment v
-  -> (Meta.Index -> (Var, [Maybe var]))
-  -> [(Bindings, Var, Type, Plicity)]
-  -> Value
-  -> Telescope Bindings Syntax.Type Syntax.Term v
+readbackTelescope ::
+  Domain.Environment v ->
+  (Meta.Index -> (Var, [Maybe var])) ->
+  [(Bindings, Var, Type, Plicity)] ->
+  Value ->
+  Telescope Bindings Syntax.Type Syntax.Term v
 readbackTelescope env metas bindings body =
   case bindings of
     [] ->
       Telescope.Empty $ readback env metas body
-
-    (name, var, type_, plicity):bindings' -> do
-      let
-        env' =
-          Environment.extendVar env var
+    (name, var, type_, plicity) : bindings' -> do
+      let env' =
+            Environment.extendVar env var
       Telescope.Extend name (readback env metas type_) plicity (readbackTelescope env' metas bindings' body)
 
-inlineArguments
-  :: Value
-  -> Value
-  -> [Maybe DuplicableValue]
-  -> IntMap Var Value
-  -> Shared (Value, Value)
+inlineArguments ::
+  Value ->
+  Value ->
+  [Maybe DuplicableValue] ->
+  IntMap Var Value ->
+  Shared (Value, Value)
 inlineArguments value@(Value innerValue _) type_@(Value innerType _) args subst =
   case args of
     [] ->
       (,) <$> substitute subst value <*> substitute subst type_
-
-    Just arg:args' ->
+    Just arg : args' ->
       case (innerValue, innerType) of
         (Lam _ var _ _ body, Pi _ var' _ _ target) ->
-          let
-            subst' =
-              IntMap.insert var (unduplicable arg) $
-              IntMap.insert var' (unduplicable arg) subst
-          in
-          inlineArguments body target args' subst'
-
+          let subst' =
+                IntMap.insert var (unduplicable arg) $
+                  IntMap.insert var' (unduplicable arg) subst
+           in inlineArguments body target args' subst'
         _ ->
           (,) <$> substitute subst value <*> substitute subst type_
-
-    Nothing:args' ->
+    Nothing : args' ->
       case (innerValue, innerType) of
         (Lam name var argType plicity1 body, Pi name' var' domain plicity2 target)
           | plicity1 == plicity2 ->
@@ -614,7 +557,6 @@ inlineArguments value@(Value innerValue _) type_@(Value innerType _) args subst 
                 ( makeLam name var argType' plicity1 body'
                 , makePi name' var' domain' plicity1 target'
                 )
-
         _ ->
           (,) <$> substitute subst value <*> substitute subst type_
 
@@ -632,62 +574,49 @@ substitute subst
             case IntMap.lookup var subst of
               Nothing ->
                 pure value
-
               Just value' -> do
                 modified
                 pure value'
-
           Global _ ->
             pure value
-
           Con _ ->
             pure value
-
           Lit _ ->
             pure value
-
           Meta index args ->
             makeMeta index <$> mapM go args
-
           PostponedCheck index value' ->
             makePostponedCheck index <$> go value'
-
           LetsValue lets ->
             makeLets <$> goLets (Lets lets occs)
-
           Pi name var domain plicity target ->
             makePi name var <$> go domain <*> pure plicity <*> go target
-
           Fun domain plicity target ->
             makeFun <$> go domain <*> pure plicity <*> go target
-
           Lam name var type_ plicity body ->
             makeLam name var <$> go type_ <*> pure plicity <*> go body
-
           App function plicity argument ->
             makeApp <$> go function <*> pure plicity <*> go argument
-
           Case scrutinee branches defaultBranch ->
-            makeCase <$>
-              go scrutinee <*>
-              (case branches of
-                ConstructorBranches constructorTypeName constructorBranches ->
-                  ConstructorBranches constructorTypeName <$>
-                    OrderedHashMap.forMUnordered constructorBranches (\(span, (bindings, body)) -> do
-                      bindings' <- forM bindings $ \(name, var, type_, plicity) ->
-                        (name, var, , plicity) <$> go type_
+            makeCase
+              <$> go scrutinee
+              <*> ( case branches of
+                      ConstructorBranches constructorTypeName constructorBranches ->
+                        ConstructorBranches constructorTypeName
+                          <$> OrderedHashMap.forMUnordered
+                            constructorBranches
+                            ( \(span, (bindings, body)) -> do
+                                bindings' <- forM bindings $ \(name, var, type_, plicity) ->
+                                  (name,var,,plicity) <$> go type_
 
-                      body' <- go body
-                      pure (span, (bindings', body'))
-                    )
-
-                LiteralBranches literalBranches ->
-                  LiteralBranches <$>
-                    OrderedHashMap.mapMUnordered (mapM go) literalBranches
-              )
-              <*>
-              mapM go defaultBranch
-
+                                body' <- go body
+                                pure (span, (bindings', body'))
+                            )
+                      LiteralBranches literalBranches ->
+                        LiteralBranches
+                          <$> OrderedHashMap.mapMUnordered (mapM go) literalBranches
+                  )
+              <*> mapM go defaultBranch
           Spanned span value' ->
             makeSpanned span <$> go (Value value' occs)
 
@@ -697,10 +626,8 @@ substitute subst
         case innerLets of
           LetType name var type_ lets' ->
             makeLetType name var <$> go type_ <*> goLets lets'
-
           Let name var value lets' ->
             makeLet name var <$> go value <*> goLets lets'
-
           In value ->
             makeIn <$> go (Value value occs)
 
@@ -716,9 +643,8 @@ instance Applicative Shared where
 
 instance Monad Shared where
   Shared p a >>= f = do
-    let
-      Shared q b =
-        f a
+    let Shared q b =
+          f a
     Shared (p || q) b
 
 modified :: Shared ()
@@ -728,122 +654,102 @@ modified =
 sharing :: a -> Shared a -> Shared a
 sharing a (Shared modified_ a') =
   Shared modified_ $
-    if modified_ then
-      a'
-
-    else
-      a
+    if modified_
+      then a'
+      else a
 
 unShared :: Shared a -> a
 unShared (Shared _ a) =
   a
 
-inlineIndex
-  :: Meta.Index
-  -> IntSet Var
-  -> (Var, [Maybe DuplicableValue], Value, Value)
-  -> Value
-  -> Shared Value
-inlineIndex index targetScope solution@ ~(solutionVar, duplicableArgs, solutionValue, solutionType) value@(Value innerValue occs) = do
-  let
-    recurse value' =
-      sharing value' $
-        inlineIndex index targetScope solution value'
+inlineIndex ::
+  Meta.Index ->
+  IntSet Var ->
+  (Var, [Maybe DuplicableValue], Value, Value) ->
+  Value ->
+  Shared Value
+inlineIndex index targetScope solution@(solutionVar, duplicableArgs, solutionValue, solutionType) value@(Value innerValue occs) = do
+  let recurse value' =
+        sharing value' $
+          inlineIndex index targetScope solution value'
 
-    recurseScope var value' =
-      sharing value' $
-        inlineIndex index (IntSet.delete var targetScope) solution value'
+      recurseScope var value' =
+        sharing value' $
+          inlineIndex index (IntSet.delete var targetScope) solution value'
   case innerValue of
     Meta index' args
       | index == index' -> do
         modified
-        let
-          remainingArgs =
-            snd <$>
-              filter
-                (isNothing . fst)
-                (zip (duplicableArgs <> repeat Nothing) (toList args))
+        let remainingArgs =
+              snd
+                <$> filter
+                  (isNothing . fst)
+                  (zip (duplicableArgs <> repeat Nothing) (toList args))
         pure $ foldl' (\v1 v2 -> makeApp v1 Explicit v2) solutionValue remainingArgs
-
-    _ | IntSet.null targetScope ->
-      if index `IntMap.member` occurrencesMap value then do
-        modified
-        pure $
-          makeLets $
-          makeLetType "meta" solutionVar solutionType $
-          makeLet "meta" solutionVar solutionValue $
-          makeIn value
-
-      else
-        pure value
-
+    _
+      | IntSet.null targetScope ->
+        if index `IntMap.member` occurrencesMap value
+          then do
+            modified
+            pure $
+              makeLets $
+                makeLetType "meta" solutionVar solutionType $
+                  makeLet "meta" solutionVar solutionValue $
+                    makeIn value
+          else pure value
     Var _ ->
       pure value
-
     Global _ ->
       pure value
-
     Con _ ->
       pure value
-
     Lit _ ->
       pure value
-
     Meta index' args -> do
       args' <- forM args $ inlineIndex index targetScope solution
       pure $ makeMeta index' args'
-
     PostponedCheck index' value' ->
       makePostponedCheck index' <$> recurse value'
-
     LetsValue lets ->
       makeLets <$> inlineLetsIndex index targetScope solution (Lets lets occs)
-
     Pi name var domain plicity target -> do
       domain' <- recurse domain
       target' <- recurseScope var target
       pure $ makePi name var domain' plicity target'
-
     Fun domain plicity target -> do
       domain' <- recurse domain
       target' <- recurse target
       pure $ makeFun domain' plicity target'
-
     Lam name var type_ plicity body -> do
       type' <- recurse type_
       body' <- recurseScope var body
       pure $ makeLam name var type' plicity body'
-
     App function plicity argument -> do
       function' <- recurse function
       argument' <- recurse argument
       pure $ makeApp function' plicity argument'
-
     Case scrutinee branches defaultBranch -> do
       scrutinee' <- recurse scrutinee
       branches' <- case branches of
         ConstructorBranches constructorTypeName constructorBranches ->
-          fmap (ConstructorBranches constructorTypeName) $ OrderedHashMap.forMUnordered constructorBranches $ \(span, (bindings, body)) -> do
-            let
-              go targetScope' bindings' =
-                case bindings' of
-                  [] -> do
-                    body' <- sharing body $ inlineIndex index targetScope' solution body
-                    pure ([], body')
+          fmap (ConstructorBranches constructorTypeName) $
+            OrderedHashMap.forMUnordered constructorBranches $ \(span, (bindings, body)) -> do
+              let go targetScope' bindings' =
+                    case bindings' of
+                      [] -> do
+                        body' <- sharing body $ inlineIndex index targetScope' solution body
+                        pure ([], body')
+                      (name, var, type_, plicity) : bindings'' -> do
+                        type' <- sharing type_ $ inlineIndex index targetScope' solution type_
+                        (bindings''', body') <- go (IntSet.delete var targetScope') bindings''
+                        pure ((name, var, type', plicity) : bindings''', body')
 
-                  (name, var, type_, plicity):bindings'' -> do
-                    type' <- sharing type_ $ inlineIndex index targetScope' solution type_
-                    (bindings''', body') <- go (IntSet.delete var targetScope') bindings''
-                    pure ((name, var, type', plicity):bindings''', body')
-
-            (bindings', body') <- go targetScope bindings
-            pure (span, (bindings', body'))
-
+              (bindings', body') <- go targetScope bindings
+              pure (span, (bindings', body'))
         LiteralBranches literalBranches ->
           LiteralBranches <$> OrderedHashMap.mapMUnordered (mapM recurse) literalBranches
       defaultBranch' <- forM defaultBranch recurse
       pure $ makeCase scrutinee' branches' defaultBranch'
-
     Spanned span value' ->
       makeSpanned span <$> recurse (Value value' occs)
 
@@ -853,10 +759,8 @@ inlineLetsIndex index targetScope solution lets@(Lets innerLets occs) =
     case innerLets of
       LetType name var type_ lets' ->
         makeLetType name var <$> recurseValue type_ <*> recurseScope var lets'
-
       Let name var value lets' ->
         makeLet name var <$> recurseValue value <*> recurseLets lets'
-
       In value ->
         makeIn <$> recurseValue (Value value occs)
   where

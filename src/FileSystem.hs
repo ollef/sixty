@@ -1,30 +1,30 @@
-{-# language DeriveFunctor #-}
-{-# language DeriveTraversable #-}
-{-# language GeneralizedNewtypeDeriving #-}
-{-# language ScopedTypeVariables #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module FileSystem where
 
-import Protolude
-
+import qualified Data.Aeson as Aeson
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
-import qualified Data.Aeson as Aeson
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
-import qualified System.Directory as Directory
-import qualified System.FilePath as FilePath
-import qualified System.FSNotify as FSNotify
-
 import qualified Project
+import Protolude
+import qualified System.Directory as Directory
+import qualified System.FSNotify as FSNotify
+import qualified System.FilePath as FilePath
 
 type Directory = FilePath
 
 newtype Watcher a = Watcher
-  { runWatcher
-    :: FSNotify.WatchManager
-    -> (a -> IO ())
-    -> IO FSNotify.StopListening
-  } deriving (Functor)
+  { runWatcher ::
+      FSNotify.WatchManager ->
+      (a -> IO ()) ->
+      IO FSNotify.StopListening
+  }
+  deriving (Functor)
 
 instance Monoid a => Semigroup (Watcher a) where
   Watcher watcher1 <> Watcher watcher2 =
@@ -73,48 +73,45 @@ instance Monad Watcher where
           stopListening2
           mempty
 
-bindForM
-  :: (Eq key, Hashable key, Monoid value)
-  => Watcher (HashSet key)
-  -> (key -> Watcher value)
-  -> Watcher value
+bindForM ::
+  (Eq key, Hashable key, Monoid value) =>
+  Watcher (HashSet key) ->
+  (key -> Watcher value) ->
+  Watcher value
 bindForM (Watcher watchKeys) watchKey =
   Watcher $ \manager onChange -> do
     valuesVar <- newMVar mempty
     stopListeningVar <- newMVar mempty
-    let
-      onOuterChange keys' = do
-        stopKeys <- modifyMVar stopListeningVar $ \stopListenings -> do
-          let
-            keys'Map =
-              HashSet.toMap keys'
+    let onOuterChange keys' = do
+          stopKeys <- modifyMVar stopListeningVar $ \stopListenings -> do
+            let keys'Map =
+                  HashSet.toMap keys'
 
-            stopKeys =
-              HashMap.difference stopListenings keys'Map
+                stopKeys =
+                  HashMap.difference stopListenings keys'Map
 
-            keepKeys =
-              HashMap.intersection stopListenings keys'Map
+                keepKeys =
+                  HashMap.intersection stopListenings keys'Map
 
-            startKeys =
-              HashMap.difference keys'Map stopListenings
+                startKeys =
+                  HashMap.difference keys'Map stopListenings
 
-          sequence_ stopKeys
+            sequence_ stopKeys
 
-          startKeys' <- flip HashMap.traverseWithKey startKeys $ \key () ->
-            runWatcher (watchKey key) manager $ onInnerChange key
+            startKeys' <- flip HashMap.traverseWithKey startKeys $ \key () ->
+              runWatcher (watchKey key) manager $ onInnerChange key
 
-          pure (keepKeys <> startKeys', stopKeys)
+            pure (keepKeys <> startKeys', stopKeys)
 
-        modifyMVar_ valuesVar $ \values ->
-          pure $ HashMap.difference values stopKeys
+          modifyMVar_ valuesVar $ \values ->
+            pure $ HashMap.difference values stopKeys
 
-      onInnerChange key value = do
-        keys' <- modifyMVar valuesVar $ \values -> do
-          let
-            keys' =
-              HashMap.insert key value values
-          pure (keys', keys')
-        onChange $ fold keys'
+        onInnerChange key value = do
+          keys' <- modifyMVar valuesVar $ \values -> do
+            let keys' =
+                  HashMap.insert key value values
+            pure (keys', keys')
+          onChange $ fold keys'
 
     watchKeys manager onOuterChange
 
@@ -129,38 +126,36 @@ watcherFromArguments files =
       case maybeProjectFile of
         Nothing ->
           mempty
-
         Just projectFile -> do
           projectFile' <- Directory.canonicalizePath projectFile
           pure $ projectWatcher projectFile'
-
     _ ->
       fmap mconcat $
         forM files $ \file -> do
           file' <- Directory.canonicalizePath file
           isDir <- Directory.doesDirectoryExist file'
           case () of
-            _ | isDir ->
+            _
+              | isDir ->
                 pure $
-                  (\(changedFiles, files') ->
-                    ( changedFiles
-                    , [file']
-                    , files'
-                    )
-                  )<$> directoryWatcher Project.isSourcePath file'
-
+                  ( \(changedFiles, files') ->
+                      ( changedFiles
+                      , [file']
+                      , files'
+                      )
+                  )
+                    <$> directoryWatcher Project.isSourcePath file'
               | Project.isProjectPath file' ->
                 pure $ projectWatcher file'
-
               | Project.isSourcePath file' ->
                 pure $
-                  (\maybeText ->
-                    ( HashSet.singleton file'
-                    , [FilePath.takeDirectory file']
-                    , foldMap (HashMap.singleton file') maybeText)
-                  ) <$>
-                  fileWatcher file'
-
+                  ( \maybeText ->
+                      ( HashSet.singleton file'
+                      , [FilePath.takeDirectory file']
+                      , foldMap (HashMap.singleton file') maybeText
+                      )
+                  )
+                    <$> fileWatcher file'
               | otherwise ->
                 -- TODO report error?
                 mempty
@@ -180,9 +175,9 @@ fileWatcher filePath = Watcher $ \manager onChange -> do
     manager
     (FilePath.takeDirectory filePath)
     ((== filePath) . FSNotify.eventPath)
-    (\_ -> do
-      maybeText <- readFileText filePath
-      onChange maybeText
+    ( \_ -> do
+        maybeText <- readFileText filePath
+        onChange maybeText
     )
 
 jsonFileWatcher :: Aeson.FromJSON a => FilePath -> Watcher (Maybe a)
@@ -193,27 +188,25 @@ jsonFileWatcher filePath = Watcher $ \manager onChange -> do
     manager
     (FilePath.takeDirectory filePath)
     ((== filePath) . FSNotify.eventPath)
-    (\_ -> do
-      maybeValue <- readFileJSON filePath
-      onChange maybeValue
+    ( \_ -> do
+        maybeValue <- readFileJSON filePath
+        onChange maybeValue
     )
 
-directoryWatcher
-  :: (FilePath -> Bool)
-  -> FilePath
-  -> Watcher (HashSet FilePath, HashMap FilePath Text)
+directoryWatcher ::
+  (FilePath -> Bool) ->
+  FilePath ->
+  Watcher (HashSet FilePath, HashMap FilePath Text)
 directoryWatcher predicate directory = Watcher $ \manager onChange -> do
   filesVar <- newEmptyMVar
   stopListening <-
     FSNotify.watchTree manager directory (predicate . FSNotify.eventPath) $ \event -> do
-      let
-        filePath =
-          FSNotify.eventPath event
+      let filePath =
+            FSNotify.eventPath event
       maybeText <- readFileText filePath
       files <- modifyMVar filesVar $ \files -> do
-        let
-          files' =
-            HashMap.alter (const maybeText) filePath files
+        let files' =
+              HashMap.alter (const maybeText) filePath files
         pure (files', files')
       onChange (HashSet.singleton filePath, files)
   files <- listDirectoryRecursive predicate directory
@@ -224,27 +217,27 @@ directoryWatcher predicate directory = Watcher $ \manager onChange -> do
 listDirectoryRecursive :: (FilePath -> Bool) -> FilePath -> IO (HashMap FilePath Text)
 listDirectoryRecursive predicate directory = do
   files <- Directory.listDirectory directory
-  fmap mconcat $ forM files $ \file -> do
-    path <- Directory.canonicalizePath $ directory FilePath.</> file
-    isDir <- Directory.doesDirectoryExist path
-    if isDir then
-      listDirectoryRecursive predicate path
-
-    else if predicate path then do
-      text <- readFile path
-      pure $ HashMap.singleton path text
-
-    else
-      mempty
+  fmap mconcat $
+    forM files $ \file -> do
+      path <- Directory.canonicalizePath $ directory FilePath.</> file
+      isDir <- Directory.doesDirectoryExist path
+      if isDir
+        then listDirectoryRecursive predicate path
+        else
+          if predicate path
+            then do
+              text <- readFile path
+              pure $ HashMap.singleton path text
+            else mempty
 
 readFileText :: FilePath -> IO (Maybe Text)
 readFileText file =
   (Just <$> readFile file)
-  `catch` \(_ :: IOException) ->
-    pure Nothing
+    `catch` \(_ :: IOException) ->
+      pure Nothing
 
 readFileJSON :: Aeson.FromJSON a => FilePath -> IO (Maybe a)
 readFileJSON file =
   Aeson.decodeFileStrict file
-  `catch` \(_ :: IOException) ->
-    pure Nothing
+    `catch` \(_ :: IOException) ->
+      pure Nothing

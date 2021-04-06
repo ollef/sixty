@@ -1,16 +1,16 @@
-{-# language DeriveTraversable #-}
-{-# language FlexibleContexts #-}
-{-# language GeneralizedNewtypeDeriving #-}
-{-# language PackageImports #-}
-{-# language ScopedTypeVariables #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE PackageImports #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Data.IntMap where
 
-import Protolude hiding (IntMap, IntSet)
-
-import Data.IntSet (IntSet)
-import qualified Data.IntSet as IntSet
 import Data.Coerce
 import qualified "containers" Data.IntMap.Lazy as Containers
+import Data.IntSet (IntSet)
+import qualified Data.IntSet as IntSet
+import Protolude hiding (IntMap, IntSet)
 
 newtype IntMap key value = IntMap (Containers.IntMap value)
   deriving (Functor, Foldable, Traversable, Eq, Ord, Read, Show, Semigroup, Monoid)
@@ -58,12 +58,12 @@ adjust :: Coercible key Containers.Key => (value -> value) -> key -> IntMap key 
 adjust f key =
   coerce $ Containers.adjust f (coerce key)
 
-alterF
-  :: (Coercible key Containers.Key, Functor f)
-  => (Maybe value -> f (Maybe value))
-  -> key
-  -> IntMap key value
-  -> f (IntMap key value)
+alterF ::
+  (Coercible key Containers.Key, Functor f) =>
+  (Maybe value -> f (Maybe value)) ->
+  key ->
+  IntMap key value ->
+  f (IntMap key value)
 alterF f key m =
   coerce <$> Containers.alterF f (coerce key) (coerce m)
 
@@ -119,18 +119,18 @@ mapEither :: (value -> Either value1 value2) -> IntMap key value -> (IntMap key 
 mapEither f (IntMap m) =
   coerce $ Containers.mapEither f m
 
-mapEitherWithKey
-  :: (Coercible key Containers.Key)
-  => (key -> value -> Either value1 value2)
-  -> IntMap key value
-  -> (IntMap key value1, IntMap key value2)
+mapEitherWithKey ::
+  (Coercible key Containers.Key) =>
+  (key -> value -> Either value1 value2) ->
+  IntMap key value ->
+  (IntMap key value1, IntMap key value2)
 mapEitherWithKey f (IntMap m) =
   bimap IntMap IntMap $ Containers.mapEitherWithKey (coerce f) m
 
-mapKeysMonotonic
-  :: (Coercible key1 Containers.Key, Coercible key2 Containers.Key)
-  => (key1 -> key2)
-  -> IntMap key1 value
-  -> IntMap key2 value
+mapKeysMonotonic ::
+  (Coercible key1 Containers.Key, Coercible key2 Containers.Key) =>
+  (key1 -> key2) ->
+  IntMap key1 value ->
+  IntMap key2 value
 mapKeysMonotonic f (IntMap m) =
   IntMap $ Containers.mapKeysMonotonic (coerce f) m

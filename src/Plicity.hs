@@ -1,12 +1,12 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
-{-# language OverloadedStrings #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module Plicity where
 
-import Protolude
-
-import Data.Text.Prettyprint.Doc
 import Data.Persist
+import Data.Text.Prettyprint.Doc
+import Protolude
 
 data Plicity
   = Implicit
@@ -19,10 +19,8 @@ instance Pretty Plicity where
     case plicity of
       Implicit ->
         "implicit"
-
       Explicit ->
         "explicit"
-
       Constraint ->
         "constraint"
 
@@ -31,10 +29,8 @@ isImplicitish plicity =
   case plicity of
     Implicit ->
       True
-
     Explicit ->
       False
-
     Constraint ->
       True
 
@@ -43,10 +39,8 @@ prettyAnnotation plicity =
   case plicity of
     Implicit ->
       "@"
-
     Explicit ->
       ""
-
     Constraint ->
       "!"
 
@@ -55,9 +49,7 @@ implicitise plicity =
   case plicity of
     Explicit ->
       Implicit
-
     Implicit ->
       Implicit
-
     Constraint ->
       Constraint

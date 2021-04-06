@@ -1,18 +1,15 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+
 module Core.Syntax where
-
-import Protolude hiding (Type, IntMap, IntSet)
-
-import Data.OrderedHashMap (OrderedHashMap)
-import Data.Persist
-import Unsafe.Coerce
 
 import Boxity
 import Core.Binding (Binding)
-import Data.IntSet (IntSet)
 import Core.Bindings (Bindings)
 import Data.IntMap (IntMap)
+import Data.IntSet (IntSet)
+import Data.OrderedHashMap (OrderedHashMap)
+import Data.Persist
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import Index
@@ -21,8 +18,10 @@ import qualified Meta
 import qualified Name
 import Plicity
 import qualified Postponement
+import Protolude hiding (IntMap, IntSet, Type)
 import qualified Span
 import Telescope (Telescope)
+import Unsafe.Coerce
 
 data Term v
   = Var !(Index v)
@@ -49,7 +48,8 @@ data Branches v
 
 data Lets v
   = LetType !Binding !(Type v) !(Scope Lets v)
-  | Let !Bindings !(Index v) !(Term v) !(Lets v) -- ^ index must refer to a variable introduced in a LetType in the same Lets block
+  | -- | index must refer to a variable introduced in a LetType in the same Lets block
+    Let !Bindings !(Index v) !(Term v) !(Lets v)
   | In !(Term v)
   deriving (Eq, Show, Generic, Persist, Hashable)
 
@@ -72,15 +72,12 @@ appsView term =
   case term of
     App t1 plicity t2 ->
       second (Tsil.:> (plicity, t2)) $ appsView t1
-
     Spanned span term' ->
       case appsView term' of
         (hd, Tsil.Empty) ->
           (Spanned span hd, Tsil.Empty)
-
         result ->
           result
-
     _ ->
       (term, mempty)
 
@@ -89,10 +86,8 @@ globalView term =
   case term of
     Global v ->
       Just v
-
     Spanned _ term' ->
       globalView term'
-
     _ ->
       Nothing
 
@@ -101,10 +96,8 @@ varView term =
   case term of
     Var v ->
       Just v
-
     Spanned _ term' ->
       varView term'
-
     _ ->
       Nothing
 
@@ -134,8 +127,8 @@ data Definition
   | DataDefinition !Boxity !(Telescope Binding Type ConstructorDefinitions Void)
   deriving (Eq, Show, Generic, Persist, Hashable)
 
-newtype ConstructorDefinitions v =
-  ConstructorDefinitions (OrderedHashMap Name.Constructor (Type v))
+newtype ConstructorDefinitions v
+  = ConstructorDefinitions (OrderedHashMap Name.Constructor (Type v))
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 constructorFieldPlicities :: Type v -> [Plicity]
@@ -143,9 +136,7 @@ constructorFieldPlicities type_ =
   case type_ of
     Pi _ _ plicity type' ->
       plicity : constructorFieldPlicities type'
-
     Fun _ plicity type' ->
       plicity : constructorFieldPlicities type'
-
     _ ->
       []

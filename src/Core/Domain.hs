@@ -1,13 +1,13 @@
-{-# language GADTs #-}
-{-# language LambdaCase #-}
-{-# language PatternSynonyms #-}
-{-# language ViewPatterns #-}
-module Core.Domain where
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE ViewPatterns #-}
 
-import Protolude hiding (Type, Seq, IntMap)
+module Core.Domain where
 
 import Core.Binding (Binding)
 import Core.Bindings (Bindings)
+import qualified Core.Syntax as Syntax
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Environment
@@ -19,7 +19,7 @@ import qualified Meta
 import Monad
 import qualified Name
 import Plicity
-import qualified Core.Syntax as Syntax
+import Protolude hiding (IntMap, Seq, Type)
 import Var (Var)
 
 data Value
@@ -68,14 +68,13 @@ headFlexibility :: Head -> Flexibility
 headFlexibility = \case
   Var _ ->
     Flexibility.Rigid
-
   Global _ ->
     Flexibility.Rigid
-
   Meta _ ->
     Flexibility.Flexible
 
 -------------------------------------------------------------------------------
+
 -- * Elimination spines
 
 data Spine = Spine (Tsil (Args, Branches)) Args
@@ -91,20 +90,21 @@ pattern Empty =
   Spine Tsil.Empty Tsil.Empty
 
 pattern (:>) :: Spine -> Elimination -> Spine
-pattern spine :> elimination <- (eliminationView -> Just (spine, elimination))
+pattern spine :> elimination <-
+  (eliminationView -> Just (spine, elimination))
   where
     Spine spine args :> elim =
       case elim of
         App plicity arg ->
           Spine spine (args Tsil.:> (plicity, arg))
-
         Case brs ->
           Spine (spine Tsil.:> (args, brs)) Tsil.Empty
 
-{-# complete Empty, (:>) #-}
+{-# COMPLETE Empty, (:>) #-}
 
 pattern Apps :: Tsil (Plicity, Value) -> Spine
-pattern Apps args <- (appsView -> Just args)
+pattern Apps args <-
+  (appsView -> Just args)
   where
     Apps args =
       Spine Tsil.Empty args
@@ -116,10 +116,8 @@ eliminationView (Spine spine apps) =
       case spine of
         Tsil.Empty ->
           Nothing
-
         spine' Tsil.:> (apps', brs) ->
           Just (Spine spine' apps', Case brs)
-
     apps' Tsil.:> (plicity, arg) ->
       Just (Spine spine apps', App plicity arg)
 
@@ -128,7 +126,6 @@ appsView (Spine spine args) =
   case spine of
     Tsil.Empty ->
       Just args
-
     _ ->
       Nothing
 
@@ -137,7 +134,6 @@ foldl f e spine =
   case spine of
     Empty ->
       e
-
     spine' :> elim ->
       f (Core.Domain.foldl f e spine') elim
 
@@ -146,7 +142,6 @@ foldlM f e spine =
   case spine of
     Empty ->
       pure e
-
     spine' :> elim -> do
       a <- Core.Domain.foldlM f e spine'
       f a elim
@@ -156,7 +151,6 @@ mapM f spine =
   case spine of
     Empty ->
       pure Tsil.Empty
-
     spine' :> elim -> do
       as <- Core.Domain.mapM f spine'
       a <- f elim
@@ -167,7 +161,6 @@ mapM_ f spine =
   case spine of
     Empty ->
       pure ()
-
     spine' :> elim -> do
       Core.Domain.mapM_ f spine'
       f elim

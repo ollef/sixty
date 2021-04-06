@@ -1,25 +1,24 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
-{-# language OverloadedStrings #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module Error where
 
-import Protolude
-
+import Core.Domain.Pattern (Pattern)
+import qualified Core.Syntax as Syntax
 import Data.HashSet (HashSet)
 import Data.Persist
 import Data.Text.Prettyprint.Doc
-
 import Data.Tsil (Tsil)
-import Core.Domain.Pattern (Pattern)
 import qualified Error.Parsing as Error
 import qualified Meta
 import qualified Module
 import Name (Name)
 import qualified Name
 import Plicity
+import Protolude
 import qualified Scope
 import qualified Span
-import qualified Core.Syntax as Syntax
 
 data Error
   = Parse FilePath !Error.Parsing
@@ -62,7 +61,6 @@ instance Pretty FieldOrArgument where
     case fieldOrArg of
       Field ->
         "field"
-
       Argument ->
         "argument"
 
@@ -77,10 +75,8 @@ instance Pretty MatchKind where
     case clauseOrPat of
       Clause ->
         "clause"
-
       Branch ->
         "branch"
-
       Lambda ->
         "lambda"
 

@@ -1,13 +1,13 @@
-{-# language FlexibleContexts #-}
-{-# language GeneralizedNewtypeDeriving #-}
-{-# language PackageImports #-}
-{-# language ScopedTypeVariables #-}
-module Data.IntSet where
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE PackageImports #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
-import Protolude hiding (IntSet)
+module Data.IntSet where
 
 import Data.Coerce
 import qualified "containers" Data.IntSet as Containers
+import Protolude hiding (IntSet)
 
 newtype IntSet key = IntSet Containers.IntSet
   deriving (Eq, Ord, Read, Show, Semigroup, Monoid)
@@ -40,7 +40,7 @@ insert :: Coercible key Containers.Key => key -> IntSet key -> IntSet key
 insert key =
   coerce $ Containers.insert $ coerce key
 
-delete :: Coercible key Containers.Key => key -> IntSet key -> IntSet key 
+delete :: Coercible key Containers.Key => key -> IntSet key -> IntSet key
 delete key =
   coerce $ Containers.delete $ coerce key
 

@@ -1,30 +1,29 @@
-{-# language DeriveAnyClass #-}
-{-# language DeriveGeneric #-}
-{-# language DerivingStrategies #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
+
 module Occurrences.Intervals where
-
-import Protolude hiding (IntMap)
-
-import Data.HashMap.Lazy (HashMap)
-import qualified Data.HashMap.Lazy as HashMap
-import Data.HashSet (HashSet)
-import qualified Data.HashSet as HashSet
-import Data.IntervalMap.FingerTree (IntervalMap)
-import qualified Data.IntervalMap.FingerTree as IntervalMap
-import Data.IntMap (IntMap)
-import qualified Data.IntMap as IntMap
-import qualified Data.List as List
-import qualified Data.Text.Unsafe as Text
-import Data.Persist
 
 import Core.Binding (Binding)
 import qualified Core.Binding as Binding
 import Core.Bindings (Bindings)
 import qualified Core.Bindings as Bindings
+import Data.HashMap.Lazy (HashMap)
+import qualified Data.HashMap.Lazy as HashMap
+import Data.HashSet (HashSet)
+import qualified Data.HashSet as HashSet
+import Data.IntMap (IntMap)
+import qualified Data.IntMap as IntMap
+import Data.IntervalMap.FingerTree (IntervalMap)
+import qualified Data.IntervalMap.FingerTree as IntervalMap
+import qualified Data.List as List
+import Data.Persist
+import qualified Data.Text.Unsafe as Text
 import Literal (Literal)
 import qualified Name
-import qualified Position
 import Orphans ()
+import qualified Position
+import Protolude hiding (IntMap)
 import qualified Span
 import Var (Var)
 import qualified Var
@@ -40,7 +39,8 @@ data Intervals = Intervals
   { _intervals :: IntervalMap Position.Relative Item
   , _items :: HashMap Item (HashSet Span.Relative)
   , _varBindingSpans :: IntMap Var (NonEmpty Span.Relative)
-  } deriving (Eq, Show, Generic, Persist, Hashable)
+  }
+  deriving (Eq, Show, Generic, Persist, Hashable)
 
 instance Semigroup Intervals where
   Intervals a1 b1 c1 <> Intervals a2 b2 c2 =
@@ -64,7 +64,6 @@ binding b var =
     Binding.Spanned span _ -> do
       singleton span (Var var)
         <> Intervals mempty mempty (IntMap.singleton var $ pure span)
-
     Binding.Unspanned _ ->
       mempty
 
@@ -72,13 +71,11 @@ bindings :: Bindings -> Var -> Intervals
 bindings b var =
   case b of
     Bindings.Spanned spannedNames -> do
-      let
-        spans =
-          fst <$> spannedNames
+      let spans =
+            fst <$> spannedNames
 
       foldMap (\span -> singleton span $ Var var) spans
         <> Intervals mempty mempty (IntMap.singleton var spans)
-
     Bindings.Unspanned _ ->
       mempty
 
@@ -100,48 +97,40 @@ bindingSpan var position intervals =
   case IntMap.lookup var (_varBindingSpans intervals) of
     Nothing ->
       Nothing
-
     Just bindingSpans -> do
-      let
-        sortedBindingSpans =
-          sortOn spanStart $ toList bindingSpans
+      let sortedBindingSpans =
+            sortOn spanStart $ toList bindingSpans
 
-        befores =
-          List.takeWhile ((<= position) . spanStart) sortedBindingSpans
+          befores =
+            List.takeWhile ((<= position) . spanStart) sortedBindingSpans
 
       lastMay befores
 
 varSpans :: Var -> Position.Relative -> Intervals -> [Span.Relative]
 varSpans var position intervals = do
-  let
-    candidates =
-      itemSpans (Var var) intervals
+  let candidates =
+        itemSpans (Var var) intervals
   case IntMap.lookup var (_varBindingSpans intervals) of
     Nothing ->
       candidates
-
     Just bindingSpans -> do
-      let
-        sortedBindingSpans =
-          sortOn spanStart $ toList bindingSpans
+      let sortedBindingSpans =
+            sortOn spanStart $ toList bindingSpans
 
-        (befores, afters) =
-          List.span ((<= position) . spanStart) sortedBindingSpans
+          (befores, afters) =
+            List.span ((<= position) . spanStart) sortedBindingSpans
 
       case reverse befores of
         [] ->
           candidates
-
-        before:_ -> do
-          let
-            candidates' =
-              filter ((>= spanStart before) . spanStart) candidates
+        before : _ -> do
+          let candidates' =
+                filter ((>= spanStart before) . spanStart) candidates
 
           case afters of
             [] ->
               candidates'
-
-            after:_ ->
+            after : _ ->
               filter ((< spanStart after) . spanStart) candidates'
 
 spanStart :: Span.Relative -> Position.Relative
@@ -152,19 +141,16 @@ nameSpan :: Item -> Span.LineColumn -> Span.LineColumn
 nameSpan
   item
   span@(Span.LineColumns _ (Position.LineColumn endLine endColumn)) =
-  case item of
-    Global (Name.Qualified _ (Name.Name name)) ->
-      Span.LineColumns
-        (Position.LineColumn endLine (endColumn - Text.lengthWord16 name))
-        (Position.LineColumn endLine endColumn)
-
-    Con (Name.QualifiedConstructor _ (Name.Constructor name)) ->
-      Span.LineColumns
-        (Position.LineColumn endLine (endColumn - Text.lengthWord16 name))
-        (Position.LineColumn endLine endColumn)
-
-    Lit _ ->
-      span
-
-    Var _ ->
-      span
+    case item of
+      Global (Name.Qualified _ (Name.Name name)) ->
+        Span.LineColumns
+          (Position.LineColumn endLine (endColumn - Text.lengthWord16 name))
+          (Position.LineColumn endLine endColumn)
+      Con (Name.QualifiedConstructor _ (Name.Constructor name)) ->
+        Span.LineColumns
+          (Position.LineColumn endLine (endColumn - Text.lengthWord16 name))
+          (Position.LineColumn endLine endColumn)
+      Lit _ ->
+        span
+      Var _ ->
+        span

@@ -1,16 +1,15 @@
-{-# language FlexibleContexts #-}
-{-# language OverloadedStrings #-}
-module Monad where
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
 
-import Protolude hiding (try, State)
+module Monad where
 
 import Control.Monad.Trans.Control
 import Data.IORef.Unboxed (IORefU)
 import qualified Data.IORef.Unboxed as IORef.Unboxed
+import Protolude hiding (State, try)
+import Query (Query)
 import Rock
 import System.IO.Unsafe (unsafeDupablePerformIO)
-
-import Query (Query)
 import Var
 
 type M = ReaderT State (Task Query)
@@ -21,12 +20,12 @@ newtype State = State
 
 data Lazy a = Lazy a
 
-{-# inline force #-}
+{-# INLINE force #-}
 force :: Lazy a -> M a
 force (Lazy a) =
   liftIO $ evaluate a
 
-{-# noinline lazy #-}
+{-# NOINLINE lazy #-}
 lazy :: M a -> M (Lazy a)
 lazy m =
   liftBaseWith $ \runInIO ->
@@ -41,24 +40,24 @@ freshVar = do
 runM :: M a -> Task Query a
 runM r = do
   nextVarVar <- liftIO $ IORef.Unboxed.newCounter 0
-  runReaderT r State
-    { nextVar = nextVarVar
-    }
+  runReaderT
+    r
+    State
+      { nextVar = nextVarVar
+      }
 
 allM :: Monad m => (a -> m Bool) -> [a] -> m Bool
 allM _ [] = return True
-allM p (x:xs) = do
+allM p (x : xs) = do
   b <- p x
-  if b then
-    allM p xs
-  else
-    return False
+  if b
+    then allM p xs
+    else return False
 
 anyM :: Monad m => (a -> m Bool) -> [a] -> m Bool
 anyM _ [] = return False
-anyM p (x:xs) = do
+anyM p (x : xs) = do
   b <- p x
-  if b then
-    return True
-  else
-    anyM p xs
+  if b
+    then return True
+    else anyM p xs

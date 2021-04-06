@@ -1,17 +1,16 @@
-{-# language FlexibleContexts #-}
-{-# language GeneralizedNewtypeDeriving #-}
-{-# language PackageImports #-}
-{-# language PatternSynonyms #-}
-{-# language ViewPatterns #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE PackageImports #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE ViewPatterns #-}
+
 module Index.Map where
 
-import Protolude hiding (Map)
-
 import qualified "containers" Data.IntMap
-
-import qualified Data.IntSeq as IntSeq
 import Data.IntSeq (IntSeq)
+import qualified Data.IntSeq as IntSeq
 import Index
+import Protolude hiding (Map)
 
 newtype Map v a = Map (IntSeq a)
   deriving (Show, Foldable)
@@ -20,7 +19,8 @@ pattern Empty :: (Coercible a Data.IntMap.Key) => Map Void a
 pattern Empty = Map IntSeq.Empty
 
 pattern (:>) :: (Coercible a Data.IntMap.Key) => Map v a -> a -> Map (Succ v) a
-pattern as :> a <- Map ((Map -> as) IntSeq.:> a)
+pattern as :> a <-
+  Map ((Map -> as) IntSeq.:> a)
   where
     Map m :> a = Map $ m IntSeq.:> a
 

@@ -1,7 +1,6 @@
-{-# language OverloadedStrings #-}
-module Command.Watch where
+{-# LANGUAGE OverloadedStrings #-}
 
-import Protolude hiding (check)
+module Command.Watch where
 
 import Data.HashMap.Lazy (HashMap)
 import Data.HashSet (HashSet)
@@ -11,12 +10,12 @@ import Data.Text.Prettyprint.Doc (Doc)
 import qualified Data.Text.Prettyprint.Doc as Doc
 import Data.Text.Prettyprint.Doc.Render.Text (putDoc)
 import Data.Time.Clock
-import qualified System.Console.ANSI
-import qualified System.FSNotify as FSNotify
-
 import qualified Driver
 import qualified Error.Hydrated
 import qualified FileSystem
+import Protolude hiding (check)
+import qualified System.Console.ANSI
+import qualified System.FSNotify as FSNotify
 
 watch :: [FilePath] -> IO ()
 watch argumentFiles = do
@@ -40,28 +39,28 @@ watch argumentFiles = do
         { FSNotify.confDebounce = FSNotify.Debounce 0.010
         }
 
-waitForChanges
-  :: MVar ()
-  -> MVar (HashSet FilePath, [FileSystem.Directory], HashMap FilePath Text)
-  -> Driver.State (Doc ann)
-  -> IO (HashSet FilePath, [FileSystem.Directory], HashMap FilePath Text)
+waitForChanges ::
+  MVar () ->
+  MVar (HashSet FilePath, [FileSystem.Directory], HashMap FilePath Text) ->
+  Driver.State (Doc ann) ->
+  IO (HashSet FilePath, [FileSystem.Directory], HashMap FilePath Text)
 waitForChanges signalChangeVar fileStateVar driverState = do
   (changedFiles, sourceDirectories, files) <-
     modifyMVar fileStateVar $ \(changedFiles, sourceDirectories, files) ->
       pure ((mempty, sourceDirectories, files), (changedFiles, sourceDirectories, files))
 
-  if HashSet.null changedFiles then do
-    takeMVar signalChangeVar
-    waitForChanges signalChangeVar fileStateVar driverState
+  if HashSet.null changedFiles
+    then do
+      takeMVar signalChangeVar
+      waitForChanges signalChangeVar fileStateVar driverState
+    else pure (changedFiles, sourceDirectories, files)
 
-  else
-    pure (changedFiles, sourceDirectories, files)
-
-checkAndPrintErrors
-  :: Driver.State (Doc ann)
-  -> HashSet FilePath
-  -> [FileSystem.Directory]
-  -> HashMap FilePath Text -> IO ()
+checkAndPrintErrors ::
+  Driver.State (Doc ann) ->
+  HashSet FilePath ->
+  [FileSystem.Directory] ->
+  HashMap FilePath Text ->
+  IO ()
 checkAndPrintErrors driverState changedFiles sourceDirectories files = do
   startTime <- getCurrentTime
   (_, errs) <-
@@ -78,15 +77,15 @@ checkAndPrintErrors driverState changedFiles sourceDirectories files = do
   System.Console.ANSI.clearScreen
   forM_ errs $ \err ->
     putDoc $ err <> Doc.line
-  let
-    errorCount =
-      length errs
-  putText $ Text.unwords
-    [ "Found"
-    , show errorCount
-    , case errorCount of
-      1 -> "error"
-      _ -> "errors"
-    , "in"
-    , show (diffUTCTime endTime startTime) <> "."
-    ]
+  let errorCount =
+        length errs
+  putText $
+    Text.unwords
+      [ "Found"
+      , show errorCount
+      , case errorCount of
+          1 -> "error"
+          _ -> "errors"
+      , "in"
+      , show (diffUTCTime endTime startTime) <> "."
+      ]

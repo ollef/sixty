@@ -1,25 +1,26 @@
-{-# language DeriveAnyClass #-}
-{-# language FlexibleContexts #-}
-{-# language FlexibleInstances #-}
-{-# language GADTs #-}
-{-# language MultiParamTypeClasses #-}
-{-# language OverloadedStrings #-}
-{-# language QuantifiedConstraints #-}
-{-# language StandaloneDeriving #-}
-{-# language TemplateHaskell #-}
-{-# language TypeApplications #-}
-{-# language TypeFamilies #-}
-{-# language UndecidableInstances #-}
-{-# options_ghc -Wno-unused-matches #-} -- deriveGShow triggers this for some reason
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuantifiedConstraints #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
+-- deriveGShow triggers this for some reason
+{-# OPTIONS_GHC -Wno-unused-matches #-}
+
 module Query where
 
 import qualified Assembly
+import qualified CPSAssembly
 import qualified ClosureConverted.Syntax as ClosureConverted
 import Control.Monad.Fail
 import Core.Binding (Binding)
-import qualified Elaboration.Meta
 import qualified Core.Syntax as Syntax
-import qualified CPSAssembly
 import Data.Constraint.Extras.TH
 import Data.GADT.Compare.TH
 import Data.GADT.Show.TH
@@ -28,17 +29,18 @@ import Data.HashSet (HashSet)
 import Data.IntMap (IntMap)
 import Data.OrderedHashSet (OrderedHashSet)
 import Data.Persist as Persist
-import Data.Some (Some(Some))
+import Data.Some (Some (Some))
+import qualified Elaboration.Meta
 import Extra
 import qualified FileSystem
-import qualified LambdaLifted.Syntax as LambdaLifted
 import qualified LLVM.AST as LLVM
+import qualified LambdaLifted.Syntax as LambdaLifted
 import qualified Module
 import Name (Name)
 import qualified Name
 import qualified Occurrences.Intervals as Occurrences
 import qualified Position
-import Protolude hiding (IntMap, put, get)
+import Protolude hiding (IntMap, get, put)
 import qualified Query.Mapped as Mapped
 import qualified Representation
 import Rock
@@ -70,28 +72,25 @@ data Query a where
   ConstructorType :: Name.QualifiedConstructor -> Query (Telescope Binding Syntax.Type Syntax.Type Void)
   KeyedNamePosition :: Scope.KeyedName -> Query (FilePath, Position.Absolute)
   Occurrences :: Scope.KeyedName -> Query Occurrences.Intervals
-
   LambdaLifted :: Name.Qualified -> Query (LambdaLifted.Definition, IntMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void))
   LambdaLiftedDefinition :: Name.Lifted -> Query (Maybe LambdaLifted.Definition)
   LambdaLiftedModuleDefinitions :: Name.Module -> Query (OrderedHashSet Name.Lifted)
-
   ClosureConverted :: Name.Lifted -> Query (Maybe ClosureConverted.Definition)
   ClosureConvertedType :: Name.Lifted -> Query (ClosureConverted.Type Void)
   ClosureConvertedConstructorType :: Name.QualifiedConstructor -> Query (Telescope Name ClosureConverted.Type ClosureConverted.Type Void)
   ClosureConvertedSignature :: Name.Lifted -> Query (Maybe Representation.Signature)
   ConstructorTag :: Name.QualifiedConstructor -> Query (Maybe Int)
-
   Assembly :: Name.Lifted -> Query (Maybe (Assembly.Definition Assembly.BasicBlock, Int))
   CPSAssembly :: Name.Lifted -> Query [(Assembly.Name, CPSAssembly.Definition)]
   CPSAssemblyModule :: Name.Module -> Query [(Assembly.Name, CPSAssembly.Definition)]
   LLVMModule :: Name.Module -> Query LLVM.Module
   LLVMModuleInitModule :: Query LLVM.Module
 
-fetchImportedName
-  :: MonadFetch Query m
-  => Name.Module
-  -> Name.Surface
-  -> m (Maybe Scope.Entry)
+fetchImportedName ::
+  MonadFetch Query m =>
+  Name.Module ->
+  Name.Surface ->
+  m (Maybe Scope.Entry)
 fetchImportedName module_ =
   fetch . ImportedNames module_ . Mapped.Query
 
@@ -103,7 +102,7 @@ deriveGShow ''Query
 deriveArgDict ''Query
 
 instance Hashable (Query a) where
-  {-# inline hashWithSalt #-}
+  {-# INLINE hashWithSalt #-}
   hashWithSalt =
     defaultHashWithSalt
   hash query =
@@ -143,17 +142,17 @@ instance Hashable (Query a) where
       LLVMModule a -> h 32 a
       LLVMModuleInitModule -> h 33 ()
     where
-      {-# inline h #-}
+      {-# INLINE h #-}
       h :: Hashable a => Int -> a -> Int
       h tag payload =
         hash tag `hashWithSalt` payload
 
 instance Hashable (Some Query) where
-  {-# inline hash #-}
+  {-# INLINE hash #-}
   hash (Some query) =
     hash query
 
-  {-# inline hashWithSalt #-}
+  {-# INLINE hashWithSalt #-}
   hashWithSalt salt (Some query) =
     hashWithSalt salt query
 
@@ -233,8 +232,9 @@ instance Persist (Some Query) where
       CPSAssemblyModule a -> p 31 a
       LLVMModule a -> p 32 a
       LLVMModuleInitModule -> p 33 ()
-      -- Don't forget to add a case to `get` above!
     where
+      -- Don't forget to add a case to `get` above!
+
       p :: Persist a => Word8 -> a -> Put ()
       p tag a = do
         put tag
