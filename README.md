@@ -25,6 +25,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
 - [x] Basic type checking
 - [x] Elaboration postponement ("impredicative polymorphism" inference)
   - [x] Lazily written solutions
+- [x] Approximate polymorphic variable inference
 - [x] Query architecture
   - [x] Parallel type checking
 - [x] Simple modules
