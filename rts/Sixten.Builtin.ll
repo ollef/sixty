@@ -6,7 +6,7 @@ declare void @print_int(i64 %i)
 @Sixten.Builtin.EmptyRepresentation =  unnamed_addr  constant i64 0
 @Sixten.Builtin.WordRepresentation =  unnamed_addr  constant i64 8
 
-define external fastcc i64* @Sixten.Bultin.addRepresentation(i64* %a, i64* %b) {
+define external fastcc i64* @Sixten.Builtin.addRepresentation(i64* %a, i64* %b) {
   block:
     %a_int = ptrtoint i64* %a to i64
     %b_int = ptrtoint i64* %b to i64
@@ -15,7 +15,7 @@ define external fastcc i64* @Sixten.Bultin.addRepresentation(i64* %a, i64* %b) {
     ret i64* %result_pointer
 }
 
-define external fastcc i64* @Sixten.Bultin.maxRepresentation(i64* %a, i64* %b) {
+define external fastcc i64* @Sixten.Builtin.maxRepresentation(i64* %a, i64* %b) {
   block:
     %a_int = ptrtoint i64* %a to i64
     %b_int = ptrtoint i64* %b to i64
