@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -16,6 +17,7 @@ import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Environment
+import qualified Index
 import Monad
 import Name (Name)
 import qualified Name
@@ -233,10 +235,13 @@ compileConstructorFields env type_ = do
   case type' of
     Domain.Pi name fieldType closure -> do
       fieldType' <- Readback.readback env fieldType
-      (env', var) <- Environment.extend env
-      rest <- Evaluation.evaluateClosure closure $ Domain.var var
+      value <- Domain.Lazy <$> lazy (panic "unboxed data representation depends on field") -- TODO real error
+      (env', _) <- Environment.extendValue env value
+      rest <- Evaluation.evaluateClosure closure value
       rest' <- compileConstructorFields env' rest
-      pure $ Syntax.Let name fieldType' (Syntax.Global $ Name.Lifted Builtin.TypeName 0) rest'
+      pure $
+        Syntax.Let name fieldType' (Syntax.Global $ Name.Lifted Builtin.TypeName 0) $
+          Syntax.Apply (Name.Lifted Builtin.AddRepresentationName 0) [Syntax.Var Index.Zero, rest']
     Domain.Neutral {} ->
       empty
     Domain.Con {} ->
