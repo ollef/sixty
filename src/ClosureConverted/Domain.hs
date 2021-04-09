@@ -27,6 +27,7 @@ data Value
 data Head
   = Var !Var
   | Global !Name.Lifted
+  deriving (Show)
 
 type Type = Value
 
