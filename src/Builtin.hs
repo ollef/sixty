@@ -93,7 +93,7 @@ pattern EmptyRepresentationName =
 
 pattern WordRepresentationName :: Name.Qualified
 pattern WordRepresentationName =
-  "Sixten.Builtin.WordRepresentationName"
+  "Sixten.Builtin.WordRepresentation"
 
 pattern AddRepresentationName :: Name.Qualified
 pattern AddRepresentationName =
