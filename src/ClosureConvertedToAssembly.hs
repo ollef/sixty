@@ -390,6 +390,12 @@ generateKnownConstant term =
       pure $ Assembly.KnownLit lit
     Syntax.Global (Name.Lifted Builtin.EmptyRepresentationName 0) ->
       pure $ Assembly.KnownLit $ Literal.Integer 0
+    Syntax.Global (Name.Lifted Builtin.WordRepresentationName 0) ->
+      pure $ Assembly.KnownLit $ Literal.Integer 8
+    Syntax.Global (Name.Lifted Builtin.IntName 0) ->
+      pure $ Assembly.KnownLit $ Literal.Integer 8
+    Syntax.Global (Name.Lifted Builtin.TypeName 0) ->
+      pure $ Assembly.KnownLit $ Literal.Integer 8
     Syntax.Apply (Name.Lifted Builtin.AddRepresentationName 0) [x, y] -> do
       x' <- generateKnownConstant x
       y' <- generateKnownConstant y
