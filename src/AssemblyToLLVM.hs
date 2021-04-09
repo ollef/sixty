@@ -719,7 +719,7 @@ assembleKnownConstant knownConstant =
       let x' = assembleKnownConstant x
           y' = assembleKnownConstant y
       LLVM.Constant.Select
-        { condition' = LLVM.Constant.ICmp {operand0 = x', iPredicate = LLVM.IntegerPredicate.SGT, operand1 = y'}
-        , trueValue = x'
-        , falseValue = y'
+        { condition' = LLVM.Constant.ICmp {operand0 = x', iPredicate = LLVM.IntegerPredicate.ULT, operand1 = y'}
+        , trueValue = y'
+        , falseValue = x'
         }
