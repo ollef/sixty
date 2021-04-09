@@ -173,7 +173,7 @@ assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
           let type_ = llvmType $ globalOperandType representation
           pure
             [ LLVM.globalVariableDefaults
-                { LLVM.Global.name = LLVM.Name $ assembleName name
+                { LLVM.Global.name = assembleName name
                 , LLVM.Global.unnamedAddr = Just LLVM.GlobalAddr
                 , LLVM.Global.type' = type_
                 , LLVM.Global.initializer = Just $ assembleKnownConstant knownConstant
@@ -189,7 +189,7 @@ assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
                 llvmType $ globalOperandType representation
           pure
             [ LLVM.globalVariableDefaults
-                { LLVM.Global.name = LLVM.Name $ assembleName name
+                { LLVM.Global.name = assembleName name
                 , LLVM.Global.unnamedAddr = Just LLVM.GlobalAddr
                 , LLVM.Global.type' = type_
                 , LLVM.Global.initializer = Just LLVM.Constant.Undef {constantType = type_}
@@ -198,7 +198,7 @@ assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
             , LLVM.Global.functionDefaults
                 { LLVM.Global.callingConvention = LLVM.CallingConvention.Fast
                 , LLVM.Global.returnType = wordPointer
-                , LLVM.Global.name = LLVM.Name $ assembleName $ ClosureConvertedToAssembly.initDefinitionName name
+                , LLVM.Global.name = assembleName $ ClosureConvertedToAssembly.initDefinitionName name
                 , LLVM.Global.parameters = ([LLVM.Parameter wordPointer parameter [] | parameter <- parameters'], False)
                 , LLVM.Global.alignment = alignment
                 , LLVM.Global.basicBlocks = basicBlocks
@@ -213,7 +213,7 @@ assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
             [ LLVM.Global.functionDefaults
                 { LLVM.Global.callingConvention = LLVM.CallingConvention.Fast
                 , LLVM.Global.returnType = resultLLVMType result
-                , LLVM.Global.name = LLVM.Name $ assembleName name
+                , LLVM.Global.name = assembleName name
                 , LLVM.Global.parameters = ([LLVM.Parameter wordPointer parameter [] | parameter <- parameters'], False)
                 , LLVM.Global.alignment = alignment
                 , LLVM.Global.basicBlocks = basicBlocks
@@ -228,9 +228,9 @@ assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
         _ ->
           LLVM.Private
 
-assembleName :: Name.Lifted -> ShortByteString
+assembleName :: Name.Lifted -> LLVM.Name
 assembleName =
-  ShortByteString.toShort . toUtf8 . Assembly.nameText
+  LLVM.Name . ShortByteString.toShort . toUtf8 . Assembly.nameText
 
 assembleInstructions :: [Assembly.Instruction Assembly.BasicBlock] -> Assembler [LLVM.Named LLVM.Instruction]
 assembleInstructions instructions =
@@ -406,7 +406,7 @@ assembleInstruction instruction =
                             LLVM.ConstantOperand $
                               LLVM.Constant.GlobalReference
                                 (LLVM.Type.ptr $ llvmType type_)
-                                (LLVM.Name $ assembleName global)
+                                (assembleName global)
                         , value = value'
                         , maybeAtomicity = Nothing
                         , alignment = alignment
@@ -570,7 +570,7 @@ assembleOperand type_ operand =
       cast nameSuggestion type_ $ HashMap.lookupDefault (panic $ "assembleOperand: no such local " <> show local) local locals
     Assembly.GlobalConstant global representation -> do
       let globalName =
-            LLVM.Name $ assembleName global
+            assembleName global
 
           globalNameText =
             Assembly.nameText global
@@ -625,7 +625,7 @@ assembleOperand type_ operand =
             Assembly.NameSuggestion globalNameText
 
           globalName =
-            LLVM.Name $ assembleName global
+            assembleName global
 
           globalType =
             llvmType defType
