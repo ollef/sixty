@@ -154,14 +154,9 @@ unboxedDataRepresentation env (Syntax.ConstructorDefinitions constructors) = do
       | (_, type_) <- constructorsList
       ]
   pure $ case (constructorsList, fieldRepresentation) of
-    ([], _) ->
-      Representation.Empty
-    ([_], _) ->
-      fieldRepresentation
-    (_, Representation.Empty) ->
-      constructorTagRepresentation
-    _ ->
-      constructorTagRepresentation <> fieldRepresentation
+    ([], _) -> Representation.Empty
+    ([_], _) -> fieldRepresentation
+    _ -> constructorTagRepresentation <> fieldRepresentation
   where
     constructorTagRepresentation =
       Representation.Direct Representation.Doesn'tContainHeapPointers
