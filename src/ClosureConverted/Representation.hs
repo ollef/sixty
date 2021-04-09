@@ -17,7 +17,6 @@ import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Environment
-import qualified Index
 import Monad
 import Name (Name)
 import qualified Name
@@ -233,15 +232,12 @@ compileConstructorFields :: Environment v -> Domain.Type -> M (Syntax.Term v)
 compileConstructorFields env type_ = do
   type' <- Evaluation.forceHead type_
   case type' of
-    Domain.Pi name fieldType closure -> do
+    Domain.Pi _name fieldType closure -> do
       fieldType' <- Readback.readback env fieldType
       value <- Domain.Lazy <$> lazy (panic "unboxed data representation depends on field") -- TODO real error
-      (env', _) <- Environment.extendValue env value
       rest <- Evaluation.evaluateClosure closure value
-      rest' <- compileConstructorFields env' rest
-      pure $
-        Syntax.Let name fieldType' (Syntax.Global $ Name.Lifted Builtin.TypeName 0) $
-          Syntax.Apply (Name.Lifted Builtin.AddRepresentationName 0) [Syntax.Var Index.Zero, rest']
+      rest' <- compileConstructorFields env rest
+      pure $ Syntax.Apply (Name.Lifted Builtin.AddRepresentationName 0) [fieldType', rest']
     Domain.Neutral {} ->
       empty
     Domain.Con {} ->
