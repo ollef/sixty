@@ -150,8 +150,9 @@ typeOfApplication ::
   Domain.Type ->
   Domain.Value ->
   M Domain.Type
-typeOfApplication type_ arg =
-  case type_ of
+typeOfApplication type_ arg = do
+  type' <- Evaluation.forceHead type_
+  case type' of
     Domain.Pi _ _ closure ->
       Evaluation.evaluateClosure closure arg
     _ ->
