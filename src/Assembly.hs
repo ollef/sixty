@@ -24,27 +24,24 @@ newtype NameSuggestion = NameSuggestion Text
   deriving stock (Show, Generic)
   deriving newtype (IsString, Persist)
 
-data Name = Name !Name.Lifted !Int
-  deriving (Eq, Show, Generic, Persist, Hashable)
-
 data Operand
   = LocalOperand !Local
-  | GlobalConstant !Name !Representation
-  | GlobalFunction !Name !Int
+  | GlobalConstant !Name.Lifted !Representation
+  | GlobalFunction !Name.Lifted !Return !Int
   | Lit !Literal
   deriving (Show, Generic, Persist, Hashable)
 
 data Instruction basicBlock
   = Copy !Operand !Operand !Operand
-  | Call !Local !Operand [Operand]
-  | CallVoid !Operand [Operand]
+  | Call !(Voided Local) !Operand [Operand]
   | Load !Local !Operand
   | Store !Operand !Operand
   | InitGlobal !Name.Lifted !Representation !Operand
   | Add !Local !Operand !Operand
   | Sub !Local !Operand !Operand
   | StackAllocate !Local !Operand
-  | StackDeallocate !Operand
+  | SaveStack !Local
+  | RestoreStack !Operand
   | HeapAllocate !Local !Operand
   | Switch !Operand [(Int, basicBlock)] basicBlock
   deriving (Show, Generic, Persist, Hashable, Functor)
@@ -60,19 +57,16 @@ type StackPointer = Local
 data BasicBlock = BasicBlock [Instruction BasicBlock] !Result
   deriving (Show, Generic, Persist, Hashable)
 
-data Result
-  = VoidResult
-  | Result !Operand
+type Result = Voided Operand
+
+data Voided a = Void | NonVoid a
   deriving (Show, Generic, Persist, Hashable)
+
+data Return = ReturnsVoid | Returns
+  deriving (Eq, Show, Generic, Persist, Hashable)
 
 --
 -------------------------------------------------------------------------------
-
-instance Pretty Name where
-  pretty (Name name 0) =
-    pretty name
-  pretty (Name name n) =
-    pretty name <> "$" <> pretty n
 
 instance Eq NameSuggestion where
   _ == _ =
@@ -97,19 +91,23 @@ instance Pretty Operand where
         pretty local
       GlobalConstant global representation ->
         "(" <> pretty representation <+> "constant" <+> pretty global <> ")"
-      GlobalFunction global arity ->
-        "(function(" <> pretty arity <> ")" <+> pretty global <> ")"
+      GlobalFunction global return_ arity ->
+        "(function " <> pretty return_ <> " (" <> pretty arity <> ")" <+> pretty global <> ")"
       Lit lit ->
         pretty lit
+
+instance Pretty Return where
+  pretty ReturnsVoid = "void"
+  pretty Returns = "value"
 
 instance Pretty basicBlock => Pretty (Instruction basicBlock) where
   pretty instruction =
     case instruction of
       Copy dst src size ->
         voidInstr "copy" [dst, src, size]
-      Call dst fun args ->
+      Call (NonVoid dst) fun args ->
         returningInstr dst "call" (fun : args)
-      CallVoid fun args ->
+      Call Void fun args ->
         voidInstr "call" (fun : args)
       Load dst src ->
         returningInstr dst "load" [src]
@@ -123,8 +121,10 @@ instance Pretty basicBlock => Pretty (Instruction basicBlock) where
         returningInstr dst "sub" [arg1, arg2]
       StackAllocate dst size ->
         returningInstr dst "alloca" [size]
-      StackDeallocate size ->
-        voidInstr "dealloca" [size]
+      SaveStack dst ->
+        returningInstr dst "savestack" ([] :: [Operand])
+      RestoreStack o ->
+        voidInstr "restorestack" [o]
       HeapAllocate dst size ->
         returningInstr dst "gcmalloc" [size]
       Switch scrutinee branches default_ ->
@@ -168,25 +168,20 @@ instance Pretty BasicBlock where
       , pretty result
       ]
 
-instance Pretty Result where
-  pretty result =
-    case result of
-      VoidResult ->
-        "void"
-      Result operand ->
-        "result" <+> pretty operand
+instance Pretty a => Pretty (Voided a) where
+  pretty voided = case voided of
+    Void -> "void"
+    NonVoid a -> pretty a
 
 -------------------------------------------------------------------------------
 
-nameText :: Assembly.Name -> Text
+nameText :: Name.Lifted -> Text
 nameText name =
   case name of
-    Assembly.Name (Name.Lifted (Name.Qualified (Name.Module moduleName) (Name.Name name_)) 0) 0 ->
+    Name.Lifted (Name.Qualified (Name.Module moduleName) (Name.Name name_)) 0 ->
       moduleName <> "." <> name_
-    Assembly.Name (Name.Lifted (Name.Qualified (Name.Module moduleName) (Name.Name name_)) 0) j ->
-      moduleName <> "." <> name_ <> "$" <> show j
-    Assembly.Name (Name.Lifted (Name.Qualified (Name.Module moduleName) (Name.Name name_)) i) j ->
-      moduleName <> "." <> name_ <> "$" <> show i <> "$" <> show j
+    Name.Lifted (Name.Qualified (Name.Module moduleName) (Name.Name name_)) i ->
+      moduleName <> "." <> name_ <> "$" <> show i
 
 -------------------------------------------------------------------------------
 
@@ -225,9 +220,9 @@ basicBlockLocals basicBlock =
 resultLocals :: Result -> (HashSet Local, HashSet Local)
 resultLocals result =
   case result of
-    VoidResult ->
+    Void ->
       mempty
-    Result operand ->
+    NonVoid operand ->
       operandLocals operand
 
 instructionLocals :: Instruction BasicBlockWithOccurrences -> (HashSet Local, HashSet Local)
@@ -235,9 +230,9 @@ instructionLocals instruction =
   case instruction of
     Copy o1 o2 o3 ->
       operandLocals o1 <> operandLocals o2 <> operandLocals o3
-    Call l o os ->
+    Call (NonVoid l) o os ->
       (HashSet.singleton l, mempty) <> operandLocals o <> foldMap operandLocals os
-    CallVoid o os ->
+    Call Void o os ->
       operandLocals o <> foldMap operandLocals os
     Load l o ->
       (HashSet.singleton l, mempty) <> operandLocals o
@@ -251,7 +246,9 @@ instructionLocals instruction =
       (HashSet.singleton l, mempty) <> operandLocals o1 <> operandLocals o2
     StackAllocate l o ->
       (HashSet.singleton l, mempty) <> operandLocals o
-    StackDeallocate o ->
+    SaveStack l ->
+      (HashSet.singleton l, mempty)
+    RestoreStack o ->
       operandLocals o
     HeapAllocate l o ->
       (HashSet.singleton l, mempty) <> operandLocals o
@@ -265,7 +262,7 @@ operandLocals operand =
       (mempty, HashSet.singleton local)
     GlobalConstant _ _ ->
       mempty
-    GlobalFunction _ _ ->
+    GlobalFunction {} ->
       mempty
     Lit _ ->
       mempty

@@ -9,9 +9,8 @@
 
 module Rules where
 
-import qualified AssemblyToCPSAssembly
+import qualified AssemblyToLLVM
 import qualified Builtin
-import qualified CPSAssemblyToLLVM
 import qualified ClosureConversion
 import qualified ClosureConverted.Context
 import qualified ClosureConverted.Representation
@@ -467,29 +466,21 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
         fmap join $
           forM maybeDefinition $ \definition ->
             runM $ ClosureConvertedToAssembly.generateDefinition name definition
-    CPSAssembly name ->
-      noError $ do
-        maybeAssemblyDefinition <- fetch $ Assembly name
-        pure $
-          fold $
-            foreach maybeAssemblyDefinition $ \(assemblyDefinition, fresh) ->
-              AssemblyToCPSAssembly.convertDefinition fresh name assemblyDefinition
-    CPSAssemblyModule module_ ->
+    AssemblyModule module_ ->
       noError $ do
         names <- fetch $ LambdaLiftedModuleDefinitions module_
         assemblyDefinitions <- fmap concat $
           forM (toList names) $ \name -> do
             maybeAssembly <- fetch $ Assembly name
-            pure $ toList $ (name,) . fst <$> maybeAssembly
-        moduleInitDefs <- runM $ do
-          (initDefinitions, fresh) <- ClosureConvertedToAssembly.generateModuleInit module_ assemblyDefinitions
-          pure $ AssemblyToCPSAssembly.convertDefinition fresh (ClosureConvertedToAssembly.moduleInitName module_) <$> initDefinitions
-        cpsAssembly <- forM (toList names) $ fetch . CPSAssembly
-        pure $ concat moduleInitDefs <> concat cpsAssembly
+            pure $ toList $ (name,) <$> maybeAssembly
+        moduleInitDef <-
+          runM $
+            ClosureConvertedToAssembly.generateModuleInit module_ assemblyDefinitions
+        pure $ moduleInitDef : assemblyDefinitions
     LLVMModule module_ ->
       noError $ do
-        assemblyDefinitions <- fetch $ CPSAssemblyModule module_
-        pure $ CPSAssemblyToLLVM.assembleModule module_ assemblyDefinitions
+        assemblyDefinitions <- fetch $ AssemblyModule module_
+        pure $ AssemblyToLLVM.assembleModule module_ assemblyDefinitions
     LLVMModuleInitModule ->
       noError $ do
         inputFiles <- fetch Query.InputFiles
@@ -497,11 +488,9 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
           (moduleName, _, _) <- fetch $ Query.ParsedFile filePath
           pure moduleName
 
-        (assemblyDefinition, fresh) <- runM $ ClosureConvertedToAssembly.generateModuleInits moduleNames
-        let cpsAssemblyDefinitions =
-              AssemblyToCPSAssembly.convertDefinition fresh (Name.Lifted "$module_init" 0) assemblyDefinition
+        assemblyDefinition <- runM $ ClosureConvertedToAssembly.generateModuleInits moduleNames
 
-        pure $ CPSAssemblyToLLVM.assembleModule "module_init" cpsAssemblyDefinitions
+        pure $ AssemblyToLLVM.assembleModule "module_init" [(Name.Lifted "$module_init" 0, assemblyDefinition)]
   where
     input :: Functor m => m a -> m ((a, TaskKind), [Error])
     input = fmap ((,mempty) . (,Input))

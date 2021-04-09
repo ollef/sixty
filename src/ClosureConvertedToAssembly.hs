@@ -90,7 +90,7 @@ operandNameSuggestion operand =
       nameSuggestion
     Assembly.GlobalConstant global _ ->
       Assembly.NameSuggestion $ Assembly.nameText global
-    Assembly.GlobalFunction global _ ->
+    Assembly.GlobalFunction global _ _ ->
       Assembly.NameSuggestion $ Assembly.nameText global
     Assembly.Lit _ ->
       "literal"
@@ -115,7 +115,7 @@ globalConstantOperand name = do
   maybeSignature <- fetch $ Query.ClosureConvertedSignature name
   pure $ case maybeSignature of
     Just (Representation.ConstantSignature representation) ->
-      Indirect $ Assembly.GlobalConstant (Assembly.Name name 0) representation
+      Indirect $ Assembly.GlobalConstant name representation
     _ ->
       panic $ "ClosureConvertedToAssembly.globalConstantLocation: global without constant signature " <> show name
 
@@ -125,9 +125,15 @@ stackAllocate nameSuggestion size = do
   emit $ Assembly.StackAllocate return_ size
   pure $ Assembly.LocalOperand return_
 
-stackDeallocate :: Assembly.Operand -> Builder ()
-stackDeallocate size =
-  emit $ Assembly.StackDeallocate size
+saveStack :: Builder Assembly.Operand
+saveStack = do
+  return_ <- freshLocal "stack"
+  emit $ Assembly.SaveStack return_
+  pure $ Assembly.LocalOperand return_
+
+restoreStack :: Assembly.Operand -> Builder ()
+restoreStack stack =
+  emit $ Assembly.RestoreStack stack
 
 globalAllocate :: Assembly.NameSuggestion -> Assembly.Operand -> Assembly.Operand -> Builder Assembly.Operand
 globalAllocate =
@@ -172,12 +178,12 @@ copy destination source size =
 
 callVoid :: Name.Lifted -> [Assembly.Operand] -> Builder ()
 callVoid global args =
-  emit $ Assembly.CallVoid (Assembly.GlobalFunction (Assembly.Name global 0) $ length args) args
+  emit $ Assembly.Call Assembly.Void (Assembly.GlobalFunction global Assembly.ReturnsVoid $ length args) args
 
 callDirect :: Assembly.NameSuggestion -> Name.Lifted -> [Assembly.Operand] -> Builder Assembly.Operand
 callDirect nameSuggestion global args = do
   result <- freshLocal nameSuggestion
-  emit $ Assembly.Call result (Assembly.GlobalFunction (Assembly.Name global 0) $ length args) args
+  emit $ Assembly.Call (Assembly.NonVoid result) (Assembly.GlobalFunction global Assembly.Returns $ length args) args
   pure $ Assembly.LocalOperand result
 
 callIndirect :: Name.Lifted -> [Assembly.Operand] -> Assembly.Operand -> Builder ()
@@ -218,8 +224,9 @@ forceIndirect operand =
     Empty ->
       pure (Assembly.Lit $ Literal.Integer 0, pure ())
     Direct directOperand -> do
+      stack <- saveStack
       operand' <- stackAllocate (operandNameSuggestion directOperand) pointerBytesOperand
-      pure (operand', stackDeallocate pointerBytesOperand)
+      pure (operand', restoreStack stack)
     Indirect indirectOperand ->
       pure (indirectOperand, pure ())
 
@@ -265,19 +272,18 @@ initDefinitionName :: Name.Lifted -> Name.Lifted
 initDefinitionName (Name.Lifted (Name.Qualified moduleName (Name.Name name)) m) =
   Name.Lifted (Name.Qualified moduleName $ Name.Name $ name <> "$init") m
 
-generateModuleInits :: [Name.Module] -> M (Assembly.Definition Assembly.BasicBlock, Int)
+generateModuleInits :: [Name.Module] -> M (Assembly.Definition Assembly.BasicBlock)
 generateModuleInits moduleNames =
   runBuilder $ do
     globalPointer <- freshLocal "globals"
     globalPointer' <- foldM go (Assembly.LocalOperand globalPointer) moduleNames
     instructions <- gets _instructions
-    fresh <- gets _fresh
-    pure (Assembly.FunctionDefinition [globalPointer] $ Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointer', fresh)
+    pure $ Assembly.FunctionDefinition [globalPointer] $ Assembly.BasicBlock (toList instructions) $ Assembly.NonVoid globalPointer'
   where
     go globalPointer moduleName =
       callDirect "globals" (moduleInitName moduleName) [globalPointer]
 
-generateModuleInit :: Name.Module -> [(Name.Lifted, Assembly.Definition Assembly.BasicBlock)] -> M ([Assembly.Definition Assembly.BasicBlock], Int)
+generateModuleInit :: Name.Module -> [(Name.Lifted, Assembly.Definition Assembly.BasicBlock)] -> M (Name.Lifted, Assembly.Definition Assembly.BasicBlock)
 generateModuleInit moduleName definitions =
   runBuilder $ do
     globalPointer <- freshLocal "globals"
@@ -285,8 +291,10 @@ generateModuleInit moduleName definitions =
     globalPointer' <- foldM initImport (Assembly.LocalOperand globalPointer) $ Module._imports moduleHeader
     globalPointer'' <- foldM initDefinition globalPointer' definitions
     instructions <- gets _instructions
-    fresh <- gets _fresh
-    pure ([Assembly.FunctionDefinition [globalPointer] $ Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointer''], fresh)
+    pure
+      ( moduleInitName moduleName
+      , Assembly.FunctionDefinition [globalPointer] $ Assembly.BasicBlock (toList instructions) $ Assembly.NonVoid globalPointer''
+      )
   where
     initImport globalPointer import_ =
       callDirect "globals" (moduleInitName $ Module._module import_) [globalPointer]
@@ -300,13 +308,13 @@ generateModuleInit moduleName definitions =
         Assembly.FunctionDefinition {} ->
           pure globalPointer
 
-generateDefinition :: Name.Lifted -> Syntax.Definition -> M (Maybe (Assembly.Definition Assembly.BasicBlock, Int))
+generateDefinition :: Name.Lifted -> Syntax.Definition -> M (Maybe (Assembly.Definition Assembly.BasicBlock))
 generateDefinition name@(Name.Lifted qualifiedName _) definition = do
   signature <- fetch $ Query.ClosureConvertedSignature name
   let env =
         emptyEnvironment $ Scope.KeyedName Scope.Definition qualifiedName
   runBuilder $ do
-    maybeResult <- case (definition, signature) of
+    case (definition, signature) of
       (Syntax.TypeDeclaration _, _) ->
         pure Nothing
       (Syntax.ConstantDefinition term, Just (Representation.ConstantSignature representation)) ->
@@ -328,9 +336,6 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition = do
       (Syntax.ParameterisedDataDefinition {}, _) -> do
         panic "ClosureConvertedToAssembly: DataDefinition without ConstantSignature"
 
-    fresh <- gets _fresh
-    pure $ (,fresh) <$> maybeResult
-
 generateGlobal :: Environment v -> Name.Lifted -> Representation -> Syntax.Term v -> Builder (Maybe (Assembly.Definition Assembly.BasicBlock))
 generateGlobal env name representation term = do
   globalPointer <- freshLocal "globals"
@@ -338,7 +343,7 @@ generateGlobal env name representation term = do
         Assembly.LocalOperand globalPointer
   case term of
     Syntax.Lit literal ->
-      pure $ Just $ Assembly.KnownConstantDefinition Representation.Direct literal
+      pure $ Just $ Assembly.KnownConstantDefinition (Representation.Direct Representation.Doesn'tContainHeapPointers) literal
     _ ->
       case representation of
         Representation.Empty -> do
@@ -350,9 +355,8 @@ generateGlobal env name representation term = do
               Assembly.ConstantDefinition
                 representation
                 [globalPointer]
-                (Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointerOperand)
-        Representation.Direct -> do
-          -- TODO store in globals for GC?
+                (Assembly.BasicBlock (toList instructions) $ Assembly.NonVoid globalPointerOperand)
+        Representation.Direct containsHeapPointers -> do
           (result, deallocateTerm) <- generateTypedTerm env term $ Direct directTypeOperand
           directResult <- forceDirect result
           sequence_ deallocateTerm
@@ -363,8 +367,8 @@ generateGlobal env name representation term = do
               Assembly.ConstantDefinition
                 representation
                 [globalPointer]
-                (Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointerOperand)
-        Representation.Indirect -> do
+                (Assembly.BasicBlock (toList instructions) $ Assembly.NonVoid globalPointerOperand)
+        Representation.Indirect containsHeapPointers -> do
           type_ <- typeOf env term
           typeSize <- sizeOfType type_
           globalPointer' <- globalAllocate "globals" globalPointerOperand typeSize
@@ -376,7 +380,7 @@ generateGlobal env name representation term = do
               Assembly.ConstantDefinition
                 representation
                 [globalPointer]
-                (Assembly.BasicBlock (toList instructions) $ Assembly.Result globalPointer')
+                (Assembly.BasicBlock (toList instructions) $ Assembly.NonVoid globalPointer')
 
 generateFunction ::
   Environment v ->
@@ -396,8 +400,8 @@ generateFunction env returnRepresentation tele parameterRepresentations params =
           pure $
             Assembly.FunctionDefinition
               (toList params)
-              (Assembly.BasicBlock (toList instructions) Assembly.VoidResult)
-        Representation.Direct -> do
+              (Assembly.BasicBlock (toList instructions) Assembly.Void)
+        Representation.Direct _ -> do
           (result, deallocateTerm) <- generateTypedTerm env term $ Direct directTypeOperand
           directResult <- forceDirect result
           sequence_ deallocateTerm
@@ -405,8 +409,8 @@ generateFunction env returnRepresentation tele parameterRepresentations params =
           pure $
             Assembly.FunctionDefinition
               (toList params)
-              (Assembly.BasicBlock (toList instructions) $ Assembly.Result directResult)
-        Representation.Indirect -> do
+              (Assembly.BasicBlock (toList instructions) $ Assembly.NonVoid directResult)
+        Representation.Indirect _ -> do
           returnLocation <- freshLocal "return_location"
           type_ <- typeOf env term
           storeTerm env term (Assembly.LocalOperand returnLocation) type_
@@ -414,16 +418,19 @@ generateFunction env returnRepresentation tele parameterRepresentations params =
           pure $
             Assembly.FunctionDefinition
               (returnLocation : toList params)
-              (Assembly.BasicBlock (toList instructions) Assembly.VoidResult)
+              (Assembly.BasicBlock (toList instructions) Assembly.Void)
     (Telescope.Extend (Name name) type_ _plicity tele', parameterRepresentation : parameterRepresentations') -> do
       (params', paramOperand) <-
         case parameterRepresentation of
           Representation.Empty ->
             pure (params, Empty)
-          Representation.Direct -> do
+          Representation.Direct Representation.Doesn'tContainHeapPointers -> do
             local <- freshLocal $ Assembly.NameSuggestion name
             pure (params Tsil.:> local, Direct $ Assembly.LocalOperand local)
-          Representation.Indirect -> do
+          Representation.Direct Representation.MightContainHeapPointers -> do
+            local <- freshLocal $ Assembly.NameSuggestion name
+            pure (params Tsil.:> local, Indirect $ Assembly.LocalOperand local)
+          Representation.Indirect _ -> do
             local <- freshLocal $ Assembly.NameSuggestion name
             pure (params Tsil.:> local, Indirect $ Assembly.LocalOperand local)
 
@@ -449,13 +456,12 @@ generateTypedTerm :: Environment v -> Syntax.Term v -> Operand -> Builder (Opera
 generateTypedTerm env term type_ = do
   let stackAllocateIt = do
         typeSize <- sizeOfType type_
+        stack <- saveStack
         termLocation <- stackAllocate "term_location" typeSize
         storeTerm env term termLocation type_
         pure
           ( Indirect termLocation
-          , Just $ do
-              typeSize' <- sizeOfType type_
-              stackDeallocate typeSize'
+          , Just $ restoreStack stack
           )
 
   case term of
@@ -490,12 +496,12 @@ generateTypedTerm env term type_ = do
           callVoid global arguments'
           deallocateArguments
           pure (Empty, Nothing)
-        Representation.Direct -> do
+        Representation.Direct containsHeapPointers -> do
           (arguments', deallocateArguments) <- generateArguments env $ zip arguments argumentRepresentations
           result <- callDirect "call_result" global arguments'
           deallocateArguments
           pure (Direct result, Nothing)
-        Representation.Indirect -> do
+        Representation.Indirect containsHeapPointers ->
           stackAllocateIt
     Syntax.Pi {} ->
       pure (Direct pointerBytesOperand, Nothing)
@@ -569,10 +575,10 @@ storeTerm env term returnLocation returnType =
       case returnRepresentation of
         Representation.Empty ->
           callVoid global arguments'
-        Representation.Direct -> do
+        Representation.Direct containsHeapPointers -> do
           result <- callDirect "call_result" global arguments'
           store returnLocation result
-        Representation.Indirect -> do
+        Representation.Indirect containsHeapPointers -> do
           callIndirect global arguments' returnLocation
       deallocateArguments
     Syntax.Pi {} ->
@@ -604,7 +610,7 @@ generateArgument env term representation =
         ( pure ([], pure ())
         , sequence_ deallocateTerm
         )
-    Representation.Direct -> do
+    Representation.Direct containsHeapPointers -> do
       (term', deallocateTerm) <- generateTypedTerm env term $ Direct directTypeOperand
       pure
         ( do
@@ -612,7 +618,7 @@ generateArgument env term representation =
             pure ([directTerm], pure ())
         , sequence_ deallocateTerm
         )
-    Representation.Indirect -> do
+    Representation.Indirect containsHeapPointers -> do
       type_ <- typeOf env term
       (termOperand, deallocateTermOperand) <- generateTypedTerm env term type_
       pure

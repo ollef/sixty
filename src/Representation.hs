@@ -15,14 +15,25 @@ data Signature
 
 data Representation
   = Empty
-  | Direct
-  | Indirect
+  | Direct !ContainsHeapPointers
+  | Indirect !ContainsHeapPointers
+  deriving (Eq, Ord, Show, Generic, Persist, Hashable)
+
+data ContainsHeapPointers
+  = Doesn'tContainHeapPointers
+  | MightContainHeapPointers
   deriving (Eq, Ord, Show, Generic, Persist, Hashable)
 
 instance Semigroup Representation where
   Empty <> representation = representation
   representation <> Empty = representation
-  _ <> _ = Indirect
+  representation1 <> representation2 =
+    Indirect $ containsHeapPointers representation1 <> containsHeapPointers representation2
+
+containsHeapPointers :: Representation -> ContainsHeapPointers
+containsHeapPointers Empty = Doesn'tContainHeapPointers
+containsHeapPointers (Direct cp) = cp
+containsHeapPointers (Indirect cp) = cp
 
 instance Monoid Representation where
   mempty =
@@ -33,17 +44,29 @@ instance Pretty Representation where
     case representation of
       Empty ->
         "empty"
-      Direct ->
+      Direct MightContainHeapPointers ->
+        "direct*"
+      Direct Doesn'tContainHeapPointers ->
         "direct"
-      Indirect ->
+      Indirect MightContainHeapPointers ->
+        "indirect*"
+      Indirect Doesn'tContainHeapPointers ->
         "indirect"
 
+instance Semigroup ContainsHeapPointers where
+  MightContainHeapPointers <> _ = MightContainHeapPointers
+  _ <> MightContainHeapPointers = MightContainHeapPointers
+  Doesn'tContainHeapPointers <> Doesn'tContainHeapPointers = Doesn'tContainHeapPointers
+
+instance Monoid ContainsHeapPointers where
+  mempty = Doesn'tContainHeapPointers
+
 maxM :: Monad m => [m Representation] -> m Representation
-maxM [] = pure Empty
+maxM [] = pure mempty
 maxM (m : ms) = do
   representation <- m
   case representation of
-    Indirect ->
-      pure Indirect
+    Indirect MightContainHeapPointers ->
+      pure representation
     _ ->
       max representation <$> maxM ms

@@ -16,7 +16,6 @@
 module Query where
 
 import qualified Assembly
-import qualified CPSAssembly
 import qualified ClosureConverted.Syntax as ClosureConverted
 import Control.Monad.Fail
 import Core.Binding (Binding)
@@ -80,9 +79,8 @@ data Query a where
   ClosureConvertedConstructorType :: Name.QualifiedConstructor -> Query (Telescope Name ClosureConverted.Type ClosureConverted.Type Void)
   ClosureConvertedSignature :: Name.Lifted -> Query (Maybe Representation.Signature)
   ConstructorTag :: Name.QualifiedConstructor -> Query (Maybe Int)
-  Assembly :: Name.Lifted -> Query (Maybe (Assembly.Definition Assembly.BasicBlock, Int))
-  CPSAssembly :: Name.Lifted -> Query [(Assembly.Name, CPSAssembly.Definition)]
-  CPSAssemblyModule :: Name.Module -> Query [(Assembly.Name, CPSAssembly.Definition)]
+  Assembly :: Name.Lifted -> Query (Maybe (Assembly.Definition Assembly.BasicBlock))
+  AssemblyModule :: Name.Module -> Query [(Name.Lifted, Assembly.Definition Assembly.BasicBlock)]
   LLVMModule :: Name.Module -> Query LLVM.Module
   LLVMModuleInitModule :: Query LLVM.Module
 
@@ -137,10 +135,9 @@ instance Hashable (Query a) where
       ClosureConvertedSignature a -> h 27 a
       ConstructorTag a -> h 28 a
       Assembly a -> h 29 a
-      CPSAssembly a -> h 30 a
-      CPSAssemblyModule a -> h 31 a
-      LLVMModule a -> h 32 a
-      LLVMModuleInitModule -> h 33 ()
+      AssemblyModule a -> h 30 a
+      LLVMModule a -> h 31 a
+      LLVMModuleInitModule -> h 32 ()
     where
       {-# INLINE h #-}
       h :: Hashable a => Int -> a -> Int
@@ -190,10 +187,9 @@ instance Persist (Some Query) where
       27 -> Some . ClosureConvertedSignature <$> get
       28 -> Some . ConstructorTag <$> get
       29 -> Some . Assembly <$> get
-      30 -> Some . CPSAssembly <$> get
-      31 -> Some . CPSAssemblyModule <$> get
-      32 -> Some . LLVMModule <$> get
-      33 -> pure $ Some LLVMModuleInitModule
+      30 -> Some . AssemblyModule <$> get
+      31 -> Some . LLVMModule <$> get
+      32 -> pure $ Some LLVMModuleInitModule
       _ -> fail "Persist (Some Query): no such tag"
 
   put (Some query) =
@@ -228,10 +224,9 @@ instance Persist (Some Query) where
       ClosureConvertedSignature a -> p 27 a
       ConstructorTag a -> p 28 a
       Assembly a -> p 29 a
-      CPSAssembly a -> p 30 a
-      CPSAssemblyModule a -> p 31 a
-      LLVMModule a -> p 32 a
-      LLVMModuleInitModule -> p 33 ()
+      AssemblyModule a -> p 30 a
+      LLVMModule a -> p 31 a
+      LLVMModuleInitModule -> p 32 ()
     where
       -- Don't forget to add a case to `get` above!
 
