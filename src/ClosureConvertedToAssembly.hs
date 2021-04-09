@@ -7,6 +7,7 @@ module ClosureConvertedToAssembly where
 
 import qualified Assembly
 import Boxity
+import qualified Builtin
 import ClosureConverted.Context (Context)
 import qualified ClosureConverted.Context as Context
 import qualified ClosureConverted.Evaluation as Evaluation
@@ -341,10 +342,10 @@ generateGlobal env name representation term = do
   globalPointer <- freshLocal "globals"
   let globalPointerOperand =
         Assembly.LocalOperand globalPointer
-  case term of
-    Syntax.Lit literal ->
-      pure $ Just $ Assembly.KnownConstantDefinition (Representation.Direct Representation.Doesn'tContainHeapPointers) literal
-    _ ->
+  case generateKnownConstant term of
+    Just knownConstant ->
+      pure $ Just $ Assembly.KnownConstantDefinition representation knownConstant
+    Nothing ->
       case representation of
         Representation.Empty -> do
           (_, deallocateTerm) <- generateTypedTerm env term $ Direct emptyTypeOperand
@@ -381,6 +382,24 @@ generateGlobal env name representation term = do
                 representation
                 [globalPointer]
                 (Assembly.BasicBlock (toList instructions) $ Assembly.NonVoid globalPointer')
+
+generateKnownConstant :: Syntax.Term v -> Maybe Assembly.KnownConstant
+generateKnownConstant term =
+  case term of
+    Syntax.Lit lit ->
+      pure $ Assembly.KnownLit lit
+    Syntax.Global (Name.Lifted Builtin.EmptyRepresentationName 0) ->
+      pure $ Assembly.KnownLit $ Literal.Integer 0
+    Syntax.Apply (Name.Lifted Builtin.AddRepresentationName 0) [x, y] -> do
+      x' <- generateKnownConstant x
+      y' <- generateKnownConstant y
+      pure $ Assembly.KnownAdd x' y'
+    Syntax.Apply (Name.Lifted Builtin.MaxRepresentationName 0) [x, y] -> do
+      x' <- generateKnownConstant x
+      y' <- generateKnownConstant y
+      pure $ Assembly.KnownMax x' y'
+    _ ->
+      Nothing
 
 generateFunction ::
   Environment v ->

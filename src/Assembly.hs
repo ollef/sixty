@@ -47,10 +47,16 @@ data Instruction basicBlock
   deriving (Show, Generic, Persist, Hashable, Functor)
 
 data Definition basicBlock
-  = KnownConstantDefinition !Representation !Literal
+  = KnownConstantDefinition !Representation !KnownConstant
   | ConstantDefinition !Representation [Local] basicBlock
   | FunctionDefinition [Local] basicBlock
   deriving (Show, Generic, Persist, Hashable, Functor)
+
+data KnownConstant
+  = KnownLit !Literal
+  | KnownAdd !KnownConstant !KnownConstant
+  | KnownMax !KnownConstant !KnownConstant
+  deriving (Show, Generic, Persist, Hashable)
 
 type StackPointer = Local
 
@@ -151,15 +157,22 @@ instance Pretty basicBlock => Pretty (Instruction basicBlock) where
 instance (Pretty basicBlock) => Pretty (Definition basicBlock) where
   pretty definition =
     case definition of
-      KnownConstantDefinition representation literal ->
+      KnownConstantDefinition representation knownConstant ->
         "known" <+> pretty representation <+> "constant" <+> "=" <> line
-          <> indent 2 (pretty literal)
+          <> indent 2 (pretty knownConstant)
       ConstantDefinition representation constantParameters basicBlock ->
         pretty representation <+> "constant" <+> tupled (pretty <$> constantParameters) <+> "=" <> line
           <> indent 2 (pretty basicBlock)
       FunctionDefinition args basicBlock ->
         "function" <+> tupled (pretty <$> args) <+> "=" <> line
           <> indent 2 (pretty basicBlock)
+
+instance Pretty KnownConstant where
+  pretty knownConstant =
+    case knownConstant of
+      KnownLit lit -> pretty lit
+      KnownAdd x y -> "(" <+> pretty x <+> "+" <+> pretty y <+> ")"
+      KnownMax x y -> "max(" <+> pretty x <> ",+" <+> pretty y <> ")"
 
 instance Pretty BasicBlock where
   pretty (BasicBlock instrs result) =

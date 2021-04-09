@@ -17,6 +17,7 @@ import qualified LLVM.AST as LLVM
 import qualified LLVM.AST.CallingConvention as LLVM.CallingConvention
 import qualified LLVM.AST.Constant as LLVM.Constant
 import qualified LLVM.AST.Global as LLVM.Global
+import qualified LLVM.AST.IntegerPredicate as LLVM.IntegerPredicate
 import qualified LLVM.AST.Linkage as LLVM
 import qualified LLVM.AST.Type as LLVM.Type
 import qualified Literal
@@ -168,24 +169,14 @@ assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
         , _basicBlocks = mempty
         }
       $ case definition of
-        Assembly.KnownConstantDefinition representation literal -> do
-          let type_ =
-                llvmType $ globalOperandType representation
-
-              value =
-                case literal of
-                  Literal.Integer int ->
-                    LLVM.Constant.Int
-                      { integerBits = wordBits
-                      , integerValue = int
-                      }
-
+        Assembly.KnownConstantDefinition representation knownConstant -> do
+          let type_ = llvmType $ globalOperandType representation
           pure
             [ LLVM.globalVariableDefaults
                 { LLVM.Global.name = LLVM.Name $ assembleName name
                 , LLVM.Global.unnamedAddr = Just LLVM.GlobalAddr
                 , LLVM.Global.type' = type_
-                , LLVM.Global.initializer = Just value
+                , LLVM.Global.initializer = Just $ assembleKnownConstant knownConstant
                 , LLVM.Global.linkage = linkage
                 , LLVM.Global.isConstant = True
                 }
@@ -713,3 +704,22 @@ cast (Assembly.NameSuggestion nameSuggestion) newType (operand, type_)
                   }
             ]
           )
+
+assembleKnownConstant :: Assembly.KnownConstant -> LLVM.Constant.Constant
+assembleKnownConstant knownConstant =
+  case knownConstant of
+    Assembly.KnownLit (Literal.Integer int) ->
+      LLVM.Constant.Int
+        { integerBits = wordBits
+        , integerValue = int
+        }
+    Assembly.KnownAdd x y ->
+      LLVM.Constant.Add {nsw = False, nuw = False, operand0 = assembleKnownConstant x, operand1 = assembleKnownConstant y}
+    Assembly.KnownMax x y -> do
+      let x' = assembleKnownConstant x
+          y' = assembleKnownConstant y
+      LLVM.Constant.Select
+        { condition' = LLVM.Constant.ICmp {operand0 = x', iPredicate = LLVM.IntegerPredicate.SGT, operand1 = y'}
+        , trueValue = x'
+        , falseValue = y'
+        }
