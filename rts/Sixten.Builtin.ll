@@ -4,6 +4,7 @@ declare void @print_int(i64 %i)
 @Sixten.Builtin.Int =  unnamed_addr  constant i64 8
 @Sixten.Builtin.Type =  unnamed_addr  constant i64 8
 @Sixten.Builtin.EmptyRepresentation =  unnamed_addr  constant i64 0
+@Sixten.Builtin.WordRepresentation =  unnamed_addr  constant i64 8
 
 define external fastcc i64* @Sixten.Bultin.addRepresentation(i64* %a, i64* %b) {
   block:
