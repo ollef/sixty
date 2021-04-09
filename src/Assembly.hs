@@ -47,16 +47,10 @@ data Instruction basicBlock
   deriving (Show, Generic, Persist, Hashable, Functor)
 
 data Definition basicBlock
-  = KnownConstantDefinition !Representation !KnownConstant
+  = KnownConstantDefinition !Representation !Literal
   | ConstantDefinition !Representation [Local] basicBlock
   | FunctionDefinition [Local] basicBlock
   deriving (Show, Generic, Persist, Hashable, Functor)
-
-data KnownConstant
-  = KnownLit !Literal
-  | KnownAdd !KnownConstant !KnownConstant
-  | KnownMax !KnownConstant !KnownConstant
-  deriving (Show, Generic, Persist, Hashable)
 
 type StackPointer = Local
 
@@ -166,13 +160,6 @@ instance (Pretty basicBlock) => Pretty (Definition basicBlock) where
       FunctionDefinition args basicBlock ->
         "function" <+> tupled (pretty <$> args) <+> "=" <> line
           <> indent 2 (pretty basicBlock)
-
-instance Pretty KnownConstant where
-  pretty knownConstant =
-    case knownConstant of
-      KnownLit lit -> pretty lit
-      KnownAdd x y -> "(" <+> pretty x <+> "+" <+> pretty y <+> ")"
-      KnownMax x y -> "max(" <+> pretty x <> ",+" <+> pretty y <> ")"
 
 instance Pretty BasicBlock where
   pretty (BasicBlock instrs result) =
