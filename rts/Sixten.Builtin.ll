@@ -1,10 +1,16 @@
 
 declare void @print_int(i64 %i)
+declare void @exit(i32)
 
 @Sixten.Builtin.Int =  unnamed_addr  constant i64 8
 @Sixten.Builtin.Type =  unnamed_addr  constant i64 8
 @Sixten.Builtin.EmptyRepresentation =  unnamed_addr  constant i64 0
 @Sixten.Builtin.WordRepresentation =  unnamed_addr  constant i64 8
+
+define external fastcc i64* @Sixten.Builtin.fail(i64* %a) {
+  call void @exit(i32 7411)
+  unreachable
+}
 
 define external fastcc i64* @Sixten.Builtin.addRepresentation(i64* %a, i64* %b) {
   block:
