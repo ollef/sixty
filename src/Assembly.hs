@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -60,7 +60,7 @@ data BasicBlock = BasicBlock [Instruction BasicBlock] !Result
 type Result = Voided Operand
 
 data Voided a = Void | NonVoid a
-  deriving (Show, Generic, Persist, Hashable)
+  deriving (Show, Generic, Persist, Hashable, Foldable, Traversable, Functor)
 
 data Return = ReturnsVoid | Returns
   deriving (Eq, Show, Generic, Persist, Hashable)
