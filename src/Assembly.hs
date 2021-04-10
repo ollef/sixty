@@ -62,6 +62,12 @@ type Result = Voided Operand
 data Voided a = Void | NonVoid a
   deriving (Show, Generic, Persist, Hashable, Foldable, Traversable, Functor)
 
+instance Applicative Voided where
+  pure = NonVoid
+  Void <*> _ = Void
+  _ <*> Void = Void
+  NonVoid f <*> NonVoid x = NonVoid $ f x
+
 data Return = ReturnsVoid | Returns
   deriving (Eq, Show, Generic, Persist, Hashable)
 

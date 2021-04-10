@@ -6,6 +6,7 @@ module AssemblyToLLVM where
 
 import qualified Assembly
 import qualified ClosureConvertedToAssembly
+import Data.Bitraversable
 import Data.ByteString.Short (ShortByteString)
 import qualified Data.ByteString.Short as ShortByteString
 import Data.HashMap.Lazy (HashMap)
@@ -553,8 +554,56 @@ assembleInstruction instruction =
             }
     Assembly.HeapAllocate {} ->
       panic "AssemblyToLLVM: HeapAllocate" -- TODO
-    Assembly.Switch {} ->
-      panic "AssemblyToLLVM: Switch" -- TODO
+    Assembly.Switch destination scrutinee branches (Assembly.BasicBlock defaultBranchInstructions defaultBranchResult) -> do
+      scrutinee' <- assembleOperand Word scrutinee
+      branchLabels <- forM branches $ \(i, _) -> do
+        branchLabel <- freshName $ Assembly.NameSuggestion $ "branch_" <> show i
+        pure
+          ( LLVM.Constant.Int
+              { integerBits = wordBits
+              , integerValue = i
+              }
+          , branchLabel
+          )
+      defaultBranchLabel <- freshName "default"
+      afterSwitchLabel <- freshName "after_switch"
+      endBlock $
+        LLVM.Do
+          LLVM.Switch
+            { operand0' = scrutinee'
+            , dests = branchLabels
+            , defaultDest = defaultBranchLabel
+            , metadata' = mempty
+            }
+      branchResultOperands <- forM (zip branchLabels branches) $ \((_, branchLabel), (_, Assembly.BasicBlock instructions result)) -> do
+        startBlock branchLabel
+        mapM_ assembleInstruction instructions
+        resultOperand <- forM result $ assembleOperand WordPointer
+        endBlock $ LLVM.Do LLVM.Br {dest = afterSwitchLabel, metadata' = mempty}
+        pure resultOperand
+      startBlock defaultBranchLabel
+      mapM_ assembleInstruction defaultBranchInstructions
+      endBlock $ LLVM.Do LLVM.Br {dest = afterSwitchLabel, metadata' = mempty}
+      defaultResultOperand <- forM defaultBranchResult $ assembleOperand WordPointer
+      startBlock afterSwitchLabel
+      case destination of
+        Assembly.Void ->
+          pure ()
+        Assembly.NonVoid destinationLocal -> do
+          destination' <- activateLocal WordPointer destinationLocal
+          let voidedIncomingValues =
+                (defaultResultOperand, defaultBranchLabel) : zip branchResultOperands (snd <$> branchLabels)
+              incomingValues =
+                case traverse (bitraverse identity pure) voidedIncomingValues of
+                  Assembly.NonVoid incomingValues_ -> incomingValues_
+                  Assembly.Void -> panic "AssemblyToLLVM: Switch with mismatch between instruction result and branch results"
+          emitInstruction $
+            destination'
+              LLVM.:= LLVM.Phi
+                { type' = llvmType WordPointer
+                , incomingValues = incomingValues
+                , metadata = mempty
+                }
 
 assembleOperand :: OperandType -> Assembly.Operand -> Assembler LLVM.Operand
 assembleOperand type_ operand =
