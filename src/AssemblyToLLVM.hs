@@ -562,9 +562,9 @@ assembleInstruction instruction =
                   }
              ]
     Assembly.HeapAllocate {} ->
-      panic "Assember: HeapAllocate" -- TODO
+      panic "AssemblyToLLVM: HeapAllocate" -- TODO
     Assembly.Switch {} ->
-      panic "Assember: Switch" -- TODO
+      panic "AssemblyToLLVM: Switch" -- TODO
 
 assembleOperand :: OperandType -> Assembly.Operand -> Assembler (LLVM.Operand, [LLVM.Named LLVM.Instruction])
 assembleOperand type_ operand =
