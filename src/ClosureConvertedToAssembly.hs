@@ -167,6 +167,21 @@ sizeOfType :: Operand -> Builder Assembly.Operand
 sizeOfType =
   forceDirect
 
+switch ::
+  Assembly.Voided Assembly.NameSuggestion ->
+  Assembly.Operand ->
+  [(Integer, Builder Assembly.Result)] ->
+  Builder Assembly.Result ->
+  Builder Assembly.Result
+switch nameSuggestion scrutinee branches defaultBranch = do
+  (defaultReturn, defaultInstructions) <- subBuilder defaultBranch
+  branches' <- forM branches $ \(i, branch) -> do
+    (branchReturn, branchInstructions) <- subBuilder branch
+    pure (i, Assembly.BasicBlock branchInstructions branchReturn)
+  result <- forM nameSuggestion freshLocal
+  emit $ Assembly.Switch result scrutinee branches' $ Assembly.BasicBlock defaultInstructions defaultReturn
+  pure $ Assembly.LocalOperand <$> result
+
 -------------------------------------------------------------------------------
 
 freshLocal :: Assembly.NameSuggestion -> Builder Assembly.Local
