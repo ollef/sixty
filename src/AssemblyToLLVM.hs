@@ -579,20 +579,21 @@ assembleInstruction instruction =
         startBlock branchLabel
         mapM_ assembleInstruction instructions
         resultOperand <- forM result $ assembleOperand WordPointer
+        branchLabel' <- gets _basicBlockName
         endBlock $ LLVM.Do LLVM.Br {dest = afterSwitchLabel, metadata' = mempty}
-        pure resultOperand
+        pure (resultOperand, branchLabel')
       startBlock defaultBranchLabel
       mapM_ assembleInstruction defaultBranchInstructions
-      endBlock $ LLVM.Do LLVM.Br {dest = afterSwitchLabel, metadata' = mempty}
       defaultResultOperand <- forM defaultBranchResult $ assembleOperand WordPointer
+      defaultBranchLabel' <- gets _basicBlockName
+      endBlock $ LLVM.Do LLVM.Br {dest = afterSwitchLabel, metadata' = mempty}
       startBlock afterSwitchLabel
       case destination of
         Assembly.Void ->
           pure ()
         Assembly.NonVoid destinationLocal -> do
           destination' <- activateLocal WordPointer destinationLocal
-          let voidedIncomingValues =
-                (defaultResultOperand, defaultBranchLabel) : zip branchResultOperands (snd <$> branchLabels)
+          let voidedIncomingValues = (defaultResultOperand, defaultBranchLabel') : branchResultOperands
               incomingValues =
                 case traverse (bitraverse identity pure) voidedIncomingValues of
                   Assembly.NonVoid incomingValues_ -> incomingValues_
