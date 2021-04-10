@@ -33,6 +33,10 @@ pattern Fail :: Domain.Type -> Domain.Value
 pattern Fail type_ =
   Domain.Neutral (Domain.Global FailName) (Domain.Apps (Tsil.Empty Tsil.:> (Explicit, type_)))
 
+pattern UnitName :: Name.Qualified
+pattern UnitName =
+  "Sixten.Builtin.Unit"
+
 fail :: Syntax.Type v -> Syntax.Term v
 fail =
   Syntax.App (Syntax.Global Builtin.FailName) Explicit
