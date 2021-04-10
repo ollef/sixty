@@ -43,7 +43,7 @@ data Instruction basicBlock
   | SaveStack !Local
   | RestoreStack !Operand
   | HeapAllocate !Local !Operand
-  | Switch !Operand [(Int, basicBlock)] basicBlock
+  | Switch !(Voided Local) !Operand [(Integer, basicBlock)] basicBlock
   deriving (Show, Generic, Persist, Hashable, Functor)
 
 data Definition basicBlock
@@ -127,8 +127,12 @@ instance Pretty basicBlock => Pretty (Instruction basicBlock) where
         voidInstr "restorestack" [o]
       HeapAllocate dst size ->
         returningInstr dst "gcmalloc" [size]
-      Switch scrutinee branches default_ ->
-        "switch" <+> pretty scrutinee <> line
+      Switch result scrutinee branches default_ ->
+        case result of
+          Void -> ""
+          NonVoid local -> pretty local <+> "= "
+          <> "switch" <+> pretty scrutinee
+          <> line
           <> indent
             2
             ( vsep
@@ -252,7 +256,9 @@ instructionLocals instruction =
       operandLocals o
     HeapAllocate l o ->
       (HashSet.singleton l, mempty) <> operandLocals o
-    Switch o brs d ->
+    Switch (NonVoid l) o brs d ->
+      (HashSet.singleton l, mempty) <> operandLocals o <> foldMap (basicBlockLocals . snd) brs <> basicBlockLocals d
+    Switch Void o brs d ->
       operandLocals o <> foldMap (basicBlockLocals . snd) brs <> basicBlockLocals d
 
 operandLocals :: Operand -> (HashSet Local, HashSet Local)
