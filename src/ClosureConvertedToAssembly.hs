@@ -350,7 +350,7 @@ generateGlobal env name representation term = do
         Assembly.LocalOperand globalPointer
   case generateKnownConstant term of
     Just knownConstant ->
-      pure $ Just $ Assembly.KnownConstantDefinition representation knownConstant
+      pure $ Just $ Assembly.KnownConstantDefinition representation knownConstant True
     Nothing ->
       case representation of
         Representation.Empty -> do

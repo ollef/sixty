@@ -168,7 +168,7 @@ assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
         , _basicBlocks = mempty
         }
       $ case definition of
-        Assembly.KnownConstantDefinition representation (Literal.Integer value) -> do
+        Assembly.KnownConstantDefinition representation (Literal.Integer value) isConstant -> do
           let type_ = llvmType $ globalOperandType representation
           pure
             [ LLVM.globalVariableDefaults
@@ -182,7 +182,7 @@ assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
                         , integerValue = value
                         }
                 , LLVM.Global.linkage = linkage
-                , LLVM.Global.isConstant = True
+                , LLVM.Global.isConstant = isConstant
                 }
             ]
         Assembly.ConstantDefinition representation parameters basicBlock -> do
