@@ -10,6 +10,7 @@ import Boxity
 import qualified Builtin
 import ClosureConverted.Context (Context)
 import qualified ClosureConverted.Context as Context
+import qualified ClosureConverted.Domain as Domain
 import qualified ClosureConverted.Evaluation as Evaluation
 import qualified ClosureConverted.Readback as Readback
 import qualified ClosureConverted.Representation
@@ -621,7 +622,10 @@ storeTerm env term returnLocation returnType =
         Unboxed ->
           foldM_ go returnLocation tagArgs
         Boxed -> do
-          size <- boxedConstructorSize env con params
+          typeValue <- Builder $ lift $ boxedConstructorSize (Context.toEnvironment $ _context env) con params args
+          type_ <- Builder $ lift $ Readback.readback (Context.toEnvironment $ _context env) typeValue
+          type' <- generateType env type_
+          size <- sizeOfType type'
           heapLocation <- heapAllocate "constructor_heap_object" size
           foldM_ go heapLocation tagArgs
           store returnLocation heapLocation
@@ -712,9 +716,19 @@ fetchBoxity name = do
       panic "ClosureConvertedToAssembly.fetchBoxity"
 
 boxedConstructorSize ::
-  Environment v ->
+  Domain.Environment v ->
   Name.QualifiedConstructor ->
   [Syntax.Term v] ->
-  m Assembly.Operand
-boxedConstructorSize =
-  panic "bcs"
+  [Syntax.Term v] ->
+  M Domain.Value
+boxedConstructorSize env con params args = do
+  tele <- fetch $ Query.ClosureConvertedConstructorType con
+  params' <- mapM (Evaluation.evaluate env) params
+  args' <- mapM (Evaluation.evaluate env) args
+  maybeResult <- Evaluation.applyTelescope env (Telescope.fromVoid tele) params' $ \env' type_ -> do
+    type' <- Evaluation.evaluate env' type_
+    size <- ClosureConverted.Representation.compileBoxedConstructorFields env' type' args'
+    Evaluation.evaluate env' size
+  case maybeResult of
+    Nothing -> panic "boxedConstructorSize: Data params length mismatch"
+    Just result -> pure result

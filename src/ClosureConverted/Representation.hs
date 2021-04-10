@@ -200,11 +200,11 @@ compileData env boxity (Syntax.ConstructorDefinitions constructors) =
           pure $ Syntax.Global (Name.Lifted Builtin.EmptyRepresentationName 0)
         [(_, type_)] -> do
           type' <- Evaluation.evaluate env type_
-          compileConstructorFields env type'
+          compileUnboxedConstructorFields env type'
         constructorsList -> do
           compiledConstructorFields <- forM constructorsList $ \(_, type_) -> do
             type' <- Evaluation.evaluate env type_
-            compileConstructorFields env type'
+            compileUnboxedConstructorFields env type'
           pure $
             Syntax.Apply
               (Name.Lifted Builtin.AddRepresentationName 0)
@@ -228,15 +228,15 @@ compileParameterisedData env boxity tele =
       (env', _) <- Environment.extend env
       Telescope.Extend name type_ plicity <$> compileParameterisedData env' boxity tele'
 
-compileConstructorFields :: Environment v -> Domain.Type -> M (Syntax.Term v)
-compileConstructorFields env type_ = do
+compileUnboxedConstructorFields :: Environment v -> Domain.Type -> M (Syntax.Term v)
+compileUnboxedConstructorFields env type_ = do
   type' <- Evaluation.forceHead type_
   case type' of
     Domain.Pi _name fieldType closure -> do
       fieldType' <- Readback.readback env fieldType
       value <- Domain.Lazy <$> lazy (panic "unboxed data representation depends on field") -- TODO real error
       rest <- Evaluation.evaluateClosure closure value
-      rest' <- compileConstructorFields env rest
+      rest' <- compileUnboxedConstructorFields env rest
       pure $ Syntax.Apply (Name.Lifted Builtin.AddRepresentationName 0) [fieldType', rest']
     Domain.Neutral {} ->
       empty
@@ -250,6 +250,35 @@ compileConstructorFields env type_ = do
       empty
     Domain.Function {} ->
       empty
+  where
+    empty =
+      pure $ Syntax.Global (Name.Lifted Builtin.EmptyRepresentationName 0)
+
+compileBoxedConstructorFields :: Environment v -> Domain.Type -> [Domain.Value] -> M (Syntax.Term v)
+compileBoxedConstructorFields env type_ args = do
+  type' <- Evaluation.forceHead type_
+  case (type', args) of
+    (Domain.Pi _name fieldType closure, arg : args') -> do
+      fieldType' <- Readback.readback env fieldType
+      rest <- Evaluation.evaluateClosure closure arg
+      rest' <- compileBoxedConstructorFields env rest args'
+      pure $ Syntax.Apply (Name.Lifted Builtin.AddRepresentationName 0) [fieldType', rest']
+    (Domain.Pi {}, []) ->
+      panic "compileBoxedConstructorFields: constructor type field mismatch"
+    (Domain.Neutral {}, []) ->
+      empty
+    (Domain.Con {}, []) ->
+      empty
+    (Domain.Lit {}, []) ->
+      empty
+    (Domain.Glued {}, []) ->
+      empty
+    (Domain.Lazy {}, []) ->
+      empty
+    (Domain.Function {}, []) ->
+      empty
+    (_, _ : _) ->
+      panic "compileBoxedConstructorFields: constructor type field mismatch"
   where
     empty =
       pure $ Syntax.Global (Name.Lifted Builtin.EmptyRepresentationName 0)
