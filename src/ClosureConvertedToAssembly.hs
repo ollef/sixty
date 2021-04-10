@@ -19,6 +19,7 @@ import qualified ClosureConverted.TypeOf as TypeOf
 import qualified Core.Syntax
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
+import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import Index
@@ -66,6 +67,9 @@ subBuilder (Builder s) = do
 emit :: Assembly.Instruction Assembly.BasicBlock -> Builder ()
 emit instruction =
   modify $ \s -> s {_instructions = _instructions s Tsil.:> instruction}
+
+tagBytes :: Num a => a
+tagBytes = 8
 
 -------------------------------------------------------------------------------
 
@@ -663,8 +667,78 @@ storeTerm env term returnLocation returnType =
       panic "st c" -- TODO
     Syntax.ApplyClosure {} ->
       panic $ "st ac " <> show term -- TODO
-    Syntax.Case {} ->
-      panic "st case" -- TODO
+    Syntax.Case scrutinee branches maybeDefaultBranch -> do
+      let defaultBranch =
+            fromMaybe
+              (Syntax.Apply (Name.Lifted Builtin.FailName 0) [Syntax.Global $ Name.Lifted Builtin.UnitName 0])
+              maybeDefaultBranch
+      scrutineeType <- typeOf env scrutinee
+      (scrutinee', deallocateScrutinee) <- generateTypedTerm env scrutinee scrutineeType
+      case branches of
+        Syntax.ConstructorBranches typeName constructorBranches -> do
+          boxity <- fetchBoxity typeName
+          taggedBranches <- forM (OrderedHashMap.toList constructorBranches) $ \(constructor, branch) -> do
+            maybeTag <- fetch $ Query.ConstructorTag $ Name.QualifiedConstructor typeName constructor
+            case maybeTag of
+              Nothing -> panic "ClosureConvertedToAssembly: No support for tagless constructors yet" -- TODO
+              Just tag -> pure (tag, branch)
+
+          (scrutinee'', deallocateScrutinee') <- case boxity of
+            Unboxed ->
+              forceIndirect scrutinee'
+            Boxed -> do
+              directScrutinee <- forceDirect scrutinee'
+              heapScrutinee <- load "heap_scrutinee" directScrutinee
+              pure (heapScrutinee, pure ())
+          firstConstructorField <- add "constructor_field" scrutinee'' $ Assembly.Lit $ Literal.Integer tagBytes
+          constructorTag <- load "constructor_tag" scrutinee''
+          void $
+            switch
+              Assembly.Void
+              constructorTag
+              [ ( fromIntegral branchTag
+                , do
+                    storeBranch env firstConstructorField branch returnLocation returnType
+                    deallocateScrutinee'
+                    sequence_ deallocateScrutinee
+                    pure Assembly.Void
+                )
+              | (branchTag, branch) <- taggedBranches
+              ]
+              ( do
+                  deallocateScrutinee'
+                  sequence_ deallocateScrutinee
+                  storeTerm env defaultBranch returnLocation returnType
+                  pure Assembly.Void
+              )
+        Syntax.LiteralBranches literalBranches -> do
+          directScrutinee <- forceDirect scrutinee'
+          sequence_ deallocateScrutinee
+          void $
+            switch
+              Assembly.Void
+              directScrutinee
+              [ ( lit
+                , do
+                    storeTerm env branch returnLocation returnType
+                    pure Assembly.Void
+                )
+              | (Literal.Integer lit, branch) <- OrderedHashMap.toList literalBranches
+              ]
+              ( do
+                  storeTerm env defaultBranch returnLocation returnType
+                  pure Assembly.Void
+              )
+
+storeBranch :: Environment v -> Assembly.Operand -> Telescope Name Syntax.Type Syntax.Term v -> Assembly.Operand -> Operand -> Builder ()
+storeBranch env constructorField tele returnLocation returnType = case tele of
+  Telescope.Extend _ type_ _plicity tele' -> do
+    type' <- generateType env type_
+    typeSize <- sizeOfType type'
+    constructorField' <- add "constructor_field" constructorField typeSize
+    env' <- extend env type_ $ Indirect constructorField
+    storeBranch env' constructorField' tele' returnLocation returnType
+  Telescope.Empty branch -> storeTerm env branch returnLocation returnType
 
 generateArguments :: Environment v -> [(Syntax.Term v, Representation)] -> Builder ([Assembly.Operand], Builder ())
 generateArguments env arguments = do
