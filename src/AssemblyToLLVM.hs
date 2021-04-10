@@ -470,7 +470,7 @@ assembleInstruction instruction =
             }
     Assembly.SaveStack destination -> do
       destination' <- activateLocal WordPointer destination
-      destination'' <- freshName "destination"
+      destination'' <- freshName "stack_byte_pointer"
       let stackSaveName =
             LLVM.Name "llvm.stacksave"
 
@@ -509,7 +509,7 @@ assembleInstruction instruction =
             }
     Assembly.RestoreStack operand -> do
       operand' <- assembleOperand WordPointer operand
-      operand'' <- freshName "operand"
+      operand'' <- freshName "stack_byte_pointer"
       let stackRestoreName =
             LLVM.Name "llvm.stackrestore"
 
