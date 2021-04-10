@@ -314,17 +314,36 @@ generateModuleInit ::
 generateModuleInit moduleName definitions =
   runBuilder $ do
     globalPointer <- freshLocal "globals"
-    moduleHeader <- fetch $ Query.ModuleHeader moduleName
-    globalPointer' <- foldM initImport (Assembly.LocalOperand globalPointer) $ Module._imports moduleHeader
-    globalPointer'' <- foldM initDefinition globalPointer' definitions
+    inited <- load "inited" $ Assembly.GlobalConstant initedName initedRepresentation
+    globalPointer' <-
+      switch
+        (Assembly.NonVoid "globals")
+        inited
+        [
+          ( 0
+          , do
+              initGlobal initedName initedRepresentation $ Assembly.Lit $ Literal.Integer 1
+              moduleHeader <- fetch $ Query.ModuleHeader moduleName
+              globalPointer' <- foldM initImport (Assembly.LocalOperand globalPointer) $ Module._imports moduleHeader
+              globalPointer'' <- foldM initDefinition globalPointer' definitions
+              pure $ Assembly.NonVoid globalPointer''
+          )
+        ]
+        $ pure $ Assembly.NonVoid $ Assembly.LocalOperand globalPointer
     instructions <- gets _instructions
     pure
       [
         ( moduleInitName moduleName
-        , Assembly.FunctionDefinition [globalPointer] $ Assembly.BasicBlock (toList instructions) $ Assembly.NonVoid globalPointer''
+        , Assembly.FunctionDefinition [globalPointer] $ Assembly.BasicBlock (toList instructions) globalPointer'
+        )
+      ,
+        ( initedName
+        , Assembly.KnownConstantDefinition initedRepresentation (Literal.Integer 0) False
         )
       ]
   where
+    initedName = moduleInitedName moduleName
+    initedRepresentation = Representation.Direct Representation.Doesn'tContainHeapPointers
     initImport globalPointer import_ =
       callDirect "globals" (moduleInitName $ Module._module import_) [globalPointer]
 
