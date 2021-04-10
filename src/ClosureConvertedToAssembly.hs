@@ -27,7 +27,7 @@ import qualified Module
 import Monad
 import Name (Name (Name))
 import qualified Name
-import Protolude hiding (IntMap, local, moduleName, typeOf)
+import Protolude hiding (IntMap, local, moduleName, state, typeOf)
 import Query (Query)
 import qualified Query
 import Representation (Representation)
@@ -54,6 +54,13 @@ runBuilder (Builder s) =
       { _fresh = 0
       , _instructions = mempty
       }
+
+subBuilder :: Builder a -> Builder (a, [Assembly.Instruction Assembly.BasicBlock])
+subBuilder (Builder s) = do
+  state <- get
+  (a, state') <- Builder $ lift $ runStateT s state {_instructions = mempty}
+  put state' {_instructions = _instructions state}
+  pure (a, toList $ _instructions state')
 
 emit :: Assembly.Instruction Assembly.BasicBlock -> Builder ()
 emit instruction =
