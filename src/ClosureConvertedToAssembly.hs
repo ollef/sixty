@@ -285,7 +285,10 @@ generateModuleInits moduleNames =
     go globalPointer moduleName =
       callDirect "globals" (moduleInitName moduleName) [globalPointer]
 
-generateModuleInit :: Name.Module -> [(Name.Lifted, Assembly.Definition Assembly.BasicBlock)] -> M (Name.Lifted, Assembly.Definition Assembly.BasicBlock)
+generateModuleInit ::
+  Name.Module ->
+  [(Name.Lifted, Assembly.Definition Assembly.BasicBlock)] ->
+  M [(Name.Lifted, Assembly.Definition Assembly.BasicBlock)]
 generateModuleInit moduleName definitions =
   runBuilder $ do
     globalPointer <- freshLocal "globals"
@@ -294,9 +297,11 @@ generateModuleInit moduleName definitions =
     globalPointer'' <- foldM initDefinition globalPointer' definitions
     instructions <- gets _instructions
     pure
-      ( moduleInitName moduleName
-      , Assembly.FunctionDefinition [globalPointer] $ Assembly.BasicBlock (toList instructions) $ Assembly.NonVoid globalPointer''
-      )
+      [
+        ( moduleInitName moduleName
+        , Assembly.FunctionDefinition [globalPointer] $ Assembly.BasicBlock (toList instructions) $ Assembly.NonVoid globalPointer''
+        )
+      ]
   where
     initImport globalPointer import_ =
       callDirect "globals" (moduleInitName $ Module._module import_) [globalPointer]

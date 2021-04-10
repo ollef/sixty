@@ -473,10 +473,10 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
           forM (toList names) $ \name -> do
             maybeAssembly <- fetch $ Assembly name
             pure $ toList $ (name,) <$> maybeAssembly
-        moduleInitDef <-
+        moduleInitDefs <-
           runM $
             ClosureConvertedToAssembly.generateModuleInit module_ assemblyDefinitions
-        pure $ moduleInitDef : assemblyDefinitions
+        pure $ moduleInitDefs <> assemblyDefinitions
     LLVMModule module_ ->
       noError $ do
         assemblyDefinitions <- fetch $ AssemblyModule module_
