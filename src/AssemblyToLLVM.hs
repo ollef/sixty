@@ -260,7 +260,7 @@ assembleName =
 
 assembleBasicBlockReturningResult :: Assembly.BasicBlock -> Assembler ()
 assembleBasicBlockReturningResult (Assembly.BasicBlock instructions result) = do
-  blockName <- freshName "block"
+  blockName <- freshName "start"
   startBlock blockName
   mapM_ assembleInstruction instructions
   returnResult result
