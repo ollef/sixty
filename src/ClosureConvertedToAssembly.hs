@@ -690,7 +690,8 @@ storeTerm env term returnLocation returnType =
               directScrutinee <- forceDirect scrutinee'
               heapScrutinee <- load "heap_scrutinee" directScrutinee
               pure (heapScrutinee, pure ())
-          firstConstructorField <- add "constructor_field" scrutinee'' $ Assembly.Lit $ Literal.Integer tagBytes
+          let firstConstructorFieldBuilder nameSuggestion =
+                add nameSuggestion scrutinee'' $ Assembly.Lit $ Literal.Integer tagBytes
           constructorTag <- load "constructor_tag" scrutinee''
           void $
             switch
@@ -698,7 +699,7 @@ storeTerm env term returnLocation returnType =
               constructorTag
               [ ( fromIntegral branchTag
                 , do
-                    storeBranch env firstConstructorField branch returnLocation returnType
+                    storeBranch env firstConstructorFieldBuilder branch returnLocation returnType
                     deallocateScrutinee'
                     sequence_ deallocateScrutinee
                     pure Assembly.Void
@@ -730,15 +731,25 @@ storeTerm env term returnLocation returnType =
                   pure Assembly.Void
               )
 
-storeBranch :: Environment v -> Assembly.Operand -> Telescope Name Syntax.Type Syntax.Term v -> Assembly.Operand -> Operand -> Builder ()
-storeBranch env constructorField tele returnLocation returnType = case tele of
-  Telescope.Extend _ type_ _plicity tele' -> do
-    type' <- generateType env type_
-    typeSize <- sizeOfType type'
-    constructorField' <- add "constructor_field" constructorField typeSize
-    env' <- extend env type_ $ Indirect constructorField
-    storeBranch env' constructorField' tele' returnLocation returnType
-  Telescope.Empty branch -> storeTerm env branch returnLocation returnType
+storeBranch ::
+  Environment v ->
+  (Assembly.NameSuggestion -> Builder Assembly.Operand) ->
+  Telescope Name Syntax.Type Syntax.Term v ->
+  Assembly.Operand ->
+  Operand ->
+  Builder ()
+storeBranch env constructorFieldBuilder tele returnLocation returnType =
+  case tele of
+    Telescope.Extend (Name name) type_ _plicity tele' -> do
+      constructorField <- constructorFieldBuilder $ Assembly.NameSuggestion name
+      let nextConstructorFieldBuilder nameSuggestion = do
+            type' <- generateType env type_
+            typeSize <- sizeOfType type'
+            add nameSuggestion constructorField typeSize
+      env' <- extend env type_ $ Indirect constructorField
+      storeBranch env' nextConstructorFieldBuilder tele' returnLocation returnType
+    Telescope.Empty branch ->
+      storeTerm env branch returnLocation returnType
 
 generateArguments :: Environment v -> [(Syntax.Term v, Representation)] -> Builder ([Assembly.Operand], Builder ())
 generateArguments env arguments = do
