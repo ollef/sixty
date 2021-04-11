@@ -630,7 +630,8 @@ storeTerm env term returnLocation returnType =
           type_ <- Builder $ lift $ Readback.readback (Context.toEnvironment $ _context env) typeValue
           type' <- generateType env type_
           size <- sizeOfType type'
-          heapLocation <- heapAllocate "constructor_heap_object" size
+          sizeWithTag <- add "size_with_tag" size $ Assembly.Lit $ Literal.Integer tagBytes
+          heapLocation <- heapAllocate "constructor_heap_object" sizeWithTag
           foldM_ go heapLocation tagArgs
           store returnLocation heapLocation
     Syntax.Lit lit ->
