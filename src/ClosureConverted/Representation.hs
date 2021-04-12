@@ -193,7 +193,7 @@ compileData :: Environment v -> Boxity -> Syntax.ConstructorDefinitions v -> M (
 compileData env boxity (Syntax.ConstructorDefinitions constructors) =
   case boxity of
     Boxed ->
-      pure $ Syntax.Global (Name.Lifted Builtin.IntName 0)
+      pure $ Syntax.Global (Name.Lifted Builtin.WordRepresentationName 0)
     Unboxed ->
       case OrderedHashMap.toList constructors of
         [] ->
