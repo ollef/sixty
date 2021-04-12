@@ -97,6 +97,26 @@ typeRepresentation env type_ =
     Domain.Neutral (Domain.Global (Name.Lifted Builtin.IntName 0)) Tsil.Empty ->
       pure $ Representation.Direct Representation.Doesn'tContainHeapPointers
     Domain.Neutral (Domain.Global global) (Domain.groupSpine -> [Domain.GroupedApps args]) -> do
+      globalCase global args
+    Domain.Neutral (Domain.Global global) (Domain.groupSpine -> []) -> do
+      globalCase global []
+    Domain.Neutral {} ->
+      pure $ Representation.Indirect Representation.MightContainHeapPointers
+    Domain.Con {} ->
+      pure $ Representation.Indirect Representation.MightContainHeapPointers
+    Domain.Lit {} ->
+      pure $ Representation.Indirect Representation.MightContainHeapPointers
+    Domain.Glued _ _ type' ->
+      typeRepresentation env type'
+    Domain.Lazy lazyType -> do
+      type' <- force lazyType
+      typeRepresentation env type'
+    Domain.Pi {} ->
+      pure $ Representation.Direct Representation.MightContainHeapPointers
+    Domain.Function {} ->
+      pure $ Representation.Direct Representation.Doesn'tContainHeapPointers
+  where
+    globalCase global args = do
       -- TODO caching
       maybeDefinition <- fetch $ Query.ClosureConverted global
       case maybeDefinition of
@@ -126,21 +146,6 @@ typeRepresentation env type_ =
             Syntax.ParameterisedDataDefinition Unboxed tele -> do
               maybeResult <- Evaluation.applyTelescope env (Telescope.fromVoid tele) args unboxedDataRepresentation
               pure $ fromMaybe (Representation.Indirect Representation.MightContainHeapPointers) maybeResult
-    Domain.Neutral {} ->
-      pure $ Representation.Indirect Representation.MightContainHeapPointers
-    Domain.Con {} ->
-      pure $ Representation.Indirect Representation.MightContainHeapPointers
-    Domain.Lit {} ->
-      pure $ Representation.Indirect Representation.MightContainHeapPointers
-    Domain.Glued _ _ type' ->
-      typeRepresentation env type'
-    Domain.Lazy lazyType -> do
-      type' <- force lazyType
-      typeRepresentation env type'
-    Domain.Pi {} ->
-      pure $ Representation.Direct Representation.MightContainHeapPointers
-    Domain.Function {} ->
-      pure $ Representation.Direct Representation.Doesn'tContainHeapPointers
 
 unboxedDataRepresentation :: Environment v -> Syntax.ConstructorDefinitions v -> M Representation
 unboxedDataRepresentation env (Syntax.ConstructorDefinitions constructors) = do
