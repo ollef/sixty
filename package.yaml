@@ -98,6 +98,7 @@ tests:
       - directory
       - filepath
       - prettyprinter
+      - process
       - rock
       - sixty
       - tasty

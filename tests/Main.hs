@@ -3,9 +3,12 @@
 
 module Main where
 
+import qualified Command.Compile
+import qualified Compiler
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
+import Data.String (String)
 import qualified Data.Text as Text
 import Data.Text.Prettyprint.Doc
 import qualified Driver
@@ -19,6 +22,7 @@ import qualified Query
 import Rock
 import System.Directory
 import System.FilePath
+import System.Process
 import qualified Test.Tasty as Tasty
 import qualified Test.Tasty.HUnit as Tasty
 
@@ -26,12 +30,14 @@ main :: IO ()
 main = do
   singlesDirectory <- canonicalizePath "tests/singles"
   multisDirectory <- canonicalizePath "tests/multis"
+  compilationDirectory <- canonicalizePath "tests/compilation"
 
   let isSourceFile =
         (== ".vix") . takeExtension
 
   singleFiles <- listDirectoryRecursive isSourceFile singlesDirectory
   multiFiles <- listDirectoriesWithFilesMatching isSourceFile multisDirectory
+  compilationFiles <- listDirectoryRecursive isSourceFile compilationDirectory
   Tasty.defaultMain $
     Tasty.testGroup
       "tests"
@@ -43,6 +49,14 @@ main = do
           foreach multiFiles $ \(dir, inputFiles) ->
             Tasty.testCase (drop (length multisDirectory + 1) dir) $
               checkFiles [dir] inputFiles
+      , Tasty.testGroup "compilation" $
+          foreach compilationFiles $ \inputFile ->
+            Tasty.testCase (drop (length compilationDirectory + 1) $ dropExtension inputFile) $
+              compileFiles Nothing [takeDirectory inputFile] [inputFile]
+      , Tasty.testGroup "optimised compilation" $
+          foreach compilationFiles $ \inputFile ->
+            Tasty.testCase (drop (length compilationDirectory + 1) $ dropExtension inputFile) $
+              compileFiles (Just "2") [takeDirectory inputFile] [inputFile]
       ]
 
 checkFiles :: [FileSystem.Directory] -> [FilePath] -> IO ()
@@ -63,6 +77,32 @@ checkFiles sourceDirectories files = do
         moduleErrs =
           filter ((filePath ==) . Error.Hydrated._filePath . fst) errs
     verifyErrors filePath moduleErrs expectedErrors
+
+compileFiles :: Maybe String -> [FileSystem.Directory] -> [FilePath] -> IO ()
+compileFiles optimisationLevel sourceDirectories files = do
+  let prettyError err = do
+        p <- Error.Hydrated.pretty err
+        pure (err, p)
+  Command.Compile.withOutputFile Nothing $ \outputExecutableFile ->
+    Command.Compile.withAssemblyDirectory Nothing $ \assemblyDir -> do
+      (moduleSources, errs) <- Driver.runTask sourceDirectories (HashSet.fromList files) prettyError $ do
+        Driver.checkAll
+        Compiler.compile assemblyDir False outputExecutableFile optimisationLevel
+        forM files $ \filePath -> do
+          moduleSource <- fetch $ Query.FileText filePath
+          pure (filePath, moduleSource)
+
+      executableOutput <- readProcess outputExecutableFile [] []
+      forM_ moduleSources $ \(filePath, moduleSource) -> do
+        let expectedErrors =
+              expectedErrorsFromSource moduleSource
+
+            moduleErrs =
+              filter ((filePath ==) . Error.Hydrated._filePath . fst) errs
+        verifyErrors filePath moduleErrs expectedErrors
+        let expectedOutput = expectedOutputFromSource moduleSource
+        unless (null expectedOutput) $ do
+          verifyExecutableOutput filePath (toS executableOutput) $ Text.unlines expectedOutput
 
 verifyErrors :: FilePath -> [(Error.Hydrated, Doc ann)] -> HashMap Int [ExpectedError] -> IO ()
 verifyErrors filePath errs expectedErrors = do
@@ -158,9 +198,7 @@ errorToExpectedError err =
         Error.ImplicitApplicationMismatch {} ->
           ImplicitApplicationMismatch
 
-expectedErrorsFromSource ::
-  Text ->
-  HashMap Int [ExpectedError]
+expectedErrorsFromSource :: Text -> HashMap Int [ExpectedError]
 expectedErrorsFromSource sourceText =
   HashMap.fromListWith (<>) $ concatMap (map (second pure) . go) $ zip [0 ..] $ Text.lines sourceText
   where
@@ -209,6 +247,27 @@ expectedErrorsFromSource sourceText =
               mempty
         _ ->
           mempty
+
+verifyExecutableOutput :: FilePath -> Text -> Text -> IO ()
+verifyExecutableOutput filePath output expectedOutput =
+  when (output /= expectedOutput) $
+    Tasty.assertFailure $
+      toS filePath <> ":\n"
+        <> "Expected output:\n\n"
+        <> toS expectedOutput
+        <> "\nbut got:\n\n"
+        <> toS output
+
+expectedOutputFromSource :: Text -> [Text]
+expectedOutputFromSource sourceText =
+  concatMap go $ Text.lines sourceText
+  where
+    go lineText =
+      case Text.splitOn "-- prints " lineText of
+        [_, expectedOutput] ->
+          [expectedOutput]
+        _ ->
+          []
 
 listDirectoryRecursive :: (FilePath -> Bool) -> FilePath -> IO [FilePath]
 listDirectoryRecursive p dir = do
