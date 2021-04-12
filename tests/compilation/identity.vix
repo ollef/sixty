@@ -18,4 +18,4 @@ useId2 = printInt (id2 611) -- prints 611
 
 useId3 = printInt (id3 612) -- prints 612
 
-useId4 = printInt (intId 613) -- prints 613
+useIntId = printInt (intId 613) -- prints 613
