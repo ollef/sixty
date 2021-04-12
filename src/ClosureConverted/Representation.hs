@@ -154,9 +154,9 @@ unboxedDataRepresentation env (Syntax.ConstructorDefinitions constructors) = do
         constructorFieldRepresentation env type' mempty
       | (_, type_) <- constructorsList
       ]
-  pure $ case (constructorsList, fieldRepresentation) of
-    ([], _) -> Representation.Empty
-    ([_], _) -> fieldRepresentation
+  pure $ case constructorsList of
+    [] -> Representation.Empty
+    [_] -> fieldRepresentation
     _ -> constructorTagRepresentation <> fieldRepresentation
   where
     constructorTagRepresentation =
