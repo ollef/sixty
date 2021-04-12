@@ -255,6 +255,7 @@ forceIndirect operand =
     Direct directOperand -> do
       stack <- saveStack
       operand' <- stackAllocate (operandNameSuggestion directOperand) pointerBytesOperand
+      store operand' directOperand
       pure (operand', restoreStack stack)
     Indirect indirectOperand ->
       pure (indirectOperand, pure ())
