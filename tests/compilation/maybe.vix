@@ -1,0 +1,8 @@
+data Maybe a = Nothing | Just a
+
+withDefault : forall a. a -> Maybe a -> a
+withDefault default Nothing = default
+withDefault _ (Just a) = a
+
+test1 = printInt (withDefault 610 Nothing) -- prints 610
+test2 = printInt (withDefault 0 (Just 611)) -- prints 611

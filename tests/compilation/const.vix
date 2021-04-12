@@ -1,0 +1,5 @@
+const : forall a b. a -> b -> a
+const a _ = a
+
+singleUse = printInt (const 610 1) -- prints 610
+nestedUse = printInt (const 611 (const 2 3)) -- prints 611

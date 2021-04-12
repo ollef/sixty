@@ -1,0 +1,21 @@
+id : forall a. a -> a
+id x = x
+
+id2 : forall a. a -> a
+id2 x = id x
+
+id3 : forall a. a -> a
+id3 x =
+  let result = id2 x
+  in result
+
+intId : Int -> Int
+intId x = x
+
+useId = printInt (id 610) -- prints 610
+
+useId2 = printInt (id2 611) -- prints 611
+
+useId3 = printInt (id3 612) -- prints 612
+
+useId4 = printInt (intId 613) -- prints 613
