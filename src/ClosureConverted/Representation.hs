@@ -37,8 +37,7 @@ signature (Name.Lifted name _) def =
         let env' =
               Context.toEnvironment context'
         body' <- Evaluation.evaluate env' body
-        type_ <- TypeOf.typeOf context' body'
-        returnRepresentation <- typeRepresentation env' type_
+        returnRepresentation <- typeRepresentation env' body'
         pure $ Representation.FunctionSignature parameterRepresentations returnRepresentation
     Syntax.TypeDeclaration type_ -> do
       type' <- Evaluation.evaluate env type_
