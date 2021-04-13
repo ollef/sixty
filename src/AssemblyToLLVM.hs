@@ -25,13 +25,11 @@ import qualified LLVM.AST.Type as LLVM.Type
 import qualified Literal
 import qualified Name
 import Protolude hiding (IntMap, cast, local, moduleName)
-import Representation (Representation)
-import qualified Representation
 
 type Assembler = State AssemblerState
 
 data AssemblerState = AssemblerState
-  { _locals :: HashMap Assembly.Local (LLVM.Operand, OperandType)
+  { _locals :: HashMap Assembly.Local (LLVM.Operand, Assembly.Type)
   , _usedGlobals :: HashMap LLVM.Name LLVM.Global
   , _usedNames :: HashMap ShortByteString Int
   , _instructions :: Tsil (LLVM.Named LLVM.Instruction)
@@ -42,45 +40,41 @@ data AssemblerState = AssemblerState
 data OperandType
   = Word
   | WordPointer
-  | FunctionPointer !Assembly.Return !Int
+  | FunctionPointer !Assembly.ReturnType [Assembly.Type]
   deriving (Eq, Show)
 
-globalOperandType :: Representation -> OperandType
-globalOperandType representation =
-  case representation of
-    Representation.Empty ->
-      WordPointer
-    Representation.Direct _ ->
-      Word
-    Representation.Indirect _ ->
-      WordPointer
+operandType :: Assembly.Type -> OperandType
+operandType type_ =
+  case type_ of
+    Assembly.Word -> Word
+    Assembly.WordPointer -> WordPointer
 
-llvmType :: OperandType -> LLVM.Type
-llvmType type_ =
+llvmOperandType :: OperandType -> LLVM.Type
+llvmOperandType type_ =
   case type_ of
     Word ->
       wordSizedInt
     WordPointer ->
       wordPointer
-    FunctionPointer return_ numArgs ->
+    FunctionPointer returnType argumentTypes ->
       LLVM.Type.ptr
         LLVM.FunctionType
-          { resultType = returnLLVMType return_
-          , argumentTypes = replicate numArgs wordPointer
+          { resultType = llvmReturnType returnType
+          , argumentTypes = llvmType <$> argumentTypes
           , isVarArg = False
           }
 
-resultLLVMType :: Assembly.Result -> LLVM.Type
-resultLLVMType result =
-  case result of
-    Assembly.Void -> LLVM.Type.void
-    Assembly.NonVoid _ -> wordPointer
+llvmType :: Assembly.Type -> LLVM.Type
+llvmType type_ =
+  case type_ of
+    Assembly.Word -> wordSizedInt
+    Assembly.WordPointer -> wordPointer
 
-returnLLVMType :: Assembly.Return -> LLVM.Type
-returnLLVMType result =
+llvmReturnType :: Assembly.ReturnType -> LLVM.Type
+llvmReturnType result =
   case result of
     Assembly.ReturnsVoid -> LLVM.Type.void
-    Assembly.Returns -> wordPointer
+    Assembly.Returns type_ -> llvmType type_
 
 alignment :: Num a => a
 alignment =
@@ -139,7 +133,7 @@ freshName (Assembly.NameSuggestion nameSuggestion) = do
       }
   pure $ LLVM.Name $ if i == 0 then bsName else bsName <> "$$" <> ShortByteString.toShort (toUtf8 (show i :: Text))
 
-activateLocal :: OperandType -> Assembly.Local -> Assembler LLVM.Name
+activateLocal :: Assembly.Type -> Assembly.Local -> Assembler LLVM.Name
 activateLocal type_ local@(Assembly.Local _ nameSuggestion) = do
   name <- freshName nameSuggestion
   modify $ \s ->
@@ -190,13 +184,13 @@ assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
         , _basicBlockName = panic "AssemblyToLLVM: not in a basic block"
         }
       $ case definition of
-        Assembly.KnownConstantDefinition representation (Literal.Integer value) isConstant -> do
-          let type_ = llvmType $ globalOperandType representation
+        Assembly.KnownConstantDefinition type_ (Literal.Integer value) isConstant -> do
+          let type' = llvmType type_
           pure
             [ LLVM.globalVariableDefaults
                 { LLVM.Global.name = assembleName name
                 , LLVM.Global.unnamedAddr = Just LLVM.GlobalAddr
-                , LLVM.Global.type' = type_
+                , LLVM.Global.type' = type'
                 , LLVM.Global.initializer =
                     Just
                       LLVM.Constant.Int
@@ -207,18 +201,17 @@ assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
                 , LLVM.Global.isConstant = isConstant
                 }
             ]
-        Assembly.ConstantDefinition representation parameters basicBlock -> do
-          parameters' <- mapM (activateLocal WordPointer) parameters
-          assembleBasicBlockReturningResult basicBlock
+        Assembly.ConstantDefinition type_ parameters basicBlock -> do
+          parameters' <- mapM (uncurry activateLocal) parameters
+          assembleBasicBlockReturningResult (Assembly.Returns Assembly.WordPointer) basicBlock
           basicBlocks <- gets _basicBlocks
-          let type_ =
-                llvmType $ globalOperandType representation
+          let type' = llvmType type_
           pure
             [ LLVM.globalVariableDefaults
                 { LLVM.Global.name = assembleName name
                 , LLVM.Global.unnamedAddr = Just LLVM.GlobalAddr
-                , LLVM.Global.type' = type_
-                , LLVM.Global.initializer = Just LLVM.Constant.Undef {constantType = type_}
+                , LLVM.Global.type' = type'
+                , LLVM.Global.initializer = Just LLVM.Constant.Undef {constantType = type'}
                 , LLVM.Global.linkage = linkage
                 }
             , LLVM.Global.functionDefaults
@@ -231,16 +224,16 @@ assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
                 , LLVM.Global.linkage = LLVM.Private
                 }
             ]
-        Assembly.FunctionDefinition parameters basicBlock@(Assembly.BasicBlock _ result) -> do
-          parameters' <- mapM (activateLocal WordPointer) parameters
-          assembleBasicBlockReturningResult basicBlock
+        Assembly.FunctionDefinition returnType parameters basicBlock -> do
+          parameters' <- mapM (uncurry activateLocal) parameters
+          assembleBasicBlockReturningResult returnType basicBlock
           basicBlocks <- gets _basicBlocks
           pure
             [ LLVM.Global.functionDefaults
                 { LLVM.Global.callingConvention = LLVM.CallingConvention.Fast
-                , LLVM.Global.returnType = resultLLVMType result
+                , LLVM.Global.returnType = llvmReturnType returnType
                 , LLVM.Global.name = assembleName name
-                , LLVM.Global.parameters = ([LLVM.Parameter wordPointer parameter [] | parameter <- parameters'], False)
+                , LLVM.Global.parameters = ([LLVM.Parameter (llvmType type_) parameter [] | ((type_, _), parameter) <- zip parameters parameters'], False)
                 , LLVM.Global.alignment = alignment
                 , LLVM.Global.basicBlocks = toList basicBlocks
                 , LLVM.Global.linkage = linkage
@@ -258,29 +251,31 @@ assembleName :: Name.Lifted -> LLVM.Name
 assembleName =
   LLVM.Name . ShortByteString.toShort . toUtf8 . Assembly.nameText
 
-assembleBasicBlockReturningResult :: Assembly.BasicBlock -> Assembler ()
-assembleBasicBlockReturningResult (Assembly.BasicBlock instructions result) = do
+assembleBasicBlockReturningResult :: Assembly.ReturnType -> Assembly.BasicBlock -> Assembler ()
+assembleBasicBlockReturningResult returnType (Assembly.BasicBlock instructions result) = do
   blockName <- freshName "start"
   startBlock blockName
   mapM_ assembleInstruction instructions
-  returnResult result
+  returnResult returnType result
 
-returnResult :: Assembly.Result -> Assembler ()
-returnResult result = do
-  case result of
-    Assembly.Void -> do
+returnResult :: Assembly.ReturnType -> Assembly.Result -> Assembler ()
+returnResult returnType_ result = do
+  case (returnType_, result) of
+    (Assembly.ReturnsVoid, Assembly.Void) -> do
       endBlock $ LLVM.Do LLVM.Ret {returnOperand = Nothing, metadata' = mempty}
-    Assembly.NonVoid res -> do
-      operand <- assembleOperand WordPointer res
+    (Assembly.Returns type_, Assembly.NonVoid res) -> do
+      operand <- assembleOperand type_ res
       endBlock $ LLVM.Do LLVM.Ret {returnOperand = Just operand, metadata' = mempty}
+    _ ->
+      panic "AssemblyToLLVM.returnResult: return type mismatch"
 
 assembleInstruction :: Assembly.Instruction -> Assembler ()
 assembleInstruction instruction =
   case instruction of
     Assembly.Copy destination source size -> do
-      destination' <- assembleOperand WordPointer destination
-      source' <- assembleOperand WordPointer source
-      size' <- assembleOperand Word size
+      destination' <- assembleOperand Assembly.WordPointer destination
+      source' <- assembleOperand Assembly.WordPointer source
+      size' <- assembleOperand Assembly.Word size
       destination'' <- freshName "destination"
       source'' <- freshName "source"
       let memcpyName =
@@ -342,10 +337,10 @@ assembleInstruction instruction =
             , functionAttributes = []
             , metadata = []
             }
-    Assembly.Call (Assembly.NonVoid destination) function arguments -> do
-      function' <- assembleOperand (FunctionPointer Assembly.Returns $ length arguments) function
-      arguments' <- mapM (assembleOperand WordPointer) arguments
-      destination' <- activateLocal WordPointer destination
+    Assembly.Call (Assembly.NonVoid (returnType, destination)) function arguments -> do
+      function' <- assembleOperand' (FunctionPointer (Assembly.Returns returnType) $ fst <$> arguments) function
+      arguments' <- mapM (uncurry assembleOperand) arguments
+      destination' <- activateLocal returnType destination
       emitInstruction $
         destination'
           LLVM.:= LLVM.Call
@@ -358,8 +353,8 @@ assembleInstruction instruction =
             , metadata = []
             }
     Assembly.Call Assembly.Void function arguments -> do
-      function' <- assembleOperand (FunctionPointer Assembly.ReturnsVoid $ length arguments) function
-      arguments' <- mapM (assembleOperand WordPointer) arguments
+      function' <- assembleOperand' (FunctionPointer Assembly.ReturnsVoid $ fst <$> arguments) function
+      arguments' <- mapM (uncurry assembleOperand) arguments
       emitInstruction $
         LLVM.Do
           LLVM.Call
@@ -372,8 +367,8 @@ assembleInstruction instruction =
             , metadata = []
             }
     Assembly.Load destination address -> do
-      address' <- assembleOperand WordPointer address
-      destination' <- activateLocal Word destination
+      address' <- assembleOperand Assembly.WordPointer address
+      destination' <- activateLocal Assembly.Word destination
       emitInstruction $
         destination'
           LLVM.:= LLVM.Load
@@ -384,8 +379,8 @@ assembleInstruction instruction =
             , metadata = []
             }
     Assembly.Store address value -> do
-      address' <- assembleOperand WordPointer address
-      value' <- assembleOperand Word value
+      address' <- assembleOperand Assembly.WordPointer address
+      value' <- assembleOperand Assembly.Word value
       emitInstruction $
         LLVM.Do
           LLVM.Store
@@ -396,37 +391,26 @@ assembleInstruction instruction =
             , alignment = alignment
             , metadata = []
             }
-    Assembly.InitGlobal global representation value -> do
-      let type_ =
-            globalOperandType representation
-
-          storeIt = do
-            value' <- assembleOperand type_ value
-            emitInstruction $
-              LLVM.Do
-                LLVM.Store
-                  { volatile = False
-                  , address =
-                      LLVM.ConstantOperand $
-                        LLVM.Constant.GlobalReference
-                          (LLVM.Type.ptr $ llvmType type_)
-                          (assembleName global)
-                  , value = value'
-                  , maybeAtomicity = Nothing
-                  , alignment = alignment
-                  , metadata = []
-                  }
-      case representation of
-        Representation.Empty ->
-          pure ()
-        Representation.Direct _ ->
-          storeIt
-        Representation.Indirect _ ->
-          storeIt
+    Assembly.InitGlobal global type_ value -> do
+      value' <- assembleOperand type_ value
+      emitInstruction $
+        LLVM.Do
+          LLVM.Store
+            { volatile = False
+            , address =
+                LLVM.ConstantOperand $
+                  LLVM.Constant.GlobalReference
+                    (LLVM.Type.ptr $ llvmType type_)
+                    (assembleName global)
+            , value = value'
+            , maybeAtomicity = Nothing
+            , alignment = alignment
+            , metadata = []
+            }
     Assembly.Add destination operand1 operand2 -> do
-      operand1' <- assembleOperand Word operand1
-      operand2' <- assembleOperand Word operand2
-      destination' <- activateLocal Word destination
+      operand1' <- assembleOperand Assembly.Word operand1
+      operand2' <- assembleOperand Assembly.Word operand2
+      destination' <- activateLocal Assembly.Word destination
       emitInstruction $
         destination'
           LLVM.:= LLVM.Add
@@ -437,9 +421,9 @@ assembleInstruction instruction =
             , metadata = []
             }
     Assembly.Sub destination operand1 operand2 -> do
-      operand1' <- assembleOperand Word operand1
-      operand2' <- assembleOperand Word operand2
-      destination' <- activateLocal Word destination
+      operand1' <- assembleOperand Assembly.Word operand1
+      operand2' <- assembleOperand Assembly.Word operand2
+      destination' <- activateLocal Assembly.Word destination
       emitInstruction $
         destination'
           LLVM.:= LLVM.Sub
@@ -450,9 +434,9 @@ assembleInstruction instruction =
             , metadata = []
             }
     Assembly.StackAllocate destination size -> do
-      destination' <- activateLocal WordPointer destination
+      destination' <- activateLocal Assembly.WordPointer destination
       destination'' <- freshName "destination"
-      size' <- assembleOperand Word size
+      size' <- assembleOperand Assembly.Word size
       emitInstruction $
         destination''
           LLVM.:= LLVM.Alloca
@@ -469,7 +453,7 @@ assembleInstruction instruction =
             , metadata = mempty
             }
     Assembly.SaveStack destination -> do
-      destination' <- activateLocal WordPointer destination
+      destination' <- activateLocal Assembly.WordPointer destination
       destination'' <- freshName "stack_byte_pointer"
       let stackSaveName =
             LLVM.Name "llvm.stacksave"
@@ -508,7 +492,7 @@ assembleInstruction instruction =
             , metadata = mempty
             }
     Assembly.RestoreStack operand -> do
-      operand' <- assembleOperand WordPointer operand
+      operand' <- assembleOperand Assembly.WordPointer operand
       operand'' <- freshName "stack_byte_pointer"
       let stackRestoreName =
             LLVM.Name "llvm.stackrestore"
@@ -555,7 +539,7 @@ assembleInstruction instruction =
     Assembly.HeapAllocate {} ->
       panic "AssemblyToLLVM: HeapAllocate" -- TODO
     Assembly.Switch destination scrutinee branches (Assembly.BasicBlock defaultBranchInstructions defaultBranchResult) -> do
-      scrutinee' <- assembleOperand Word scrutinee
+      scrutinee' <- assembleOperand Assembly.Word scrutinee
       branchLabels <- forM branches $ \(i, _) -> do
         branchLabel <- freshName $ Assembly.NameSuggestion $ "branch_" <> show i
         pure
@@ -578,21 +562,21 @@ assembleInstruction instruction =
       branchResultOperands <- forM (zip branchLabels branches) $ \((_, branchLabel), (_, Assembly.BasicBlock instructions result)) -> do
         startBlock branchLabel
         mapM_ assembleInstruction instructions
-        resultOperand <- forM result $ assembleOperand WordPointer
+        resultOperand <- forM result $ assembleOperand Assembly.WordPointer
         branchLabel' <- gets _basicBlockName
         endBlock $ LLVM.Do LLVM.Br {dest = afterSwitchLabel, metadata' = mempty}
         pure (resultOperand, branchLabel')
       startBlock defaultBranchLabel
       mapM_ assembleInstruction defaultBranchInstructions
-      defaultResultOperand <- forM defaultBranchResult $ assembleOperand WordPointer
+      defaultResultOperand <- forM defaultBranchResult $ assembleOperand Assembly.WordPointer
       defaultBranchLabel' <- gets _basicBlockName
       endBlock $ LLVM.Do LLVM.Br {dest = afterSwitchLabel, metadata' = mempty}
       startBlock afterSwitchLabel
       case destination of
         Assembly.Void ->
           pure ()
-        Assembly.NonVoid destinationLocal -> do
-          destination' <- activateLocal WordPointer destinationLocal
+        Assembly.NonVoid (destinationType, destinationLocal) -> do
+          destination' <- activateLocal destinationType destinationLocal
           let voidedIncomingValues = (defaultResultOperand, defaultBranchLabel') : branchResultOperands
               incomingValues =
                 case traverse (bitraverse identity pure) voidedIncomingValues of
@@ -601,18 +585,21 @@ assembleInstruction instruction =
           emitInstruction $
             destination'
               LLVM.:= LLVM.Phi
-                { type' = llvmType WordPointer
+                { type' = llvmType destinationType
                 , incomingValues = incomingValues
                 , metadata = mempty
                 }
 
-assembleOperand :: OperandType -> Assembly.Operand -> Assembler LLVM.Operand
-assembleOperand type_ operand =
+assembleOperand :: Assembly.Type -> Assembly.Operand -> Assembler LLVM.Operand
+assembleOperand = assembleOperand' . operandType
+
+assembleOperand' :: OperandType -> Assembly.Operand -> Assembler LLVM.Operand
+assembleOperand' type_ operand =
   case operand of
     Assembly.LocalOperand local@(Assembly.Local _ nameSuggestion) -> do
       locals <- gets _locals
-      cast nameSuggestion type_ $ HashMap.lookupDefault (panic $ "assembleOperand: no such local " <> show local) local locals
-    Assembly.GlobalConstant global representation -> do
+      cast nameSuggestion type_ $ second operandType $ HashMap.lookupDefault (panic $ "assembleOperand: no such local " <> show local) local locals
+    Assembly.GlobalConstant global globalType -> do
       let globalName =
             assembleName global
 
@@ -622,42 +609,33 @@ assembleOperand type_ operand =
           nameSuggestion =
             Assembly.NameSuggestion globalNameText
 
-          globalType =
-            llvmType $ globalOperandType representation
-      case representation of
-        Representation.Empty -> do
-          cast nameSuggestion type_ (LLVM.ConstantOperand $ LLVM.Constant.Null (LLVM.Type.ptr globalType), WordPointer)
-        Representation.Direct containsHeapPointers -> do
-          use
-            LLVM.globalVariableDefaults
-              { LLVM.Global.name = globalName
-              , LLVM.Global.unnamedAddr = Just LLVM.GlobalAddr
-              , LLVM.Global.isConstant = True
-              , LLVM.Global.type' = globalType
-              }
-          cast nameSuggestion type_ (LLVM.ConstantOperand $ LLVM.Constant.GlobalReference (LLVM.Type.ptr globalType) globalName, WordPointer)
-        Representation.Indirect containsHeapPointers -> do
-          use
-            LLVM.globalVariableDefaults
-              { LLVM.Global.name = globalName
-              , LLVM.Global.unnamedAddr = Just LLVM.GlobalAddr
-              , LLVM.Global.isConstant = True
-              , LLVM.Global.type' = globalType
-              }
+          llvmGlobalType =
+            llvmType globalType
+      use
+        LLVM.globalVariableDefaults
+          { LLVM.Global.name = globalName
+          , LLVM.Global.unnamedAddr = Just LLVM.GlobalAddr
+          , LLVM.Global.isConstant = True
+          , LLVM.Global.type' = llvmGlobalType
+          }
+      case globalType of
+        Assembly.Word -> do
+          cast nameSuggestion type_ (LLVM.ConstantOperand $ LLVM.Constant.GlobalReference wordPointer globalName, WordPointer)
+        Assembly.WordPointer -> do
           destination <- freshName nameSuggestion
           emitInstruction $
             destination
               LLVM.:= LLVM.Load
                 { volatile = False
-                , address = LLVM.ConstantOperand $ LLVM.Constant.GlobalReference (LLVM.Type.ptr globalType) globalName
+                , address = LLVM.ConstantOperand $ LLVM.Constant.GlobalReference (LLVM.Type.ptr wordPointer) globalName
                 , maybeAtomicity = Nothing
                 , alignment = alignment
                 , metadata = []
                 }
-          cast nameSuggestion type_ (LLVM.LocalReference (llvmType WordPointer) destination, WordPointer)
-    Assembly.GlobalFunction global return_ arity -> do
+          cast nameSuggestion type_ (LLVM.LocalReference wordPointer destination, WordPointer)
+    Assembly.GlobalFunction global returnType parameterTypes -> do
       let defType =
-            FunctionPointer return_ arity
+            FunctionPointer returnType parameterTypes
 
           globalNameText =
             Assembly.nameText global
@@ -669,14 +647,14 @@ assembleOperand type_ operand =
             assembleName global
 
           globalType =
-            llvmType defType
+            llvmOperandType defType
 
       use
         LLVM.functionDefaults
           { LLVM.Global.callingConvention = LLVM.CallingConvention.Fast
-          , LLVM.Global.returnType = returnLLVMType return_
+          , LLVM.Global.returnType = llvmReturnType returnType
           , LLVM.Global.name = globalName
-          , LLVM.Global.parameters = ([LLVM.Parameter wordPointer (LLVM.UnName parameter) [] | parameter <- [0 .. fromIntegral arity - 1]], False)
+          , LLVM.Global.parameters = ([LLVM.Parameter (llvmType parameterType) (LLVM.UnName parameter) [] | (parameter, parameterType) <- zip [0 ..] parameterTypes], False)
           , LLVM.Global.alignment = alignment
           }
       cast
@@ -712,28 +690,30 @@ cast (Assembly.NameSuggestion nameSuggestion) newType (operand, type_)
           newOperand
             LLVM.:= LLVM.IntToPtr
               { operand0 = operand
-              , type' = llvmType newType
+              , type' = llvmNewType
               , metadata = mempty
               }
-        pure $ LLVM.LocalReference (llvmType newType) newOperand
+        pure $ LLVM.LocalReference llvmNewType newOperand
       (_, Word) -> do
         newOperand <- freshName $ Assembly.NameSuggestion $ nameSuggestion <> "_integer"
         emitInstruction $
           newOperand
             LLVM.:= LLVM.PtrToInt
               { operand0 = operand
-              , type' = llvmType newType
+              , type' = llvmNewType
               , metadata = mempty
               }
-        pure $ LLVM.LocalReference (llvmType newType) newOperand
+        pure $ LLVM.LocalReference llvmNewType newOperand
       _ -> do
         newOperand <- freshName $ Assembly.NameSuggestion $ nameSuggestion <> "_cast"
         emitInstruction $
           newOperand
             LLVM.:= LLVM.BitCast
               { operand0 = operand
-              , type' = llvmType newType
+              , type' = llvmNewType
               , metadata = mempty
               }
 
-        pure $ LLVM.LocalReference (llvmType newType) newOperand
+        pure $ LLVM.LocalReference llvmNewType newOperand
+  where
+    llvmNewType = llvmOperandType newType

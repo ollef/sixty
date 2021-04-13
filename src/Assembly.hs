@@ -12,8 +12,7 @@ import Data.Persist
 import Data.Text.Prettyprint.Doc
 import Literal (Literal)
 import qualified Name
-import Protolude hiding (local, moduleName)
-import Representation (Representation)
+import Protolude hiding (Type, local, moduleName)
 
 data Local = Local !Int !NameSuggestion
   deriving (Eq, Ord, Show, Generic, Hashable, Persist)
@@ -24,30 +23,38 @@ newtype NameSuggestion = NameSuggestion Text
 
 data Operand
   = LocalOperand !Local
-  | GlobalConstant !Name.Lifted !Representation
-  | GlobalFunction !Name.Lifted !Return !Int
+  | GlobalConstant !Name.Lifted !Type
+  | GlobalFunction !Name.Lifted !ReturnType [Type]
   | Lit !Literal
   deriving (Show, Generic, Persist, Hashable)
 
+data Type
+  = Word
+  | WordPointer
+  deriving (Eq, Show, Generic, Persist, Hashable)
+
+data ReturnType = ReturnsVoid | Returns !Type
+  deriving (Eq, Show, Generic, Persist, Hashable)
+
 data Instruction
   = Copy !Operand !Operand !Operand
-  | Call !(Voided Local) !Operand [Operand]
+  | Call !(Voided (Type, Local)) !Operand [(Type, Operand)]
   | Load !Local !Operand
   | Store !Operand !Operand
-  | InitGlobal !Name.Lifted !Representation !Operand
+  | InitGlobal !Name.Lifted !Type !Operand
   | Add !Local !Operand !Operand
   | Sub !Local !Operand !Operand
   | StackAllocate !Local !Operand
   | SaveStack !Local
   | RestoreStack !Operand
   | HeapAllocate !Local !Operand
-  | Switch !(Voided Local) !Operand [(Integer, BasicBlock)] BasicBlock
+  | Switch !(Voided (Type, Local)) !Operand [(Integer, BasicBlock)] BasicBlock
   deriving (Show, Generic, Persist, Hashable)
 
 data Definition
-  = KnownConstantDefinition !Representation !Literal !Bool
-  | ConstantDefinition !Representation [Local] BasicBlock
-  | FunctionDefinition [Local] BasicBlock
+  = KnownConstantDefinition !Type !Literal !Bool
+  | ConstantDefinition !Type [(Type, Local)] BasicBlock
+  | FunctionDefinition !ReturnType [(Type, Local)] BasicBlock
   deriving (Show, Generic, Persist, Hashable)
 
 type StackPointer = Local
@@ -66,10 +73,6 @@ instance Applicative Voided where
   _ <*> Void = Void
   NonVoid f <*> NonVoid x = NonVoid $ f x
 
-data Return = ReturnsVoid | Returns
-  deriving (Eq, Show, Generic, Persist, Hashable)
-
---
 -------------------------------------------------------------------------------
 
 instance Eq NameSuggestion where
@@ -93,16 +96,22 @@ instance Pretty Operand where
     case operand of
       LocalOperand local ->
         pretty local
-      GlobalConstant global representation ->
-        "(" <> pretty representation <+> "constant" <+> pretty global <> ")"
+      GlobalConstant global type_ ->
+        "(" <> pretty type_ <+> "constant" <+> pretty global <> ")"
       GlobalFunction global return_ arity ->
         "(function " <> pretty return_ <> " (" <> pretty arity <> ")" <+> pretty global <> ")"
       Lit lit ->
         pretty lit
 
-instance Pretty Return where
+instance Pretty Type where
+  pretty type_ =
+    case type_ of
+      Word -> "word"
+      WordPointer -> "word*"
+
+instance Pretty ReturnType where
   pretty ReturnsVoid = "void"
-  pretty Returns = "value"
+  pretty (Returns type_) = pretty type_
 
 instance Pretty Instruction where
   pretty instruction =
@@ -110,15 +119,15 @@ instance Pretty Instruction where
       Copy dst src size ->
         voidInstr "copy" [dst, src, size]
       Call (NonVoid dst) fun args ->
-        returningInstr dst "call" (fun : args)
+        returningInstr dst ("call" <+> pretty fun) args
       Call Void fun args ->
-        voidInstr "call" (fun : args)
+        voidInstr ("call" <+> pretty fun) args
       Load dst src ->
         returningInstr dst "load" [src]
       Store dst src ->
         voidInstr "store" [dst, src]
-      InitGlobal dst representation src ->
-        "init" <+> pretty representation <+> "global" <+> hsep [pretty dst, pretty src]
+      InitGlobal dst type_ src ->
+        "init" <+> pretty type_ <+> "global" <+> hsep [pretty dst, pretty src]
       Add dst arg1 arg2 ->
         returningInstr dst "add" [arg1, arg2]
       Sub dst arg1 arg2 ->
@@ -165,8 +174,8 @@ instance Pretty Definition where
       ConstantDefinition representation constantParameters basicBlock ->
         pretty representation <+> "constant" <+> tupled (pretty <$> constantParameters) <+> "=" <> line
           <> indent 2 (pretty basicBlock)
-      FunctionDefinition args basicBlock ->
-        "function" <+> tupled (pretty <$> args) <+> "=" <> line
+      FunctionDefinition returnType args basicBlock ->
+        "function" <+> pretty returnType <+> tupled (pretty <$> args) <+> "=" <> line
           <> indent 2 (pretty basicBlock)
 
 instance Pretty BasicBlock where
