@@ -1,0 +1,5 @@
+factorial : Int -> Int
+factorial 0 = 1
+factorial n = mulInt n (factorial (subInt n 1))
+
+test = printInt (factorial 10) -- prints 3628800
