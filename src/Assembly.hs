@@ -8,8 +8,6 @@
 
 module Assembly where
 
-import Data.HashSet (HashSet)
-import qualified Data.HashSet as HashSet
 import Data.Persist
 import Data.Text.Prettyprint.Doc
 import Literal (Literal)
@@ -192,89 +190,3 @@ nameText name =
       moduleName <> "." <> name_
     Name.Lifted (Name.Qualified (Name.Module moduleName) (Name.Name name_)) i ->
       moduleName <> "." <> name_ <> "$" <> show i
-
--------------------------------------------------------------------------------
-
-data BasicBlockWithOccurrences
-  = Nil !Result
-  | Cons (HashSet Local, HashSet Local) (Instruction BasicBlockWithOccurrences) BasicBlockWithOccurrences
-
-cons :: Instruction BasicBlockWithOccurrences -> BasicBlockWithOccurrences -> BasicBlockWithOccurrences
-cons instruction basicBlock =
-  Cons (instructionLocals instruction <> basicBlockLocals basicBlock) instruction basicBlock
-
-basicBlockWithOccurrences :: BasicBlock -> BasicBlockWithOccurrences
-basicBlockWithOccurrences (BasicBlock instructions result) =
-  case instructions of
-    [] ->
-      Nil result
-    instruction : instructions' ->
-      cons
-        (basicBlockWithOccurrences <$> instruction)
-        (basicBlockWithOccurrences $ Assembly.BasicBlock instructions' result)
-
-basicBlockOccurrences :: BasicBlockWithOccurrences -> HashSet Local
-basicBlockOccurrences basicBlock = do
-  let (bound, free) =
-        basicBlockLocals basicBlock
-  free `HashSet.difference` bound
-
-basicBlockLocals :: BasicBlockWithOccurrences -> (HashSet Local, HashSet Local)
-basicBlockLocals basicBlock =
-  case basicBlock of
-    Nil result ->
-      resultLocals result
-    Cons locals _ _ ->
-      locals
-
-resultLocals :: Result -> (HashSet Local, HashSet Local)
-resultLocals result =
-  case result of
-    Void ->
-      mempty
-    NonVoid operand ->
-      operandLocals operand
-
-instructionLocals :: Instruction BasicBlockWithOccurrences -> (HashSet Local, HashSet Local)
-instructionLocals instruction =
-  case instruction of
-    Copy o1 o2 o3 ->
-      operandLocals o1 <> operandLocals o2 <> operandLocals o3
-    Call (NonVoid l) o os ->
-      (HashSet.singleton l, mempty) <> operandLocals o <> foldMap operandLocals os
-    Call Void o os ->
-      operandLocals o <> foldMap operandLocals os
-    Load l o ->
-      (HashSet.singleton l, mempty) <> operandLocals o
-    Store o1 o2 ->
-      operandLocals o1 <> operandLocals o2
-    InitGlobal _ _ o ->
-      operandLocals o
-    Add l o1 o2 ->
-      (HashSet.singleton l, mempty) <> operandLocals o1 <> operandLocals o2
-    Sub l o1 o2 ->
-      (HashSet.singleton l, mempty) <> operandLocals o1 <> operandLocals o2
-    StackAllocate l o ->
-      (HashSet.singleton l, mempty) <> operandLocals o
-    SaveStack l ->
-      (HashSet.singleton l, mempty)
-    RestoreStack o ->
-      operandLocals o
-    HeapAllocate l o ->
-      (HashSet.singleton l, mempty) <> operandLocals o
-    Switch (NonVoid l) o brs d ->
-      (HashSet.singleton l, mempty) <> operandLocals o <> foldMap (basicBlockLocals . snd) brs <> basicBlockLocals d
-    Switch Void o brs d ->
-      operandLocals o <> foldMap (basicBlockLocals . snd) brs <> basicBlockLocals d
-
-operandLocals :: Operand -> (HashSet Local, HashSet Local)
-operandLocals operand =
-  case operand of
-    LocalOperand local ->
-      (mempty, HashSet.singleton local)
-    GlobalConstant _ _ ->
-      mempty
-    GlobalFunction {} ->
-      mempty
-    Lit _ ->
-      mempty
