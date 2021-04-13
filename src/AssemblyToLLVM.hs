@@ -157,7 +157,7 @@ use global =
 
 -------------------------------------------------------------------------------
 
-assembleModule :: Name.Module -> [(Name.Lifted, Assembly.Definition Assembly.BasicBlock)] -> LLVM.Module
+assembleModule :: Name.Module -> [(Name.Lifted, Assembly.Definition)] -> LLVM.Module
 assembleModule (Name.Module moduleNameText) definitions = do
   let (assembledDefinitions, usedGlobals) =
         unzip $ foreach definitions $ uncurry assembleDefinition
@@ -176,7 +176,7 @@ assembleModule (Name.Module moduleNameText) definitions = do
     , moduleDefinitions = LLVM.GlobalDefinition <$> HashMap.elems forwardDeclarations <> assembledDefinitions'
     }
 
-assembleDefinition :: Name.Lifted -> Assembly.Definition Assembly.BasicBlock -> ([LLVM.Global], HashMap LLVM.Name LLVM.Global)
+assembleDefinition :: Name.Lifted -> Assembly.Definition -> ([LLVM.Global], HashMap LLVM.Name LLVM.Global)
 assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
   second _usedGlobals $
     flip
@@ -274,7 +274,7 @@ returnResult result = do
       operand <- assembleOperand WordPointer res
       endBlock $ LLVM.Do LLVM.Ret {returnOperand = Just operand, metadata' = mempty}
 
-assembleInstruction :: Assembly.Instruction Assembly.BasicBlock -> Assembler ()
+assembleInstruction :: Assembly.Instruction -> Assembler ()
 assembleInstruction instruction =
   case instruction of
     Assembly.Copy destination source size -> do

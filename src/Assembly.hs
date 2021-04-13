@@ -29,7 +29,7 @@ data Operand
   | Lit !Literal
   deriving (Show, Generic, Persist, Hashable)
 
-data Instruction basicBlock
+data Instruction
   = Copy !Operand !Operand !Operand
   | Call !(Voided Local) !Operand [Operand]
   | Load !Local !Operand
@@ -41,18 +41,18 @@ data Instruction basicBlock
   | SaveStack !Local
   | RestoreStack !Operand
   | HeapAllocate !Local !Operand
-  | Switch !(Voided Local) !Operand [(Integer, basicBlock)] basicBlock
-  deriving (Show, Generic, Persist, Hashable, Functor)
+  | Switch !(Voided Local) !Operand [(Integer, BasicBlock)] BasicBlock
+  deriving (Show, Generic, Persist, Hashable)
 
-data Definition basicBlock
+data Definition
   = KnownConstantDefinition !Representation !Literal !Bool
-  | ConstantDefinition !Representation [Local] basicBlock
-  | FunctionDefinition [Local] basicBlock
-  deriving (Show, Generic, Persist, Hashable, Functor)
+  | ConstantDefinition !Representation [Local] BasicBlock
+  | FunctionDefinition [Local] BasicBlock
+  deriving (Show, Generic, Persist, Hashable)
 
 type StackPointer = Local
 
-data BasicBlock = BasicBlock [Instruction BasicBlock] !Result
+data BasicBlock = BasicBlock [Instruction] !Result
   deriving (Show, Generic, Persist, Hashable)
 
 type Result = Voided Operand
@@ -104,7 +104,7 @@ instance Pretty Return where
   pretty ReturnsVoid = "void"
   pretty Returns = "value"
 
-instance Pretty basicBlock => Pretty (Instruction basicBlock) where
+instance Pretty Instruction where
   pretty instruction =
     case instruction of
       Copy dst src size ->
@@ -156,7 +156,7 @@ instance Pretty basicBlock => Pretty (Instruction basicBlock) where
       returningInstr ret name args =
         pretty ret <+> "=" <+> voidInstr name args
 
-instance (Pretty basicBlock) => Pretty (Definition basicBlock) where
+instance Pretty Definition where
   pretty definition =
     case definition of
       KnownConstantDefinition representation knownConstant _isConstant ->

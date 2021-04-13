@@ -45,7 +45,7 @@ newtype Builder a = Builder (StateT BuilderState M a)
 
 data BuilderState = BuilderState
   { _fresh :: !Int
-  , _instructions :: Tsil (Assembly.Instruction Assembly.BasicBlock)
+  , _instructions :: Tsil Assembly.Instruction
   }
 
 runBuilder :: Builder a -> M a
@@ -57,14 +57,14 @@ runBuilder (Builder s) =
       , _instructions = mempty
       }
 
-subBuilder :: Builder a -> Builder (a, [Assembly.Instruction Assembly.BasicBlock])
+subBuilder :: Builder a -> Builder (a, [Assembly.Instruction])
 subBuilder (Builder s) = do
   state <- get
   (a, state') <- Builder $ lift $ runStateT s state {_instructions = mempty}
   put state' {_instructions = _instructions state}
   pure (a, toList $ _instructions state')
 
-emit :: Assembly.Instruction Assembly.BasicBlock -> Builder ()
+emit :: Assembly.Instruction -> Builder ()
 emit instruction =
   modify $ \s -> s {_instructions = _instructions s Tsil.:> instruction}
 
@@ -302,7 +302,7 @@ initDefinitionName :: Name.Lifted -> Name.Lifted
 initDefinitionName (Name.Lifted (Name.Qualified moduleName (Name.Name name)) m) =
   Name.Lifted (Name.Qualified moduleName $ Name.Name $ name <> "$init") m
 
-generateModuleInits :: [Name.Module] -> M (Assembly.Definition Assembly.BasicBlock)
+generateModuleInits :: [Name.Module] -> M Assembly.Definition
 generateModuleInits moduleNames =
   runBuilder $ do
     globalPointer <- freshLocal "globals"
@@ -315,8 +315,8 @@ generateModuleInits moduleNames =
 
 generateModuleInit ::
   Name.Module ->
-  [(Name.Lifted, Assembly.Definition Assembly.BasicBlock)] ->
-  M [(Name.Lifted, Assembly.Definition Assembly.BasicBlock)]
+  [(Name.Lifted, Assembly.Definition)] ->
+  M [(Name.Lifted, Assembly.Definition)]
 generateModuleInit moduleName definitions =
   runBuilder $ do
     globalPointer <- freshLocal "globals"
@@ -362,7 +362,7 @@ generateModuleInit moduleName definitions =
         Assembly.FunctionDefinition {} ->
           pure globalPointer
 
-generateDefinition :: Name.Lifted -> Syntax.Definition -> M (Maybe (Assembly.Definition Assembly.BasicBlock))
+generateDefinition :: Name.Lifted -> Syntax.Definition -> M (Maybe Assembly.Definition)
 generateDefinition name@(Name.Lifted qualifiedName _) definition = do
   signature <- fetch $ Query.ClosureConvertedSignature name
   let env =
@@ -390,7 +390,7 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition = do
       (Syntax.ParameterisedDataDefinition {}, _) -> do
         panic "ClosureConvertedToAssembly: DataDefinition without ConstantSignature"
 
-generateGlobal :: Environment v -> Name.Lifted -> Representation -> Syntax.Term v -> Builder (Maybe (Assembly.Definition Assembly.BasicBlock))
+generateGlobal :: Environment v -> Name.Lifted -> Representation -> Syntax.Term v -> Builder (Maybe Assembly.Definition)
 generateGlobal env name representation term = do
   globalPointer <- freshLocal "globals"
   let globalPointerOperand =
@@ -466,7 +466,7 @@ generateFunction ::
   Telescope Name Syntax.Type Syntax.Term v ->
   [Representation] ->
   Tsil Assembly.Local ->
-  Builder (Assembly.Definition Assembly.BasicBlock)
+  Builder Assembly.Definition
 generateFunction env returnRepresentation tele parameterRepresentations params =
   case (tele, parameterRepresentations) of
     (Telescope.Empty term, []) ->

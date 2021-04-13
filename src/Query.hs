@@ -79,8 +79,8 @@ data Query a where
   ClosureConvertedConstructorType :: Name.QualifiedConstructor -> Query (Telescope Name ClosureConverted.Type ClosureConverted.Type Void)
   ClosureConvertedSignature :: Name.Lifted -> Query (Maybe Representation.Signature)
   ConstructorTag :: Name.QualifiedConstructor -> Query (Maybe Int)
-  Assembly :: Name.Lifted -> Query (Maybe (Assembly.Definition Assembly.BasicBlock))
-  AssemblyModule :: Name.Module -> Query [(Name.Lifted, Assembly.Definition Assembly.BasicBlock)]
+  Assembly :: Name.Lifted -> Query (Maybe Assembly.Definition)
+  AssemblyModule :: Name.Module -> Query [(Name.Lifted, Assembly.Definition)]
   LLVMModule :: Name.Module -> Query LLVM.Module
   LLVMModuleInitModule :: Query LLVM.Module
 
