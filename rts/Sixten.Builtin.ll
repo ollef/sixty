@@ -36,3 +36,30 @@ define external fastcc void @Sixten.Builtin.printInt(i64* %i) {
     call void @print_int(i64 %i_int)
     ret void
 }
+
+define external fastcc i64* @Sixten.Builtin.addInt(i64* %a, i64* %b) {
+  block:
+    %a_int = ptrtoint i64* %a to i64
+    %b_int = ptrtoint i64* %b to i64
+    %result = add i64 %a_int, %b_int
+    %result_pointer = inttoptr i64 %result to i64*
+    ret i64* %result_pointer
+}
+
+define external fastcc i64* @Sixten.Builtin.mulInt(i64* %a, i64* %b) {
+  block:
+    %a_int = ptrtoint i64* %a to i64
+    %b_int = ptrtoint i64* %b to i64
+    %result = mul i64 %a_int, %b_int
+    %result_pointer = inttoptr i64 %result to i64*
+    ret i64* %result_pointer
+}
+
+define external fastcc i64* @Sixten.Builtin.subInt(i64* %a, i64* %b) {
+  block:
+    %a_int = ptrtoint i64* %a to i64
+    %b_int = ptrtoint i64* %b to i64
+    %result = sub i64 %a_int, %b_int
+    %result_pointer = inttoptr i64 %result to i64*
+    ret i64* %result_pointer
+}

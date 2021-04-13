@@ -1,4 +1,4 @@
-module Sixten.Builtin exposing (Type, Int, printInt)
+module Sixten.Builtin exposing (Type, Int, addInt, subInt, printInt)
 
 Type : Type
 
@@ -12,6 +12,9 @@ data Equals forall (A : Type). (a b : A) where
 data Unit = Unit
 
 printInt : Int -> Unit
+addInt : Int -> Int -> Int
+mulInt : Int -> Int -> Int
+subInt : Int -> Int -> Int
 
 EmptyRepresentation : Type
 WordRepresentation : Type
