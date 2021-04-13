@@ -1,6 +1,0 @@
-fib : Int -> Int
-fib 0 = 0
-fib 1 = 1
-fib n = addInt (fib (subInt n 1)) (fib (subInt n 2))
-
-test = printInt (fib 20) -- prints 6765

@@ -1,0 +1,6 @@
+fibonacci : Int -> Int
+fibonacci 0 = 0
+fibonacci 1 = 1
+fibonacci n = addInt (fibonacci (subInt n 1)) (fibonacci (subInt n 2))
+
+test = printInt (fibonacci 20) -- prints 6765
