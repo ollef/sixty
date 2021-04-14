@@ -131,7 +131,7 @@ freshName (Assembly.NameSuggestion nameSuggestion) = do
     s
       { _usedNames = HashMap.insert bsName (i + 1) usedNames
       }
-  pure $ LLVM.Name $ if i == 0 then bsName else bsName <> "$$" <> ShortByteString.toShort (toUtf8 (show i :: Text))
+  pure $ LLVM.Name $ if i == 0 then bsName else bsName <> "$" <> ShortByteString.toShort (toUtf8 (show i :: Text))
 
 activateLocal :: Assembly.Type -> Assembly.Local -> Assembler LLVM.Name
 activateLocal type_ local@(Assembly.Local _ nameSuggestion) = do
