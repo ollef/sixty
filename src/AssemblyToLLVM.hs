@@ -29,7 +29,7 @@ import Protolude hiding (IntMap, cast, local, moduleName)
 type Assembler = State AssemblerState
 
 data AssemblerState = AssemblerState
-  { _locals :: HashMap Assembly.Local (LLVM.Operand, Assembly.Type)
+  { _locals :: HashMap Assembly.Local (Assembly.Type, LLVM.Operand)
   , _usedGlobals :: HashMap LLVM.Name LLVM.Global
   , _usedNames :: HashMap ShortByteString Int
   , _instructions :: Tsil (LLVM.Named LLVM.Instruction)
@@ -138,7 +138,7 @@ activateLocal type_ local@(Assembly.Local _ nameSuggestion) = do
   name <- freshName nameSuggestion
   modify $ \s ->
     s
-      { _locals = HashMap.insert local (LLVM.LocalReference (llvmType type_) name, type_) $ _locals s
+      { _locals = HashMap.insert local (type_, LLVM.LocalReference (llvmType type_) name) $ _locals s
       }
   pure name
 
@@ -338,7 +338,7 @@ assembleInstruction instruction =
             , metadata = []
             }
     Assembly.Call (Assembly.NonVoid (returnType, destination)) function arguments -> do
-      function' <- assembleOperand' (FunctionPointer (Assembly.Returns returnType) $ fst <$> arguments) function
+      function' <- assembleOperandWithOperandType (FunctionPointer (Assembly.Returns returnType) $ fst <$> arguments) function
       arguments' <- mapM (uncurry assembleOperand) arguments
       destination' <- activateLocal returnType destination
       emitInstruction $
@@ -353,7 +353,7 @@ assembleInstruction instruction =
             , metadata = []
             }
     Assembly.Call Assembly.Void function arguments -> do
-      function' <- assembleOperand' (FunctionPointer Assembly.ReturnsVoid $ fst <$> arguments) function
+      function' <- assembleOperandWithOperandType (FunctionPointer Assembly.ReturnsVoid $ fst <$> arguments) function
       arguments' <- mapM (uncurry assembleOperand) arguments
       emitInstruction $
         LLVM.Do
@@ -606,14 +606,15 @@ assembleInstruction instruction =
                 }
 
 assembleOperand :: Assembly.Type -> Assembly.Operand -> Assembler LLVM.Operand
-assembleOperand = assembleOperand' . operandType
+assembleOperand = assembleOperandWithOperandType . operandType
 
-assembleOperand' :: OperandType -> Assembly.Operand -> Assembler LLVM.Operand
-assembleOperand' type_ operand =
+assembleOperandWithOperandType :: OperandType -> Assembly.Operand -> Assembler LLVM.Operand
+assembleOperandWithOperandType desiredType operand =
   case operand of
     Assembly.LocalOperand local@(Assembly.Local _ nameSuggestion) -> do
       locals <- gets _locals
-      cast nameSuggestion type_ $ second operandType $ HashMap.lookupDefault (panic $ "assembleOperand: no such local " <> show local) local locals
+      let (type_, operand') = HashMap.lookupDefault (panic $ "assembleOperandWithOperandType: no such local " <> show local) local locals
+      cast nameSuggestion desiredType (operandType type_) operand'
     Assembly.GlobalConstant global globalType -> do
       let globalName =
             assembleName global
@@ -635,7 +636,7 @@ assembleOperand' type_ operand =
           }
       case globalType of
         Assembly.Word -> do
-          cast nameSuggestion type_ (LLVM.ConstantOperand $ LLVM.Constant.GlobalReference wordPointer globalName, WordPointer)
+          cast nameSuggestion desiredType WordPointer $ LLVM.ConstantOperand $ LLVM.Constant.GlobalReference wordPointer globalName
         Assembly.WordPointer -> do
           destination <- freshName nameSuggestion
           emitInstruction $
@@ -647,7 +648,7 @@ assembleOperand' type_ operand =
                 , alignment = alignment
                 , metadata = []
                 }
-          cast nameSuggestion type_ (LLVM.LocalReference wordPointer destination, WordPointer)
+          cast nameSuggestion desiredType WordPointer $ LLVM.LocalReference wordPointer destination
     Assembly.GlobalFunction global returnType parameterTypes -> do
       let defType =
             FunctionPointer returnType parameterTypes
@@ -672,29 +673,19 @@ assembleOperand' type_ operand =
           , LLVM.Global.parameters = ([LLVM.Parameter (llvmType parameterType) (LLVM.UnName parameter) [] | (parameter, parameterType) <- zip [0 ..] parameterTypes], False)
           , LLVM.Global.alignment = alignment
           }
-      cast
-        nameSuggestion
-        type_
-        ( LLVM.ConstantOperand $
-            LLVM.Constant.GlobalReference globalType globalName
-        , defType
-        )
+      cast nameSuggestion desiredType defType $ LLVM.ConstantOperand $ LLVM.Constant.GlobalReference globalType globalName
     Assembly.Lit lit ->
       case lit of
         Literal.Integer int ->
-          cast
-            "literal"
-            type_
-            ( LLVM.ConstantOperand
-                LLVM.Constant.Int
-                  { integerBits = wordBits
-                  , integerValue = int
-                  }
-            , Word
-            )
+          cast "literal" desiredType Word $
+            LLVM.ConstantOperand
+              LLVM.Constant.Int
+                { integerBits = wordBits
+                , integerValue = int
+                }
 
-cast :: Assembly.NameSuggestion -> OperandType -> (LLVM.Operand, OperandType) -> Assembler LLVM.Operand
-cast (Assembly.NameSuggestion nameSuggestion) newType (operand, type_)
+cast :: Assembly.NameSuggestion -> OperandType -> OperandType -> LLVM.Operand -> Assembler LLVM.Operand
+cast nameSuggestion newType type_ operand
   | type_ == newType =
     pure operand
   | otherwise =
