@@ -19,7 +19,7 @@ data Local = Local !Int !NameSuggestion
 
 newtype NameSuggestion = NameSuggestion Text
   deriving stock (Show, Generic)
-  deriving newtype (IsString, Persist)
+  deriving newtype (IsString, Persist, Semigroup, Monoid)
 
 data Operand
   = LocalOperand !Local

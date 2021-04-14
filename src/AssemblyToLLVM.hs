@@ -685,7 +685,7 @@ cast (Assembly.NameSuggestion nameSuggestion) newType (operand, type_)
   | otherwise =
     case (type_, newType) of
       (Word, _) -> do
-        newOperand <- freshName $ Assembly.NameSuggestion $ nameSuggestion <> "_pointer"
+        newOperand <- freshName $ nameSuggestion <> "_pointer"
         emitInstruction $
           newOperand
             LLVM.:= LLVM.IntToPtr
@@ -695,7 +695,7 @@ cast (Assembly.NameSuggestion nameSuggestion) newType (operand, type_)
               }
         pure $ LLVM.LocalReference llvmNewType newOperand
       (_, Word) -> do
-        newOperand <- freshName $ Assembly.NameSuggestion $ nameSuggestion <> "_integer"
+        newOperand <- freshName $ nameSuggestion <> "_integer"
         emitInstruction $
           newOperand
             LLVM.:= LLVM.PtrToInt
@@ -705,7 +705,7 @@ cast (Assembly.NameSuggestion nameSuggestion) newType (operand, type_)
               }
         pure $ LLVM.LocalReference llvmNewType newOperand
       _ -> do
-        newOperand <- freshName $ Assembly.NameSuggestion $ nameSuggestion <> "_cast"
+        newOperand <- freshName $ nameSuggestion <> "_cast"
         emitInstruction $
           newOperand
             LLVM.:= LLVM.BitCast
