@@ -155,7 +155,7 @@ restoreStack stack =
 
 globalAllocate :: Assembly.NameSuggestion -> Assembly.Operand -> Assembly.Operand -> Builder Assembly.Operand
 globalAllocate =
-  add
+  addPointer
 
 heapAllocate :: Assembly.NameSuggestion -> Assembly.Operand -> Builder Assembly.Operand
 heapAllocate nameSuggestion size = do
@@ -249,6 +249,11 @@ add nameSuggestion i1 i2 = do
   emit $ Assembly.Add destination i1 i2
   pure $ Assembly.LocalOperand destination
 
+addPointer :: Assembly.NameSuggestion -> Assembly.Operand -> Assembly.Operand -> Builder Assembly.Operand
+addPointer nameSuggestion i1 i2 = do
+  destination <- freshLocal nameSuggestion
+  emit $ Assembly.AddPointer destination i1 i2
+  pure $ Assembly.LocalOperand destination
 
 -------------------------------------------------------------------------------
 
@@ -702,7 +707,7 @@ storeTerm env term returnLocation returnType =
               heapScrutinee <- load "heap_scrutinee" directScrutinee
               pure (heapScrutinee, pure ())
           let firstConstructorFieldBuilder nameSuggestion =
-                add nameSuggestion scrutinee'' $ Assembly.Lit $ Literal.Integer tagBytes
+                addPointer nameSuggestion scrutinee'' $ Assembly.Lit $ Literal.Integer tagBytes
           constructorTag <- load "constructor_tag" scrutinee''
           void $
             switch
@@ -756,7 +761,7 @@ storeBranch env constructorFieldBuilder tele returnLocation returnType =
       let nextConstructorFieldBuilder nameSuggestion = do
             type' <- generateType env type_
             typeSize <- sizeOfType type'
-            add nameSuggestion constructorField typeSize
+            addPointer nameSuggestion constructorField typeSize
       env' <- extend env type_ $ Indirect constructorField
       storeBranch env' nextConstructorFieldBuilder tele' returnLocation returnType
     Telescope.Empty branch ->

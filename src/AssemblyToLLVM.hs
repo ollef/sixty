@@ -420,6 +420,34 @@ assembleInstruction instruction =
             , operand1 = operand2'
             , metadata = []
             }
+    Assembly.AddPointer destination pointerOperand wordOperand -> do
+      pointerOperand' <- assembleOperand Assembly.WordPointer pointerOperand
+      wordOperand' <- assembleOperand Assembly.Word wordOperand
+      bytePointerName <- freshName "byte_pointer"
+      emitInstruction $
+        bytePointerName
+          LLVM.:= LLVM.BitCast
+            { operand0 = pointerOperand'
+            , type' = bytePointer
+            , metadata = mempty
+            }
+      resultBytePointer <- freshName "add_pointer_result"
+      emitInstruction $
+        resultBytePointer
+          LLVM.:= LLVM.GetElementPtr
+            { inBounds = False -- TODO can this be true even when there are empty types?
+            , address = LLVM.LocalReference bytePointer bytePointerName
+            , indices = [wordOperand']
+            , metadata = mempty
+            }
+      destination' <- activateLocal Assembly.WordPointer destination
+      emitInstruction $
+        destination'
+          LLVM.:= LLVM.BitCast
+            { operand0 = LLVM.LocalReference bytePointer resultBytePointer
+            , type' = wordPointer
+            , metadata = mempty
+            }
     Assembly.StackAllocate destination size -> do
       destination' <- activateLocal Assembly.WordPointer destination
       destination'' <- freshName "destination"
