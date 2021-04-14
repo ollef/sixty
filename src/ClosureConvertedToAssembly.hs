@@ -623,16 +623,18 @@ storeTerm env term returnLocation returnType =
               Just tag ->
                 Syntax.Lit (Literal.Integer $ fromIntegral tag) : args
 
-          go location arg = do
+          go constructLocation arg = do
+            location <- constructLocation
             argType <- typeOf env arg
             storeTerm env arg location argType
-            argTypeSize <- sizeOfType argType
-            add "argument_offset" location argTypeSize
+            pure $ do
+              argTypeSize <- sizeOfType argType
+              addPointer "constructor_argument_offset" location argTypeSize
 
       boxity <- fetchBoxity typeName
       case boxity of
         Unboxed ->
-          foldM_ go returnLocation tagArgs
+          foldM_ go (pure returnLocation) tagArgs
         Boxed -> do
           typeValue <- Builder $ lift $ boxedConstructorSize (Context.toEnvironment $ _context env) con params args
           type_ <- Builder $ lift $ Readback.readback (Context.toEnvironment $ _context env) typeValue
@@ -640,7 +642,7 @@ storeTerm env term returnLocation returnType =
           size <- sizeOfType type'
           sizeWithTag <- add "size_with_tag" size $ Assembly.Lit $ Literal.Integer tagBytes
           heapLocation <- heapAllocate "constructor_heap_object" sizeWithTag
-          foldM_ go heapLocation tagArgs
+          foldM_ go (pure heapLocation) tagArgs
           store returnLocation heapLocation
     Syntax.Lit lit ->
       store returnLocation (Assembly.Lit lit)
