@@ -1,0 +1,6 @@
+triangular : Int -> Int
+triangular 0 = 0
+triangular n = addInt n (triangular (subInt n 1))
+
+test1 = printInt (triangular 10) -- prints 55
+test2 = printInt (triangular 100) -- prints 5050
