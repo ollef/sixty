@@ -43,7 +43,6 @@ data Instruction
   | Store !Operand !Operand
   | InitGlobal !Name.Lifted !Type !Operand
   | Add !Local !Operand !Operand
-  | Sub !Local !Operand !Operand
   | StackAllocate !Local !Operand
   | SaveStack !Local
   | RestoreStack !Operand
@@ -130,8 +129,6 @@ instance Pretty Instruction where
         "init" <+> pretty type_ <+> "global" <+> hsep [pretty dst, pretty src]
       Add dst arg1 arg2 ->
         returningInstr dst "add" [arg1, arg2]
-      Sub dst arg1 arg2 ->
-        returningInstr dst "sub" [arg1, arg2]
       StackAllocate dst size ->
         returningInstr dst "alloca" [size]
       SaveStack dst ->

@@ -249,11 +249,6 @@ add nameSuggestion i1 i2 = do
   emit $ Assembly.Add destination i1 i2
   pure $ Assembly.LocalOperand destination
 
-sub :: Assembly.NameSuggestion -> Assembly.Operand -> Assembly.Operand -> Builder Assembly.Operand
-sub nameSuggestion i1 i2 = do
-  destination <- freshLocal nameSuggestion
-  emit $ Assembly.Sub destination i1 i2
-  pure $ Assembly.LocalOperand destination
 
 -------------------------------------------------------------------------------
 

@@ -420,19 +420,6 @@ assembleInstruction instruction =
             , operand1 = operand2'
             , metadata = []
             }
-    Assembly.Sub destination operand1 operand2 -> do
-      operand1' <- assembleOperand Assembly.Word operand1
-      operand2' <- assembleOperand Assembly.Word operand2
-      destination' <- activateLocal Assembly.Word destination
-      emitInstruction $
-        destination'
-          LLVM.:= LLVM.Sub
-            { nsw = False
-            , nuw = False
-            , operand0 = operand1'
-            , operand1 = operand2'
-            , metadata = []
-            }
     Assembly.StackAllocate destination size -> do
       destination' <- activateLocal Assembly.WordPointer destination
       destination'' <- freshName "destination"
