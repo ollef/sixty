@@ -21,6 +21,7 @@ import qualified LLVM.AST.CallingConvention as LLVM.CallingConvention
 import qualified LLVM.AST.Constant as LLVM.Constant
 import qualified LLVM.AST.Global as LLVM.Global
 import qualified LLVM.AST.Linkage as LLVM
+import qualified LLVM.AST.ParameterAttribute as ParameterAttribute
 import qualified LLVM.AST.Type as LLVM.Type
 import qualified Literal
 import qualified Name
@@ -148,6 +149,57 @@ use global =
     s
       { _usedGlobals = HashMap.insert (LLVM.Global.name global) global $ _usedGlobals s
       }
+
+-------------------------------------------------------------------------------
+memset0 :: LLVM.Operand -> LLVM.Operand -> Assembler ()
+memset0 destination size = do
+  let memsetResultType =
+        LLVM.Type.void
+
+      memsetArgumentTypes =
+        [ bytePointer
+        , LLVM.Type.i8
+        , wordSizedInt
+        , LLVM.Type.i1
+        ]
+
+      memsetType =
+        LLVM.FunctionType
+          { LLVM.resultType = memsetResultType
+          , LLVM.argumentTypes = memsetArgumentTypes
+          , LLVM.isVarArg = False
+          }
+
+      memsetName =
+        LLVM.Name $ "llvm.memset.p0i8.i" <> fromString (show (wordBits :: Int))
+
+      arguments =
+        [ (destination, [ParameterAttribute.Alignment alignment])
+        , (LLVM.ConstantOperand $ LLVM.Constant.Int {integerBits = 8, integerValue = 0}, [])
+        , (size, [])
+        , (LLVM.ConstantOperand $ LLVM.Constant.Int {integerBits = 1, integerValue = 0}, []) -- isvolatile
+        ]
+
+  use
+    LLVM.functionDefaults
+      { LLVM.Global.returnType = memsetResultType
+      , LLVM.Global.name = memsetName
+      , LLVM.Global.parameters =
+          ( [LLVM.Parameter type_ (LLVM.UnName parameter) [] | (parameter, type_) <- zip [0 ..] memsetArgumentTypes]
+          , False
+          )
+      }
+  emitInstruction $
+    LLVM.Do
+      LLVM.Call
+        { tailCallKind = Nothing
+        , callingConvention = LLVM.CallingConvention.C
+        , returnAttributes = []
+        , function = Right $ LLVM.ConstantOperand $ LLVM.Constant.GlobalReference memsetType memsetName
+        , arguments = arguments
+        , functionAttributes = []
+        , metadata = []
+        }
 
 -------------------------------------------------------------------------------
 
@@ -460,6 +512,7 @@ assembleInstruction instruction =
             , alignment = alignment
             , metadata = mempty
             }
+      memset0 (LLVM.LocalReference bytePointer destination'') size'
       emitInstruction $
         destination'
           LLVM.:= LLVM.BitCast
