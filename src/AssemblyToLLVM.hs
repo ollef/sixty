@@ -472,6 +472,19 @@ assembleInstruction instruction =
             , operand1 = operand2'
             , metadata = []
             }
+    Assembly.Mul destination operand1 operand2 -> do
+      operand1' <- assembleOperand Assembly.Word operand1
+      operand2' <- assembleOperand Assembly.Word operand2
+      destination' <- activateLocal Assembly.Word destination
+      emitInstruction $
+        destination'
+          LLVM.:= LLVM.Mul
+            { nsw = False
+            , nuw = False
+            , operand0 = operand1'
+            , operand1 = operand2'
+            , metadata = []
+            }
     Assembly.AddPointer destination pointerOperand wordOperand -> do
       pointerOperand' <- assembleOperand Assembly.WordPointer pointerOperand
       wordOperand' <- assembleOperand Assembly.Word wordOperand

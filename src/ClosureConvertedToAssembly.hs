@@ -249,6 +249,12 @@ add nameSuggestion i1 i2 = do
   emit $ Assembly.Add destination i1 i2
   pure $ Assembly.LocalOperand destination
 
+mul :: Assembly.NameSuggestion -> Assembly.Operand -> Assembly.Operand -> Builder Assembly.Operand
+mul nameSuggestion i1 i2 = do
+  destination <- freshLocal nameSuggestion
+  emit $ Assembly.Mul destination i1 i2
+  pure $ Assembly.LocalOperand destination
+
 addPointer :: Assembly.NameSuggestion -> Assembly.Operand -> Assembly.Operand -> Builder Assembly.Operand
 addPointer nameSuggestion i1 i2 = do
   destination <- freshLocal nameSuggestion
