@@ -1142,10 +1142,7 @@ isSubtype context type1 type2 = do
   type2' <- Context.forceHead context type2
   case type2' of
     Domain.Pi binding domain plicity targetClosure
-      | case plicity of
-          Explicit -> False
-          Implicit -> True
-          Constraint -> True ->
+      | isImplicitish plicity ->
         do
           let name =
                 Binding.toName binding
