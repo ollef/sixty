@@ -80,6 +80,8 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Typed lambda lifting
   - [x] Typed closure conversion
   - [ ] Code generation
+    - [x] Basics
+    - [ ] Closures
   - [ ] Garbage collection
   - [ ] Extern code
 - [ ] Prevent CBV-incompatible circular values
