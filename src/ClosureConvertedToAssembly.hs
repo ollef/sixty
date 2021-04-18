@@ -272,12 +272,25 @@ switch ::
   Builder Assembly.Result ->
   Builder Assembly.Result
 switch nameSuggestion scrutinee branches defaultBranch = do
-  (defaultReturn, defaultInstructions) <- subBuilder defaultBranch
+  initialNextShadowStackSlot <- gets _nextShadowStackSlot
+  ((defaultReturn, defaultNextShadowStackSlot), defaultInstructions) <- subBuilder $ do
+    modify $ \s -> s {_nextShadowStackSlot = initialNextShadowStackSlot}
+    result <- defaultBranch
+    defaultNextShadowStackSlot <- gets _nextShadowStackSlot
+    pure (result, defaultNextShadowStackSlot)
   branches' <- forM branches $ \(i, branch) -> do
-    (branchReturn, branchInstructions) <- subBuilder branch
-    pure (i, Assembly.BasicBlock branchInstructions branchReturn)
+    ((branchReturn, branchNextShadowStackSlot), branchInstructions) <- subBuilder $ do
+      modify $ \s -> s {_nextShadowStackSlot = initialNextShadowStackSlot}
+      result <- branch
+      branchNextShadowStackSlot <- gets _nextShadowStackSlot
+      pure (result, branchNextShadowStackSlot)
+    pure ((i, Assembly.BasicBlock branchInstructions branchReturn), branchNextShadowStackSlot)
   result <- forM nameSuggestion $ mapM freshLocal
-  emit $ Assembly.Switch result scrutinee branches' $ Assembly.BasicBlock defaultInstructions defaultReturn
+  let branchNextShadowStackSlots = snd <$> branches'
+  when (any (/= defaultNextShadowStackSlot) branchNextShadowStackSlots) $
+    panic "ClosureConvertedToAssembly.switch: Shadow stack mismatch"
+  modify $ \s -> s {_nextShadowStackSlot = defaultNextShadowStackSlot}
+  emit $ Assembly.Switch result scrutinee (fst <$> branches') $ Assembly.BasicBlock defaultInstructions defaultReturn
   pure $ Assembly.LocalOperand . snd <$> result
 
 -------------------------------------------------------------------------------
@@ -846,16 +859,18 @@ storeTerm env term returnLocation returnType =
               [ ( fromIntegral branchTag
                 , do
                     storeBranch env firstConstructorFieldBuilder branch returnLocation returnType
+                    deallocateScrutinee'
+                    sequence_ deallocateScrutinee
                     pure Assembly.Void
                 )
               | (branchTag, branch) <- taggedBranches
               ]
               ( do
+                  deallocateScrutinee'
+                  sequence_ deallocateScrutinee
                   storeTerm env defaultBranch returnLocation returnType
                   pure Assembly.Void
               )
-          deallocateScrutinee'
-          sequence_ deallocateScrutinee
         Syntax.LiteralBranches literalBranches -> do
           directScrutinee <- forceDirect scrutinee'
           sequence_ deallocateScrutinee
