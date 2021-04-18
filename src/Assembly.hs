@@ -43,6 +43,7 @@ data Instruction
   | Store !Operand !Operand
   | InitGlobal !Name.Lifted !Type !Operand
   | Add !Local !Operand !Operand
+  | Sub !Local !Operand !Operand
   | Mul !Local !Operand !Operand
   | AddPointer !Local !Operand !Operand
   | StackAllocate !Local !Operand
@@ -131,6 +132,8 @@ instance Pretty Instruction where
         "init" <+> pretty type_ <+> "global" <+> hsep [pretty dst, pretty src]
       Add dst arg1 arg2 ->
         returningInstr dst "add" [arg1, arg2]
+      Sub dst arg1 arg2 ->
+        returningInstr dst "sub" [arg1, arg2]
       Mul dst arg1 arg2 ->
         returningInstr dst "mul" [arg1, arg2]
       AddPointer dst arg1 arg2 ->
