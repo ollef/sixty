@@ -33,6 +33,12 @@ deriving instance
   (Hashable n, (forall v'. Hashable (t v')), (forall v'. Hashable (k v'))) =>
   Hashable (Telescope n t k v)
 
+under :: Telescope n t k v -> (forall v'. k v' -> result) -> result
+under tele f =
+  case tele of
+    Empty k -> f k
+    Extend _ _ _ tele' -> under tele' f
+
 hoist :: (forall v'. t v' -> t' v') -> (forall v'. k v' -> k' v') -> Telescope n t k v -> Telescope n t' k' v
 hoist f g tele =
   case tele of
