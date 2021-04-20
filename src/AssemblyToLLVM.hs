@@ -21,6 +21,7 @@ import qualified LLVM.AST.CallingConvention as LLVM.CallingConvention
 import qualified LLVM.AST.Constant as LLVM.Constant
 import qualified LLVM.AST.Global as LLVM.Global
 import qualified LLVM.AST.Linkage as LLVM
+import qualified LLVM.AST.ParameterAttribute as LLVM
 import qualified LLVM.AST.ParameterAttribute as ParameterAttribute
 import qualified LLVM.AST.Type as LLVM.Type
 import qualified Literal
@@ -70,6 +71,12 @@ llvmType type_ =
   case type_ of
     Assembly.Word -> wordSizedInt
     Assembly.WordPointer -> wordPointer
+
+llvmParameterAttributes :: Assembly.Type -> [LLVM.ParameterAttribute]
+llvmParameterAttributes type_ =
+  case type_ of
+    Assembly.Word -> []
+    Assembly.WordPointer -> [LLVM.NonNull]
 
 llvmReturnType :: Assembly.ReturnType -> LLVM.Type
 llvmReturnType result =
@@ -285,7 +292,7 @@ assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
                 { LLVM.Global.callingConvention = LLVM.CallingConvention.Fast
                 , LLVM.Global.returnType = llvmReturnType returnType
                 , LLVM.Global.name = assembleName name
-                , LLVM.Global.parameters = ([LLVM.Parameter (llvmType type_) parameter [] | ((type_, _), parameter) <- zip parameters parameters'], False)
+                , LLVM.Global.parameters = ([LLVM.Parameter (llvmType type_) parameter (llvmParameterAttributes type_) | ((type_, _), parameter) <- zip parameters parameters'], False)
                 , LLVM.Global.alignment = alignment
                 , LLVM.Global.basicBlocks = toList basicBlocks
                 , LLVM.Global.linkage = linkage
