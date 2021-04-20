@@ -16,7 +16,6 @@ import qualified ClosureConverted.Readback as Readback
 import qualified ClosureConverted.Representation
 import qualified ClosureConverted.Syntax as Syntax
 import qualified ClosureConverted.TypeOf as TypeOf
-import qualified Core.Syntax
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import qualified Data.OrderedHashMap as OrderedHashMap
@@ -512,13 +511,13 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition = do
         Just <$> generateFunction env returnRepresentation tele parameterRepresentations mempty
       (Syntax.FunctionDefinition {}, _) ->
         panic "ClosureConvertedToAssembly: FunctionDefinition without FunctionSignature"
-      (Syntax.DataDefinition boxity constructors, Just (Representation.ConstantSignature representation)) -> do
-        term <- Builder $ lift $ ClosureConverted.Representation.compileData (Context.toEnvironment $ _context env) boxity constructors
+      (Syntax.DataDefinition _ constructors, Just (Representation.ConstantSignature representation)) -> do
+        term <- Builder $ lift $ ClosureConverted.Representation.compileData (Context.toEnvironment $ _context env) qualifiedName constructors
         generateGlobal env name representation term
       (Syntax.DataDefinition {}, _) ->
         panic "ClosureConvertedToAssembly: DataDefinition without ConstantSignature"
-      (Syntax.ParameterisedDataDefinition boxity tele, Just (Representation.FunctionSignature parameterRepresentations returnRepresentation)) -> do
-        tele' <- Builder $ lift $ ClosureConverted.Representation.compileParameterisedData (Context.toEnvironment $ _context env) boxity tele
+      (Syntax.ParameterisedDataDefinition _ tele, Just (Representation.FunctionSignature parameterRepresentations returnRepresentation)) -> do
+        tele' <- Builder $ lift $ ClosureConverted.Representation.compileParameterisedData (Context.toEnvironment $ _context env) qualifiedName tele
         Just <$> generateFunction env returnRepresentation tele' parameterRepresentations mempty
       (Syntax.ParameterisedDataDefinition {}, _) -> do
         panic "ClosureConvertedToAssembly: DataDefinition without ConstantSignature"
@@ -760,8 +759,8 @@ storeTerm env term returnLocation returnType =
       operand <- globalConstantOperand global
       returnTypeSize <- sizeOfType returnType
       copy returnLocation operand returnTypeSize
-    Syntax.Con con@(Name.QualifiedConstructor typeName _) params args -> do
-      maybeTag <- fetch $ Query.ConstructorTag con
+    Syntax.Con con params args -> do
+      (boxity, maybeTag) <- fetch $ Query.ConstructorRepresentation con
       let tagArgs =
             case maybeTag of
               Nothing ->
@@ -777,7 +776,6 @@ storeTerm env term returnLocation returnType =
               argTypeSize <- sizeOfType argType
               addPointer "constructor_argument_offset" location argTypeSize
 
-      boxity <- fetchBoxity typeName
       case boxity of
         Unboxed ->
           foldM_ go (pure returnLocation) tagArgs
@@ -833,15 +831,9 @@ storeTerm env term returnLocation returnType =
               maybeDefaultBranch
       (scrutineeType, scrutineeRepresentation) <- typeOf env scrutinee
       (scrutinee', deallocateScrutinee) <- generateTypedTerm env scrutinee scrutineeType scrutineeRepresentation
-      case branches of
-        Syntax.ConstructorBranches typeName constructorBranches -> do
-          boxity <- fetchBoxity typeName
-          taggedBranches <- forM (OrderedHashMap.toList constructorBranches) $ \(constructor, branch) -> do
-            maybeTag <- fetch $ Query.ConstructorTag $ Name.QualifiedConstructor typeName constructor
-            case maybeTag of
-              Nothing -> panic "ClosureConvertedToAssembly: No support for tagless constructors yet" -- TODO
-              Just tag -> pure (tag, branch)
-
+      branches' <- ClosureConverted.Representation.compileBranches branches
+      case branches' of
+        ClosureConverted.Representation.TaggedConstructorBranches boxity constructorBranches -> do
           (scrutinee'', deallocateScrutinee') <- case boxity of
             Unboxed ->
               forceIndirect scrutinee'
@@ -863,7 +855,7 @@ storeTerm env term returnLocation returnType =
                     sequence_ deallocateScrutinee
                     pure Assembly.Void
                 )
-              | (branchTag, branch) <- taggedBranches
+              | (branchTag, branch) <- constructorBranches
               ]
               ( do
                   deallocateScrutinee'
@@ -871,7 +863,18 @@ storeTerm env term returnLocation returnType =
                   storeTerm env defaultBranch returnLocation returnType
                   pure Assembly.Void
               )
-        Syntax.LiteralBranches literalBranches -> do
+        ClosureConverted.Representation.UntaggedConstructorBranch boxity branch -> do
+          (scrutinee'', deallocateScrutinee') <- case boxity of
+            Unboxed ->
+              forceIndirect scrutinee'
+            Boxed -> do
+              directScrutinee <- forceDirect scrutinee'
+              heapScrutinee <- load "heap_scrutinee" directScrutinee
+              pure (heapScrutinee, pure ())
+          storeBranch env (const $ pure scrutinee'') branch returnLocation returnType
+          deallocateScrutinee'
+          sequence_ deallocateScrutinee
+        ClosureConverted.Representation.LiteralBranches literalBranches -> do
           directScrutinee <- forceDirect scrutinee'
           sequence_ deallocateScrutinee
           void $
@@ -952,15 +955,6 @@ generateArgument env term representation =
         )
 
 -------------------------------------------------------------------------------
-
-fetchBoxity :: MonadFetch Query m => Name.Qualified -> m Boxity
-fetchBoxity name = do
-  maybeDef <- fetch $ Query.ElaboratedDefinition name
-  case maybeDef of
-    Just (Core.Syntax.DataDefinition boxity _, _) ->
-      pure boxity
-    _ ->
-      panic "ClosureConvertedToAssembly.fetchBoxity"
 
 boxedConstructorSize ::
   Domain.Environment v ->

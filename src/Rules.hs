@@ -25,7 +25,6 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.IntMap as IntMap
-import qualified Data.List as List
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.OrderedHashSet as OrderedHashSet
 import qualified Data.Text as Text
@@ -441,17 +440,12 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
       noError $ do
         maybeDefinition <- fetch $ ClosureConverted name
         mapM (runM . ClosureConverted.Representation.signature name) maybeDefinition
-    ConstructorTag (Name.QualifiedConstructor dataTypeName constr) ->
+    ConstructorRepresentations dataTypeName ->
+      noError $ ClosureConverted.Representation.constructorRepresentations dataTypeName
+    ConstructorRepresentation (Name.QualifiedConstructor dataTypeName constr) ->
       noError $ do
-        def <- fetch $ ElaboratedDefinition dataTypeName
-        pure $ case def of
-          Just (Syntax.DataDefinition _ tele, _) ->
-            Telescope.under tele $ \(Syntax.ConstructorDefinitions constrs) ->
-              if OrderedHashMap.size constrs <= 1
-                then Nothing
-                else List.elemIndex constr $ OrderedHashMap.keys constrs
-          _ ->
-            Nothing
+        (boxity, maybeTags) <- fetch $ ConstructorRepresentations dataTypeName
+        pure (boxity, (HashMap.! constr) <$> maybeTags)
     Assembly name ->
       noError $ do
         maybeDefinition <- fetch $ ClosureConverted name

@@ -16,6 +16,7 @@
 module Query where
 
 import qualified Assembly
+import Boxity
 import qualified ClosureConverted.Syntax as ClosureConverted
 import Control.Monad.Fail
 import Core.Binding (Binding)
@@ -78,7 +79,8 @@ data Query a where
   ClosureConvertedType :: Name.Lifted -> Query (ClosureConverted.Type Void)
   ClosureConvertedConstructorType :: Name.QualifiedConstructor -> Query (Telescope Name ClosureConverted.Type ClosureConverted.Type Void)
   ClosureConvertedSignature :: Name.Lifted -> Query (Maybe Representation.Signature)
-  ConstructorTag :: Name.QualifiedConstructor -> Query (Maybe Int)
+  ConstructorRepresentations :: Name.Qualified -> Query (Boxity, Maybe (HashMap Name.Constructor Int))
+  ConstructorRepresentation :: Name.QualifiedConstructor -> Query (Boxity, Maybe Int)
   Assembly :: Name.Lifted -> Query (Maybe Assembly.Definition)
   AssemblyModule :: Name.Module -> Query [(Name.Lifted, Assembly.Definition)]
   LLVMModule :: Name.Module -> Query LLVM.Module
@@ -133,11 +135,12 @@ instance Hashable (Query a) where
       ClosureConvertedType a -> h 25 a
       ClosureConvertedConstructorType a -> h 26 a
       ClosureConvertedSignature a -> h 27 a
-      ConstructorTag a -> h 28 a
-      Assembly a -> h 29 a
-      AssemblyModule a -> h 30 a
-      LLVMModule a -> h 31 a
-      LLVMModuleInitModule -> h 32 ()
+      ConstructorRepresentations a -> h 28 a
+      ConstructorRepresentation a -> h 29 a
+      Assembly a -> h 30 a
+      AssemblyModule a -> h 31 a
+      LLVMModule a -> h 32 a
+      LLVMModuleInitModule -> h 33 ()
     where
       {-# INLINE h #-}
       h :: Hashable a => Int -> a -> Int
@@ -185,11 +188,12 @@ instance Persist (Some Query) where
       25 -> Some . ClosureConvertedType <$> get
       26 -> Some . ClosureConvertedConstructorType <$> get
       27 -> Some . ClosureConvertedSignature <$> get
-      28 -> Some . ConstructorTag <$> get
-      29 -> Some . Assembly <$> get
-      30 -> Some . AssemblyModule <$> get
-      31 -> Some . LLVMModule <$> get
-      32 -> pure $ Some LLVMModuleInitModule
+      28 -> Some . ConstructorRepresentations <$> get
+      29 -> Some . ConstructorRepresentation <$> get
+      30 -> Some . Assembly <$> get
+      31 -> Some . AssemblyModule <$> get
+      32 -> Some . LLVMModule <$> get
+      33 -> pure $ Some LLVMModuleInitModule
       _ -> fail "Persist (Some Query): no such tag"
 
   put (Some query) =
@@ -222,11 +226,12 @@ instance Persist (Some Query) where
       ClosureConvertedType a -> p 25 a
       ClosureConvertedConstructorType a -> p 26 a
       ClosureConvertedSignature a -> p 27 a
-      ConstructorTag a -> p 28 a
-      Assembly a -> p 29 a
-      AssemblyModule a -> p 30 a
-      LLVMModule a -> p 31 a
-      LLVMModuleInitModule -> p 32 ()
+      ConstructorRepresentations a -> p 28 a
+      ConstructorRepresentation a -> p 29 a
+      Assembly a -> p 30 a
+      AssemblyModule a -> p 31 a
+      LLVMModule a -> p 32 a
+      LLVMModuleInitModule -> p 33 ()
     where
       -- Don't forget to add a case to `get` above!
 

@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -13,6 +15,9 @@ import qualified ClosureConverted.Evaluation as Evaluation
 import qualified ClosureConverted.Readback as Readback
 import qualified ClosureConverted.Syntax as Syntax
 import qualified ClosureConverted.TypeOf as TypeOf
+import qualified Core.Syntax
+import Data.HashMap.Lazy (HashMap)
+import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
@@ -21,6 +26,7 @@ import Monad
 import Name (Name)
 import qualified Name
 import Protolude hiding (empty, force)
+import Query (Query)
 import qualified Query
 import Representation (Representation)
 import qualified Representation
@@ -193,44 +199,42 @@ constructorFieldRepresentation env type_ accumulatedRepresentation = do
       pure Representation.Empty
 
 -------------------------------------------------------------------------------
-compileData :: Environment v -> Boxity -> Syntax.ConstructorDefinitions v -> M (Syntax.Term v)
-compileData env boxity (Syntax.ConstructorDefinitions constructors) =
+compileData :: Environment v -> Name.Qualified -> Syntax.ConstructorDefinitions v -> M (Syntax.Term v)
+compileData env dataTypeName (Syntax.ConstructorDefinitions constructors) = do
+  (boxity, maybeTags) <- fetch $ Query.ConstructorRepresentations dataTypeName
   case boxity of
     Boxed ->
       pure $ Syntax.Global (Name.Lifted Builtin.WordRepresentationName 0)
-    Unboxed ->
-      case OrderedHashMap.toList constructors of
-        [] ->
-          pure $ Syntax.Global (Name.Lifted Builtin.EmptyRepresentationName 0)
-        [(_, type_)] -> do
-          type' <- Evaluation.evaluate env type_
-          compileUnboxedConstructorFields env type'
-        constructorsList -> do
-          compiledConstructorFields <- forM constructorsList $ \(_, type_) -> do
-            type' <- Evaluation.evaluate env type_
-            compileUnboxedConstructorFields env type'
-          pure $
-            Syntax.Apply
-              (Name.Lifted Builtin.AddRepresentationName 0)
-              [ Syntax.Global (Name.Lifted Builtin.WordRepresentationName 0)
-              , foldr
-                  (\a b -> Syntax.Apply (Name.Lifted Builtin.MaxRepresentationName 0) [a, b])
-                  (Syntax.Global $ Name.Lifted Builtin.EmptyRepresentationName 0)
-                  compiledConstructorFields
-              ]
+    Unboxed -> do
+      compiledConstructorFields <- forM (OrderedHashMap.toList constructors) $ \(_, type_) -> do
+        type' <- Evaluation.evaluate env type_
+        compileUnboxedConstructorFields env type'
+      let maxFieldSize =
+            foldr
+              (\a b -> Syntax.Apply (Name.Lifted Builtin.MaxRepresentationName 0) [a, b])
+              (Syntax.Global $ Name.Lifted Builtin.EmptyRepresentationName 0)
+              compiledConstructorFields
+      pure $ case maybeTags of
+        Nothing -> maxFieldSize
+        Just _ ->
+          Syntax.Apply
+            (Name.Lifted Builtin.AddRepresentationName 0)
+            [ Syntax.Global (Name.Lifted Builtin.WordRepresentationName 0)
+            , maxFieldSize
+            ]
 
 compileParameterisedData ::
   Environment v ->
-  Boxity ->
+  Name.Qualified ->
   Telescope Name Syntax.Type Syntax.ConstructorDefinitions v ->
   M (Telescope Name Syntax.Type Syntax.Term v)
-compileParameterisedData env boxity tele =
+compileParameterisedData env dataTypeName tele =
   case tele of
     Telescope.Empty constructors ->
-      Telescope.Empty <$> compileData env boxity constructors
+      Telescope.Empty <$> compileData env dataTypeName constructors
     Telescope.Extend name type_ plicity tele' -> do
       (env', _) <- Environment.extend env
-      Telescope.Extend name type_ plicity <$> compileParameterisedData env' boxity tele'
+      Telescope.Extend name type_ plicity <$> compileParameterisedData env' dataTypeName tele'
 
 compileUnboxedConstructorFields :: Environment v -> Domain.Type -> M (Syntax.Term v)
 compileUnboxedConstructorFields env type_ = do
@@ -286,3 +290,42 @@ compileBoxedConstructorFields env type_ args = do
   where
     empty =
       pure $ Syntax.Global (Name.Lifted Builtin.EmptyRepresentationName 0)
+
+-------------------------------------------------------------------------------
+data Branches v
+  = LiteralBranches (Syntax.LiteralBranches v)
+  | UntaggedConstructorBranch !Boxity (Telescope Name Syntax.Type Syntax.Term v)
+  | TaggedConstructorBranches !Boxity [(Int, Telescope Name Syntax.Type Syntax.Term v)]
+  deriving (Eq, Show)
+
+compileBranches :: MonadFetch Query m => Syntax.Branches v -> m (Branches v)
+compileBranches branches =
+  case branches of
+    Syntax.LiteralBranches literalBranches ->
+      pure $ LiteralBranches literalBranches
+    Syntax.ConstructorBranches typeName constructorBranches -> do
+      (boxity, maybeTags) <- fetch $ Query.ConstructorRepresentations typeName
+      pure $ case (maybeTags, OrderedHashMap.toList constructorBranches) of
+        (Nothing, [(_, constructorBranch)]) -> UntaggedConstructorBranch boxity constructorBranch
+        (Nothing, _) -> panic "ClosureConverted.Representation.compileBranches: Untagged constructor branch length mismatch"
+        (Just tags, constructorBranchesList) ->
+          TaggedConstructorBranches
+            boxity
+            [(tags HashMap.! constructor, branch) | (constructor, branch) <- constructorBranchesList]
+
+constructorRepresentations :: Name.Qualified -> Task Query (Boxity, Maybe (HashMap Name.Constructor Int))
+constructorRepresentations name = do
+  definition <- fetch $ Query.ElaboratedDefinition name
+  pure $ case definition of
+    Just (Core.Syntax.DataDefinition boxity tele, _) ->
+      ( boxity
+      , Telescope.under tele $ \(Core.Syntax.ConstructorDefinitions constructors) ->
+          case OrderedHashMap.toList constructors of
+            [] -> Nothing
+            [_] -> Nothing
+            constructorsList ->
+              Just $
+                HashMap.fromList [(constructor, tag) | (tag, (constructor, _)) <- zip [0 ..] constructorsList]
+      )
+    _ ->
+      panic "ClosureConverted.Representation.compileConstructors: No data definition"
