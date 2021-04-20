@@ -444,22 +444,14 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
     ConstructorTag (Name.QualifiedConstructor dataTypeName constr) ->
       noError $ do
         def <- fetch $ ElaboratedDefinition dataTypeName
-        case def of
-          Just (Syntax.DataDefinition _ tele, _) -> do
-            let go :: Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v -> Maybe Int
-                go tele' =
-                  case tele' of
-                    Telescope.Empty (Syntax.ConstructorDefinitions constrs)
-                      | OrderedHashMap.size constrs <= 1 ->
-                        Nothing
-                      | otherwise ->
-                        List.elemIndex constr $ OrderedHashMap.keys constrs
-                    Telescope.Extend _ _ _ tele'' ->
-                      go tele''
-
-            pure $ go tele
+        pure $ case def of
+          Just (Syntax.DataDefinition _ tele, _) ->
+            Telescope.under tele $ \(Syntax.ConstructorDefinitions constrs) ->
+              if OrderedHashMap.size constrs <= 1
+                then Nothing
+                else List.elemIndex constr $ OrderedHashMap.keys constrs
           _ ->
-            pure Nothing
+            Nothing
     Assembly name ->
       noError $ do
         maybeDefinition <- fetch $ ClosureConverted name
