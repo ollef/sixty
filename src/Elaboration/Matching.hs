@@ -422,26 +422,6 @@ uncoveredScrutineePatterns context value = do
       let covered =
             IntMap.lookupDefault mempty v $ Context.coveredConstructors context
 
-          go :: Name.Qualified -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v -> [Domain.Pattern]
-          go typeName tele =
-            case tele of
-              Telescope.Empty (Syntax.ConstructorDefinitions constrDefs) -> do
-                let uncoveredConstrDefs =
-                      OrderedHashMap.differenceFromMap
-                        constrDefs
-                        ( HashSet.toMap $
-                            HashSet.map (\(Name.QualifiedConstructor _ constr) -> constr) covered
-                        )
-
-                foreach (OrderedHashMap.toList uncoveredConstrDefs) $ \(constr, type_) ->
-                  Domain.Pattern.Con
-                    (Name.QualifiedConstructor typeName constr)
-                    [ (plicity, Domain.Pattern.Wildcard)
-                    | plicity <- Syntax.constructorFieldPlicities type_
-                    ]
-              Telescope.Extend _ _ _ tele' ->
-                go typeName tele'
-
       case HashSet.toList covered of
         [] ->
           pure [Domain.Pattern.Wildcard]
@@ -449,7 +429,21 @@ uncoveredScrutineePatterns context value = do
           maybeDefinition <- fetch $ Query.ElaboratedDefinition typeName
           case maybeDefinition of
             Just (Syntax.DataDefinition _ tele, _) ->
-              pure $ go typeName tele
+              pure $
+                Telescope.under tele $ \(Syntax.ConstructorDefinitions constrDefs) -> do
+                  let uncoveredConstrDefs =
+                        OrderedHashMap.differenceFromMap
+                          constrDefs
+                          ( HashSet.toMap $
+                              HashSet.map (\(Name.QualifiedConstructor _ constr) -> constr) covered
+                          )
+
+                  foreach (OrderedHashMap.toList uncoveredConstrDefs) $ \(constr, type_) ->
+                    Domain.Pattern.Con
+                      (Name.QualifiedConstructor typeName constr)
+                      [ (plicity, Domain.Pattern.Wildcard)
+                      | plicity <- Syntax.constructorFieldPlicities type_
+                      ]
             _ ->
               panic "uncoveredScrutineePatterns non-data"
     Domain.Neutral (Domain.Var _) (_ Domain.:> _) ->
