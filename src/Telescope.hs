@@ -53,12 +53,8 @@ fold ::
   (forall v'. n -> t v' -> Plicity -> Scope k v' -> k v') ->
   Telescope n t k v ->
   k v
-fold f tele =
-  case tele of
-    Empty k ->
-      k
-    Extend name t plicity scope ->
-      f name t plicity $ Telescope.fold f scope
+fold f =
+  Telescope.foldr f identity
 
 foldr ::
   (forall v'. n -> t v' -> Plicity -> Scope result v' -> result v') ->
