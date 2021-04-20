@@ -312,7 +312,7 @@ assembleName =
 
 assembleBasicBlockReturningResult :: Assembly.ReturnType -> Assembly.BasicBlock -> Assembler ()
 assembleBasicBlockReturningResult returnType (Assembly.BasicBlock instructions result) = do
-  blockName <- freshName "start"
+  blockName <- freshName "entry"
   startBlock blockName
   mapM_ assembleInstruction instructions
   returnResult returnType result
