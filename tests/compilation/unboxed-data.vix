@@ -1,0 +1,85 @@
+data Empty where
+data Unit = Unit
+data Either a b = Left a | Right b
+data Tuple a b = Tuple a b
+
+identity : forall a. a -> a
+
+fromRightWithDefault : forall a b. b -> Either a b -> b
+fromRightWithDefault default (Left _) = default
+fromRightWithDefault _ (Right b) = b
+
+fromLeftWithDefault : forall a b. a -> Either a b -> a
+fromLeftWithDefault _ (Left a) = a
+fromLeftWithDefault default (Right _) = default
+
+first : forall a b. Tuple a b -> a
+first (Tuple a b) = a
+
+second : forall a b. Tuple a b -> a
+second (Tuple a b) = a
+
+absurd : forall a. Empty -> a
+absurd e = case e of
+
+testData1 : Either Unit (Either Unit Unit)
+testData1 = Right (Right Unit)
+
+testFunction1 : forall a. Either a (Either a a) -> a
+testFunction1 (Left a) = a
+testFunction1 (Right (Left a)) = a
+testFunction1 (Right (Right a)) = a
+
+test1 = case testFunction1 testData1 of
+  Unit -> printInt 610 -- prints 610
+
+testData2 : Either Unit Unit
+testData2 = Left Unit
+
+testFunction2 : Either Unit Unit -> Unit
+testFunction2 (Left a) = a
+testFunction2 (Right a) = a
+
+test2 = case testFunction2 testData2 of
+  Unit -> printInt 611 -- prints 611
+
+testData3 : Either Unit (Either Unit Unit)
+testData3 = Right (Left Unit)
+
+testFunction3 : Either Unit (Either Unit Unit) -> Unit
+testFunction3 (Left a) = a
+testFunction3 (Right (Left a)) = a
+testFunction3 (Right (Right a)) = a
+
+test3 = case testFunction3 testData3 of
+  Unit -> printInt 612 -- prints 612
+
+testData4 : Either Int (Tuple Unit Int)
+testData4 = Right (Tuple Unit 613)
+
+testFunction4 : Either Int (Tuple Unit Int) -> Int
+testFunction4 (Left a) = a
+testFunction4 (Right (Tuple Unit a)) = a
+
+test4 = printInt (testFunction4 testData4) -- prints 613
+
+testData5 : Either Unit (Tuple Int Int)
+testData5 = Right (Tuple 613 614)
+
+testFunction5 : Either Unit (Tuple Int Int) -> Int
+testFunction5 (Left Unit) = 0
+testFunction5 (Right (Tuple 613 a)) = a
+testFunction5 (Right (Tuple _ _)) = 0
+
+test5 = printInt (testFunction5 testData5) -- prints 614
+
+testData6 : Tuple (Either Unit Unit) (Either Int Int)
+testData6 = Tuple (Left Unit) (Right 615)
+
+testFunction6 : Tuple (Either Unit Unit) (Either Int Int) -> Int
+testFunction6 (Tuple (Left Unit) (Left _)) = 0
+testFunction6 (Tuple (Left Unit) (Right n)) = n
+testFunction6 (Tuple (Right Unit) (Left _)) = 0
+testFunction6 (Tuple (Right Unit) (Right _)) = 0
+
+test6 = printInt (testFunction6 testData6) -- prints 615
