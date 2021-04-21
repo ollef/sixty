@@ -323,9 +323,9 @@ constructorRepresentations name = do
           case OrderedHashMap.toList constructors of
             [] -> Nothing
             [_] -> Nothing
-            constructorsList ->
+            constructorList ->
               Just $
-                HashMap.fromList [(constructor, tag) | (tag, (constructor, _)) <- zip [0 ..] constructorsList]
+                HashMap.fromList [(constructor, tag) | (tag, (constructor, _)) <- zip [0 ..] constructorList]
       )
     _ ->
       panic "ClosureConverted.Representation.compileConstructors: No data definition"
