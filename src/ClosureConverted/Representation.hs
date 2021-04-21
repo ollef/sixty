@@ -122,7 +122,7 @@ typeRepresentation env type_ =
     Domain.Function {} ->
       pure $ Representation.Direct Representation.Doesn'tContainHeapPointers
   where
-    globalCase global args = do
+    globalCase global@(Name.Lifted qualifiedName liftedNameNumber) args = do
       -- TODO caching
       maybeDefinition <- fetch $ Query.ClosureConverted global
       case maybeDefinition of
@@ -145,29 +145,29 @@ typeRepresentation env type_ =
                   typeRepresentation env type'
             Syntax.DataDefinition Boxed _ ->
               pure $ Representation.Direct Representation.MightContainHeapPointers
-            Syntax.DataDefinition Unboxed constructors ->
-              unboxedDataRepresentation (Environment.emptyFrom env) constructors
+            Syntax.DataDefinition Unboxed constructors -> do
+              unless (liftedNameNumber == 0) $ panic "ClosureConverted.Representation. Data with name number /= 0"
+              unboxedDataRepresentation qualifiedName (Environment.emptyFrom env) constructors
             Syntax.ParameterisedDataDefinition Boxed _ ->
               pure $ Representation.Direct Representation.MightContainHeapPointers
             Syntax.ParameterisedDataDefinition Unboxed tele -> do
-              maybeResult <- Evaluation.applyTelescope env (Telescope.fromVoid tele) args unboxedDataRepresentation
+              unless (liftedNameNumber == 0) $ panic "ClosureConverted.Representation. Data with name number /= 0"
+              maybeResult <- Evaluation.applyTelescope env (Telescope.fromVoid tele) args $ unboxedDataRepresentation qualifiedName
               pure $ fromMaybe (Representation.Indirect Representation.MightContainHeapPointers) maybeResult
 
-unboxedDataRepresentation :: Environment v -> Syntax.ConstructorDefinitions v -> M Representation
-unboxedDataRepresentation env (Syntax.ConstructorDefinitions constructors) = do
-  let constructorsList =
-        OrderedHashMap.toList constructors
+unboxedDataRepresentation :: Name.Qualified -> Environment v -> Syntax.ConstructorDefinitions v -> M Representation
+unboxedDataRepresentation dataTypeName env (Syntax.ConstructorDefinitions constructors) = do
+  (_boxity, maybeTags) <- fetch $ Query.ConstructorRepresentations dataTypeName
   fieldRepresentation <-
     Representation.maxM
       [ do
         type' <- Evaluation.evaluate env type_
         constructorFieldRepresentation env type' mempty
-      | (_, type_) <- constructorsList
+      | (_, type_) <- OrderedHashMap.toList constructors
       ]
-  pure $ case constructorsList of
-    [] -> Representation.Empty
-    [_] -> fieldRepresentation
-    _ -> constructorTagRepresentation <> fieldRepresentation
+  pure $ case maybeTags of
+    Nothing -> fieldRepresentation
+    Just _ -> constructorTagRepresentation <> fieldRepresentation
   where
     constructorTagRepresentation =
       Representation.Direct Representation.Doesn'tContainHeapPointers
