@@ -186,17 +186,17 @@ constructorFieldRepresentation env type_ accumulatedRepresentation = do
           type'' <- Evaluation.evaluateClosure closure $ Domain.var var
           constructorFieldRepresentation context' type'' accumulatedRepresentation'
     Domain.Neutral {} ->
-      pure Representation.Empty
+      pure accumulatedRepresentation
     Domain.Con {} ->
-      pure Representation.Empty
+      pure accumulatedRepresentation
     Domain.Lit {} ->
-      pure Representation.Empty
+      pure accumulatedRepresentation
     Domain.Glued {} ->
-      pure Representation.Empty
+      pure accumulatedRepresentation
     Domain.Lazy {} ->
-      pure Representation.Empty
+      pure accumulatedRepresentation
     Domain.Function {} ->
-      pure Representation.Empty
+      pure accumulatedRepresentation
 
 -------------------------------------------------------------------------------
 compileData :: Environment v -> Name.Qualified -> Syntax.ConstructorDefinitions v -> M (Syntax.Term v)
