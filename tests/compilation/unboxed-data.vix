@@ -16,8 +16,8 @@ fromLeftWithDefault default (Right _) = default
 first : forall a b. Tuple a b -> a
 first (Tuple a b) = a
 
-second : forall a b. Tuple a b -> a
-second (Tuple a b) = a
+second : forall a b. Tuple a b -> b
+second (Tuple a b) = b
 
 absurd : forall a. Empty -> a
 absurd e = case e of
@@ -83,3 +83,10 @@ testFunction6 (Tuple (Right Unit) (Left _)) = 0
 testFunction6 (Tuple (Right Unit) (Right _)) = 0
 
 test6 = printInt (testFunction6 testData6) -- prints 615
+
+testData7 : Tuple (Either Int (Tuple Int Int)) (Either Unit Int)
+testData7 = Tuple (Right (Tuple 1 2)) (Right 3)
+
+test7 = printInt (first (fromRightWithDefault (Tuple 0 0) (first testData7))) -- prints 1
+test8 = printInt (second (fromRightWithDefault (Tuple 0 0) (first testData7))) -- prints 2
+test9 = printInt (fromRightWithDefault 0 (second testData7)) -- prints 3
