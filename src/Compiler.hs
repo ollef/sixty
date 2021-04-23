@@ -40,8 +40,9 @@ compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel = d
     pure llvmFileName
 
   builtinLLVMFile <- liftIO $ Paths.getDataFileName "rts/Sixten.Builtin.ll"
+  builtinCFile <- liftIO $ Paths.getDataFileName "rts/Sixten.Builtin.c"
   mainLLVMFile <- liftIO $ Paths.getDataFileName "rts/main.ll"
-  initCFile <- liftIO $ Paths.getDataFileName "rts/init.c"
+  globalsCFile <- liftIO $ Paths.getDataFileName "rts/globals.c"
   let llvmFiles =
         mainLLVMFile : builtinLLVMFile : moduleInitLLVMFile : moduleLLVMFiles
   -- TODO configurable clang path
@@ -54,10 +55,13 @@ compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel = d
               assemblyDir </> "program" <.> "ll"
             optimisedProgramName =
               assemblyDir </> "program-opt" <.> "ll"
-            initLLFile =
-              assemblyDir </> "init" <.> "ll"
-        callProcess "clang" $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-S", "-emit-llvm", "-o", initLLFile, initCFile]
-        callProcess "llvm-link" $ ["-S", "-o", linkedProgramName, initLLFile] <> llvmFiles
+            builtinCLLFile =
+              assemblyDir </> "Sixten.Builtin" <.> "c" <.> "ll"
+            globalsLLFile =
+              assemblyDir </> "globals" <.> "ll"
+        callProcess "clang" $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-S", "-emit-llvm", "-o", builtinCLLFile, builtinCFile]
+        callProcess "clang" $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-S", "-emit-llvm", "-o", globalsLLFile, globalsCFile]
+        callProcess "llvm-link" $ ["-S", "-o", linkedProgramName, builtinCLLFile, globalsLLFile] <> llvmFiles
         callProcess "opt" $ optimisationArgs <> ["-S", "-o", optimisedProgramName, linkedProgramName]
         callProcess "clang" $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-o", outputExecutableFile, linkedProgramName]
-      else callProcess "clang" $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-o", outputExecutableFile, initCFile] <> llvmFiles
+      else callProcess "clang" $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-o", outputExecutableFile, builtinCFile, globalsCFile] <> llvmFiles

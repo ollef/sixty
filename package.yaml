@@ -12,9 +12,10 @@ extra-source-files:
 - README.md
 data-files:
 - builtin/Builtin.vix
+- rts/Sixten.Builtin.c
 - rts/Sixten.Builtin.ll
+- rts/globals.c
 - rts/main.ll
-- rts/init.c
 
 ghc-options:
   - -Wall
