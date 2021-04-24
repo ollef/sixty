@@ -33,6 +33,7 @@ data Operand
 data Type
   = Word
   | WordPointer
+  | FunctionPointer !(Return Type) [Type]
   | Struct [Type]
   deriving (Eq, Show, Generic, Persist, Hashable)
 
@@ -111,6 +112,7 @@ instance Pretty Type where
     case type_ of
       Word -> "word"
       WordPointer -> "word*"
+      FunctionPointer returnType argTypes -> pretty returnType <+> tupled (pretty <$> argTypes)
       Struct types -> "{" <> hsep (punctuate comma $ pretty <$> types) <> "}"
 
 instance Pretty Instruction where

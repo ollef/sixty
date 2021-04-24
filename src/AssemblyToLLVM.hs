@@ -39,29 +39,18 @@ data AssemblerState = AssemblerState
   , _basicBlocks :: Tsil LLVM.BasicBlock
   }
 
-data OperandType
-  = AssemblyType !Assembly.Type
-  | FunctionPointer !(Assembly.Return Assembly.Type) [Assembly.Type]
-  deriving (Eq, Show)
-
-llvmOperandType :: OperandType -> LLVM.Type
-llvmOperandType type_ =
+llvmType :: Assembly.Type -> LLVM.Type
+llvmType type_ =
   case type_ of
-    AssemblyType type' ->
-      llvmType type'
-    FunctionPointer returnType argumentTypes ->
+    Assembly.Word -> wordSizedInt
+    Assembly.WordPointer -> wordPointer
+    Assembly.FunctionPointer returnType argumentTypes ->
       LLVM.Type.ptr
         LLVM.FunctionType
           { resultType = llvmReturnType returnType
           , argumentTypes = llvmType <$> argumentTypes
           , isVarArg = False
           }
-
-llvmType :: Assembly.Type -> LLVM.Type
-llvmType type_ =
-  case type_ of
-    Assembly.Word -> wordSizedInt
-    Assembly.WordPointer -> wordPointer
     Assembly.Struct types ->
       LLVM.Type.StructureType
         { isPacked = False
@@ -73,6 +62,7 @@ llvmParameterAttributes type_ =
   case type_ of
     Assembly.Word -> []
     Assembly.WordPointer -> [LLVM.NonNull]
+    Assembly.FunctionPointer {} -> [LLVM.NonNull]
     Assembly.Struct _ -> []
 
 llvmReturnType :: Assembly.Return Assembly.Type -> LLVM.Type
@@ -394,7 +384,7 @@ assembleInstruction instruction =
             , metadata = []
             }
     Assembly.Call (Assembly.Return (returnType, destination)) function arguments -> do
-      function' <- assembleOperandWithOperandType (FunctionPointer (Assembly.Return returnType) $ fst <$> arguments) function
+      function' <- assembleOperand (Assembly.FunctionPointer (Assembly.Return returnType) $ fst <$> arguments) function
       arguments' <- mapM (uncurry assembleOperand) arguments
       destination' <- activateLocal returnType destination
       emitInstruction $
@@ -409,7 +399,7 @@ assembleInstruction instruction =
             , metadata = []
             }
     Assembly.Call Assembly.Void function arguments -> do
-      function' <- assembleOperandWithOperandType (FunctionPointer Assembly.Void $ fst <$> arguments) function
+      function' <- assembleOperand (Assembly.FunctionPointer Assembly.Void $ fst <$> arguments) function
       arguments' <- mapM (uncurry assembleOperand) arguments
       emitInstruction $
         LLVM.Do
@@ -691,15 +681,12 @@ assembleInstruction instruction =
                 }
 
 assembleOperand :: Assembly.Type -> Assembly.Operand -> Assembler LLVM.Operand
-assembleOperand = assembleOperandWithOperandType . AssemblyType
-
-assembleOperandWithOperandType :: OperandType -> Assembly.Operand -> Assembler LLVM.Operand
-assembleOperandWithOperandType desiredType operand =
+assembleOperand desiredType operand =
   case operand of
     Assembly.LocalOperand local@(Assembly.Local _ nameSuggestion) -> do
       locals <- gets _locals
       let (type_, operand') = HashMap.lookupDefault (panic $ "assembleOperandWithOperandType: no such local " <> show local) local locals
-      cast nameSuggestion desiredType (AssemblyType type_) operand'
+      cast nameSuggestion desiredType type_ operand'
     Assembly.GlobalConstant global globalType -> do
       let globalName =
             assembleName global
@@ -720,8 +707,8 @@ assembleOperandWithOperandType desiredType operand =
           , LLVM.Global.type' = llvmGlobalType
           }
       case globalType of
-        Assembly.Word -> do
-          cast nameSuggestion desiredType (AssemblyType Assembly.WordPointer) $ LLVM.ConstantOperand $ LLVM.Constant.GlobalReference wordPointer globalName
+        Assembly.Word ->
+          cast nameSuggestion desiredType Assembly.WordPointer $ LLVM.ConstantOperand $ LLVM.Constant.GlobalReference wordPointer globalName
         Assembly.WordPointer -> do
           destination <- freshName nameSuggestion
           emitInstruction $
@@ -733,12 +720,25 @@ assembleOperandWithOperandType desiredType operand =
                 , alignment = alignment
                 , metadata = []
                 }
-          cast nameSuggestion desiredType (AssemblyType Assembly.WordPointer) $ LLVM.LocalReference wordPointer destination
+          cast nameSuggestion desiredType Assembly.WordPointer $ LLVM.LocalReference wordPointer destination
+        Assembly.FunctionPointer _ _ -> do
+          let llvmType_ = llvmType globalType
+          destination <- freshName nameSuggestion
+          emitInstruction $
+            destination
+              LLVM.:= LLVM.Load
+                { volatile = False
+                , address = LLVM.ConstantOperand $ LLVM.Constant.GlobalReference llvmType_ globalName
+                , maybeAtomicity = Nothing
+                , alignment = alignment
+                , metadata = []
+                }
+          cast nameSuggestion desiredType Assembly.WordPointer $ LLVM.LocalReference llvmType_ destination
         Assembly.Struct types ->
-          cast nameSuggestion desiredType (AssemblyType $ Assembly.Struct types) $ LLVM.ConstantOperand $ LLVM.Constant.GlobalReference wordPointer globalName
+          cast nameSuggestion desiredType (Assembly.Struct types) $ LLVM.ConstantOperand $ LLVM.Constant.GlobalReference wordPointer globalName
     Assembly.GlobalFunction global returnType parameterTypes -> do
       let defType =
-            FunctionPointer returnType parameterTypes
+            Assembly.FunctionPointer returnType parameterTypes
 
           globalNameText =
             Assembly.nameText global
@@ -750,7 +750,7 @@ assembleOperandWithOperandType desiredType operand =
             assembleName global
 
           globalType =
-            llvmOperandType defType
+            llvmType defType
 
       use
         LLVM.functionDefaults
@@ -763,8 +763,8 @@ assembleOperandWithOperandType desiredType operand =
       cast nameSuggestion desiredType defType $ LLVM.ConstantOperand $ LLVM.Constant.GlobalReference globalType globalName
     Assembly.StructOperand operands ->
       case desiredType of
-        AssemblyType (Assembly.Struct types) -> do
-          let structType = llvmOperandType desiredType
+        Assembly.Struct types -> do
+          let structType = llvmType desiredType
               go (index, struct) (fieldType, fieldOperand) = do
                 fieldOperand' <- assembleOperand fieldType fieldOperand
                 struct' <- freshName "struct"
@@ -783,20 +783,20 @@ assembleOperandWithOperandType desiredType operand =
     Assembly.Lit lit ->
       case lit of
         Literal.Integer int ->
-          cast "literal" desiredType (AssemblyType Assembly.Word) $
+          cast "literal" desiredType Assembly.Word $
             LLVM.ConstantOperand
               LLVM.Constant.Int
                 { integerBits = wordBits
                 , integerValue = int
                 }
 
-cast :: Assembly.NameSuggestion -> OperandType -> OperandType -> LLVM.Operand -> Assembler LLVM.Operand
+cast :: Assembly.NameSuggestion -> Assembly.Type -> Assembly.Type -> LLVM.Operand -> Assembler LLVM.Operand
 cast nameSuggestion newType type_ operand
   | type_ == newType =
     pure operand
   | otherwise =
     case (type_, newType) of
-      (AssemblyType Assembly.Word, _) -> do
+      (Assembly.Word, _) -> do
         newOperand <- freshName $ nameSuggestion <> "_pointer"
         emitInstruction $
           newOperand
@@ -806,7 +806,7 @@ cast nameSuggestion newType type_ operand
               , metadata = mempty
               }
         pure $ LLVM.LocalReference llvmNewType newOperand
-      (_, AssemblyType Assembly.Word) -> do
+      (_, Assembly.Word) -> do
         newOperand <- freshName $ nameSuggestion <> "_integer"
         emitInstruction $
           newOperand
@@ -828,4 +828,4 @@ cast nameSuggestion newType type_ operand
 
         pure $ LLVM.LocalReference llvmNewType newOperand
   where
-    llvmNewType = llvmOperandType newType
+    llvmNewType = llvmType newType
