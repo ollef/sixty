@@ -40,24 +40,15 @@ data AssemblerState = AssemblerState
   }
 
 data OperandType
-  = Word
-  | WordPointer
+  = AssemblyType !Assembly.Type
   | FunctionPointer !(Assembly.Return Assembly.Type) [Assembly.Type]
   deriving (Eq, Show)
-
-operandType :: Assembly.Type -> OperandType
-operandType type_ =
-  case type_ of
-    Assembly.Word -> Word
-    Assembly.WordPointer -> WordPointer
 
 llvmOperandType :: OperandType -> LLVM.Type
 llvmOperandType type_ =
   case type_ of
-    Word ->
-      wordSizedInt
-    WordPointer ->
-      wordPointer
+    AssemblyType type' ->
+      llvmType type'
     FunctionPointer returnType argumentTypes ->
       LLVM.Type.ptr
         LLVM.FunctionType
@@ -71,12 +62,18 @@ llvmType type_ =
   case type_ of
     Assembly.Word -> wordSizedInt
     Assembly.WordPointer -> wordPointer
+    Assembly.Struct types ->
+      LLVM.Type.StructureType
+        { isPacked = False
+        , elementTypes = llvmType <$> types
+        }
 
 llvmParameterAttributes :: Assembly.Type -> [LLVM.ParameterAttribute]
 llvmParameterAttributes type_ =
   case type_ of
     Assembly.Word -> []
     Assembly.WordPointer -> [LLVM.NonNull]
+    Assembly.Struct _ -> []
 
 llvmReturnType :: Assembly.Return Assembly.Type -> LLVM.Type
 llvmReturnType result =
@@ -639,6 +636,8 @@ assembleInstruction instruction =
             }
     Assembly.HeapAllocate {} ->
       panic "AssemblyToLLVM: HeapAllocate" -- TODO
+    Assembly.ExtractValue {} ->
+      panic "AssemblyToLLVM: ExtractValue" -- TODO
     Assembly.Switch destination scrutinee branches (Assembly.BasicBlock defaultBranchInstructions defaultBranchResult) -> do
       scrutinee' <- assembleOperand Assembly.Word scrutinee
       branchLabels <- forM branches $ \(i, _) -> do
@@ -692,7 +691,7 @@ assembleInstruction instruction =
                 }
 
 assembleOperand :: Assembly.Type -> Assembly.Operand -> Assembler LLVM.Operand
-assembleOperand = assembleOperandWithOperandType . operandType
+assembleOperand = assembleOperandWithOperandType . AssemblyType
 
 assembleOperandWithOperandType :: OperandType -> Assembly.Operand -> Assembler LLVM.Operand
 assembleOperandWithOperandType desiredType operand =
@@ -700,7 +699,7 @@ assembleOperandWithOperandType desiredType operand =
     Assembly.LocalOperand local@(Assembly.Local _ nameSuggestion) -> do
       locals <- gets _locals
       let (type_, operand') = HashMap.lookupDefault (panic $ "assembleOperandWithOperandType: no such local " <> show local) local locals
-      cast nameSuggestion desiredType (operandType type_) operand'
+      cast nameSuggestion desiredType (AssemblyType type_) operand'
     Assembly.GlobalConstant global globalType -> do
       let globalName =
             assembleName global
@@ -722,7 +721,7 @@ assembleOperandWithOperandType desiredType operand =
           }
       case globalType of
         Assembly.Word -> do
-          cast nameSuggestion desiredType WordPointer $ LLVM.ConstantOperand $ LLVM.Constant.GlobalReference wordPointer globalName
+          cast nameSuggestion desiredType (AssemblyType Assembly.WordPointer) $ LLVM.ConstantOperand $ LLVM.Constant.GlobalReference wordPointer globalName
         Assembly.WordPointer -> do
           destination <- freshName nameSuggestion
           emitInstruction $
@@ -734,7 +733,9 @@ assembleOperandWithOperandType desiredType operand =
                 , alignment = alignment
                 , metadata = []
                 }
-          cast nameSuggestion desiredType WordPointer $ LLVM.LocalReference wordPointer destination
+          cast nameSuggestion desiredType (AssemblyType Assembly.WordPointer) $ LLVM.LocalReference wordPointer destination
+        Assembly.Struct types ->
+          cast nameSuggestion desiredType (AssemblyType $ Assembly.Struct types) $ LLVM.ConstantOperand $ LLVM.Constant.GlobalReference wordPointer globalName
     Assembly.GlobalFunction global returnType parameterTypes -> do
       let defType =
             FunctionPointer returnType parameterTypes
@@ -760,10 +761,29 @@ assembleOperandWithOperandType desiredType operand =
           , LLVM.Global.alignment = alignment
           }
       cast nameSuggestion desiredType defType $ LLVM.ConstantOperand $ LLVM.Constant.GlobalReference globalType globalName
+    Assembly.StructOperand operands ->
+      case desiredType of
+        AssemblyType (Assembly.Struct types) -> do
+          let structType = llvmOperandType desiredType
+              go (index, struct) (fieldType, fieldOperand) = do
+                fieldOperand' <- assembleOperand fieldType fieldOperand
+                struct' <- freshName "struct"
+                emitInstruction $
+                  struct'
+                    LLVM.:= LLVM.InsertValue
+                      { aggregate = struct
+                      , element = fieldOperand'
+                      , indices' = [index]
+                      , metadata = mempty
+                      }
+                pure (index + 1, LLVM.LocalReference structType struct')
+
+          snd <$> foldM go (0, LLVM.ConstantOperand $ LLVM.Constant.Undef {constantType = structType}) (zip types operands)
+        _ -> panic "AssemblyToLLVM: desired type must be a struct"
     Assembly.Lit lit ->
       case lit of
         Literal.Integer int ->
-          cast "literal" desiredType Word $
+          cast "literal" desiredType (AssemblyType Assembly.Word) $
             LLVM.ConstantOperand
               LLVM.Constant.Int
                 { integerBits = wordBits
@@ -776,7 +796,7 @@ cast nameSuggestion newType type_ operand
     pure operand
   | otherwise =
     case (type_, newType) of
-      (Word, _) -> do
+      (AssemblyType Assembly.Word, _) -> do
         newOperand <- freshName $ nameSuggestion <> "_pointer"
         emitInstruction $
           newOperand
@@ -786,7 +806,7 @@ cast nameSuggestion newType type_ operand
               , metadata = mempty
               }
         pure $ LLVM.LocalReference llvmNewType newOperand
-      (_, Word) -> do
+      (_, AssemblyType Assembly.Word) -> do
         newOperand <- freshName $ nameSuggestion <> "_integer"
         emitInstruction $
           newOperand

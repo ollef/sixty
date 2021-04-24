@@ -116,6 +116,8 @@ operandNameSuggestion operand =
       Assembly.NameSuggestion $ Assembly.nameText global
     Assembly.Lit _ ->
       "literal"
+    Assembly.StructOperand _ ->
+      "struct"
 
 data Operand
   = Empty

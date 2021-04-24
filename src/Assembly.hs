@@ -26,12 +26,14 @@ data Operand
   = LocalOperand !Local
   | GlobalConstant !Name.Lifted !Type
   | GlobalFunction !Name.Lifted !(Return Type) [Type]
+  | StructOperand [Operand]
   | Lit !Literal
   deriving (Show, Generic, Persist, Hashable)
 
 data Type
   = Word
   | WordPointer
+  | Struct [Type]
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 data Return a = Void | Return a
@@ -51,6 +53,7 @@ data Instruction
   | SaveStack !Local
   | RestoreStack !Operand
   | HeapAllocate !Local !Operand
+  | ExtractValue !Local !Operand !Int
   | Switch !(Return (Type, Local)) !Operand [(Integer, BasicBlock)] BasicBlock
   deriving (Show, Generic, Persist, Hashable)
 
@@ -98,6 +101,8 @@ instance Pretty Operand where
         "(" <> pretty type_ <+> "constant" <+> pretty global <> ")"
       GlobalFunction global return_ arity ->
         "(function " <> pretty return_ <> " (" <> pretty arity <> ")" <+> pretty global <> ")"
+      StructOperand operands ->
+        "{" <> hsep (punctuate comma $ pretty <$> operands) <> "}"
       Lit lit ->
         pretty lit
 
@@ -106,6 +111,7 @@ instance Pretty Type where
     case type_ of
       Word -> "word"
       WordPointer -> "word*"
+      Struct types -> "{" <> hsep (punctuate comma $ pretty <$> types) <> "}"
 
 instance Pretty Instruction where
   pretty instruction =
@@ -138,6 +144,8 @@ instance Pretty Instruction where
         voidInstr "restorestack" [o]
       HeapAllocate dst size ->
         returningInstr dst "gcmalloc" [size]
+      ExtractValue dst struct index ->
+        pretty dst <+> "=" <+> "extractvalue" <+> hsep [pretty struct, pretty index]
       Switch result scrutinee branches default_ ->
         case result of
           Void -> ""
