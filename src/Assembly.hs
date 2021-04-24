@@ -5,6 +5,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module Assembly where
 
@@ -24,7 +25,7 @@ newtype NameSuggestion = NameSuggestion Text
 data Operand
   = LocalOperand !Local
   | GlobalConstant !Name.Lifted !Type
-  | GlobalFunction !Name.Lifted !ReturnType [Type]
+  | GlobalFunction !Name.Lifted !(Return Type) [Type]
   | Lit !Literal
   deriving (Show, Generic, Persist, Hashable)
 
@@ -33,12 +34,12 @@ data Type
   | WordPointer
   deriving (Eq, Show, Generic, Persist, Hashable)
 
-data ReturnType = ReturnsVoid | Returns !Type
-  deriving (Eq, Show, Generic, Persist, Hashable)
+data Return a = Void | Return a
+  deriving (Eq, Show, Generic, Persist, Hashable, Foldable, Traversable, Functor)
 
 data Instruction
   = Copy !Operand !Operand !Operand
-  | Call !(Voided (Type, Local)) !Operand [(Type, Operand)]
+  | Call !(Return (Type, Local)) !Operand [(Type, Operand)]
   | Load !Local !Operand
   | Store !Operand !Operand
   | InitGlobal !Name.Lifted !Type !Operand
@@ -50,30 +51,25 @@ data Instruction
   | SaveStack !Local
   | RestoreStack !Operand
   | HeapAllocate !Local !Operand
-  | Switch !(Voided (Type, Local)) !Operand [(Integer, BasicBlock)] BasicBlock
+  | Switch !(Return (Type, Local)) !Operand [(Integer, BasicBlock)] BasicBlock
   deriving (Show, Generic, Persist, Hashable)
 
 data Definition
   = KnownConstantDefinition !Type !Literal !Bool
   | ConstantDefinition !Type [(Type, Local)] BasicBlock
-  | FunctionDefinition !ReturnType [(Type, Local)] BasicBlock
+  | FunctionDefinition !(Return Type) [(Type, Local)] BasicBlock
   deriving (Show, Generic, Persist, Hashable)
 
 type StackPointer = Local
 
-data BasicBlock = BasicBlock [Instruction] !Result
+data BasicBlock = BasicBlock [Instruction] !(Return Operand)
   deriving (Show, Generic, Persist, Hashable)
 
-type Result = Voided Operand
-
-data Voided a = Void | NonVoid a
-  deriving (Show, Generic, Persist, Hashable, Foldable, Traversable, Functor)
-
-instance Applicative Voided where
-  pure = NonVoid
+instance Applicative Return where
+  pure = Return
   Void <*> _ = Void
   _ <*> Void = Void
-  NonVoid f <*> NonVoid x = NonVoid $ f x
+  Return f <*> Return x = Return $ f x
 
 -------------------------------------------------------------------------------
 
@@ -111,16 +107,12 @@ instance Pretty Type where
       Word -> "word"
       WordPointer -> "word*"
 
-instance Pretty ReturnType where
-  pretty ReturnsVoid = "void"
-  pretty (Returns type_) = pretty type_
-
 instance Pretty Instruction where
   pretty instruction =
     case instruction of
       Copy dst src size ->
         voidInstr "copy" [dst, src, size]
-      Call (NonVoid dst) fun args ->
+      Call (Return dst) fun args ->
         returningInstr dst ("call" <+> pretty fun) args
       Call Void fun args ->
         voidInstr ("call" <+> pretty fun) args
@@ -149,7 +141,7 @@ instance Pretty Instruction where
       Switch result scrutinee branches default_ ->
         case result of
           Void -> ""
-          NonVoid local -> pretty local <+> "= "
+          Return local -> pretty local <+> "= "
           <> "switch" <+> pretty scrutinee
           <> line
           <> indent
@@ -191,10 +183,10 @@ instance Pretty BasicBlock where
       , pretty result
       ]
 
-instance Pretty a => Pretty (Voided a) where
+instance Pretty a => Pretty (Return a) where
   pretty voided = case voided of
     Void -> "void"
-    NonVoid a -> pretty a
+    Return a -> pretty a
 
 -------------------------------------------------------------------------------
 

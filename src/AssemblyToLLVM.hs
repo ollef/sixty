@@ -42,7 +42,7 @@ data AssemblerState = AssemblerState
 data OperandType
   = Word
   | WordPointer
-  | FunctionPointer !Assembly.ReturnType [Assembly.Type]
+  | FunctionPointer !(Assembly.Return Assembly.Type) [Assembly.Type]
   deriving (Eq, Show)
 
 operandType :: Assembly.Type -> OperandType
@@ -78,11 +78,11 @@ llvmParameterAttributes type_ =
     Assembly.Word -> []
     Assembly.WordPointer -> [LLVM.NonNull]
 
-llvmReturnType :: Assembly.ReturnType -> LLVM.Type
+llvmReturnType :: Assembly.Return Assembly.Type -> LLVM.Type
 llvmReturnType result =
   case result of
-    Assembly.ReturnsVoid -> LLVM.Type.void
-    Assembly.Returns type_ -> llvmType type_
+    Assembly.Void -> LLVM.Type.void
+    Assembly.Return type_ -> llvmType type_
 
 alignment :: Num a => a
 alignment =
@@ -262,7 +262,7 @@ assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
             ]
         Assembly.ConstantDefinition type_ parameters basicBlock -> do
           parameters' <- mapM (uncurry activateLocal) parameters
-          assembleBasicBlockReturningResult (Assembly.Returns Assembly.WordPointer) basicBlock
+          assembleBasicBlockReturningResult (Assembly.Return Assembly.WordPointer) basicBlock
           basicBlocks <- gets _basicBlocks
           let type' = llvmType type_
           pure
@@ -310,19 +310,19 @@ assembleName :: Name.Lifted -> LLVM.Name
 assembleName =
   LLVM.Name . ShortByteString.toShort . toUtf8 . Assembly.nameText
 
-assembleBasicBlockReturningResult :: Assembly.ReturnType -> Assembly.BasicBlock -> Assembler ()
+assembleBasicBlockReturningResult :: Assembly.Return Assembly.Type -> Assembly.BasicBlock -> Assembler ()
 assembleBasicBlockReturningResult returnType (Assembly.BasicBlock instructions result) = do
   blockName <- freshName "entry"
   startBlock blockName
   mapM_ assembleInstruction instructions
   returnResult returnType result
 
-returnResult :: Assembly.ReturnType -> Assembly.Result -> Assembler ()
+returnResult :: Assembly.Return Assembly.Type -> Assembly.Return Assembly.Operand -> Assembler ()
 returnResult returnType_ result = do
   case (returnType_, result) of
-    (Assembly.ReturnsVoid, Assembly.Void) -> do
+    (Assembly.Void, Assembly.Void) -> do
       endBlock $ LLVM.Do LLVM.Ret {returnOperand = Nothing, metadata' = mempty}
-    (Assembly.Returns type_, Assembly.NonVoid res) -> do
+    (Assembly.Return type_, Assembly.Return res) -> do
       operand <- assembleOperand type_ res
       endBlock $ LLVM.Do LLVM.Ret {returnOperand = Just operand, metadata' = mempty}
     _ ->
@@ -396,8 +396,8 @@ assembleInstruction instruction =
             , functionAttributes = []
             , metadata = []
             }
-    Assembly.Call (Assembly.NonVoid (returnType, destination)) function arguments -> do
-      function' <- assembleOperandWithOperandType (FunctionPointer (Assembly.Returns returnType) $ fst <$> arguments) function
+    Assembly.Call (Assembly.Return (returnType, destination)) function arguments -> do
+      function' <- assembleOperandWithOperandType (FunctionPointer (Assembly.Return returnType) $ fst <$> arguments) function
       arguments' <- mapM (uncurry assembleOperand) arguments
       destination' <- activateLocal returnType destination
       emitInstruction $
@@ -412,7 +412,7 @@ assembleInstruction instruction =
             , metadata = []
             }
     Assembly.Call Assembly.Void function arguments -> do
-      function' <- assembleOperandWithOperandType (FunctionPointer Assembly.ReturnsVoid $ fst <$> arguments) function
+      function' <- assembleOperandWithOperandType (FunctionPointer Assembly.Void $ fst <$> arguments) function
       arguments' <- mapM (uncurry assembleOperand) arguments
       emitInstruction $
         LLVM.Do
@@ -676,12 +676,12 @@ assembleInstruction instruction =
       case destination of
         Assembly.Void ->
           pure ()
-        Assembly.NonVoid (destinationType, destinationLocal) -> do
+        Assembly.Return (destinationType, destinationLocal) -> do
           destination' <- activateLocal destinationType destinationLocal
           let voidedIncomingValues = (defaultResultOperand, defaultBranchLabel') : branchResultOperands
               incomingValues =
                 case traverse (bitraverse identity pure) voidedIncomingValues of
-                  Assembly.NonVoid incomingValues_ -> incomingValues_
+                  Assembly.Return incomingValues_ -> incomingValues_
                   Assembly.Void -> panic "AssemblyToLLVM: Switch with mismatch between instruction result and branch results"
           emitInstruction $
             destination'
