@@ -42,24 +42,23 @@ instance Monad Tsil where
 
 instance IsList (Tsil a) where
   type Item (Tsil a) = a
-  fromList = reverseFromList . reverse
+  fromList = go Empty
+    where
+      go acc [] = acc
+      go acc (a : as) = go (acc :> a) as
   toList = Protolude.toList
 
 instance Foldable Tsil where
   foldMap _ Empty = mempty
   foldMap f (xs :> x) = foldMap f xs `mappend` f x
-
-  toList = reverse . go
+  toList = go []
     where
-      go Empty = []
-      go (xs :> x) = x : go xs
+      go acc Empty = acc
+      go acc (xs :> x) = go (x : acc) xs
 
 null :: Tsil a -> Bool
 null Empty = True
 null (_ :> _) = False
-
-reverseFromList :: [a] -> Tsil a
-reverseFromList = foldr (flip (:>)) Empty
 
 lookup :: Eq a => a -> Tsil (a, b) -> Maybe b
 lookup _ Empty = Nothing
