@@ -141,7 +141,7 @@ resolvePattern context unspannedPattern type_ canPostpone = do
               Right (Elaboration.ResolvedConstructor constr) ->
                 pure $ Con conSpan constr argPatterns
               Right (Elaboration.ResolvedData _) ->
-                pure $ Var name
+                varCase
 
       case maybeScopeEntry of
         Nothing ->
