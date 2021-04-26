@@ -230,9 +230,9 @@ extendBefore context beforeVar binding type_ = do
         , boundVars =
             case IntSeq.elemIndex beforeVar $ boundVars context of
               Nothing ->
-                panic "extendBefore no such var"
+                panic $ "extendBefore no such var " <> show (beforeVar, boundVars context)
               Just i ->
-                IntSeq.insertAt i var $ boundVars context
+                IntSeq.insertAt (i + 1) var $ boundVars context
         }
     , var
     )
@@ -241,7 +241,7 @@ defineWellOrdered :: Context v -> Var -> Domain.Value -> Context v
 defineWellOrdered context var value =
   context
     { values = IntMap.insert var value $ values context
-    , boundVars = IntSeq.delete var $ boundVars context
+    , boundVars = IntSeq.deleteFirst var $ boundVars context
     }
 
 skip :: Context v -> M (Context (Succ v))
@@ -416,7 +416,7 @@ toPrettyableTerm context term = do
   pure $
     Error.PrettyableTerm
       module_
-      ((`lookupVarName` context) <$> toList (indices context))
+      ((`lookupVarName` context) <$> Index.Map.toList (indices context))
       (Syntax.coerce term')
 
 toPrettyableClosedTerm :: Context v -> Syntax.Term Void -> M Error.PrettyableTerm
@@ -432,7 +432,7 @@ toPrettyablePattern context = do
         scopeKey context
   Error.PrettyablePattern
     module_
-    ((`lookupVarName` context) <$> toList (indices context))
+    ((`lookupVarName` context) <$> Index.Map.toList (indices context))
 
 -------------------------------------------------------------------------------
 -- Meta variables

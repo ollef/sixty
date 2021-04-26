@@ -759,7 +759,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
               -- later.
               contextWithoutScrutineeVar =
                 outerContext
-                  { Context.boundVars = IntSeq.delete scrutineeVar $ Context.boundVars outerContext
+                  { Context.boundVars = IntSeq.deleteFirst scrutineeVar $ Context.boundVars outerContext
                   }
           (metas, _) <- Elaboration.insertMetas contextWithoutScrutineeVar Elaboration.UntilTheEnd typeType'
           f <- Unification.tryUnify outerContext (Domain.Neutral (Domain.Global typeName) $ Domain.Apps $ fromList metas) outerType
