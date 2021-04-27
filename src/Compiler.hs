@@ -43,6 +43,7 @@ compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel = d
   builtinCFile <- liftIO $ Paths.getDataFileName "rts/Sixten.Builtin.c"
   mainLLVMFile <- liftIO $ Paths.getDataFileName "rts/main.ll"
   globalsCFile <- liftIO $ Paths.getDataFileName "rts/globals.c"
+  garbageCollectorCFile <- liftIO $ Paths.getDataFileName "rts/garbage_collector.c"
   let llvmFiles =
         mainLLVMFile : builtinLLVMFile : moduleInitLLVMFile : moduleLLVMFiles
   -- TODO configurable clang path
@@ -59,9 +60,12 @@ compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel = d
               assemblyDir </> "Sixten.Builtin" <.> "c" <.> "ll"
             globalsLLFile =
               assemblyDir </> "globals" <.> "ll"
+            garbageCollectorLLFile =
+              assemblyDir </> "garbage_collector" <.> "ll"
         callProcess "clang" $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-S", "-emit-llvm", "-o", builtinCLLFile, builtinCFile]
         callProcess "clang" $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-S", "-emit-llvm", "-o", globalsLLFile, globalsCFile]
-        callProcess "llvm-link" $ ["-S", "-o", linkedProgramName, builtinCLLFile, globalsLLFile] <> llvmFiles
+        callProcess "clang" $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-S", "-emit-llvm", "-o", garbageCollectorLLFile, garbageCollectorCFile]
+        callProcess "llvm-link" $ ["-S", "-o", linkedProgramName, builtinCLLFile, globalsLLFile, garbageCollectorLLFile] <> llvmFiles
         callProcess "opt" $ optimisationArgs <> ["-S", "-o", optimisedProgramName, linkedProgramName]
         callProcess "clang" $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-o", outputExecutableFile, linkedProgramName]
-      else callProcess "clang" $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-o", outputExecutableFile, builtinCFile, globalsCFile] <> llvmFiles
+      else callProcess "clang" $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-o", outputExecutableFile, builtinCFile, globalsCFile, garbageCollectorCFile] <> llvmFiles

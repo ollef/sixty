@@ -12,6 +12,7 @@ import qualified Data.ByteString.Short as ShortByteString
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
+import qualified Data.List as List
 import Data.String (fromString)
 import Data.Text.Prettyprint.Doc
 import Data.Tsil (Tsil)
@@ -247,9 +248,9 @@ assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
                 , LLVM.Global.isConstant = isConstant
                 }
             ]
-        Assembly.ConstantDefinition type_ parameters basicBlock -> do
+        Assembly.ConstantDefinition type_ functionReturnType parameters basicBlock -> do
           parameters' <- mapM (uncurry activateLocal) parameters
-          assembleBasicBlockReturningResult (Assembly.Return Assembly.WordPointer) basicBlock
+          assembleBasicBlockReturningResult functionReturnType basicBlock
           basicBlocks <- gets _basicBlocks
           let type' = llvmType type_
           pure
@@ -262,7 +263,7 @@ assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
                 }
             , LLVM.Global.functionDefaults
                 { LLVM.Global.callingConvention = LLVM.CallingConvention.Fast
-                , LLVM.Global.returnType = wordPointer
+                , LLVM.Global.returnType = llvmReturnType functionReturnType
                 , LLVM.Global.name = assembleName $ ClosureConvertedToAssembly.initDefinitionName name
                 , LLVM.Global.parameters = ([LLVM.Parameter wordPointer parameter [] | parameter <- parameters'], False)
                 , LLVM.Global.alignment = alignment
@@ -310,7 +311,7 @@ returnResult returnType_ result = do
     (Assembly.Void, Assembly.Void) -> do
       endBlock $ LLVM.Do LLVM.Ret {returnOperand = Nothing, metadata' = mempty}
     (Assembly.Return type_, Assembly.Return res) -> do
-      operand <- assembleOperand type_ res
+      operand <- assembleOperandAndCastTo type_ res
       endBlock $ LLVM.Do LLVM.Ret {returnOperand = Just operand, metadata' = mempty}
     _ ->
       panic "AssemblyToLLVM.returnResult: return type mismatch"
@@ -319,9 +320,9 @@ assembleInstruction :: Assembly.Instruction -> Assembler ()
 assembleInstruction instruction =
   case instruction of
     Assembly.Copy destination source size -> do
-      destination' <- assembleOperand Assembly.WordPointer destination
-      source' <- assembleOperand Assembly.WordPointer source
-      size' <- assembleOperand Assembly.Word size
+      destination' <- assembleOperandAndCastTo Assembly.WordPointer destination
+      source' <- assembleOperandAndCastTo Assembly.WordPointer source
+      size' <- assembleOperandAndCastTo Assembly.Word size
       destination'' <- freshName "destination"
       source'' <- freshName "source"
       let memcpyName =
@@ -384,8 +385,8 @@ assembleInstruction instruction =
             , metadata = []
             }
     Assembly.Call (Assembly.Return (returnType, destination)) function arguments -> do
-      function' <- assembleOperand (Assembly.FunctionPointer (Assembly.Return returnType) $ fst <$> arguments) function
-      arguments' <- mapM (uncurry assembleOperand) arguments
+      function' <- assembleOperandAndCastTo (Assembly.FunctionPointer (Assembly.Return returnType) $ fst <$> arguments) function
+      arguments' <- mapM (uncurry assembleOperandAndCastTo) arguments
       destination' <- activateLocal returnType destination
       emitInstruction $
         destination'
@@ -399,8 +400,8 @@ assembleInstruction instruction =
             , metadata = []
             }
     Assembly.Call Assembly.Void function arguments -> do
-      function' <- assembleOperand (Assembly.FunctionPointer Assembly.Void $ fst <$> arguments) function
-      arguments' <- mapM (uncurry assembleOperand) arguments
+      function' <- assembleOperandAndCastTo (Assembly.FunctionPointer Assembly.Void $ fst <$> arguments) function
+      arguments' <- mapM (uncurry assembleOperandAndCastTo) arguments
       emitInstruction $
         LLVM.Do
           LLVM.Call
@@ -413,7 +414,7 @@ assembleInstruction instruction =
             , metadata = []
             }
     Assembly.Load destination address -> do
-      address' <- assembleOperand Assembly.WordPointer address
+      address' <- assembleOperandAndCastTo Assembly.WordPointer address
       destination' <- activateLocal Assembly.Word destination
       emitInstruction $
         destination'
@@ -425,8 +426,8 @@ assembleInstruction instruction =
             , metadata = []
             }
     Assembly.Store address value -> do
-      address' <- assembleOperand Assembly.WordPointer address
-      value' <- assembleOperand Assembly.Word value
+      address' <- assembleOperandAndCastTo Assembly.WordPointer address
+      value' <- assembleOperandAndCastTo Assembly.Word value
       emitInstruction $
         LLVM.Do
           LLVM.Store
@@ -438,7 +439,7 @@ assembleInstruction instruction =
             , metadata = []
             }
     Assembly.InitGlobal global type_ value -> do
-      value' <- assembleOperand type_ value
+      value' <- assembleOperandAndCastTo type_ value
       emitInstruction $
         LLVM.Do
           LLVM.Store
@@ -454,8 +455,8 @@ assembleInstruction instruction =
             , metadata = []
             }
     Assembly.Add destination operand1 operand2 -> do
-      operand1' <- assembleOperand Assembly.Word operand1
-      operand2' <- assembleOperand Assembly.Word operand2
+      operand1' <- assembleOperandAndCastTo Assembly.Word operand1
+      operand2' <- assembleOperandAndCastTo Assembly.Word operand2
       destination' <- activateLocal Assembly.Word destination
       emitInstruction $
         destination'
@@ -467,8 +468,8 @@ assembleInstruction instruction =
             , metadata = []
             }
     Assembly.Sub destination operand1 operand2 -> do
-      operand1' <- assembleOperand Assembly.Word operand1
-      operand2' <- assembleOperand Assembly.Word operand2
+      operand1' <- assembleOperandAndCastTo Assembly.Word operand1
+      operand2' <- assembleOperandAndCastTo Assembly.Word operand2
       destination' <- activateLocal Assembly.Word destination
       emitInstruction $
         destination'
@@ -480,8 +481,8 @@ assembleInstruction instruction =
             , metadata = []
             }
     Assembly.Mul destination operand1 operand2 -> do
-      operand1' <- assembleOperand Assembly.Word operand1
-      operand2' <- assembleOperand Assembly.Word operand2
+      operand1' <- assembleOperandAndCastTo Assembly.Word operand1
+      operand2' <- assembleOperandAndCastTo Assembly.Word operand2
       destination' <- activateLocal Assembly.Word destination
       emitInstruction $
         destination'
@@ -493,8 +494,8 @@ assembleInstruction instruction =
             , metadata = []
             }
     Assembly.AddPointer destination pointerOperand wordOperand -> do
-      pointerOperand' <- assembleOperand Assembly.WordPointer pointerOperand
-      wordOperand' <- assembleOperand Assembly.Word wordOperand
+      pointerOperand' <- assembleOperandAndCastTo Assembly.WordPointer pointerOperand
+      wordOperand' <- assembleOperandAndCastTo Assembly.Word wordOperand
       bytePointerName <- freshName "byte_pointer"
       emitInstruction $
         bytePointerName
@@ -523,7 +524,7 @@ assembleInstruction instruction =
     Assembly.StackAllocate destination size -> do
       destination' <- activateLocal Assembly.WordPointer destination
       destination'' <- freshName "destination"
-      size' <- assembleOperand Assembly.Word size
+      size' <- assembleOperandAndCastTo Assembly.Word size
       emitInstruction $
         destination''
           LLVM.:= LLVM.Alloca
@@ -580,7 +581,7 @@ assembleInstruction instruction =
             , metadata = mempty
             }
     Assembly.RestoreStack operand -> do
-      operand' <- assembleOperand Assembly.WordPointer operand
+      operand' <- assembleOperandAndCastTo Assembly.WordPointer operand
       operand'' <- freshName "stack_byte_pointer"
       let stackRestoreName =
             LLVM.Name "llvm.stackrestore"
@@ -626,10 +627,22 @@ assembleInstruction instruction =
             }
     Assembly.HeapAllocate {} ->
       panic "AssemblyToLLVM: HeapAllocate" -- TODO
-    Assembly.ExtractValue {} ->
-      panic "AssemblyToLLVM: ExtractValue" -- TODO
+    Assembly.ExtractValue destination struct index -> do
+      (_nameSuggestion, structType, struct') <- assembleOperand struct
+      case structType of
+        Assembly.Struct types -> do
+          let fieldType = types List.!! index
+          destination' <- activateLocal fieldType destination
+          emitInstruction $
+            destination'
+              LLVM.:= LLVM.ExtractValue
+                { aggregate = struct'
+                , indices' = [fromIntegral index]
+                , metadata = mempty
+                }
+        _ -> panic "AssemblyToLLVM.assembleInstruction: ExtractValue of non-struct"
     Assembly.Switch destination scrutinee branches (Assembly.BasicBlock defaultBranchInstructions defaultBranchResult) -> do
-      scrutinee' <- assembleOperand Assembly.Word scrutinee
+      scrutinee' <- assembleOperandAndCastTo Assembly.Word scrutinee
       branchLabels <- forM branches $ \(i, _) -> do
         branchLabel <- freshName $ Assembly.NameSuggestion $ "branch_" <> show i
         pure
@@ -652,13 +665,13 @@ assembleInstruction instruction =
       branchResultOperands <- forM (zip branchLabels branches) $ \((_, branchLabel), (_, Assembly.BasicBlock instructions result)) -> do
         startBlock branchLabel
         mapM_ assembleInstruction instructions
-        resultOperand <- forM result $ assembleOperand Assembly.WordPointer
+        resultOperand <- forM ((,) . fst <$> destination <*> result) $ uncurry assembleOperandAndCastTo
         branchLabel' <- gets _basicBlockName
         endBlock $ LLVM.Do LLVM.Br {dest = afterSwitchLabel, metadata' = mempty}
         pure (resultOperand, branchLabel')
       startBlock defaultBranchLabel
       mapM_ assembleInstruction defaultBranchInstructions
-      defaultResultOperand <- forM defaultBranchResult $ assembleOperand Assembly.WordPointer
+      defaultResultOperand <- forM ((,) . fst <$> destination <*> defaultBranchResult) $ uncurry assembleOperandAndCastTo
       defaultBranchLabel' <- gets _basicBlockName
       endBlock $ LLVM.Do LLVM.Br {dest = afterSwitchLabel, metadata' = mempty}
       startBlock afterSwitchLabel
@@ -680,13 +693,13 @@ assembleInstruction instruction =
                 , metadata = mempty
                 }
 
-assembleOperand :: Assembly.Type -> Assembly.Operand -> Assembler LLVM.Operand
-assembleOperand desiredType operand =
+assembleOperand :: Assembly.Operand -> Assembler (Assembly.NameSuggestion, Assembly.Type, LLVM.Operand)
+assembleOperand operand = do
   case operand of
     Assembly.LocalOperand local@(Assembly.Local _ nameSuggestion) -> do
       locals <- gets _locals
       let (type_, operand') = HashMap.lookupDefault (panic $ "assembleOperandWithOperandType: no such local " <> show local) local locals
-      cast nameSuggestion desiredType type_ operand'
+      pure (nameSuggestion, type_, operand')
     Assembly.GlobalConstant global globalType -> do
       let globalName =
             assembleName global
@@ -708,7 +721,7 @@ assembleOperand desiredType operand =
           }
       case globalType of
         Assembly.Word ->
-          cast nameSuggestion desiredType Assembly.WordPointer $ LLVM.ConstantOperand $ LLVM.Constant.GlobalReference wordPointer globalName
+          pure (nameSuggestion, Assembly.WordPointer, LLVM.ConstantOperand $ LLVM.Constant.GlobalReference wordPointer globalName)
         Assembly.WordPointer -> do
           destination <- freshName nameSuggestion
           emitInstruction $
@@ -720,7 +733,7 @@ assembleOperand desiredType operand =
                 , alignment = alignment
                 , metadata = []
                 }
-          cast nameSuggestion desiredType Assembly.WordPointer $ LLVM.LocalReference wordPointer destination
+          pure (nameSuggestion, Assembly.WordPointer, LLVM.LocalReference wordPointer destination)
         Assembly.FunctionPointer _ _ -> do
           let llvmType_ = llvmType globalType
           destination <- freshName nameSuggestion
@@ -733,9 +746,9 @@ assembleOperand desiredType operand =
                 , alignment = alignment
                 , metadata = []
                 }
-          cast nameSuggestion desiredType Assembly.WordPointer $ LLVM.LocalReference llvmType_ destination
+          pure (nameSuggestion, Assembly.WordPointer, LLVM.LocalReference llvmType_ destination)
         Assembly.Struct types ->
-          cast nameSuggestion desiredType (Assembly.Struct types) $ LLVM.ConstantOperand $ LLVM.Constant.GlobalReference wordPointer globalName
+          pure (nameSuggestion, Assembly.Struct types, LLVM.ConstantOperand $ LLVM.Constant.GlobalReference wordPointer globalName)
     Assembly.GlobalFunction global returnType parameterTypes -> do
       let defType =
             Assembly.FunctionPointer returnType parameterTypes
@@ -760,35 +773,44 @@ assembleOperand desiredType operand =
           , LLVM.Global.parameters = ([LLVM.Parameter (llvmType parameterType) (LLVM.UnName parameter) [] | (parameter, parameterType) <- zip [0 ..] parameterTypes], False)
           , LLVM.Global.alignment = alignment
           }
-      cast nameSuggestion desiredType defType $ LLVM.ConstantOperand $ LLVM.Constant.GlobalReference globalType globalName
-    Assembly.StructOperand operands ->
-      case desiredType of
-        Assembly.Struct types -> do
-          let structType = llvmType desiredType
-              go (index, struct) (fieldType, fieldOperand) = do
-                fieldOperand' <- assembleOperand fieldType fieldOperand
-                struct' <- freshName "struct"
-                emitInstruction $
-                  struct'
-                    LLVM.:= LLVM.InsertValue
-                      { aggregate = struct
-                      , element = fieldOperand'
-                      , indices' = [index]
-                      , metadata = mempty
-                      }
-                pure (index + 1, LLVM.LocalReference structType struct')
+      pure (nameSuggestion, defType, LLVM.ConstantOperand $ LLVM.Constant.GlobalReference globalType globalName)
+    Assembly.StructOperand operands -> do
+      typedOperands <- mapM assembleOperand operands
+      let types = (\(_, type', _) -> type') <$> typedOperands
+          operands' = (\(_, _, operand') -> operand') <$> typedOperands
+          type_ = Assembly.Struct types
+          llvmType_ = llvmType type_
+          go (index, struct) fieldOperand = do
+            struct' <- freshName "struct"
+            emitInstruction $
+              struct'
+                LLVM.:= LLVM.InsertValue
+                  { aggregate = struct
+                  , element = fieldOperand
+                  , indices' = [index]
+                  , metadata = mempty
+                  }
+            pure (index + 1, LLVM.LocalReference llvmType_ struct')
 
-          snd <$> foldM go (0, LLVM.ConstantOperand $ LLVM.Constant.Undef {constantType = structType}) (zip types operands)
-        _ -> panic "AssemblyToLLVM: desired type must be a struct"
+      result <- snd <$> foldM go (0, LLVM.ConstantOperand $ LLVM.Constant.Undef {constantType = llvmType_}) operands'
+      pure ("struct", type_, result)
     Assembly.Lit lit ->
       case lit of
         Literal.Integer int ->
-          cast "literal" desiredType Assembly.Word $
-            LLVM.ConstantOperand
-              LLVM.Constant.Int
-                { integerBits = wordBits
-                , integerValue = int
-                }
+          pure
+            ( "literal"
+            , Assembly.Word
+            , LLVM.ConstantOperand
+                LLVM.Constant.Int
+                  { integerBits = wordBits
+                  , integerValue = int
+                  }
+            )
+
+assembleOperandAndCastTo :: Assembly.Type -> Assembly.Operand -> Assembler LLVM.Operand
+assembleOperandAndCastTo desiredType operand = do
+  (nameSuggestion, type_, operand') <- assembleOperand operand
+  cast nameSuggestion desiredType type_ operand'
 
 cast :: Assembly.NameSuggestion -> Assembly.Type -> Assembly.Type -> LLVM.Operand -> Assembler LLVM.Operand
 cast nameSuggestion newType type_ operand
@@ -816,6 +838,31 @@ cast nameSuggestion newType type_ operand
               , metadata = mempty
               }
         pure $ LLVM.LocalReference llvmNewType newOperand
+      (Assembly.Struct types, Assembly.Struct newTypes) -> do
+        let llvmType_ = llvmType type_
+            go (index, struct) (fieldType, newFieldType) = do
+              field <- freshName "field"
+              let fieldOperand = LLVM.LocalReference (llvmType fieldType) field
+              emitInstruction $
+                field
+                  LLVM.:= LLVM.ExtractValue
+                    { aggregate = operand
+                    , indices' = [index]
+                    , metadata = mempty
+                    }
+              castField <- cast "field" newFieldType fieldType fieldOperand
+              struct' <- freshName "struct"
+              emitInstruction $
+                struct'
+                  LLVM.:= LLVM.InsertValue
+                    { aggregate = struct
+                    , element = castField
+                    , indices' = [index]
+                    , metadata = mempty
+                    }
+              pure (index + 1, LLVM.LocalReference llvmType_ struct')
+
+        snd <$> foldM go (0, LLVM.ConstantOperand $ LLVM.Constant.Undef {constantType = llvmType_}) (zip types newTypes)
       _ -> do
         newOperand <- freshName $ nameSuggestion <> "_cast"
         emitInstruction $

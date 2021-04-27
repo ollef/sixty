@@ -6,12 +6,14 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# OPTIONS_GHC -Wno-partial-fields #-}
 
 module Assembly where
 
 import Data.Persist
 import Data.Text.Prettyprint.Doc
 import Literal (Literal)
+import qualified Literal
 import qualified Name
 import Protolude hiding (Type, local, moduleName)
 
@@ -53,14 +55,21 @@ data Instruction
   | StackAllocate !Local !Operand
   | SaveStack !Local
   | RestoreStack !Operand
-  | HeapAllocate !Local !Operand
+  | HeapAllocate
+      { destination :: !Local
+      , shadowStack :: !Operand
+      , heapPointer :: !Operand
+      , heapLimit :: !Operand
+      , constructorTag :: !Word8
+      , size :: !Operand
+      }
   | ExtractValue !Local !Operand !Int
   | Switch !(Return (Type, Local)) !Operand [(Integer, BasicBlock)] BasicBlock
   deriving (Show, Generic, Persist, Hashable)
 
 data Definition
   = KnownConstantDefinition !Type !Literal !Bool
-  | ConstantDefinition !Type [(Type, Local)] BasicBlock
+  | ConstantDefinition !Type !(Return Type) [(Type, Local)] BasicBlock
   | FunctionDefinition !(Return Type) [(Type, Local)] BasicBlock
   deriving (Show, Generic, Persist, Hashable)
 
@@ -118,8 +127,8 @@ instance Pretty Type where
 instance Pretty Instruction where
   pretty instruction =
     case instruction of
-      Copy dst src size ->
-        voidInstr "copy" [dst, src, size]
+      Copy dst src size_ ->
+        voidInstr "copy" [dst, src, size_]
       Call (Return dst) fun args ->
         returningInstr dst ("call" <+> pretty fun) args
       Call Void fun args ->
@@ -138,14 +147,14 @@ instance Pretty Instruction where
         returningInstr dst "mul" [arg1, arg2]
       AddPointer dst arg1 arg2 ->
         returningInstr dst "add*" [arg1, arg2]
-      StackAllocate dst size ->
-        returningInstr dst "alloca" [size]
+      StackAllocate dst size_ ->
+        returningInstr dst "alloca" [size_]
       SaveStack dst ->
         returningInstr dst "savestack" ([] :: [Operand])
       RestoreStack o ->
         voidInstr "restorestack" [o]
-      HeapAllocate dst size ->
-        returningInstr dst "gcmalloc" [size]
+      HeapAllocate dst a b c d e ->
+        returningInstr dst "gcmalloc" [a, b, c, Lit $ Literal.Integer $ fromIntegral d, e]
       ExtractValue dst struct index ->
         pretty dst <+> "=" <+> "extractvalue" <+> hsep [pretty struct, pretty index]
       Switch result scrutinee branches default_ ->
@@ -176,11 +185,11 @@ instance Pretty Instruction where
 instance Pretty Definition where
   pretty definition =
     case definition of
-      KnownConstantDefinition representation knownConstant _isConstant ->
-        "known" <+> pretty representation <+> "constant" <+> "=" <> line
+      KnownConstantDefinition type_ knownConstant _isConstant ->
+        "known" <+> pretty type_ <+> "constant" <+> "=" <> line
           <> indent 2 (pretty knownConstant)
-      ConstantDefinition representation constantParameters basicBlock ->
-        pretty representation <+> "constant" <+> tupled (pretty <$> constantParameters) <+> "=" <> line
+      ConstantDefinition type_ returnType constantParameters basicBlock ->
+        pretty type_ <+> "constant" <+> pretty returnType <+> tupled (pretty <$> constantParameters) <+> "=" <> line
           <> indent 2 (pretty basicBlock)
       FunctionDefinition returnType args basicBlock ->
         "function" <+> pretty returnType <+> tupled (pretty <$> args) <+> "=" <> line
