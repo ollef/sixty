@@ -78,6 +78,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [ ] Per-module caches
 - [ ] Backend
   - [x] Typed lambda lifting
+    - [ ] Recursive let bindings
   - [x] Typed closure conversion
   - [ ] Code generation
     - [x] Basics
