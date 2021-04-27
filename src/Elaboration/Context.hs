@@ -383,9 +383,7 @@ lookupVarIndex var context =
 
 lookupVarName :: Var -> Context v -> Name
 lookupVarName var context =
-  fromMaybe (panic "Context.lookupVarName") $
-    IntMap.lookup var $
-      varNames context
+  IntMap.lookupDefault (panic "Context.lookupVarName") var $ varNames context
 
 lookupIndexVar :: Index v -> Context v -> Var
 lookupIndexVar index context =
@@ -397,9 +395,7 @@ lookupIndexType index context =
 
 lookupVarType :: Var -> Context v -> Domain.Type
 lookupVarType var context =
-  fromMaybe (panic $ "Context.lookupVarType " <> show var) $
-    IntMap.lookup var $
-      types context
+  IntMap.lookupDefault (panic $ "Context.lookupVarType " <> show var) var $ types context
 
 lookupVarValue :: Var -> Context v -> Maybe Domain.Type
 lookupVarValue var context =
