@@ -124,36 +124,32 @@ typeRepresentation env type_ =
   where
     globalCase global@(Name.Lifted qualifiedName liftedNameNumber) args = do
       -- TODO caching
-      maybeDefinition <- fetch $ Query.ClosureConverted global
-      case maybeDefinition of
-        Nothing ->
+      definition <- fetch $ Query.ClosureConverted global
+      case definition of
+        Syntax.TypeDeclaration _ ->
           pure $ Representation.Indirect Representation.MightContainHeapPointers
-        Just definition ->
-          case definition of
-            Syntax.TypeDeclaration _ ->
-              pure $ Representation.Indirect Representation.MightContainHeapPointers
-            Syntax.ConstantDefinition term -> do
-              value <- Evaluation.evaluate (Environment.emptyFrom env) term
-              type' <- Evaluation.apply env value args
+        Syntax.ConstantDefinition term -> do
+          value <- Evaluation.evaluate (Environment.emptyFrom env) term
+          type' <- Evaluation.apply env value args
+          typeRepresentation env type'
+        Syntax.FunctionDefinition tele -> do
+          maybeType' <- Evaluation.applyFunction env (Telescope.fromVoid tele) args
+          case maybeType' of
+            Nothing ->
+              pure $ Representation.Direct Representation.MightContainHeapPointers -- a closure
+            Just type' ->
               typeRepresentation env type'
-            Syntax.FunctionDefinition tele -> do
-              maybeType' <- Evaluation.applyFunction env (Telescope.fromVoid tele) args
-              case maybeType' of
-                Nothing ->
-                  pure $ Representation.Direct Representation.MightContainHeapPointers -- a closure
-                Just type' ->
-                  typeRepresentation env type'
-            Syntax.DataDefinition Boxed _ ->
-              pure $ Representation.Direct Representation.MightContainHeapPointers
-            Syntax.DataDefinition Unboxed constructors -> do
-              unless (liftedNameNumber == 0) $ panic "ClosureConverted.Representation. Data with name number /= 0"
-              unboxedDataRepresentation qualifiedName (Environment.emptyFrom env) constructors
-            Syntax.ParameterisedDataDefinition Boxed _ ->
-              pure $ Representation.Direct Representation.MightContainHeapPointers
-            Syntax.ParameterisedDataDefinition Unboxed tele -> do
-              unless (liftedNameNumber == 0) $ panic "ClosureConverted.Representation. Data with name number /= 0"
-              maybeResult <- Evaluation.applyTelescope env (Telescope.fromVoid tele) args $ unboxedDataRepresentation qualifiedName
-              pure $ fromMaybe (Representation.Indirect Representation.MightContainHeapPointers) maybeResult
+        Syntax.DataDefinition Boxed _ ->
+          pure $ Representation.Direct Representation.MightContainHeapPointers
+        Syntax.DataDefinition Unboxed constructors -> do
+          unless (liftedNameNumber == 0) $ panic "ClosureConverted.Representation. Data with name number /= 0"
+          unboxedDataRepresentation qualifiedName (Environment.emptyFrom env) constructors
+        Syntax.ParameterisedDataDefinition Boxed _ ->
+          pure $ Representation.Direct Representation.MightContainHeapPointers
+        Syntax.ParameterisedDataDefinition Unboxed tele -> do
+          unless (liftedNameNumber == 0) $ panic "ClosureConverted.Representation. Data with name number /= 0"
+          maybeResult <- Evaluation.applyTelescope env (Telescope.fromVoid tele) args $ unboxedDataRepresentation qualifiedName
+          pure $ fromMaybe (Representation.Indirect Representation.MightContainHeapPointers) maybeResult
 
 unboxedDataRepresentation :: Name.Qualified -> Environment v -> Syntax.ConstructorDefinitions v -> M Representation
 unboxedDataRepresentation dataTypeName env (Syntax.ConstructorDefinitions constructors) = do

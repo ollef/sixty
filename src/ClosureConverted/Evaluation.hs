@@ -214,7 +214,7 @@ fetchVisibleDefinition :: Domain.Environment v -> Name.Lifted -> M (Maybe Syntax
 fetchVisibleDefinition env name@(Name.Lifted baseName _) = do
   definitionVisible <- fetch $ Query.IsDefinitionVisible (Environment.scopeKey env) baseName
   if definitionVisible
-    then fetch $ Query.ClosureConverted name
+    then Just <$> fetch (Query.ClosureConverted name)
     else pure Nothing
 
 -- | Evaluate the head of a value through glued values.

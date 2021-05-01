@@ -368,11 +368,13 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
         (def, liftedDefs) <- fetch $ LambdaLifted qualifiedName
         pure $
           case index of
-            0 ->
-              pure def
+            0 -> def
             _ ->
-              LambdaLifted.ConstantDefinition
-                <$> IntMap.lookup index liftedDefs
+              LambdaLifted.ConstantDefinition $
+                IntMap.lookupDefault
+                  (Telescope.Empty $ LambdaLifted.Global $ Name.Lifted Builtin.FailName 0)
+                  index
+                  liftedDefs
     LambdaLiftedModuleDefinitions module_ ->
       noError $ do
         names <- fetch $ ModuleDefinitions module_
@@ -384,29 +386,24 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             pure $ Name.Lifted qualifiedName <$> 0 : IntMap.keys extras
     ClosureConverted name ->
       noError $ do
-        maybeDef <- fetch $ LambdaLiftedDefinition name
-        mapM ClosureConversion.convertDefinition maybeDef
+        definition <- fetch $ LambdaLiftedDefinition name
+        ClosureConversion.convertDefinition definition
     ClosureConvertedType name@(Name.Lifted qualifiedName _) ->
       noError $ do
-        maybeDef <- fetch $ ClosureConverted name
-        case maybeDef of
-          Nothing ->
-            panic "ClosureConvertedType: no type"
-          Just def ->
-            runM $
-              ClosureConverted.typeOfDefinition (ClosureConverted.Context.empty $ Scope.KeyedName Scope.Definition qualifiedName) def
+        definition <- fetch $ ClosureConverted name
+        runM $ ClosureConverted.typeOfDefinition (ClosureConverted.Context.empty $ Scope.KeyedName Scope.Definition qualifiedName) definition
     ClosureConvertedConstructorType (Name.QualifiedConstructor dataTypeName constr) ->
       noError $ do
-        def <- fetch $ ClosureConverted $ Name.Lifted dataTypeName 0
-        case def of
-          Just (ClosureConverted.Syntax.DataDefinition _ (ClosureConverted.Syntax.ConstructorDefinitions constrs)) ->
+        definition <- fetch $ ClosureConverted $ Name.Lifted dataTypeName 0
+        case definition of
+          ClosureConverted.Syntax.DataDefinition _ (ClosureConverted.Syntax.ConstructorDefinitions constrs) ->
             pure $
               Telescope.Empty $
                 OrderedHashMap.lookupDefault
                   (panic "ClosureConvertedConstructorType: no such constructor")
                   constr
                   constrs
-          Just (ClosureConverted.Syntax.ParameterisedDataDefinition _ tele) -> do
+          ClosureConverted.Syntax.ParameterisedDataDefinition _ tele -> do
             let go ::
                   Telescope name ClosureConverted.Syntax.Type ClosureConverted.Syntax.ConstructorDefinitions v ->
                   Telescope name ClosureConverted.Syntax.Type ClosureConverted.Syntax.Type v
@@ -426,8 +423,8 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             panic "ClosureConvertedConstructorType: none-datatype"
     ClosureConvertedSignature name ->
       noError $ do
-        maybeDefinition <- fetch $ ClosureConverted name
-        mapM (runM . ClosureConverted.Representation.signature name) maybeDefinition
+        definition <- fetch $ ClosureConverted name
+        runM $ ClosureConverted.Representation.signature name definition
     ConstructorRepresentations dataTypeName ->
       noError $ ClosureConverted.Representation.constructorRepresentations dataTypeName
     ConstructorRepresentation (Name.QualifiedConstructor dataTypeName constr) ->
@@ -436,10 +433,8 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
         pure (boxity, (HashMap.! constr) <$> maybeTags)
     Assembly name ->
       noError $ do
-        maybeDefinition <- fetch $ ClosureConverted name
-        fmap join $
-          forM maybeDefinition $ \definition ->
-            runM $ ClosureConvertedToAssembly.generateDefinition name definition
+        definition <- fetch $ ClosureConverted name
+        runM $ ClosureConvertedToAssembly.generateDefinition name definition
     AssemblyModule module_ ->
       noError $ do
         names <- fetch $ LambdaLiftedModuleDefinitions module_

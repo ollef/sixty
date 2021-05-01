@@ -73,12 +73,12 @@ data Query a where
   KeyedNamePosition :: Scope.KeyedName -> Query (FilePath, Position.Absolute)
   Occurrences :: Scope.KeyedName -> Query Occurrences.Intervals
   LambdaLifted :: Name.Qualified -> Query (LambdaLifted.Definition, IntMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void))
-  LambdaLiftedDefinition :: Name.Lifted -> Query (Maybe LambdaLifted.Definition)
+  LambdaLiftedDefinition :: Name.Lifted -> Query LambdaLifted.Definition
   LambdaLiftedModuleDefinitions :: Name.Module -> Query (OrderedHashSet Name.Lifted)
-  ClosureConverted :: Name.Lifted -> Query (Maybe ClosureConverted.Definition)
+  ClosureConverted :: Name.Lifted -> Query ClosureConverted.Definition
   ClosureConvertedType :: Name.Lifted -> Query (ClosureConverted.Type Void)
   ClosureConvertedConstructorType :: Name.QualifiedConstructor -> Query (Telescope Name ClosureConverted.Type ClosureConverted.Type Void)
-  ClosureConvertedSignature :: Name.Lifted -> Query (Maybe Representation.Signature)
+  ClosureConvertedSignature :: Name.Lifted -> Query Representation.Signature
   ConstructorRepresentations :: Name.Qualified -> Query (Boxity, Maybe (HashMap Name.Constructor Int))
   ConstructorRepresentation :: Name.QualifiedConstructor -> Query (Boxity, Maybe Int)
   Assembly :: Name.Lifted -> Query (Maybe Assembly.Definition)

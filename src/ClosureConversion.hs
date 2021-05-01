@@ -95,7 +95,7 @@ convertGlobal ::
   [ClosureConverted.Term v] ->
   m (ClosureConverted.Term v)
 convertGlobal global args = do
-  maybeDef <- fetch $ Query.LambdaLiftedDefinition global
+  definition <- fetch $ Query.LambdaLiftedDefinition global
   let nonFunctionCase =
         applyArgs args $ pure $ ClosureConverted.Global global
 
@@ -115,23 +115,21 @@ convertGlobal global args = do
               | otherwise ->
                 ClosureConverted.Closure global args
 
-  case maybeDef of
-    Just (LambdaLifted.TypeDeclaration type_) ->
+  case definition of
+    LambdaLifted.TypeDeclaration type_ ->
       case LambdaLifted.pisView identity type_ of
         Telescope.Empty {} ->
           nonFunctionCase
         tele@Telescope.Extend {} ->
           functionCase tele
-    Just (LambdaLifted.ConstantDefinition (Telescope.Empty _)) ->
+    LambdaLifted.ConstantDefinition (Telescope.Empty _) ->
       nonFunctionCase
-    Just (LambdaLifted.DataDefinition _ (Telescope.Empty _)) ->
+    LambdaLifted.DataDefinition _ (Telescope.Empty _) ->
       nonFunctionCase
-    Just (LambdaLifted.ConstantDefinition tele) ->
+    LambdaLifted.ConstantDefinition tele ->
       functionCase tele
-    Just (LambdaLifted.DataDefinition _ tele) ->
+    LambdaLifted.DataDefinition _ tele ->
       functionCase tele
-    Nothing ->
-      nonFunctionCase
 
 convertTypeDeclaration :: MonadFetch Query m => LambdaLifted.Type Void -> m (ClosureConverted.Type Void)
 convertTypeDeclaration type_ =

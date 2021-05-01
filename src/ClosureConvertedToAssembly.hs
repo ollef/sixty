@@ -223,9 +223,9 @@ indexOperand index env = do
 
 globalConstantOperand :: Name.Lifted -> Builder Operand
 globalConstantOperand name = do
-  maybeSignature <- fetch $ Query.ClosureConvertedSignature name
-  pure $ case maybeSignature of
-    Just (Representation.ConstantSignature representation) ->
+  signature <- fetch $ Query.ClosureConvertedSignature name
+  pure $ case signature of
+    Representation.ConstantSignature representation ->
       Indirect $
         Assembly.GlobalConstant name $ case representation of
           Representation.Empty -> Assembly.WordPointer
@@ -653,20 +653,20 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition = do
     case (definition, signature) of
       (Syntax.TypeDeclaration _, _) ->
         pure Nothing
-      (Syntax.ConstantDefinition term, Just (Representation.ConstantSignature representation)) ->
+      (Syntax.ConstantDefinition term, Representation.ConstantSignature representation) ->
         Just <$> generateGlobal env name representation term
       (Syntax.ConstantDefinition {}, _) ->
         panic "ClosureConvertedToAssembly: ConstantDefinition without ConstantSignature"
-      (Syntax.FunctionDefinition tele, Just (Representation.FunctionSignature parameterRepresentations returnRepresentation)) -> do
+      (Syntax.FunctionDefinition tele, Representation.FunctionSignature parameterRepresentations returnRepresentation) -> do
         Just <$> generateFunction env returnRepresentation tele parameterRepresentations mempty
       (Syntax.FunctionDefinition {}, _) ->
         panic "ClosureConvertedToAssembly: FunctionDefinition without FunctionSignature"
-      (Syntax.DataDefinition _ constructors, Just (Representation.ConstantSignature representation)) -> do
+      (Syntax.DataDefinition _ constructors, Representation.ConstantSignature representation) -> do
         term <- Builder $ lift $ ClosureConverted.Representation.compileData (Context.toEnvironment $ _context env) qualifiedName constructors
         Just <$> generateGlobal env name representation term
       (Syntax.DataDefinition {}, _) ->
         panic "ClosureConvertedToAssembly: DataDefinition without ConstantSignature"
-      (Syntax.ParameterisedDataDefinition _ tele, Just (Representation.FunctionSignature parameterRepresentations returnRepresentation)) -> do
+      (Syntax.ParameterisedDataDefinition _ tele, Representation.FunctionSignature parameterRepresentations returnRepresentation) -> do
         tele' <- Builder $ lift $ ClosureConverted.Representation.compileParameterisedData (Context.toEnvironment $ _context env) qualifiedName tele
         Just <$> generateFunction env returnRepresentation tele' parameterRepresentations mempty
       (Syntax.ParameterisedDataDefinition {}, _) -> do
@@ -894,10 +894,10 @@ generateTypedTerm env term type_ representation = do
         Syntax.Function _ ->
           pure (Direct pointerBytesOperand, Nothing)
         Syntax.Apply global arguments -> do
-          maybeSignature <- fetch $ Query.ClosureConvertedSignature global
+          signature <- fetch $ Query.ClosureConvertedSignature global
           let (argumentRepresentations, returnRepresentation) =
-                case maybeSignature of
-                  Just (Representation.FunctionSignature argumentRepresentations_ returnRepresentation_) ->
+                case signature of
+                  Representation.FunctionSignature argumentRepresentations_ returnRepresentation_ ->
                     (argumentRepresentations_, returnRepresentation_)
                   _ ->
                     panic $ "ClosureConvertedToAssembly: Applying signature-less function " <> show global
@@ -995,10 +995,10 @@ storeTerm env term returnLocation returnType =
     Syntax.Function _ ->
       store returnLocation pointerBytesOperand
     Syntax.Apply global arguments -> do
-      maybeSignature <- fetch $ Query.ClosureConvertedSignature global
+      signature <- fetch $ Query.ClosureConvertedSignature global
       let (argumentRepresentations, returnRepresentation) =
-            case maybeSignature of
-              Just (Representation.FunctionSignature argumentRepresentations_ returnRepresentation_) ->
+            case signature of
+              Representation.FunctionSignature argumentRepresentations_ returnRepresentation_ ->
                 (argumentRepresentations_, returnRepresentation_)
               _ ->
                 panic $ "ClosureConvertedToAssembly: Applying signature-less function " <> show global
