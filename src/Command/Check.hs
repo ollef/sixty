@@ -38,10 +38,9 @@ check argumentFiles printElaborated = do
             forM_ names $ \name -> do
               type_ <- fetch $ Query.ElaboratedType name
               liftIO $ putDoc $ Pretty.prettyDefinition emptyPrettyEnv name (Syntax.TypeDeclaration type_) <> line
-              maybeDef <- fetch $ Query.ElaboratedDefinition name
+              (definition, _) <- fetch $ Query.ElaboratedDefinition name
               liftIO $ do
-                forM_ maybeDef $ \(def, _) ->
-                  putDoc $ Pretty.prettyDefinition emptyPrettyEnv name def <> line
+                putDoc $ Pretty.prettyDefinition emptyPrettyEnv name definition <> line
                 putDoc line
           wait checkedAll
         else void Driver.checkAll

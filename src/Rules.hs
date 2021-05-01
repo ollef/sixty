@@ -275,14 +275,14 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                   forM mtype $ \_ ->
                     fetch $ ElaboratedType qualifiedName
 
-            runElaborator keyedName $
+            runElaboratorWithDefault Nothing keyedName $
               case mtype of
                 Nothing ->
-                  Elaboration.inferTopLevelDefinition keyedName def
+                  first Just <$> Elaboration.inferTopLevelDefinition keyedName def
                 Just type_ -> do
                   typeValue <- Evaluation.evaluate (Environment.empty keyedName) type_
                   ((def', metaVars), errs) <- Elaboration.checkTopLevelDefinition keyedName def typeValue
-                  pure ((def', type_, metaVars), errs)
+                  pure (Just (def', type_, metaVars), errs)
     ElaboratedType Builtin.TypeName ->
       nonInput $
         pure (Syntax.Global Builtin.TypeName, mempty)
@@ -293,46 +293,41 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
         mtypeDecl <- fetch $ ElaboratingDefinition typeKey
         case mtypeDecl of
           Nothing -> do
-            mdef <- fetch $ ElaboratedDefinition qualifiedName
+            (_, type_) <- fetch $ ElaboratedDefinition qualifiedName
             pure
-              ( case mdef of
-                  Nothing ->
-                    Builtin.fail Builtin.type_
-                  Just (_, type_) ->
-                    type_
+              ( type_
               , mempty
               )
           Just (typeDecl, type_, metaVars) -> do
-            (maybeResult, errs) <-
-              runElaborator typeKey $
+            (typeDecl', errs) <-
+              runElaboratorWithDefault (Syntax.TypeDeclaration $ Builtin.fail Builtin.type_, Builtin.fail Builtin.type_) typeKey $
                 Elaboration.checkDefinitionMetaSolutions typeKey typeDecl type_ metaVars
             pure $
-              case maybeResult of
-                Nothing ->
-                  (Builtin.fail Builtin.type_, errs)
-                Just (Syntax.TypeDeclaration result, _) ->
+              case typeDecl' of
+                (Syntax.TypeDeclaration result, _) ->
                   (result, errs)
-                Just _ ->
+                _ ->
                   panic "ElaboratedType: Not a type declaration"
     ElaboratedDefinition qualifiedName ->
       nonInput $ do
-        let defKey =
-              Scope.KeyedName Scope.Definition qualifiedName
+        let defKey = Scope.KeyedName Scope.Definition qualifiedName
         maybeDef <- fetch $ ElaboratingDefinition defKey
         case maybeDef of
-          Nothing ->
-            pure (Nothing, mempty)
-          Just (def, type_, metaVars) ->
-            runElaborator defKey $
+          Nothing -> do
+            type_ <- fetch $ ElaboratedType qualifiedName
+            pure ((Syntax.TypeDeclaration type_, Builtin.type_), mempty)
+          Just (def, type_, metaVars) -> do
+            let fail = (Syntax.TypeDeclaration $ Builtin.fail Builtin.type_, Builtin.fail Builtin.type_)
+            runElaboratorWithDefault fail defKey $
               Elaboration.checkDefinitionMetaSolutions defKey def type_ metaVars
     ConstructorType (Name.QualifiedConstructor dataTypeName constr) ->
       noError $ do
-        def <- fetch $ ElaboratedDefinition dataTypeName
+        (def, _) <- fetch $ ElaboratedDefinition dataTypeName
         let fail =
               Builtin.fail $ Builtin.fail Builtin.type_
 
         case def of
-          Just (Syntax.DataDefinition _ tele, _) -> do
+          Syntax.DataDefinition _ tele -> do
             let go :: Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v -> Telescope Binding Syntax.Type Syntax.Type v
                 go tele' =
                   case tele' of
@@ -366,15 +361,8 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
               name
     LambdaLifted qualifiedName ->
       noError $ do
-        maybeDef <- fetch $ ElaboratedDefinition qualifiedName
-        case maybeDef of
-          Nothing -> do
-            type_ <- fetch $ ElaboratedType qualifiedName
-            runM $
-              LambdaLifting.liftDefinition qualifiedName (Syntax.TypeDeclaration type_)
-          Just (def, _) ->
-            runM $
-              LambdaLifting.liftDefinition qualifiedName def
+        (definition, _) <- fetch $ ElaboratedDefinition qualifiedName
+        runM $ LambdaLifting.liftDefinition qualifiedName definition
     LambdaLiftedDefinition (Name.Lifted qualifiedName index) ->
       noError $ do
         (def, liftedDefs) <- fetch $ LambdaLifted qualifiedName
@@ -487,19 +475,20 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
     nonInput :: Functor m => m (a, [Error]) -> m ((a, TaskKind), [Error])
     nonInput = fmap (first (,NonInput))
 
-    runElaborator ::
+    runElaboratorWithDefault ::
+      a ->
       Scope.KeyedName ->
       M (a, [Error]) ->
-      Task Query (Maybe a, [Error])
-    runElaborator key m = do
+      Task Query (a, [Error])
+    runElaboratorWithDefault default_ key m = do
       eitherResult <- try $ runM m
       pure $
         case eitherResult of
           Left err ->
-            ( Nothing
+            ( default_
             , pure $
                 Error.Elaboration key $
                   Error.Spanned (Span.Relative 0 0) err
             )
           Right (result, errs) ->
-            (Just result, errs)
+            (result, errs)

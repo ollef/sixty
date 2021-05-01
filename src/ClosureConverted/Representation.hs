@@ -315,9 +315,9 @@ compileBranches branches =
 
 constructorRepresentations :: Name.Qualified -> Task Query (Boxity, Maybe (HashMap Name.Constructor Int))
 constructorRepresentations name = do
-  definition <- fetch $ Query.ElaboratedDefinition name
+  (definition, _) <- fetch $ Query.ElaboratedDefinition name
   pure $ case definition of
-    Just (Core.Syntax.DataDefinition boxity tele, _) ->
+    Core.Syntax.DataDefinition boxity tele ->
       ( boxity
       , Telescope.under tele $ \(Core.Syntax.ConstructorDefinitions constructors) ->
           case OrderedHashMap.toList constructors of

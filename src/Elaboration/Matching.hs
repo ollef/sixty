@@ -426,9 +426,9 @@ uncoveredScrutineePatterns context value = do
         [] ->
           pure [Domain.Pattern.Wildcard]
         Name.QualifiedConstructor typeName _ : _ -> do
-          maybeDefinition <- fetch $ Query.ElaboratedDefinition typeName
-          case maybeDefinition of
-            Just (Syntax.DataDefinition _ tele, _) ->
+          (definition, _) <- fetch $ Query.ElaboratedDefinition typeName
+          case definition of
+            Syntax.DataDefinition _ tele ->
               pure $
                 Telescope.under tele $ \(Syntax.ConstructorDefinitions constrDefs) -> do
                   let uncoveredConstrDefs =
@@ -742,9 +742,9 @@ splitConstructor ::
   Domain.Type ->
   M (Syntax.Term v)
 splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.QualifiedConstructor typeName _) outerType = do
-  maybeDefinition <- fetch $ Query.ElaboratedDefinition typeName
-  case maybeDefinition of
-    Just (Syntax.DataDefinition _ tele, _) -> do
+  (definition, _) <- fetch $ Query.ElaboratedDefinition typeName
+  case definition of
+    Syntax.DataDefinition _ tele -> do
       tele' <- Evaluation.evaluateConstructorDefinitions (Environment.empty $ Context.scopeKey outerContext) tele
       outerType' <- Context.forceHead outerContext outerType
       case outerType' of
@@ -1027,9 +1027,9 @@ uninhabitedType context fuel coveredConstructors type_ = do
         Right _ ->
           False
     Domain.Neutral (Domain.Global global) (Domain.Apps args) -> do
-      maybeDefinitions <- fetch $ Query.ElaboratedDefinition global
-      case maybeDefinitions of
-        Just (Syntax.DataDefinition _ tele, _) -> do
+      (definition, _) <- fetch $ Query.ElaboratedDefinition global
+      case definition of
+        Syntax.DataDefinition _ tele -> do
           tele' <- Evaluation.evaluateConstructorDefinitions (Environment.empty $ Context.scopeKey context) tele
           tele'' <- Domain.Telescope.apply tele' $ toList args
           case tele'' of

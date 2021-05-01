@@ -185,20 +185,15 @@ getUsableNames itemContext context varPositions = do
     case entry of
       Scope.Name global -> do
         let go = do
-              maybeDefinition <- fetch $ Query.ElaboratedDefinition global
+              (definition, _) <- fetch $ Query.ElaboratedDefinition global
               pure
                 [
                   ( name
                   , Domain.global global
-                  , case maybeDefinition of
-                      Just (Syntax.DataDefinition {}, _) ->
-                        LSP.CiEnum
-                      Just (Syntax.ConstantDefinition {}, _) ->
-                        LSP.CiConstant
-                      Just (Syntax.TypeDeclaration {}, _) ->
-                        LSP.CiConstant
-                      Nothing ->
-                        LSP.CiConstant
+                  , case definition of
+                      Syntax.DataDefinition {} -> LSP.CiEnum
+                      Syntax.ConstantDefinition {} -> LSP.CiConstant
+                      Syntax.TypeDeclaration {} -> LSP.CiConstant
                   )
                 ]
         case itemContext of

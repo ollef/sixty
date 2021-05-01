@@ -64,9 +64,9 @@ evaluate env term =
       definitionVisible <- fetch $ Query.IsDefinitionVisible (Environment.scopeKey env) name
       if definitionVisible
         then do
-          maybeDefinition <- fetch $ Query.ElaboratedDefinition name
-          case maybeDefinition of
-            Just (Syntax.ConstantDefinition term', _) -> do
+          (definition, _) <- fetch $ Query.ElaboratedDefinition name
+          case definition of
+            Syntax.ConstantDefinition term' -> do
               value <- lazyEvaluate (Environment.emptyFrom env) term'
               pure $ Domain.Glued (Domain.Global name) mempty value
             _ ->

@@ -68,7 +68,7 @@ data Query a where
   IsDefinitionVisible :: Scope.KeyedName -> Name.Qualified -> Query Bool
   ElaboratingDefinition :: Scope.KeyedName -> Query (Maybe (Syntax.Definition, Syntax.Type Void, Elaboration.Meta.EagerState))
   ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void)
-  ElaboratedDefinition :: Name.Qualified -> Query (Maybe (Syntax.Definition, Syntax.Type Void))
+  ElaboratedDefinition :: Name.Qualified -> Query (Syntax.Definition, Syntax.Type Void)
   ConstructorType :: Name.QualifiedConstructor -> Query (Telescope Binding Syntax.Type Syntax.Type Void)
   KeyedNamePosition :: Scope.KeyedName -> Query (FilePath, Position.Absolute)
   Occurrences :: Scope.KeyedName -> Query Occurrences.Intervals
