@@ -36,6 +36,9 @@ struct heap_alloc_result heap_alloc(struct shadow_stack_frame* shadow_stack, cha
     // TODO: Do GC :)
     exit(0x43A4);
   }
+  if (unlikely(inline_size == inline_size_cutoff)) {
+    *(uintptr_t*)heap_pointer = size;
+  }
   intptr_t result
     = ((intptr_t)object_pointer << 16)
     | ((intptr_t)constructor_tag << 11)
