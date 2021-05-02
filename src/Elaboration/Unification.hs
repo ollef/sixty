@@ -41,6 +41,7 @@ import Plicity
 import Protolude hiding (catch, check, evaluate, force, head, throwIO)
 import qualified Query
 import Rock
+import qualified Scope
 import Telescope (Telescope)
 import qualified Telescope
 import Var
@@ -172,11 +173,16 @@ unify context flexibility value1 value2 = do
       | head1 == head2 ->
         unifySpines context Flexibility.Flexible spine1 spine2 `catch` \(_ :: Error.Elaboration) ->
           unify context flexibility value1'' value2''
-    (Domain.Glued _ _ value1'', _) -> do
+      | otherwise -> do
+        ordering <- compareHeadDepths head1 head2
+        case ordering of
+          LT -> unify context flexibility value1' value2''
+          GT -> unify context flexibility value1'' value2'
+          EQ -> unify context flexibility value1'' value2''
+    (Domain.Glued _ _ value1'', _) ->
       unify context flexibility value1'' value2'
-    (_, Domain.Glued _ _ value2'') -> do
+    (_, Domain.Glued _ _ value2'') ->
       unify context flexibility value1' value2''
-
     -- Metas
     (Domain.Neutral (Domain.Meta metaIndex1) (Domain.Apps args1), v2)
       | Flexibility.Rigid <- flexibility -> do
@@ -378,6 +384,22 @@ unifyBranches
 
       can'tUnify =
         throwIO $ Error.TypeMismatch mempty
+
+-- | Try to find out which of two heads was defined first so we can unfold
+-- glued values that are defined later first (see "depth" in
+-- https://arxiv.org/pdf/1505.04324.pdf).
+compareHeadDepths :: Domain.Head -> Domain.Head -> M Ordering
+compareHeadDepths head1 head2 =
+  case (head1, head2) of
+    (Domain.Global global1, Domain.Global global2) -> do
+      global1VisibleFromGlobal2 <- fetch $ Query.IsDefinitionVisible (Scope.KeyedName Scope.Definition global2) global1
+      pure $
+        if global1VisibleFromGlobal2
+          then LT
+          else GT
+    (_, Domain.Global _) -> pure LT
+    (Domain.Global _, _) -> pure GT
+    _ -> pure EQ
 
 -------------------------------------------------------------------------------
 -- Case expression inversion
