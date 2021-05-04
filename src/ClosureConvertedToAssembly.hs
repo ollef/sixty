@@ -1057,14 +1057,8 @@ storeTerm env term returnLocation returnType =
       (scrutinee', deallocateScrutinee) <- generateTypedTerm env scrutinee scrutineeType scrutineeRepresentation
       branches' <- ClosureConverted.Representation.compileBranches branches
       case branches' of
-        ClosureConverted.Representation.TaggedConstructorBranches boxity constructorBranches -> do
-          (scrutinee'', deallocateScrutinee') <- case boxity of
-            Unboxed ->
-              forceIndirect scrutinee'
-            Boxed -> do
-              directScrutinee <- forceDirect scrutinee'
-              heapScrutinee <- load "heap_scrutinee" directScrutinee
-              pure (heapScrutinee, pure ())
+        ClosureConverted.Representation.TaggedConstructorBranches Unboxed constructorBranches -> do
+          (scrutinee'', deallocateScrutinee') <- forceIndirect scrutinee'
           let firstConstructorFieldBuilder nameSuggestion =
                 addPointer nameSuggestion scrutinee'' $ Assembly.Lit $ Literal.Integer tagBytes
           constructorTag <- load "constructor_tag" scrutinee''
@@ -1087,17 +1081,15 @@ storeTerm env term returnLocation returnType =
                   storeTerm env defaultBranch returnLocation returnType
                   pure Assembly.Void
               )
-        ClosureConverted.Representation.UntaggedConstructorBranch boxity branch -> do
-          (scrutinee'', deallocateScrutinee') <- case boxity of
-            Unboxed ->
-              forceIndirect scrutinee'
-            Boxed -> do
-              directScrutinee <- forceDirect scrutinee'
-              heapScrutinee <- load "heap_scrutinee" directScrutinee
-              pure (heapScrutinee, pure ())
+        ClosureConverted.Representation.TaggedConstructorBranches Boxed constructorBranches ->
+          panic "TODO"
+        ClosureConverted.Representation.UntaggedConstructorBranch Unboxed branch -> do
+          (scrutinee'', deallocateScrutinee') <- forceIndirect scrutinee'
           storeBranch env (const $ pure scrutinee'') branch returnLocation returnType
           deallocateScrutinee'
           sequence_ deallocateScrutinee
+        ClosureConverted.Representation.UntaggedConstructorBranch Boxed branch ->
+          panic "TODO"
         ClosureConverted.Representation.LiteralBranches literalBranches -> do
           directScrutinee <- forceDirect scrutinee'
           sequence_ deallocateScrutinee
