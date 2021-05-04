@@ -1068,7 +1068,7 @@ storeTerm env term returnLocation returnType =
               constructorTag
               [ ( fromIntegral branchTag
                 , do
-                    storeBranch env firstConstructorFieldBuilder branch returnLocation returnType
+                    storeUnboxedBranch env firstConstructorFieldBuilder branch returnLocation returnType
                     deallocateScrutinee'
                     sequence_ deallocateScrutinee
                     pure Assembly.Void
@@ -1081,15 +1081,43 @@ storeTerm env term returnLocation returnType =
                   storeTerm env defaultBranch returnLocation returnType
                   pure Assembly.Void
               )
-        ClosureConverted.Representation.TaggedConstructorBranches Boxed constructorBranches ->
-          panic "TODO"
+        ClosureConverted.Representation.TaggedConstructorBranches Boxed constructorBranches -> do
+          (scrutinee'', deallocateScrutinee') <- forceIndirect scrutinee'
+          let constructorBasePointerBuilder = extractHeapPointer "boxed_constructor_pointer" scrutinee''
+              firstConstructorFieldOffsetBuilder _ = pure $ Assembly.Lit $ Literal.Integer 0
+          taggedPointer <- load "tagged_heap_scrutinee_pointer" scrutinee''
+          constructorTag <- extractHeapPointerConstructorTag "heap_scrutinee_tag" taggedPointer
+          void $
+            switch
+              Assembly.Void
+              constructorTag
+              [ ( fromIntegral branchTag
+                , do
+                    storeBoxedBranch env constructorBasePointerBuilder firstConstructorFieldOffsetBuilder branch returnLocation returnType
+                    deallocateScrutinee'
+                    sequence_ deallocateScrutinee
+                    pure Assembly.Void
+                )
+              | (branchTag, branch) <- constructorBranches
+              ]
+              ( do
+                  deallocateScrutinee'
+                  sequence_ deallocateScrutinee
+                  storeTerm env defaultBranch returnLocation returnType
+                  pure Assembly.Void
+              )
         ClosureConverted.Representation.UntaggedConstructorBranch Unboxed branch -> do
           (scrutinee'', deallocateScrutinee') <- forceIndirect scrutinee'
-          storeBranch env (const $ pure scrutinee'') branch returnLocation returnType
+          storeUnboxedBranch env (const $ pure scrutinee'') branch returnLocation returnType
           deallocateScrutinee'
           sequence_ deallocateScrutinee
-        ClosureConverted.Representation.UntaggedConstructorBranch Boxed branch ->
-          panic "TODO"
+        ClosureConverted.Representation.UntaggedConstructorBranch Boxed branch -> do
+          (scrutinee'', deallocateScrutinee') <- forceIndirect scrutinee'
+          let constructorBasePointerBuilder = extractHeapPointer "boxed_constructor_pointer" scrutinee''
+              firstConstructorFieldOffsetBuilder _ = pure $ Assembly.Lit $ Literal.Integer 0
+          storeBoxedBranch env constructorBasePointerBuilder firstConstructorFieldOffsetBuilder branch returnLocation returnType
+          deallocateScrutinee'
+          sequence_ deallocateScrutinee
         ClosureConverted.Representation.LiteralBranches literalBranches -> do
           directScrutinee <- forceDirect scrutinee'
           sequence_ deallocateScrutinee
@@ -1109,14 +1137,14 @@ storeTerm env term returnLocation returnType =
                   pure Assembly.Void
               )
 
-storeBranch ::
+storeUnboxedBranch ::
   Environment v ->
   (Assembly.NameSuggestion -> Builder Assembly.Operand) ->
   Telescope Name Syntax.Type Syntax.Term v ->
   Assembly.Operand ->
   Operand ->
   Builder ()
-storeBranch env constructorFieldBuilder tele returnLocation returnType =
+storeUnboxedBranch env constructorFieldBuilder tele returnLocation returnType =
   case tele of
     Telescope.Extend (Name name) type_ _plicity tele' -> do
       constructorField <- constructorFieldBuilder $ Assembly.NameSuggestion name
@@ -1125,7 +1153,42 @@ storeBranch env constructorFieldBuilder tele returnLocation returnType =
             typeSize <- sizeOfType type'
             addPointer nameSuggestion constructorField typeSize
       env' <- extend env type_ $ Indirect constructorField
-      storeBranch env' nextConstructorFieldBuilder tele' returnLocation returnType
+      storeUnboxedBranch env' nextConstructorFieldBuilder tele' returnLocation returnType
+    Telescope.Empty branch ->
+      storeTerm env branch returnLocation returnType
+
+storeBoxedBranch ::
+  Environment v ->
+  Builder Assembly.Operand ->
+  (Assembly.NameSuggestion -> Builder Assembly.Operand) ->
+  Telescope Name Syntax.Type Syntax.Term v ->
+  Assembly.Operand ->
+  Operand ->
+  Builder ()
+storeBoxedBranch env constructorBasePointerBuilder constructorFieldOffsetBuilder tele returnLocation returnType =
+  case tele of
+    Telescope.Extend (Name name) type_ _plicity tele' -> do
+      constructorFieldOffset <- constructorFieldOffsetBuilder $ Assembly.NameSuggestion $ name <> "_offset"
+      type' <- generateType env type_
+      typeSize <- sizeOfType type'
+      stack <- saveStack
+      stackConstructorField <- stackAllocate (Assembly.NameSuggestion $ name <> "_stack") pointerBytesOperand
+      typeRepresentation <- Builder $
+        lift $ do
+          typeValue <- Evaluation.evaluate (Context.toEnvironment $ _context env) type_
+          ClosureConverted.Representation.typeRepresentation (Context.toEnvironment $ _context env) typeValue
+      unregisterShadowStackSlot <- case Representation.containsHeapPointers typeRepresentation of
+        Representation.Doesn'tContainHeapPointers -> pure (pure ())
+        Representation.MightContainHeapPointers -> registerShadowStackSlot typeSize stackConstructorField
+      constructorBasePointer <- constructorBasePointerBuilder
+      constructorField <- addPointer (Assembly.NameSuggestion name) constructorBasePointer constructorFieldOffset
+      copy stackConstructorField (Indirect constructorField) typeSize
+      let nextConstructorFieldOffsetBuilder nameSuggestion =
+            add nameSuggestion constructorFieldOffset typeSize
+      env' <- extend env type_ $ Indirect stackConstructorField
+      storeBoxedBranch env' constructorBasePointerBuilder nextConstructorFieldOffsetBuilder tele' returnLocation returnType
+      unregisterShadowStackSlot
+      restoreStack stack
     Telescope.Empty branch ->
       storeTerm env branch returnLocation returnType
 
