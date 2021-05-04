@@ -961,18 +961,28 @@ storeTerm env term returnLocation returnType =
               Just tag ->
                 Syntax.Lit (Literal.Integer $ fromIntegral tag) : args
 
-          go constructLocation arg = do
-            location <- constructLocation
-            (argType, _argRepresentation) <- typeOf env arg
-            storeTerm env arg location argType
-            pure $ do
-              argTypeSize <- sizeOfType argType
-              addPointer "constructor_argument_offset" location argTypeSize
-
       case boxity of
-        Unboxed ->
+        Unboxed -> do
+          let go constructLocation arg = do
+                location <- constructLocation
+                (argType, _argRepresentation) <- typeOf env arg
+                storeTerm env arg location argType
+                pure $ do
+                  argTypeSize <- sizeOfType argType
+                  addPointer "constructor_argument_offset" location argTypeSize
           foldM_ go (pure returnLocation) tagArgs
         Boxed -> do
+          let go constructOffset arg = do
+                offset <- constructOffset
+                (argType, argRepresentation) <- typeOf env arg
+                argTypeSize <- sizeOfType argType
+                (arg', deallocateArg) <- generateTypedTerm env arg argType argRepresentation
+                taggedPointer <- load "tagged_heap_pointer" returnLocation
+                basePointer <- extractHeapPointer "boxed_constructor_base" taggedPointer
+                argPointer <- addPointer "boxed_constructor_arg" basePointer offset
+                copy argPointer arg' argTypeSize
+                sequence_ deallocateArg
+                pure $ add "constructor_argument_offset" offset argTypeSize
           typeValue <- Builder $ lift $ boxedConstructorSize (Context.toEnvironment $ _context env) con params args
           type_ <- Builder $ lift $ Readback.readback (Context.toEnvironment $ _context env) typeValue
           type' <- generateType env type_
@@ -981,17 +991,20 @@ storeTerm env term returnLocation returnType =
             case maybeTag of
               Nothing -> do
                 heapLocation <- heapAllocate "constructor_heap_object" 0 size
-                foldM_ go (pure heapLocation) args
+                store returnLocation heapLocation
+                foldM_ go (pure $ Assembly.Lit $ Literal.Integer 0) args
                 pure heapLocation
               Just tag
                 | tag < 0xFF -> do
                   heapLocation <- heapAllocate "constructor_heap_object" (fromIntegral tag) size
-                  foldM_ go (pure heapLocation) args
+                  store returnLocation heapLocation
+                  foldM_ go (pure $ Assembly.Lit $ Literal.Integer 0) args
                   pure heapLocation
                 | otherwise -> do
                   sizeWithTag <- add "size_with_tag" size $ Assembly.Lit $ Literal.Integer tagBytes
                   heapLocation <- heapAllocate "constructor_heap_object" 0xFF sizeWithTag
-                  foldM_ go (pure heapLocation) tagArgs
+                  store returnLocation heapLocation
+                  foldM_ go (pure $ Assembly.Lit $ Literal.Integer 0) tagArgs
                   pure heapLocation
           store returnLocation heapLocation
     Syntax.Lit lit ->
