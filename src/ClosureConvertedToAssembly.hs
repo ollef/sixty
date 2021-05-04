@@ -263,6 +263,18 @@ heapAllocate nameSuggestion constructorTag size = do
   emit $ Assembly.HeapAllocate {destination, shadowStack, heapPointer, heapLimit, constructorTag, size}
   pure $ Assembly.LocalOperand destination
 
+extractHeapPointer :: Assembly.NameSuggestion -> Assembly.Operand -> Builder Assembly.Operand
+extractHeapPointer nameSuggestion location = do
+  destination <- freshLocal nameSuggestion
+  emit $ Assembly.ExtractHeapPointer destination location
+  pure $ Assembly.LocalOperand destination
+
+extractHeapPointerConstructorTag :: Assembly.NameSuggestion -> Assembly.Operand -> Builder Assembly.Operand
+extractHeapPointerConstructorTag nameSuggestion location = do
+  destination <- freshLocal nameSuggestion
+  emit $ Assembly.ExtractHeapPointerConstructorTag destination location
+  pure $ Assembly.LocalOperand destination
+
 typeOf :: Environment v -> Syntax.Term v -> Builder (Operand, Representation)
 typeOf env term = do
   (type_, typeRepresentation) <- Builder $

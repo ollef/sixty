@@ -63,6 +63,8 @@ data Instruction
       , constructorTag :: !Word8
       , size :: !Operand
       }
+  | ExtractHeapPointer !Local !Operand
+  | ExtractHeapPointerConstructorTag !Local !Operand
   | ExtractValue !Local !Operand !Int
   | Switch !(Return (Type, Local)) !Operand [(Integer, BasicBlock)] BasicBlock
   deriving (Show, Generic, Persist, Hashable)
@@ -155,6 +157,10 @@ instance Pretty Instruction where
         voidInstr "restorestack" [o]
       HeapAllocate dst a b c d e ->
         returningInstr dst "gcmalloc" [a, b, c, Lit $ Literal.Integer $ fromIntegral d, e]
+      ExtractHeapPointer dst a ->
+        returningInstr dst "extract heap pointer" [a]
+      ExtractHeapPointerConstructorTag dst a ->
+        returningInstr dst "extract heap pointer" [a]
       ExtractValue dst struct index ->
         pretty dst <+> "=" <+> "extractvalue" <+> hsep [pretty struct, pretty index]
       Switch result scrutinee branches default_ ->

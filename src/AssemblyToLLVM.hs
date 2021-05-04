@@ -627,6 +627,10 @@ assembleInstruction instruction =
             }
     Assembly.HeapAllocate {} ->
       panic "AssemblyToLLVM: HeapAllocate" -- TODO
+    Assembly.ExtractHeapPointer {} ->
+      panic "AssemblyToLLVM: ExtractHeapPointer" -- TODO
+    Assembly.ExtractHeapPointerConstructorTag {} ->
+      panic "AssemblyToLLVM: ExtractHeapPointer" -- TODO
     Assembly.ExtractValue destination struct index -> do
       (_nameSuggestion, structType, struct') <- assembleOperand struct
       case structType of
