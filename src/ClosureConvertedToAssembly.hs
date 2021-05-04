@@ -256,12 +256,17 @@ globalAllocate =
 
 heapAllocate :: Assembly.NameSuggestion -> Word8 -> Assembly.Operand -> Builder Assembly.Operand
 heapAllocate nameSuggestion constructorTag size = do
-  destination <- freshLocal nameSuggestion
+  destination <- freshLocal $ nameSuggestion <> "_with_heap_pointer_and_limit"
   shadowStack <- Assembly.LocalOperand <$> gets _shadowStack
   heapPointer <- gets _heapPointer
   heapLimit <- gets _heapLimit
   emit $ Assembly.HeapAllocate {destination, shadowStack, heapPointer, heapLimit, constructorTag, size}
-  pure $ Assembly.LocalOperand destination
+  let destinationOperand = Assembly.LocalOperand destination
+  result <- extractValue nameSuggestion destinationOperand 0
+  heapPointer' <- extractValue "heap_pointer" destinationOperand 1
+  heapLimit' <- extractValue "heap_limit" destinationOperand 2
+  modify $ \s -> s {_heapPointer = heapPointer', _heapLimit = heapLimit'}
+  pure result
 
 extractHeapPointer :: Assembly.NameSuggestion -> Assembly.Operand -> Builder Assembly.Operand
 extractHeapPointer nameSuggestion location = do
