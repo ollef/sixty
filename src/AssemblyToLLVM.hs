@@ -325,12 +325,8 @@ assembleInstruction instruction =
       size' <- assembleOperandAndCastTo Assembly.Word size
       destination'' <- freshName "destination"
       source'' <- freshName "source"
-      let memcpyName =
-            LLVM.Name $ "llvm.memcpy.p0i8.p0i8.i" <> fromString (show (wordBits :: Int))
-
-          memcpyResultType =
-            LLVM.Type.void
-
+      let memcpyName = LLVM.Name $ "llvm.memcpy.p0i8.p0i8.i" <> fromString (show (wordBits :: Int))
+          memcpyResultType = LLVM.Type.void
           memcpyArgumentTypes =
             [ bytePointer
             , bytePointer
@@ -338,14 +334,12 @@ assembleInstruction instruction =
             , LLVM.Type.i32
             , LLVM.Type.i1
             ]
-
           memcpyType =
             LLVM.FunctionType
               { LLVM.resultType = memcpyResultType
               , LLVM.argumentTypes = memcpyArgumentTypes
               , LLVM.isVarArg = False
               }
-
           arguments =
             [ LLVM.LocalReference bytePointer destination''
             , LLVM.LocalReference bytePointer source''
@@ -544,12 +538,8 @@ assembleInstruction instruction =
     Assembly.SaveStack destination -> do
       destination' <- activateLocal Assembly.WordPointer destination
       destination'' <- freshName "stack_byte_pointer"
-      let stackSaveName =
-            LLVM.Name "llvm.stacksave"
-
-          stackSaveResultType =
-            bytePointer
-
+      let stackSaveName = LLVM.Name "llvm.stacksave"
+          stackSaveResultType = bytePointer
           stackSaveType =
             LLVM.FunctionType
               { LLVM.resultType = stackSaveResultType
@@ -583,15 +573,9 @@ assembleInstruction instruction =
     Assembly.RestoreStack operand -> do
       operand' <- assembleOperandAndCastTo Assembly.WordPointer operand
       operand'' <- freshName "stack_byte_pointer"
-      let stackRestoreName =
-            LLVM.Name "llvm.stackrestore"
-
-          stackRestoreResultType =
-            LLVM.Type.void
-
-          stackRestoreArgumentTypes =
-            [bytePointer]
-
+      let stackRestoreName = LLVM.Name "llvm.stackrestore"
+          stackRestoreResultType = LLVM.Type.void
+          stackRestoreArgumentTypes = [bytePointer]
           stackSaveType =
             LLVM.FunctionType
               { LLVM.resultType = stackRestoreResultType
@@ -705,17 +689,10 @@ assembleOperand operand = do
       let (type_, operand') = HashMap.lookupDefault (panic $ "assembleOperandWithOperandType: no such local " <> show local) local locals
       pure (nameSuggestion, type_, operand')
     Assembly.GlobalConstant global globalType -> do
-      let globalName =
-            assembleName global
-
-          globalNameText =
-            Assembly.nameText global
-
-          nameSuggestion =
-            Assembly.NameSuggestion globalNameText
-
-          llvmGlobalType =
-            llvmType globalType
+      let globalName = assembleName global
+          globalNameText = Assembly.nameText global
+          nameSuggestion = Assembly.NameSuggestion globalNameText
+          llvmGlobalType = llvmType globalType
       use
         LLVM.globalVariableDefaults
           { LLVM.Global.name = globalName
@@ -754,21 +731,11 @@ assembleOperand operand = do
         Assembly.Struct types ->
           pure (nameSuggestion, Assembly.Struct types, LLVM.ConstantOperand $ LLVM.Constant.GlobalReference wordPointer globalName)
     Assembly.GlobalFunction global returnType parameterTypes -> do
-      let defType =
-            Assembly.FunctionPointer returnType parameterTypes
-
-          globalNameText =
-            Assembly.nameText global
-
-          nameSuggestion =
-            Assembly.NameSuggestion globalNameText
-
-          globalName =
-            assembleName global
-
-          globalType =
-            llvmType defType
-
+      let defType = Assembly.FunctionPointer returnType parameterTypes
+          globalNameText = Assembly.nameText global
+          nameSuggestion = Assembly.NameSuggestion globalNameText
+          globalName = assembleName global
+          globalType = llvmType defType
       use
         LLVM.functionDefaults
           { LLVM.Global.callingConvention = LLVM.CallingConvention.Fast
