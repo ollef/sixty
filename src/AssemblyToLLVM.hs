@@ -1,4 +1,5 @@
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-incomplete-record-updates #-}
 
@@ -609,12 +610,105 @@ assembleInstruction instruction =
             , functionAttributes = []
             , metadata = []
             }
-    Assembly.HeapAllocate {} ->
-      panic "AssemblyToLLVM: HeapAllocate" -- TODO
-    Assembly.ExtractHeapPointer {} ->
-      panic "AssemblyToLLVM: ExtractHeapPointer" -- TODO
-    Assembly.ExtractHeapPointerConstructorTag {} ->
-      panic "AssemblyToLLVM: ExtractHeapPointer" -- TODO
+    Assembly.HeapAllocate {destination, shadowStack, heapPointer, heapLimit, constructorTag, size} -> do
+      destination' <- activateLocal (Assembly.Struct [Assembly.WordPointer, Assembly.WordPointer, Assembly.WordPointer]) destination
+      shadowStack' <- assembleOperandAndCastTo Assembly.WordPointer shadowStack
+      heapPointer' <- assembleOperandAndCastTo Assembly.WordPointer heapPointer
+      heapLimit' <- assembleOperandAndCastTo Assembly.WordPointer heapLimit
+      size' <- assembleOperandAndCastTo Assembly.Word size
+      let heapAllocName = LLVM.Name "heap_alloc"
+          heapAllocResultType = LLVM.Type.StructureType {isPacked = False, elementTypes = [wordPointer, wordPointer, wordPointer]}
+          heapAllocArgumentTypes = [wordPointer, wordPointer, wordPointer, LLVM.Type.i8, wordSizedInt]
+          heapAllocType =
+            LLVM.FunctionType
+              { LLVM.resultType = heapAllocResultType
+              , LLVM.argumentTypes = heapAllocArgumentTypes
+              , LLVM.isVarArg = False
+              }
+          arguments =
+            [ shadowStack'
+            , heapPointer'
+            , heapLimit'
+            , LLVM.ConstantOperand LLVM.Constant.Int {integerBits = 8, integerValue = fromIntegral constructorTag}
+            , size'
+            ]
+      use
+        LLVM.functionDefaults
+          { LLVM.Global.returnType = heapAllocResultType
+          , LLVM.Global.name = heapAllocName
+          , LLVM.Global.parameters = ([LLVM.Parameter type_ (LLVM.UnName parameter) [] | (parameter, type_) <- zip [0 ..] heapAllocArgumentTypes], False)
+          }
+      emitInstruction $
+        destination'
+          LLVM.:= LLVM.Call
+            { tailCallKind = Nothing
+            , callingConvention = LLVM.CallingConvention.C
+            , returnAttributes = []
+            , function = Right $ LLVM.ConstantOperand $ LLVM.Constant.GlobalReference heapAllocType heapAllocName
+            , arguments = [(arg, []) | arg <- arguments]
+            , functionAttributes = []
+            , metadata = []
+            }
+    Assembly.ExtractHeapPointer destination pointer -> do
+      destination' <- activateLocal Assembly.WordPointer destination
+      pointer' <- assembleOperandAndCastTo Assembly.Word pointer
+      let extractHeapPointerName = LLVM.Name "heap_object_pointer"
+          extractHeapPointerResultType = wordPointer
+          extractHeapPointerArgumentTypes = [wordSizedInt]
+          extractHeapPointerType =
+            LLVM.FunctionType
+              { LLVM.resultType = extractHeapPointerResultType
+              , LLVM.argumentTypes = extractHeapPointerArgumentTypes
+              , LLVM.isVarArg = False
+              }
+          arguments = [pointer']
+      use
+        LLVM.functionDefaults
+          { LLVM.Global.returnType = extractHeapPointerResultType
+          , LLVM.Global.name = extractHeapPointerName
+          , LLVM.Global.parameters = ([LLVM.Parameter type_ (LLVM.UnName parameter) [] | (parameter, type_) <- zip [0 ..] extractHeapPointerArgumentTypes], False)
+          }
+      emitInstruction $
+        destination'
+          LLVM.:= LLVM.Call
+            { tailCallKind = Nothing
+            , callingConvention = LLVM.CallingConvention.C
+            , returnAttributes = []
+            , function = Right $ LLVM.ConstantOperand $ LLVM.Constant.GlobalReference extractHeapPointerType extractHeapPointerName
+            , arguments = [(arg, []) | arg <- arguments]
+            , functionAttributes = []
+            , metadata = []
+            }
+    Assembly.ExtractHeapPointerConstructorTag destination pointer -> do
+      destination' <- activateLocal Assembly.Word destination
+      pointer' <- assembleOperandAndCastTo Assembly.Word pointer
+      let extractConstructorTagName = LLVM.Name "heap_object_constructor_tag"
+          extractConstructorTagResultType = wordSizedInt
+          extractConstructorTagArgumentTypes = [wordSizedInt]
+          extractHeapPointerType =
+            LLVM.FunctionType
+              { LLVM.resultType = extractConstructorTagResultType
+              , LLVM.argumentTypes = extractConstructorTagArgumentTypes
+              , LLVM.isVarArg = False
+              }
+          arguments = [pointer']
+      use
+        LLVM.functionDefaults
+          { LLVM.Global.returnType = extractConstructorTagResultType
+          , LLVM.Global.name = extractConstructorTagName
+          , LLVM.Global.parameters = ([LLVM.Parameter type_ (LLVM.UnName parameter) [] | (parameter, type_) <- zip [0 ..] extractConstructorTagArgumentTypes], False)
+          }
+      emitInstruction $
+        destination'
+          LLVM.:= LLVM.Call
+            { tailCallKind = Nothing
+            , callingConvention = LLVM.CallingConvention.C
+            , returnAttributes = []
+            , function = Right $ LLVM.ConstantOperand $ LLVM.Constant.GlobalReference extractHeapPointerType extractConstructorTagName
+            , arguments = [(arg, []) | arg <- arguments]
+            , functionAttributes = []
+            , metadata = []
+            }
     Assembly.ExtractValue destination struct index -> do
       (_nameSuggestion, structType, struct') <- assembleOperand struct
       case structType of
