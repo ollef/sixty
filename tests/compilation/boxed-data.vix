@@ -1,0 +1,11 @@
+boxed
+data Pointer a = Pointer a
+
+add600 : Pointer Int -> Pointer Int
+add600 (Pointer n) = Pointer (addInt 600 n)
+
+deref : forall a. Pointer a -> a
+deref (Pointer a) = a
+
+test3 = printInt (deref (Pointer 609)) -- prints 609
+test4 = printInt (deref (add600 (Pointer 10))) -- prints 610
