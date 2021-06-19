@@ -1082,7 +1082,7 @@ storeTerm env term returnLocation returnType =
                   pure Assembly.Void
               )
         ClosureConverted.Representation.TaggedConstructorBranches Boxed constructorBranches -> do
-          (scrutinee'', deallocateScrutinee') <- forceIndirect scrutinee'
+          scrutinee'' <- forceDirect scrutinee'
           let constructorBasePointerBuilder = extractHeapPointer "boxed_constructor_pointer" scrutinee''
               firstConstructorFieldOffsetBuilder _ = pure $ Assembly.Lit $ Literal.Integer 0
           taggedPointer <- load "tagged_heap_scrutinee_pointer" scrutinee''
@@ -1094,14 +1094,12 @@ storeTerm env term returnLocation returnType =
               [ ( fromIntegral branchTag
                 , do
                     storeBoxedBranch env constructorBasePointerBuilder firstConstructorFieldOffsetBuilder branch returnLocation returnType
-                    deallocateScrutinee'
                     sequence_ deallocateScrutinee
                     pure Assembly.Void
                 )
               | (branchTag, branch) <- constructorBranches
               ]
               ( do
-                  deallocateScrutinee'
                   sequence_ deallocateScrutinee
                   storeTerm env defaultBranch returnLocation returnType
                   pure Assembly.Void
@@ -1112,11 +1110,10 @@ storeTerm env term returnLocation returnType =
           deallocateScrutinee'
           sequence_ deallocateScrutinee
         ClosureConverted.Representation.UntaggedConstructorBranch Boxed branch -> do
-          (scrutinee'', deallocateScrutinee') <- forceIndirect scrutinee'
+          scrutinee'' <- forceDirect scrutinee'
           let constructorBasePointerBuilder = extractHeapPointer "boxed_constructor_pointer" scrutinee''
               firstConstructorFieldOffsetBuilder _ = pure $ Assembly.Lit $ Literal.Integer 0
           storeBoxedBranch env constructorBasePointerBuilder firstConstructorFieldOffsetBuilder branch returnLocation returnType
-          deallocateScrutinee'
           sequence_ deallocateScrutinee
         ClosureConverted.Representation.LiteralBranches literalBranches -> do
           directScrutinee <- forceDirect scrutinee'
