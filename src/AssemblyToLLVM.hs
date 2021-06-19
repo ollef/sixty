@@ -611,13 +611,13 @@ assembleInstruction instruction =
             , metadata = []
             }
     Assembly.HeapAllocate {destination, shadowStack, heapPointer, heapLimit, constructorTag, size} -> do
-      destination' <- activateLocal (Assembly.Struct [Assembly.WordPointer, Assembly.WordPointer, Assembly.WordPointer]) destination
+      destination' <- activateLocal (Assembly.Struct [Assembly.Word, Assembly.WordPointer, Assembly.WordPointer]) destination
       shadowStack' <- assembleOperandAndCastTo Assembly.WordPointer shadowStack
       heapPointer' <- assembleOperandAndCastTo Assembly.WordPointer heapPointer
       heapLimit' <- assembleOperandAndCastTo Assembly.WordPointer heapLimit
       size' <- assembleOperandAndCastTo Assembly.Word size
-      let heapAllocName = LLVM.Name "heap_alloc"
-          heapAllocResultType = LLVM.Type.StructureType {isPacked = False, elementTypes = [wordPointer, wordPointer, wordPointer]}
+      let heapAllocName = LLVM.Name "__regcall3__heap_alloc"
+          heapAllocResultType = LLVM.Type.StructureType {isPacked = False, elementTypes = [wordSizedInt, wordPointer, wordPointer]}
           heapAllocArgumentTypes = [wordPointer, wordPointer, wordPointer, LLVM.Type.i8, wordSizedInt]
           heapAllocType =
             LLVM.FunctionType
@@ -642,7 +642,7 @@ assembleInstruction instruction =
         destination'
           LLVM.:= LLVM.Call
             { tailCallKind = Nothing
-            , callingConvention = LLVM.CallingConvention.C
+            , callingConvention = LLVM.CallingConvention.X86_RegCall
             , returnAttributes = []
             , function = Right $ LLVM.ConstantOperand $ LLVM.Constant.GlobalReference heapAllocType heapAllocName
             , arguments = [(arg, []) | arg <- arguments]
