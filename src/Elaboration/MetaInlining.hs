@@ -69,7 +69,7 @@ inlineSolutions scopeKey solutions def type_ = do
               case IntMap.lookup index $ occurrencesMap value of
                 Nothing ->
                   pure (value, metaVars)
-                Just duplicableArgs -> do
+                Just (occurrenceCount, duplicableArgs) -> do
                   solutionVar <- freshVar
                   let duplicableArgsList =
                         toList duplicableArgs
@@ -86,7 +86,7 @@ inlineSolutions scopeKey solutions def type_ = do
                       value' =
                         unShared $
                           sharing value $
-                            inlineIndex index duplicableVars (solutionVar, duplicableArgsList, inlinedSolutionValue, inlinedSolutionType) value
+                            inlineIndex index duplicableVars (solutionVar, occurrenceCount, duplicableArgsList, inlinedSolutionValue, inlinedSolutionType) value
 
                       metaVars' =
                         IntMap.insert index (solutionVar, duplicableArgsList) metaVars
@@ -206,13 +206,13 @@ data Branches
   | LiteralBranches (OrderedHashMap Literal ([Span.Relative], Value))
   deriving (Show)
 
-newtype Occurrences = Occurrences {unoccurrences :: IntMap Meta.Index (Tsil (Maybe DuplicableValue))}
+newtype Occurrences = Occurrences {unoccurrences :: IntMap Meta.Index (Int, Tsil (Maybe DuplicableValue))}
 
 instance Semigroup Occurrences where
   Occurrences occs1 <> Occurrences occs2 =
     Occurrences $
       IntMap.unionWith
-        (Tsil.zipWith (\arg1 arg2 -> if arg1 == arg2 then arg1 else Nothing))
+        (\(count1, args1) (count2, args2) -> (count1 + count2, Tsil.zipWith (\arg1 arg2 -> if arg1 == arg2 then arg1 else Nothing) args1 args2))
         occs1
         occs2
 
@@ -225,7 +225,7 @@ occurrences (Value _ occs) = occs
 letOccurrences :: Lets -> Occurrences
 letOccurrences (Lets _ occs) = occs
 
-occurrencesMap :: Value -> IntMap Meta.Index (Tsil (Maybe DuplicableValue))
+occurrencesMap :: Value -> IntMap Meta.Index (Int, Tsil (Maybe DuplicableValue))
 occurrencesMap = unoccurrences . occurrences
 
 type Type = Value
@@ -249,7 +249,7 @@ makeLit lit =
 makeMeta :: Meta.Index -> Tsil Value -> Value
 makeMeta index arguments =
   Value (Meta index arguments) $
-    Occurrences (IntMap.singleton index (duplicableView <$> arguments))
+    Occurrences (IntMap.singleton index (1, duplicableView <$> arguments))
       <> foldMap occurrences arguments
 
 makePostponedCheck :: Postponement.Index -> Value -> Value
@@ -300,7 +300,7 @@ makeApp0 fun@(Value fun' (Occurrences occs)) plicity arg =
   case (fun', plicity) of
     (Meta index args, Explicit) ->
       Value (Meta index (args Tsil.:> arg)) $
-        Occurrences (IntMap.adjust (Tsil.:> duplicableView arg) index occs)
+        Occurrences (IntMap.adjust (second (Tsil.:> duplicableView arg)) index occs)
           <> occurrences arg
     _ ->
       makeApp fun plicity arg
@@ -665,10 +665,10 @@ unShared (Shared _ a) =
 inlineIndex ::
   Meta.Index ->
   IntSet Var ->
-  (Var, [Maybe DuplicableValue], Value, Value) ->
+  (Var, Int, [Maybe DuplicableValue], Value, Value) ->
   Value ->
   Shared Value
-inlineIndex index targetScope solution@(solutionVar, duplicableArgs, solutionValue, solutionType) value@(Value innerValue occs) = do
+inlineIndex index targetScope solution@(solutionVar, occurrenceCount, duplicableArgs, solutionValue, solutionType) value@(Value innerValue occs) = do
   let recurse value' =
         sharing value' $
           inlineIndex index targetScope solution value'
@@ -687,7 +687,7 @@ inlineIndex index targetScope solution@(solutionVar, duplicableArgs, solutionVal
                   (zip (duplicableArgs <> repeat Nothing) (toList args))
         pure $ foldl' (\v1 v2 -> makeApp v1 Explicit v2) solutionValue remainingArgs
     _
-      | IntSet.null targetScope ->
+      | IntSet.null targetScope && occurrenceCount > 1 ->
         if index `IntMap.member` occurrencesMap value
           then do
             modified
@@ -753,7 +753,7 @@ inlineIndex index targetScope solution@(solutionVar, duplicableArgs, solutionVal
     Spanned span value' ->
       makeSpanned span <$> recurse (Value value' occs)
 
-inlineLetsIndex :: Meta.Index -> IntSet Var -> (Var, [Maybe DuplicableValue], Value, Value) -> Lets -> Shared Lets
+inlineLetsIndex :: Meta.Index -> IntSet Var -> (Var, Int, [Maybe DuplicableValue], Value, Value) -> Lets -> Shared Lets
 inlineLetsIndex index targetScope solution lets@(Lets innerLets occs) =
   sharing lets $
     case innerLets of
