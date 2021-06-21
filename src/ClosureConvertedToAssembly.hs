@@ -1085,8 +1085,7 @@ storeTerm env term returnLocation returnType =
           sequence_ deallocateScrutinee
           let constructorBasePointerBuilder = extractHeapPointer "boxed_constructor_pointer" scrutinee''
               firstConstructorFieldOffsetBuilder _ = pure $ Assembly.Lit $ Literal.Integer 0
-          taggedPointer <- load "tagged_heap_scrutinee_pointer" scrutinee''
-          constructorTag <- extractHeapPointerConstructorTag "heap_scrutinee_tag" taggedPointer
+          constructorTag <- extractHeapPointerConstructorTag "heap_scrutinee_tag" scrutinee''
           void $
             switch
               Assembly.Void
