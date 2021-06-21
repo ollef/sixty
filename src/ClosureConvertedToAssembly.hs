@@ -887,58 +887,57 @@ generateTypedTerm env term type_ representation = do
               unregisterShadowStackSlot
               restoreStack stack
           )
-  case containsHeapPointers of
-    Representation.MightContainHeapPointers -> stackAllocateIt
-    Representation.Doesn'tContainHeapPointers ->
-      case term of
-        Syntax.Var index ->
-          pure (indexOperand index env, Nothing)
-        Syntax.Global global -> do
-          operand <- globalConstantOperand global
-          pure (operand, Nothing)
-        Syntax.Con {} ->
-          stackAllocateIt -- TODO
-        Syntax.Lit lit ->
-          pure (Direct $ Assembly.Lit lit, Nothing)
-        Syntax.Let _name term' termType body -> do
-          typeValue <- Builder $ lift $ Evaluation.evaluate (Context.toEnvironment $ _context env) termType
-          typeRepresentation <- Builder $ lift $ ClosureConverted.Representation.typeRepresentation (Context.toEnvironment $ _context env) typeValue
-          termType' <- generateType env termType
-          (term'', deallocateTerm) <- generateTypedTerm env term' termType' typeRepresentation
-          env' <- extend env termType term''
-          (result, deallocateBody) <- generateTypedTerm env' body type_ representation
-          pure (result, (>>) <$> deallocateBody <*> deallocateTerm)
-        Syntax.Function _ ->
-          pure (Direct pointerBytesOperand, Nothing)
-        Syntax.Apply global arguments -> do
-          signature <- fetch $ Query.ClosureConvertedSignature global
-          let (argumentRepresentations, returnRepresentation) =
-                case signature of
-                  Representation.FunctionSignature argumentRepresentations_ returnRepresentation_ ->
-                    (argumentRepresentations_, returnRepresentation_)
-                  _ ->
-                    panic $ "ClosureConvertedToAssembly: Applying signature-less function " <> show global
-          case returnRepresentation of
-            Representation.Empty -> do
-              (arguments', deallocateArguments) <- generateArguments env $ zip arguments argumentRepresentations
-              callVoid global arguments'
-              deallocateArguments
-              pure (Empty, Nothing)
-            Representation.Direct _containsHeapPointers -> do
-              (arguments', deallocateArguments) <- generateArguments env $ zip arguments argumentRepresentations
-              result <- callDirect "call_result" global arguments'
-              deallocateArguments
-              pure (Direct result, Nothing)
-            Representation.Indirect _containsHeapPointers ->
-              stackAllocateIt
-        Syntax.Pi {} ->
-          pure (Direct pointerBytesOperand, Nothing)
-        Syntax.Closure {} ->
+  case (term, containsHeapPointers) of
+    (Syntax.Var index, _) ->
+      pure (indexOperand index env, Nothing)
+    (Syntax.Global global, _) -> do
+      operand <- globalConstantOperand global
+      pure (operand, Nothing)
+    (Syntax.Con {}, _) ->
+      stackAllocateIt -- TODO
+    (Syntax.Lit lit, _) ->
+      pure (Direct $ Assembly.Lit lit, Nothing)
+    (Syntax.Let _name term' termType body, _) -> do
+      typeValue <- Builder $ lift $ Evaluation.evaluate (Context.toEnvironment $ _context env) termType
+      typeRepresentation <- Builder $ lift $ ClosureConverted.Representation.typeRepresentation (Context.toEnvironment $ _context env) typeValue
+      termType' <- generateType env termType
+      (term'', deallocateTerm) <- generateTypedTerm env term' termType' typeRepresentation
+      env' <- extend env termType term''
+      (result, deallocateBody) <- generateTypedTerm env' body type_ representation
+      pure (result, (>>) <$> deallocateBody <*> deallocateTerm)
+    (Syntax.Function _, _) ->
+      pure (Direct pointerBytesOperand, Nothing)
+    (Syntax.Apply global arguments, Representation.Doesn'tContainHeapPointers) -> do
+      signature <- fetch $ Query.ClosureConvertedSignature global
+      let (argumentRepresentations, returnRepresentation) =
+            case signature of
+              Representation.FunctionSignature argumentRepresentations_ returnRepresentation_ ->
+                (argumentRepresentations_, returnRepresentation_)
+              _ ->
+                panic $ "ClosureConvertedToAssembly: Applying signature-less function " <> show global
+      case returnRepresentation of
+        Representation.Empty -> do
+          (arguments', deallocateArguments) <- generateArguments env $ zip arguments argumentRepresentations
+          callVoid global arguments'
+          deallocateArguments
+          pure (Empty, Nothing)
+        Representation.Direct _containsHeapPointers -> do
+          (arguments', deallocateArguments) <- generateArguments env $ zip arguments argumentRepresentations
+          result <- callDirect "call_result" global arguments'
+          deallocateArguments
+          pure (Direct result, Nothing)
+        Representation.Indirect _containsHeapPointers ->
           stackAllocateIt
-        Syntax.ApplyClosure {} ->
-          stackAllocateIt
-        Syntax.Case {} ->
-          stackAllocateIt
+    (Syntax.Pi {}, _) ->
+      pure (Direct pointerBytesOperand, Nothing)
+    (Syntax.Closure {}, _) ->
+      stackAllocateIt
+    (Syntax.ApplyClosure {}, _) ->
+      stackAllocateIt
+    (Syntax.Case {}, _) ->
+      stackAllocateIt
+    (_, Representation.MightContainHeapPointers) ->
+      stackAllocateIt
 
 storeTerm ::
   Environment v ->
