@@ -224,7 +224,7 @@ uintptr_t heap_object_size(intptr_t word) {
 }
 
 intptr_t heap_object_constructor_tag(intptr_t word) {
-  return (word & (0xFF << 11)) >> 11;
+  return (word >> 11) & 0xFF;
 }
 
 char* heap_object_pointer(intptr_t word) {
