@@ -895,8 +895,8 @@ generateTypedTerm env term type_ representation = do
       pure (operand, Nothing)
     (Syntax.Con {}, _) ->
       stackAllocateIt -- TODO
-    (Syntax.Lit lit, _) ->
-      pure (Direct $ Assembly.Lit lit, Nothing)
+    (Syntax.Lit (Literal.Integer integer), _) ->
+      pure (Direct $ Assembly.Lit $ Literal.Integer $ shiftL integer 1, Nothing)
     (Syntax.Let _name term' termType body, _) -> do
       typeValue <- Builder $ lift $ Evaluation.evaluate (Context.toEnvironment $ _context env) termType
       typeRepresentation <- Builder $ lift $ ClosureConverted.Representation.typeRepresentation (Context.toEnvironment $ _context env) typeValue
@@ -1011,8 +1011,8 @@ storeTerm env term returnLocation returnType =
                   foldM_ go (pure $ Assembly.Lit $ Literal.Integer 0) tagArgs
                   pure heapLocation
           store returnLocation heapLocation
-    Syntax.Lit lit ->
-      store returnLocation (Assembly.Lit lit)
+    Syntax.Lit (Literal.Integer integer) ->
+      store returnLocation $ Assembly.Lit $ Literal.Integer $ shiftL integer 1
     Syntax.Let _name term' type_ body -> do
       typeValue <- Builder $ lift $ Evaluation.evaluate (Context.toEnvironment $ _context env) type_
       typeRepresentation <- Builder $ lift $ ClosureConverted.Representation.typeRepresentation (Context.toEnvironment $ _context env) typeValue
@@ -1065,7 +1065,7 @@ storeTerm env term returnLocation returnType =
             switch
               Assembly.Void
               constructorTag
-              [ ( fromIntegral branchTag
+              [ ( fromIntegral $ shiftL branchTag 1
                 , do
                     storeUnboxedBranch env firstConstructorFieldBuilder branch returnLocation returnType
                     deallocateScrutinee'
@@ -1119,12 +1119,12 @@ storeTerm env term returnLocation returnType =
             switch
               Assembly.Void
               directScrutinee
-              [ ( lit
+              [ ( shiftL integer 1
                 , do
                     storeTerm env branch returnLocation returnType
                     pure Assembly.Void
                 )
-              | (Literal.Integer lit, branch) <- OrderedHashMap.toList literalBranches
+              | (Literal.Integer integer, branch) <- OrderedHashMap.toList literalBranches
               ]
               ( do
                   storeTerm env defaultBranch returnLocation returnType

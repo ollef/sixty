@@ -29,7 +29,8 @@ define external fastcc { i64, i64*, i64* } @Sixten.Builtin.maxRepresentation(i64
   ret { i64, i64*, i64* } %result_with_heap_pointer_and_limit3
 }
 
-define external fastcc { i64*, i64* } @Sixten.Builtin.printInt(i64* %shadow_stack, i64* %heap_pointer, i64* %heap_limit, i64 %i) {
+define external fastcc { i64*, i64* } @Sixten.Builtin.printInt(i64* %shadow_stack, i64* %heap_pointer, i64* %heap_limit, i64 %tagged_i) {
+  %i = ashr i64 %tagged_i, 1
   call void @print_int(i64 %i)
   %result_with_heap_pointer_and_limit1 = insertvalue { i64*, i64* } undef, i64* %heap_pointer, 0
   %result_with_heap_pointer_and_limit2 = insertvalue { i64*, i64* } %result_with_heap_pointer_and_limit1, i64* %heap_limit, 1
@@ -45,7 +46,8 @@ define external fastcc { i64, i64*, i64* } @Sixten.Builtin.addInt(i64* %shadow_s
 }
 
 define external fastcc { i64, i64*, i64* } @Sixten.Builtin.mulInt(i64* %shadow_stack, i64* %heap_pointer, i64* %heap_limit, i64 %a, i64 %b) {
-  %result = mul i64 %a, %b
+  %doubled_result = mul i64 %a, %b
+  %result = ashr i64 %doubled_result, 1
   %result_with_heap_pointer_and_limit1 = insertvalue { i64, i64*, i64* } undef, i64 %result, 0
   %result_with_heap_pointer_and_limit2 = insertvalue { i64, i64*, i64* } %result_with_heap_pointer_and_limit1, i64* %heap_pointer, 1
   %result_with_heap_pointer_and_limit3 = insertvalue { i64, i64*, i64* } %result_with_heap_pointer_and_limit2, i64* %heap_limit, 2
