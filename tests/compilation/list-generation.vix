@@ -1,0 +1,38 @@
+boxed
+data List a = Nil | Cons a (List a)
+
+data Tuple a b = Tuple a b
+
+generate : Int -> List Int
+generate 0 = Nil
+generate n = Cons n (generate (subInt n 1))
+
+sum : List Int -> Int
+sum Nil = 0
+sum (Cons n ns) = addInt n (sum ns)
+
+zip : forall a b. List a -> List b -> List (Tuple a b)
+zip Nil _ = Nil
+zip _ Nil = Nil
+zip (Cons a as) (Cons b bs) = Cons (Tuple a b) (zip as bs)
+
+fsts : forall a b. List (Tuple a b) -> List a
+fsts Nil = Nil
+fsts (Cons (Tuple a b) rest) = Cons a (fsts rest)
+
+snds : forall a b. List (Tuple a b) -> List b
+snds Nil = Nil
+snds (Cons (Tuple a b) rest) = Cons b (snds rest)
+
+addTuples : List (Tuple Int Int) -> List Int
+addTuples Nil = Nil
+addTuples (Cons (Tuple m n) tuples) = Cons (addInt m n) (addTuples tuples)
+
+list = generate 10
+
+listList = zip list list
+
+test1 = printInt (sum list) -- prints 55
+test2 = printInt (sum (fsts listList)) -- prints 55
+test3 = printInt (sum (snds listList)) -- prints 55
+test4 = printInt (sum (addTuples listList)) -- prints 110
