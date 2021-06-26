@@ -1166,7 +1166,7 @@ storeBoxedBranch env constructorBasePointerBuilder constructorFieldOffsetBuilder
       type' <- generateType env type_
       typeSize <- sizeOfType type'
       stack <- saveStack
-      stackConstructorField <- stackAllocate (Assembly.NameSuggestion $ name <> "_stack") pointerBytesOperand
+      stackConstructorField <- stackAllocate (Assembly.NameSuggestion $ name <> "_stack") typeSize
       typeRepresentation <- Builder $
         lift $ do
           typeValue <- Evaluation.evaluate (Context.toEnvironment $ _context env) type_
