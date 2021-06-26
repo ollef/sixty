@@ -7,5 +7,11 @@ add600 (Pointer n) = Pointer (addInt 600 n)
 deref : forall a. Pointer a -> a
 deref (Pointer a) = a
 
-test3 = printInt (deref (Pointer 609)) -- prints 609
-test4 = printInt (deref (add600 (Pointer 10))) -- prints 610
+data Tuple a b = Tuple a b
+
+addTuplePtr : Pointer (Tuple Int Int) -> Int
+addTuplePtr (Pointer (Tuple a b)) = addInt a b
+
+test1 = printInt (deref (Pointer 609)) -- prints 609
+test2 = printInt (deref (add600 (Pointer 10))) -- prints 610
+test3 = printInt (addTuplePtr (Pointer (Tuple 13 14))) -- prints 27
