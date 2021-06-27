@@ -34,7 +34,7 @@ uintptr_t page_size() {
 }
 
 struct init_result init_garbage_collector() {
-  uintptr_t size = round_up_to_multiple_of(page_size(), 16 * 1024 * 1024);
+  uintptr_t size = round_up_to_multiple_of(page_size(), 4096);
   char* heap_start_pointer = mmap(0, size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   if (heap_start_pointer == MAP_FAILED) {
     exit(EXIT_FAILURE);
