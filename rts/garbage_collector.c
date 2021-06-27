@@ -60,7 +60,7 @@ uintptr_t get_forwarded_object_or_0(uintptr_t object, char* new_heap_start, char
   if (is_heap_pointer(first_word)) {
     char* pointer = heap_object_pointer(first_word);
     if (new_heap_start <= pointer && pointer < new_heap_end) {
-      return (object & (~0ul >> 45)) | ((intptr_t)pointer << 19);
+      return first_word;
     }
   }
   return 0;
