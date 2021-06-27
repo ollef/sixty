@@ -54,9 +54,9 @@ struct init_result init_garbage_collector() {
 }
 
 static
-intptr_t get_forwarded_object_or_0(intptr_t object, char* new_heap_start, char* new_heap_end) {
+uintptr_t get_forwarded_object_or_0(uintptr_t object, char* new_heap_start, char* new_heap_end) {
   char* object_data = heap_object_pointer(object);
-  intptr_t first_word = *(intptr_t*)object_data;
+  uintptr_t first_word = *(uintptr_t*)object_data;
   if (is_heap_pointer(first_word)) {
     char* pointer = heap_object_pointer(first_word);
     if (new_heap_start <= pointer && pointer < new_heap_end) {
@@ -72,7 +72,7 @@ struct collection_result {
 };
 
 static
-intptr_t copy(intptr_t heap_object, char** new_heap_pointer_pointer, char* new_heap_start, char* new_heap_end) {
+uintptr_t copy(uintptr_t heap_object, char** new_heap_pointer_pointer, char* new_heap_start, char* new_heap_end) {
   uintptr_t size = heap_object_size(heap_object);
   // If the size is 0 we don't have space to leave a forwarding pointer, but we
   // also have nothing to copy. :)
@@ -80,7 +80,7 @@ intptr_t copy(intptr_t heap_object, char** new_heap_pointer_pointer, char* new_h
     return heap_object;
   }
   // If we have a forwarding pointer, we're already done.
-  intptr_t forwarded_object = get_forwarded_object_or_0(heap_object, new_heap_start, new_heap_end);
+  uintptr_t forwarded_object = get_forwarded_object_or_0(heap_object, new_heap_start, new_heap_end);
   if (forwarded_object) {
     return forwarded_object;
   }
@@ -96,9 +96,9 @@ intptr_t copy(intptr_t heap_object, char** new_heap_pointer_pointer, char* new_h
   // Copy old to new heap data.
   memcpy(copied_object_start, object_data_pointer, size);
   // Construct new heap object from new pointer + old metadata.
-  intptr_t new_heap_object = (heap_object & (~0ul >> 45)) | ((intptr_t)copied_object_start << 19);
+  uintptr_t new_heap_object = (heap_object & ~(~0ul << 19)) | ((uintptr_t)copied_object_start << 19);
   // Install forwarding pointer in old heap object data.
-  *(intptr_t*)object_data_pointer = new_heap_object;
+  *(uintptr_t*)object_data_pointer = new_heap_object;
   return new_heap_object;
 }
 
@@ -130,9 +130,9 @@ struct collection_result collect(struct shadow_stack_frame* shadow_stack, char* 
     uintptr_t entry_count = shadow_stack->entry_count;
     for (uintptr_t entry_index = 0; entry_index < entry_count; ++entry_index) {
       struct shadow_stack_frame_entry* entry = &shadow_stack->entries[entry_index];
-      intptr_t* entry_end = (intptr_t*)(entry->data + entry->size);
-      for (intptr_t* entry_word_pointer = (intptr_t*)entry->data; entry_word_pointer < entry_end; ++entry_word_pointer) {
-        intptr_t entry_word = *entry_word_pointer;
+      uintptr_t* entry_end = (uintptr_t*)(entry->data + entry->size);
+      for (uintptr_t* entry_word_pointer = (uintptr_t*)entry->data; entry_word_pointer < entry_end; ++entry_word_pointer) {
+        uintptr_t entry_word = *entry_word_pointer;
         if (is_heap_pointer(entry_word)) {
           *entry_word_pointer = copy(entry_word, &new_heap_pointer, new_heap_start_pointer, new_heap_end_pointer);
         }
@@ -143,9 +143,9 @@ struct collection_result collect(struct shadow_stack_frame* shadow_stack, char* 
   // Scan copied heap objects.
   char* scan_pointer = new_heap_start_pointer;
   while (scan_pointer < new_heap_pointer) {
-    intptr_t scan_word = *(intptr_t*)scan_pointer;
+    uintptr_t scan_word = *(uintptr_t*)scan_pointer;
     if (is_heap_pointer(scan_word)) {
-      *(intptr_t*)scan_pointer = copy(scan_word, &new_heap_pointer, new_heap_start_pointer, new_heap_end_pointer);
+      *(uintptr_t*)scan_pointer = copy(scan_word, &new_heap_pointer, new_heap_start_pointer, new_heap_end_pointer);
     }
     scan_pointer += sizeof(char*);
   }
@@ -199,10 +199,10 @@ struct heap_alloc_result __attribute((regcall)) heap_alloc(struct shadow_stack_f
   if (unlikely(inline_size == INLINE_SIZE_CUTOFF)) {
     *(uintptr_t*)heap_pointer = size;
   }
-  intptr_t result
-    = ((intptr_t)object_pointer << 16)
-    | ((intptr_t)constructor_tag << 11)
-    | (intptr_t)inline_size
+  uintptr_t result
+    = ((uintptr_t)object_pointer << 16)
+    | ((uintptr_t)constructor_tag << 11)
+    | (uintptr_t)inline_size
     | 1;
   return (struct heap_alloc_result) {
     .result = result,
@@ -211,28 +211,28 @@ struct heap_alloc_result __attribute((regcall)) heap_alloc(struct shadow_stack_f
   };
 }
 
-int is_heap_pointer(intptr_t word) {
+int is_heap_pointer(uintptr_t word) {
   return word & 0x1;
 }
 
-uintptr_t heap_object_size(intptr_t word) {
-  uintptr_t inline_size = (uintptr_t)word & (0xFF << 3);
+uintptr_t heap_object_size(uintptr_t word) {
+  uintptr_t inline_size = word & (0xFF << 3);
   if (unlikely(inline_size == (0xFF << 3))) {
     return *(uintptr_t*)(heap_object_pointer(word) - sizeof(char*));
   }
   return inline_size;
 }
 
-intptr_t heap_object_constructor_tag(intptr_t word) {
+uintptr_t heap_object_constructor_tag(uintptr_t word) {
   return (word >> 11) & 0xFF;
 }
 
-char* heap_object_pointer(intptr_t word) {
-  return (char*)((word >> 19) << 3);
+char* heap_object_pointer(uintptr_t word) {
+  return (char*)((uintptr_t)((intptr_t)word >> 19) << 3);
 }
 
 // If we know that the constructor tag is <= 5 bits, we can get the pointer
 // with one instead of two shifts.
-char* heap_object_pointer_5bit_tag(intptr_t word) {
+char* heap_object_pointer_5bit_tag(uintptr_t word) {
   return (char*)(word >> 16);
 }

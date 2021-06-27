@@ -10,7 +10,7 @@ struct init_result {
 struct init_result init_garbage_collector();
 
 struct heap_alloc_result {
-  intptr_t result;
+  uintptr_t result;
   char* heap_pointer;
   char* heap_limit;
 };
@@ -27,8 +27,8 @@ struct shadow_stack_frame {
 };
 
 struct heap_alloc_result __attribute__((regcall)) heap_alloc(struct shadow_stack_frame* shadow_stack, char* heap_pointer, char* heap_limit, char constructor_tag, uintptr_t size);
-int is_heap_pointer(intptr_t word);
-uintptr_t heap_object_size(intptr_t word);
-char* heap_object_pointer(intptr_t word);
-char* heap_object_pointer_5bit_tag(intptr_t word);
-intptr_t heap_object_constructor_tag(intptr_t word);
+int is_heap_pointer(uintptr_t word);
+uintptr_t heap_object_size(uintptr_t word);
+char* heap_object_pointer(uintptr_t word);
+char* heap_object_pointer_5bit_tag(uintptr_t word);
+uintptr_t heap_object_constructor_tag(uintptr_t word);
