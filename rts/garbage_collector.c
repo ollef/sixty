@@ -1,6 +1,7 @@
 #define _DEFAULT_SOURCE
 #include "garbage_collector.h"
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,10 +10,23 @@
 
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
+#define debug_printf(...) // printf(__VA_ARGS__)
 
 const uintptr_t INLINE_SIZE_CUTOFF = 0xFF << 3;
 
 // heap pointer: | 45 bits pointer data | 8 bits constructor tag | 8 bits word size | 2 bits object type | 1 |
+
+static
+void print_heap_object(uintptr_t heap_object) {
+  char* pointer = heap_object_pointer(heap_object);
+  debug_printf("pointer: 0x%" PRIxPTR, (uintptr_t)pointer);
+  uintptr_t constructor_tag = heap_object_constructor_tag(heap_object);
+  debug_printf(", constructor_tag: %" PRIuPTR, constructor_tag);
+  uintptr_t inline_size = heap_object & INLINE_SIZE_CUTOFF;
+  debug_printf(", inline_size: %" PRIuPTR, inline_size);
+  uintptr_t object_type = heap_object & ~(~0ul << 3);
+  debug_printf(", object_type: %" PRIuPTR, object_type);
+}
 
 struct collector_info {
   char* heap_start_pointer;
@@ -73,7 +87,11 @@ struct collection_result {
 
 static
 uintptr_t copy(uintptr_t heap_object, char** new_heap_pointer_pointer, char* new_heap_start, char* new_heap_end) {
+  debug_printf("copying heap object ");
+  print_heap_object(heap_object);
+  debug_printf("\n");
   uintptr_t size = heap_object_size(heap_object);
+  debug_printf("heap object size: %" PRIuPTR "\n", size);
   // If the size is 0 we don't have space to leave a forwarding pointer, but we
   // also have nothing to copy. :)
   if (size == 0) {
@@ -82,8 +100,10 @@ uintptr_t copy(uintptr_t heap_object, char** new_heap_pointer_pointer, char* new
   // If we have a forwarding pointer, we're already done.
   uintptr_t forwarded_object = get_forwarded_object_or_0(heap_object, new_heap_start, new_heap_end);
   if (forwarded_object) {
+    debug_printf("already copied; forwarding\n");
     return forwarded_object;
   }
+  debug_printf("new\n");
   // If the size is larger than the inline size cutoff we store the size just
   // before the copied new heap object.
   if (unlikely(size >= INLINE_SIZE_CUTOFF)) {
@@ -104,9 +124,12 @@ uintptr_t copy(uintptr_t heap_object, char** new_heap_pointer_pointer, char* new
 
 static
 struct collection_result collect(struct shadow_stack_frame* shadow_stack, char* heap_pointer, char* heap_limit, uintptr_t minimum_free_space) {
+  debug_printf("Starting collection\n");
   struct collector_info* collector_info = (struct collector_info*) heap_limit;
+  debug_printf("last occupied size: %" PRIuPTR "\n", collector_info->last_occupied_size);
   char* heap_start_pointer = collector_info->heap_start_pointer;
   uintptr_t old_size = heap_pointer - heap_start_pointer;
+  debug_printf("old size: %" PRIuPTR "\n", old_size);
   // We're aiming at allocating 2x the occupied space, but we don't know yet
   // how much space will actually be occupied after the collection, so we take
   // a guess based on the occupied size of the last collection, ensuring we
@@ -118,6 +141,7 @@ struct collection_result collect(struct shadow_stack_frame* shadow_stack, char* 
       page_size(),
       (estimated_new_size > minimum_new_size ? estimated_new_size : minimum_new_size) +
         sizeof(struct collector_info));
+  debug_printf("new size: %" PRIuPTR "\n", new_size);
 
   char* new_heap_start_pointer = mmap(0, new_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   if (new_heap_start_pointer == MAP_FAILED) {
@@ -128,6 +152,7 @@ struct collection_result collect(struct shadow_stack_frame* shadow_stack, char* 
   // Copy stack roots.
   while (shadow_stack) {
     uintptr_t entry_count = shadow_stack->entry_count;
+    debug_printf("scanning shadow stack frame of size %" PRIuPTR "\n", entry_count);
     for (uintptr_t entry_index = 0; entry_index < entry_count; ++entry_index) {
       struct shadow_stack_frame_entry* entry = &shadow_stack->entries[entry_index];
       uintptr_t* entry_end = (uintptr_t*)(entry->data + entry->size);
@@ -142,6 +167,7 @@ struct collection_result collect(struct shadow_stack_frame* shadow_stack, char* 
   }
   // Scan copied heap objects.
   char* scan_pointer = new_heap_start_pointer;
+  debug_printf("scanning copied heap objects\n");
   while (scan_pointer < new_heap_pointer) {
     uintptr_t scan_word = *(uintptr_t*)scan_pointer;
     if (is_heap_pointer(scan_word)) {
@@ -149,13 +175,18 @@ struct collection_result collect(struct shadow_stack_frame* shadow_stack, char* 
     }
     scan_pointer += sizeof(char*);
   }
+  debug_printf("done scanning\n");
   uintptr_t occupied_size = new_heap_pointer - new_heap_start_pointer;
+  debug_printf("occupied size: %" PRIuPTR "\n", occupied_size);
+
   // Now we know the exact occupied size, so we see if we should allocate some
   // more space to reach 2x that.
   uintptr_t minimum_desired_size = round_up_to_multiple_of(page_size(), occupied_size * 2 + sizeof(struct collector_info));
   if (minimum_desired_size > new_size) {
+    debug_printf("growing the to-space to %" PRIuPTR " bytes\n", minimum_desired_size);
     char* result = mmap(new_heap_end_pointer, minimum_desired_size - new_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
     if (result != MAP_FAILED) {
+      debug_printf("growing failed\n");
       new_heap_end_pointer = result;
     }
   }
@@ -172,6 +203,8 @@ struct collection_result collect(struct shadow_stack_frame* shadow_stack, char* 
 }
 
 struct heap_alloc_result __attribute((regcall)) heap_alloc(struct shadow_stack_frame* shadow_stack, char* heap_pointer, char* heap_limit, char constructor_tag, uintptr_t size) {
+  debug_printf("heap allocating %" PRIuPTR " bytes \n", size);
+  debug_printf("free space %" PRIuPTR " bytes \n", heap_limit - heap_pointer);
   uintptr_t inline_size = size;
   uintptr_t object_size = size;
   char* object_pointer = heap_pointer;
