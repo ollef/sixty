@@ -45,7 +45,7 @@ struct init_result init_garbage_collector() {
   struct collector_info* collector_info = (struct collector_info*) heap_limit;
   *collector_info = (struct collector_info) {
     .heap_start_pointer = heap_start_pointer,
-    .last_occupied_size = size,
+    .last_occupied_size = (heap_limit - heap_start_pointer) / 2,
   };
   return (struct init_result) {
     .heap_pointer = heap_start_pointer,
