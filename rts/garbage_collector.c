@@ -186,12 +186,13 @@ struct collection_result collect(struct shadow_stack_frame* shadow_stack, char* 
   munmap(heap_start_pointer, old_mmap_size);
   // Now we know the exact occupied size, so we see if we should allocate some
   // more space to reach 2x that.
-  uintptr_t minimum_desired_size = round_up_to_multiple_of(page_size(), occupied_size * 2 + sizeof(struct collector_info));
-  if (minimum_desired_size > new_size) {
-    debug_printf("growing the to-space to %" PRIuPTR " bytes\n", minimum_desired_size);
-    char* result = mmap(new_heap_end_pointer, minimum_desired_size - new_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+  uintptr_t desired_size = round_up_to_multiple_of(page_size(), occupied_size * 2 + sizeof(struct collector_info));
+  if (desired_size > new_size) {
+    debug_printf("growing the to-space to %" PRIuPTR " bytes\n", desired_size);
+    uintptr_t extra_size = desired_size - new_size;
+    char* result = mmap(new_heap_end_pointer, extra_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
     if (result != MAP_FAILED) {
-      new_heap_end_pointer = result;
+      new_heap_end_pointer += extra_size;
     }
     else {
       debug_printf("growing failed\n");
