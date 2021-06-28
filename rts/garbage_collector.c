@@ -100,10 +100,10 @@ uintptr_t copy(uintptr_t heap_object, char** new_heap_pointer_pointer, char* new
   // If we have a forwarding pointer, we're already done.
   uintptr_t forwarded_object = get_forwarded_object_or_0(heap_object, new_heap_start, new_heap_end);
   if (forwarded_object) {
-    debug_printf("already copied; forwarding\n");
+    debug_printf("already copied; returning forwarding pointer\n");
     return forwarded_object;
   }
-  debug_printf("new\n");
+  debug_printf("copied heap object ");
   // If the size is larger than the inline size cutoff we store the size just
   // before the copied new heap object.
   if (unlikely(size >= INLINE_SIZE_CUTOFF)) {
@@ -117,6 +117,8 @@ uintptr_t copy(uintptr_t heap_object, char** new_heap_pointer_pointer, char* new
   memcpy(copied_object_start, object_data_pointer, size);
   // Construct new heap object from new pointer + old metadata.
   uintptr_t new_heap_object = (heap_object & ~(~0ul << 19)) | ((uintptr_t)copied_object_start << 19);
+  print_heap_object(new_heap_object);
+  printf("\n");
   // Install forwarding pointer in old heap object data.
   *(uintptr_t*)object_data_pointer = new_heap_object;
   return new_heap_object;
@@ -186,8 +188,10 @@ struct collection_result collect(struct shadow_stack_frame* shadow_stack, char* 
     debug_printf("growing the to-space to %" PRIuPTR " bytes\n", minimum_desired_size);
     char* result = mmap(new_heap_end_pointer, minimum_desired_size - new_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
     if (result != MAP_FAILED) {
-      debug_printf("growing failed\n");
       new_heap_end_pointer = result;
+    }
+    else {
+      debug_printf("growing failed\n");
     }
   }
   // Store the collector info just past the new heap limit.
