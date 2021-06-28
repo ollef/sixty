@@ -116,7 +116,7 @@ uintptr_t copy(uintptr_t heap_object, char** new_heap_pointer_pointer, char* new
   // Copy old to new heap data.
   memcpy(copied_object_start, object_data_pointer, size);
   // Construct new heap object from new pointer + old metadata.
-  uintptr_t new_heap_object = (heap_object & ~(~0ul << 19)) | ((uintptr_t)copied_object_start << 19);
+  uintptr_t new_heap_object = (heap_object & ~(~0ul << 19)) | ((uintptr_t)copied_object_start << 16);
   print_heap_object(new_heap_object);
   printf("\n");
   // Install forwarding pointer in old heap object data.
