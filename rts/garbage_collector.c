@@ -131,7 +131,7 @@ struct collection_result collect(struct shadow_stack_frame* shadow_stack, char* 
   debug_printf("last occupied size: %" PRIuPTR "\n", collector_info->last_occupied_size);
   char* heap_start_pointer = collector_info->heap_start_pointer;
   uintptr_t old_size = heap_pointer - heap_start_pointer;
-  debug_printf("old size: %" PRIuPTR "\n", old_size);
+  debug_printf("old size: %" PRIuPTR "\n", old_size + sizeof(struct collector_info));
   // We're aiming at allocating 2x the occupied space, but we don't know yet
   // how much space will actually be occupied after the collection, so we take
   // a guess based on the occupied size of the last collection, ensuring we
