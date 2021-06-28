@@ -183,9 +183,12 @@ struct collection_result collect(struct shadow_stack_frame* shadow_stack, char* 
 
   uintptr_t old_mmap_size = (char*)(collector_info + 1) - heap_start_pointer;
   debug_printf("unmapping the from-space of size %" PRIuPTR " bytes \n", old_mmap_size);
-  munmap(heap_start_pointer, old_mmap_size);
   // Now we know the exact occupied size, so we see if we should allocate some
   // more space to reach 2x that.
+  if (munmap(heap_start_pointer, old_mmap_size) != 0) {
+    debug_printf("munmap failed\n");
+    exit(EXIT_FAILURE);
+  }
   uintptr_t desired_size = round_up_to_multiple_of(page_size(), occupied_size * 2 + sizeof(struct collector_info));
   if (desired_size > new_size) {
     debug_printf("growing the to-space to %" PRIuPTR " bytes\n", desired_size);
