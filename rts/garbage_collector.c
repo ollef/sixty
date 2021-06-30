@@ -255,6 +255,9 @@ struct heap_alloc_result __attribute((regcall)) heap_alloc(struct shadow_stack_f
     | ((uintptr_t)constructor_tag << 11)
     | (uintptr_t)inline_size
     | 1;
+  debug_printf("heap allocated object ");
+  print_heap_object(result);
+  debug_printf("\n");
   return (struct heap_alloc_result) {
     .result = result,
     .heap_pointer = new_heap_pointer,
