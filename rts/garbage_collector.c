@@ -133,16 +133,12 @@ struct collection_result collect(struct shadow_stack_frame* shadow_stack, char* 
   uintptr_t old_size = heap_pointer - heap_start_pointer;
   debug_printf("old size: %" PRIuPTR "\n", old_size + sizeof(struct collector_info));
   // We're aiming at allocating 2x the occupied space, but we don't know yet
-  // how much space will actually be occupied after the collection, so we take
-  // a guess based on the occupied size of the last collection, ensuring we
-  // have at least minimum_free_space.
-  uintptr_t estimated_new_size = collector_info->last_occupied_size * 2;
-  uintptr_t minimum_new_size = old_size + minimum_free_space;
+  // how much space will actually be occupied after the collection, so at this
+  // point we just ensure that we have at least minimum_free_space.
   uintptr_t new_size =
     round_up_to_multiple_of(
       page_size(),
-      (estimated_new_size > minimum_new_size ? estimated_new_size : minimum_new_size) +
-        sizeof(struct collector_info));
+      old_size + minimum_free_space + sizeof(struct collector_info));
   debug_printf("new size: %" PRIuPTR "\n", new_size);
 
   char* new_heap_start_pointer = mmap(0, new_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
@@ -184,12 +180,13 @@ struct collection_result collect(struct shadow_stack_frame* shadow_stack, char* 
   uintptr_t old_mmap_size = (char*)(collector_info + 1) - heap_start_pointer;
   debug_printf("unmapping the from-space of size %" PRIuPTR " bytes \n", old_mmap_size);
   if (munmap(heap_start_pointer, old_mmap_size) != 0) {
-    debug_printf("munmap failed\n");
+    debug_printf("unmapping failed\n");
     exit(EXIT_FAILURE);
   }
   // Now we know the exact occupied size, so we see if we should allocate or
-  // deallocate some space to reach 2x that.
-  uintptr_t desired_size = round_up_to_multiple_of(page_size(), occupied_size * 2 + sizeof(struct collector_info));
+  // deallocate some space to reach 2x that. We should still ensure that we
+  // have minimum_free_space.
+  uintptr_t desired_size = round_up_to_multiple_of(page_size(), occupied_size * 2 + minimum_free_space + sizeof(struct collector_info));
   if (desired_size > new_size) {
     debug_printf("growing the to-space to %" PRIuPTR " bytes\n", desired_size);
     uintptr_t extra_size = desired_size - new_size;
