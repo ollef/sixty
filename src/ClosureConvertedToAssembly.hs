@@ -991,26 +991,21 @@ storeTerm env term returnLocation returnType =
           type_ <- Builder $ lift $ Readback.readback (Context.toEnvironment $ _context env) typeValue
           type' <- generateType env type_
           size <- sizeOfType type'
-          heapLocation <-
-            case maybeTag of
-              Nothing -> do
-                heapLocation <- heapAllocate "constructor_heap_object" 0 size
+          case maybeTag of
+            Nothing -> do
+              heapLocation <- heapAllocate "constructor_heap_object" 0 size
+              store returnLocation heapLocation
+              foldM_ go (pure $ Assembly.Lit $ Literal.Integer 0) args
+            Just tag
+              | tag < 0xFF -> do
+                heapLocation <- heapAllocate "constructor_heap_object" (fromIntegral tag) size
                 store returnLocation heapLocation
                 foldM_ go (pure $ Assembly.Lit $ Literal.Integer 0) args
-                pure heapLocation
-              Just tag
-                | tag < 0xFF -> do
-                  heapLocation <- heapAllocate "constructor_heap_object" (fromIntegral tag) size
-                  store returnLocation heapLocation
-                  foldM_ go (pure $ Assembly.Lit $ Literal.Integer 0) args
-                  pure heapLocation
-                | otherwise -> do
-                  sizeWithTag <- add "size_with_tag" size $ Assembly.Lit $ Literal.Integer tagBytes
-                  heapLocation <- heapAllocate "constructor_heap_object" 0xFF sizeWithTag
-                  store returnLocation heapLocation
-                  foldM_ go (pure $ Assembly.Lit $ Literal.Integer 0) tagArgs
-                  pure heapLocation
-          store returnLocation heapLocation
+              | otherwise -> do
+                sizeWithTag <- add "size_with_tag" size $ Assembly.Lit $ Literal.Integer tagBytes
+                heapLocation <- heapAllocate "constructor_heap_object" 0xFF sizeWithTag
+                store returnLocation heapLocation
+                foldM_ go (pure $ Assembly.Lit $ Literal.Integer 0) tagArgs
     Syntax.Lit (Literal.Integer integer) ->
       store returnLocation $ Assembly.Lit $ Literal.Integer $ shiftL integer 1
     Syntax.Let _name term' type_ body -> do
