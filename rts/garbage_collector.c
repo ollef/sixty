@@ -29,7 +29,7 @@ void print_heap_object(uintptr_t heap_object) {
 }
 
 struct collector_info {
-  char* heap_start_pointer;
+  char* heap_start;
   uintptr_t last_occupied_size;
 };
 
@@ -130,8 +130,8 @@ struct collection_result collect(struct shadow_stack_frame* shadow_stack, char* 
   debug_printf("Starting collection\n");
   struct collector_info* collector_info = (struct collector_info*) heap_limit;
   debug_printf("last occupied size: %" PRIuPTR "\n", collector_info->last_occupied_size);
-  char* heap_start_pointer = collector_info->heap_start_pointer;
-  uintptr_t old_size = heap_pointer - heap_start_pointer;
+  char* heap_start = collector_info->heap_start;
+  uintptr_t old_size = heap_pointer - heap_start;
   debug_printf("old size: %" PRIuPTR "\n", old_size + sizeof(struct collector_info));
   // We're aiming at allocating 2x the occupied space, but we don't know yet
   // how much space will actually be occupied after the collection, so at this
@@ -142,12 +142,12 @@ struct collection_result collect(struct shadow_stack_frame* shadow_stack, char* 
       old_size + minimum_free_space + sizeof(struct collector_info));
   debug_printf("new size: %" PRIuPTR "\n", new_size);
 
-  char* new_heap_start_pointer = mmap(0, new_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-  if (new_heap_start_pointer == MAP_FAILED) {
+  char* new_heap_start = mmap(0, new_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+  if (new_heap_start == MAP_FAILED) {
     exit(EXIT_FAILURE);
   }
-  char* new_heap_pointer = new_heap_start_pointer;
-  char* new_heap_end_pointer = new_heap_start_pointer + new_size;
+  char* new_heap_pointer = new_heap_start;
+  char* new_heap_end = new_heap_start + new_size;
   // Copy stack roots.
   while (shadow_stack) {
     uintptr_t entry_count = shadow_stack->entry_count;
@@ -158,29 +158,29 @@ struct collection_result collect(struct shadow_stack_frame* shadow_stack, char* 
       for (uintptr_t* entry_word_pointer = (uintptr_t*)entry->data; entry_word_pointer < entry_end; ++entry_word_pointer) {
         uintptr_t entry_word = *entry_word_pointer;
         if (is_heap_pointer(entry_word)) {
-          *entry_word_pointer = copy(entry_word, &new_heap_pointer, new_heap_start_pointer, new_heap_end_pointer);
+          *entry_word_pointer = copy(entry_word, &new_heap_pointer, new_heap_start, new_heap_end);
         }
       }
     }
     shadow_stack = shadow_stack->previous;
   }
   // Scan copied heap objects.
-  char* scan_pointer = new_heap_start_pointer;
+  char* scan_pointer = new_heap_start;
   debug_printf("scanning copied heap objects\n");
   while (scan_pointer < new_heap_pointer) {
     uintptr_t scan_word = *(uintptr_t*)scan_pointer;
     if (is_heap_pointer(scan_word)) {
-      *(uintptr_t*)scan_pointer = copy(scan_word, &new_heap_pointer, new_heap_start_pointer, new_heap_end_pointer);
+      *(uintptr_t*)scan_pointer = copy(scan_word, &new_heap_pointer, new_heap_start, new_heap_end);
     }
     scan_pointer += sizeof(char*);
   }
   debug_printf("done scanning\n");
-  uintptr_t occupied_size = new_heap_pointer - new_heap_start_pointer;
+  uintptr_t occupied_size = new_heap_pointer - new_heap_start;
   debug_printf("occupied size: %" PRIuPTR "\n", occupied_size);
 
-  uintptr_t old_mmap_size = (char*)(collector_info + 1) - heap_start_pointer;
+  uintptr_t old_mmap_size = (char*)(collector_info + 1) - heap_start;
   debug_printf("unmapping the from-space of size %" PRIuPTR " bytes \n", old_mmap_size);
-  if (munmap(heap_start_pointer, old_mmap_size) != 0) {
+  if (munmap(heap_start, old_mmap_size) != 0) {
     debug_printf("unmapping failed\n");
     exit(EXIT_FAILURE);
   }
@@ -191,9 +191,9 @@ struct collection_result collect(struct shadow_stack_frame* shadow_stack, char* 
   if (desired_size > new_size) {
     debug_printf("growing the to-space to %" PRIuPTR " bytes\n", desired_size);
     uintptr_t extra_size = desired_size - new_size;
-    char* result = mmap(new_heap_end_pointer, extra_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    char* result = mmap(new_heap_end, extra_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
     if (result != MAP_FAILED) {
-      new_heap_end_pointer += extra_size;
+      new_heap_end += extra_size;
     }
     else {
       debug_printf("growing failed\n");
@@ -202,17 +202,17 @@ struct collection_result collect(struct shadow_stack_frame* shadow_stack, char* 
   else if (desired_size < new_size) {
     debug_printf("shrinking the to-space to %" PRIuPTR " bytes\n", desired_size);
     uintptr_t extra_size = new_size - desired_size;
-    if (munmap(new_heap_end_pointer - extra_size, extra_size) == 0) {
-      new_heap_end_pointer -= extra_size;
+    if (munmap(new_heap_end - extra_size, extra_size) == 0) {
+      new_heap_end -= extra_size;
     }
     else {
       debug_printf("shrinking failed\n");
     }
   }
   // Store the collector info just past the new heap limit.
-  char* new_heap_limit = new_heap_end_pointer - sizeof(struct collector_info);
+  char* new_heap_limit = new_heap_end - sizeof(struct collector_info);
   *(struct collector_info*)new_heap_limit = (struct collector_info) {
-    .heap_start_pointer = new_heap_start_pointer,
+    .heap_start = new_heap_start,
     .last_occupied_size = occupied_size,
   };
   return (struct collection_result) {
