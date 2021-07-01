@@ -49,21 +49,21 @@ uintptr_t page_size() {
 
 struct init_result init_garbage_collector() {
   uintptr_t size = round_up_to_multiple_of(page_size(), 4096);
-  char* heap_start_pointer = mmap(0, size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-  if (heap_start_pointer == MAP_FAILED) {
+  char* heap_start = mmap(0, size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+  if (heap_start == MAP_FAILED) {
     debug_printf("init_garbage_collector mmap failed");
     exit(EXIT_FAILURE);
   }
   // Put collector info right after the heap limit.
-  char* heap_limit_with_collector_info = heap_start_pointer + size;
-  char* heap_limit = heap_limit_with_collector_info - sizeof(struct collector_info);
+  char* heap_end = heap_start + size;
+  char* heap_limit = heap_end - sizeof(struct collector_info);
   struct collector_info* collector_info = (struct collector_info*) heap_limit;
   *collector_info = (struct collector_info) {
-    .heap_start_pointer = heap_start_pointer,
-    .last_occupied_size = (heap_limit - heap_start_pointer) / 2,
+    .heap_start = heap_start,
+    .last_occupied_size = (heap_limit - heap_start) / 2,
   };
   return (struct init_result) {
-    .heap_pointer = heap_start_pointer,
+    .heap_pointer = heap_start,
     .heap_limit = heap_limit,
   };
 }
