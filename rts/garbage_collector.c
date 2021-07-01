@@ -41,7 +41,7 @@ uintptr_t round_up_to_multiple_of(uintptr_t multiple, uintptr_t x) {
 
 uintptr_t page_size() {
   static uintptr_t result = 0;
-  if (!result) {
+  if (result == 0) {
     result = sysconf(_SC_PAGESIZE);
   }
   return result;
