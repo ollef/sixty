@@ -80,11 +80,6 @@ uintptr_t get_forwarded_object_or_0(uintptr_t object, char* new_heap_start, char
   return 0;
 }
 
-struct collection_result {
-  char* heap_pointer;
-  char* heap_limit;
-};
-
 static
 uintptr_t copy(uintptr_t heap_object, char** new_heap_pointer_pointer, char* new_heap_start, char* new_heap_end) {
   debug_printf("copying heap object ");
@@ -123,6 +118,11 @@ uintptr_t copy(uintptr_t heap_object, char** new_heap_pointer_pointer, char* new
   *(uintptr_t*)object_data_pointer = new_heap_object;
   return new_heap_object;
 }
+
+struct collection_result {
+  char* heap_pointer;
+  char* heap_limit;
+};
 
 static
 struct collection_result collect(struct shadow_stack_frame* shadow_stack, char* heap_pointer, char* heap_limit, uintptr_t minimum_free_space) {
