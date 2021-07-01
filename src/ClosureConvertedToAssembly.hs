@@ -700,18 +700,20 @@ generateGlobal env name representation term = do
           (_, deallocateTerm) <- generateTypedTerm env term (Direct emptyTypeOperand) representation
           sequence_ deallocateTerm
           pure globalPointer
-        -- TODO use containsHeapPointers?
         Representation.Direct _containsHeapPointers -> makeConstantDefinition Assembly.Word $ \globalPointer -> do
           (result, deallocateTerm) <- generateTypedTerm env term (Direct directTypeOperand) representation
           directResult <- forceDirect result
           sequence_ deallocateTerm
           initGlobal name Assembly.Word directResult
           pure globalPointer
-        Representation.Indirect _containsHeapPointers ->
+        Representation.Indirect containsHeapPointers ->
           makeConstantDefinition Assembly.WordPointer $ \globalPointer -> do
             (type_, _representation) <- typeOf env term
             typeSize <- sizeOfType type_
             globalPointer' <- globalAllocate "globals" globalPointer typeSize
+            _unregisterShadowStackSlot <- case containsHeapPointers of
+              Representation.Doesn'tContainHeapPointers -> pure (pure ())
+              Representation.MightContainHeapPointers -> registerShadowStackSlot typeSize globalPointer
             storeTerm env term globalPointer type_
             initGlobal name Assembly.WordPointer globalPointer
             pure globalPointer'
