@@ -35,8 +35,7 @@ struct collector_info {
 
 static
 uintptr_t round_up_to_multiple_of(uintptr_t multiple, uintptr_t x) {
-  uintptr_t remainder = x % multiple;
-  return remainder == 0 ? x : x - remainder + multiple;
+  return ((x + multiple - 1) / multiple) * multiple;
 }
 
 uintptr_t page_size() {
