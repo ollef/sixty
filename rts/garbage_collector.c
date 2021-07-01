@@ -247,7 +247,7 @@ struct heap_alloc_result __attribute((regcall)) heap_alloc(struct shadow_stack_f
   }
   // Actually store the size before the heap object if the size was too large
   // to be inline.
-  if (unlikely(inline_size == INLINE_SIZE_MASK)) {
+  if (unlikely(size >= INLINE_SIZE_MASK)) {
     *(uintptr_t*)heap_pointer = size;
   }
   uintptr_t result
