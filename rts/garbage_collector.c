@@ -271,8 +271,8 @@ int is_heap_pointer(uintptr_t word) {
 }
 
 uintptr_t heap_object_size(uintptr_t word) {
-  uintptr_t inline_size = word & (0xFF << 3);
-  if (unlikely(inline_size == (0xFF << 3))) {
+  uintptr_t inline_size = word & INLINE_SIZE_CUTOFF;
+  if (unlikely(inline_size == INLINE_SIZE_CUTOFF)) {
     return *(uintptr_t*)(heap_object_pointer(word) - sizeof(char*));
   }
   return inline_size;
