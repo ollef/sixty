@@ -51,6 +51,7 @@ struct init_result init_garbage_collector() {
   uintptr_t size = round_up_to_multiple_of(page_size(), 4096);
   char* heap_start_pointer = mmap(0, size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   if (heap_start_pointer == MAP_FAILED) {
+    debug_printf("init_garbage_collector mmap failed");
     exit(EXIT_FAILURE);
   }
   // Put collector info right after the heap limit.
