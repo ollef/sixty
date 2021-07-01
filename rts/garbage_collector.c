@@ -12,7 +12,7 @@
 #define unlikely(x) __builtin_expect(!!(x), 0)
 #define debug_printf(...) // printf(__VA_ARGS__)
 
-const uintptr_t INLINE_SIZE_CUTOFF = 0xFF << 3;
+const uintptr_t INLINE_SIZE_MASK = 0xFF << 3;
 
 // heap pointer: | 45 bits pointer data | 8 bits constructor tag | 8 bits word size | 2 bits object type | 1 |
 
@@ -22,7 +22,7 @@ void print_heap_object(uintptr_t heap_object) {
   debug_printf("pointer: 0x%" PRIxPTR, (uintptr_t)pointer);
   uintptr_t constructor_tag = heap_object_constructor_tag(heap_object);
   debug_printf(", constructor_tag: %" PRIuPTR, constructor_tag);
-  uintptr_t inline_size = heap_object & INLINE_SIZE_CUTOFF;
+  uintptr_t inline_size = heap_object & INLINE_SIZE_MASK;
   debug_printf(", inline_size: %" PRIuPTR, inline_size);
   uintptr_t object_type = heap_object & ~(~0ul << 3);
   debug_printf(", object_type: %" PRIuPTR, object_type);
@@ -104,10 +104,10 @@ uintptr_t copy(uintptr_t heap_object, char** new_heap_pointer_pointer, char* new
     debug_printf("already copied; returning forwarding pointer\n");
     return forwarded_object;
   }
-  debug_printf("copied heap object ");
+  debug_printf("copied  heap object ");
   // If the size is larger than the inline size cutoff we store the size just
   // before the copied new heap object.
-  if (unlikely(size >= INLINE_SIZE_CUTOFF)) {
+  if (unlikely(size >= INLINE_SIZE_MASK)) {
     *(uintptr_t*)(*new_heap_pointer_pointer) = size;
     *new_heap_pointer_pointer += sizeof(char*);
   }
@@ -229,8 +229,8 @@ struct heap_alloc_result __attribute((regcall)) heap_alloc(struct shadow_stack_f
   char* object_pointer = heap_pointer;
   // If size is too large to be stored in free bits in the pointer, make room
   // for it to be stored just before the heap object's data.
-  if (unlikely(size >= INLINE_SIZE_CUTOFF)) {
-    inline_size = INLINE_SIZE_CUTOFF;
+  if (unlikely(size >= INLINE_SIZE_MASK)) {
+    inline_size = INLINE_SIZE_MASK;
     object_size = size + sizeof(char*);
     object_pointer = heap_pointer + sizeof(char*);
   }
@@ -241,14 +241,14 @@ struct heap_alloc_result __attribute((regcall)) heap_alloc(struct shadow_stack_f
     heap_pointer = collection_result.heap_pointer;
     heap_limit = collection_result.heap_limit;
     object_pointer = heap_pointer;
-    if (unlikely(size >= INLINE_SIZE_CUTOFF)) {
+    if (unlikely(size >= INLINE_SIZE_MASK)) {
       object_pointer = heap_pointer + sizeof(char*);
     }
     new_heap_pointer = heap_pointer + object_size;
   }
   // Actually store the size before the heap object if the size was too large
   // to be inline.
-  if (unlikely(inline_size == INLINE_SIZE_CUTOFF)) {
+  if (unlikely(inline_size == INLINE_SIZE_MASK)) {
     *(uintptr_t*)heap_pointer = size;
   }
   uintptr_t result
@@ -271,8 +271,8 @@ int is_heap_pointer(uintptr_t word) {
 }
 
 uintptr_t heap_object_size(uintptr_t word) {
-  uintptr_t inline_size = word & INLINE_SIZE_CUTOFF;
-  if (unlikely(inline_size == INLINE_SIZE_CUTOFF)) {
+  uintptr_t inline_size = word & INLINE_SIZE_MASK;
+  if (unlikely(inline_size == INLINE_SIZE_MASK)) {
     return *(uintptr_t*)(heap_object_pointer(word) - sizeof(char*));
   }
   return inline_size;
