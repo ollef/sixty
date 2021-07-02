@@ -229,7 +229,8 @@ globalConstantOperand name = do
       Indirect $
         Assembly.GlobalConstant name $ case representation of
           Representation.Empty -> Assembly.WordPointer
-          Representation.Direct _ -> Assembly.Word
+          Representation.Direct Representation.Doesn'tContainHeapPointers -> Assembly.Word
+          Representation.Direct Representation.MightContainHeapPointers -> Assembly.WordPointer
           Representation.Indirect _ -> Assembly.WordPointer
     _ ->
       panic $ "ClosureConvertedToAssembly.globalConstantLocation: global without constant signature " <> show name
@@ -700,23 +701,28 @@ generateGlobal env name representation term = do
           (_, deallocateTerm) <- generateTypedTerm env term (Direct emptyTypeOperand) representation
           sequence_ deallocateTerm
           pure globalPointer
-        Representation.Direct _containsHeapPointers -> makeConstantDefinition Assembly.Word $ \globalPointer -> do
+        Representation.Direct Representation.Doesn'tContainHeapPointers -> makeConstantDefinition Assembly.Word $ \globalPointer -> do
           (result, deallocateTerm) <- generateTypedTerm env term (Direct directTypeOperand) representation
           directResult <- forceDirect result
           sequence_ deallocateTerm
           initGlobal name Assembly.Word directResult
           pure globalPointer
+        Representation.Direct Representation.MightContainHeapPointers ->
+          indirectCase Representation.MightContainHeapPointers
         Representation.Indirect containsHeapPointers ->
-          makeConstantDefinition Assembly.WordPointer $ \globalPointer -> do
-            (type_, _representation) <- typeOf env term
-            typeSize <- sizeOfType type_
-            globalPointer' <- globalAllocate "globals" globalPointer typeSize
-            _unregisterShadowStackSlot <- case containsHeapPointers of
-              Representation.Doesn'tContainHeapPointers -> pure (pure ())
-              Representation.MightContainHeapPointers -> registerShadowStackSlot typeSize globalPointer
-            storeTerm env term globalPointer type_
-            initGlobal name Assembly.WordPointer globalPointer
-            pure globalPointer'
+          indirectCase containsHeapPointers
+  where
+    indirectCase containsHeapPointers = do
+      makeConstantDefinition Assembly.WordPointer $ \globalPointer -> do
+        (type_, _representation) <- typeOf env term
+        typeSize <- sizeOfType type_
+        globalPointer' <- globalAllocate "globals" globalPointer typeSize
+        _unregisterShadowStackSlot <- case containsHeapPointers of
+          Representation.Doesn'tContainHeapPointers -> pure (pure ())
+          Representation.MightContainHeapPointers -> registerShadowStackSlot typeSize globalPointer
+        storeTerm env term globalPointer type_
+        initGlobal name Assembly.WordPointer globalPointer
+        pure globalPointer'
 
 makeConstantDefinition ::
   Assembly.Type ->
