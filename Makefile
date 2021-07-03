@@ -68,3 +68,8 @@ format:
 .PHONY: check-format
 check-format:
 	stack exec --package fourmolu -- fourmolu --mode check $(HASKELL_SOURCE_FILES)
+
+.PHONY: debug
+debug:
+	llvm-as out/program.ll -o out/program.bc
+	gdb --quiet -ex "b initCloneLookups" -ex "r" --args lli -jit-kind=mcjit out/program.bc
