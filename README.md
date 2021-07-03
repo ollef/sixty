@@ -83,7 +83,9 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [ ] Code generation
     - [x] Basics
     - [ ] Closures
-  - [ ] Garbage collection
+  - [x] Precise, moving garbage collector
+    - [x] Cheney's two-space algorithm
+    - [ ] Generational GC
   - [ ] Extern code
 - [ ] Prevent CBV-incompatible circular values
 - [ ] Literals
