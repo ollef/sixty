@@ -174,43 +174,22 @@ getFreeShadowStackSlot = do
           }
     )
 
-shadowStackInitFromGlobals :: Assembly.Local -> Assembly.Local -> Builder [Assembly.Instruction]
-shadowStackInitFromGlobals globalBasePointer globalPointer = map snd $
+shadowStackInit :: Assembly.Operand -> Builder (Bool, [Assembly.Instruction])
+shadowStackInit shadowStackParameterOperand =
   subBuilder $ do
-    slotCount <- gets _shadowStackSlotCount
-    shadowStack <- gets _shadowStack
-    let slotCount' = slotCount + 1
-        globalBasePointerOperand = Assembly.LocalOperand globalBasePointer
-        globalPointerOperand = Assembly.LocalOperand globalPointer
-        shadowStackSize = Assembly.Lit $ Literal.Integer $ fromIntegral $ (2 + 2 * slotCount') * wordBytes
-        shadowStackOperand = Assembly.LocalOperand shadowStack
-    emit $ Assembly.StackAllocate shadowStack shadowStackSize
-    shadowStackSizeSlot <- addPointer "shadow_stack_frame_size" shadowStackOperand $ Assembly.Lit $ Literal.Integer wordBytes
-    store shadowStackSizeSlot $ Assembly.Lit $ Literal.Integer $ fromIntegral slotCount'
-    globalsSize <- sub "globals_size" globalPointerOperand globalBasePointerOperand
-    globalsSizeSlot <- addPointer "globals_size_shadow_stack_frame_slot" shadowStackSizeSlot $ Assembly.Lit $ Literal.Integer wordBytes
-    store globalsSizeSlot globalsSize
-    globalsSlot <- addPointer "globals_shadow_stack_frame_slot" globalsSizeSlot $ Assembly.Lit $ Literal.Integer wordBytes
-    store globalsSlot globalBasePointerOperand
-
-shadowStackInit :: Builder (Assembly.Local, [Assembly.Instruction])
-shadowStackInit =
-  subBuilder $ do
-    shadowStack <- gets _shadowStack
     slotCount <- gets _shadowStackSlotCount
     case slotCount of
       0 ->
-        pure shadowStack
+        pure False
       _ -> do
-        shadowStackParameter <- freshLocal "caller_shadow_stack_frame"
+        shadowStack <- gets _shadowStack
         let shadowStackSize = Assembly.Lit $ Literal.Integer $ fromIntegral $ (2 + 2 * slotCount) * wordBytes
             shadowStackOperand = Assembly.LocalOperand shadowStack
-            shadowStackParameterOperand = Assembly.LocalOperand shadowStackParameter
         emit $ Assembly.StackAllocate shadowStack shadowStackSize
         store shadowStackOperand shadowStackParameterOperand
         shadowStackSizeSlot <- addPointer "shadow_stack_frame_size" shadowStackOperand $ Assembly.Lit $ Literal.Integer wordBytes
         store shadowStackSizeSlot $ Assembly.Lit $ Literal.Integer $ fromIntegral slotCount
-        pure shadowStackParameter
+        pure True
 
 -------------------------------------------------------------------------------
 
@@ -732,11 +711,14 @@ makeConstantDefinition type_ m = do
   Assembly.LocalOperand heapPointerParameter <- gets _heapPointer
   Assembly.LocalOperand heapLimitParameter <- gets _heapLimit
   globalPointer <- freshLocal "globals"
-  let globalPointerOperand = Assembly.LocalOperand globalPointer
   globalBasePointer <- freshLocal "globals_base"
+  let globalPointerOperand = Assembly.LocalOperand globalPointer
+      globalBasePointerOperand = Assembly.LocalOperand globalBasePointer
+  globalsSize <- sub "globals_size" globalPointerOperand globalBasePointerOperand
+  _unregisterGlobalsSlot <- registerShadowStackSlot globalsSize globalBasePointerOperand
   globalPointer' <- m globalPointerOperand
   instructions <- gets _instructions
-  shadowStackInitInstructions <- shadowStackInitFromGlobals globalBasePointer globalPointer
+  (_, shadowStackInitInstructions) <- shadowStackInit $ Assembly.Lit $ Literal.Integer 0
   heapPointer <- gets _heapPointer
   heapLimit <- gets _heapLimit
   pure $
@@ -847,14 +829,16 @@ makeFunctionDefinition returnType parameters m = do
   heapPointer <- gets _heapPointer
   heapLimit <- gets _heapLimit
   instructions <- gets _instructions
-  (shadowStackParameter, shadowStackInitInstructions) <- shadowStackInit
+  shadowStack <- gets _shadowStack
+  shadowStackParameter <- freshLocal "caller_shadow_stack_frame"
+  (hasShadowStackFrame, shadowStackInitInstructions) <- shadowStackInit $ Assembly.LocalOperand shadowStackParameter
   pure $
     Assembly.FunctionDefinition
       ( case returnType of
           Assembly.Void -> Assembly.Return $ Assembly.Struct [Assembly.WordPointer, Assembly.WordPointer]
           Assembly.Return type_ -> Assembly.Return $ Assembly.Struct [type_, Assembly.WordPointer, Assembly.WordPointer]
       )
-      ( (Assembly.WordPointer, shadowStackParameter) :
+      ( (Assembly.WordPointer, if hasShadowStackFrame then shadowStackParameter else shadowStack) :
         (Assembly.WordPointer, heapPointerParameter) :
         (Assembly.WordPointer, heapLimitParameter) :
         parameters
