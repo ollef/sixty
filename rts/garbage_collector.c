@@ -234,7 +234,7 @@ struct heap_alloc_result __attribute((regcall)) heap_alloc(struct shadow_stack_f
     object_pointer = heap_pointer + sizeof(char*);
   }
   char* new_heap_pointer = heap_pointer + object_size;
-  // We've out of space, so trigger a collection.
+  // We're out of space, so trigger a collection.
   if (unlikely(new_heap_pointer > heap_limit)) {
     struct collection_result collection_result = collect(shadow_stack, heap_pointer, heap_limit, object_size);
     heap_pointer = collection_result.heap_pointer;
