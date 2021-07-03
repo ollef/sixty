@@ -24,15 +24,20 @@ snds : forall a b. List (Tuple a b) -> List b
 snds Nil = Nil
 snds (Cons (Tuple a b) rest) = Cons b (snds rest)
 
+idList : forall a. List a -> List a
+idList Nil = Nil
+idList (Cons a as) = Cons a (idList as)
+
 addTuples : List (Tuple Int Int) -> List Int
 addTuples Nil = Nil
 addTuples (Cons (Tuple m n) tuples) = Cons (addInt m n) (addTuples tuples)
 
-list = generate 10
+list = generate 100
 
 listList = zip list list
 
-test1 = printInt (sum list) -- prints 55
-test2 = printInt (sum (fsts listList)) -- prints 55
-test3 = printInt (sum (snds listList)) -- prints 55
-test4 = printInt (sum (addTuples listList)) -- prints 110
+test1 = printInt (sum list) -- prints 5050
+test2 = printInt (sum (idList list)) -- prints 5050
+test3 = printInt (sum (fsts listList)) -- prints 5050
+test4 = printInt (sum (snds listList)) -- prints 5050
+test5 = printInt (sum (addTuples listList)) -- prints 10100
