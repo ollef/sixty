@@ -288,5 +288,5 @@ char* heap_object_pointer(uintptr_t word) {
 // If we know that the constructor tag is <= 5 bits, we can get the pointer
 // with one instead of two shifts.
 char* heap_object_pointer_5bit_tag(uintptr_t word) {
-  return (char*)(word >> 16);
+  return (char*)((intptr_t)word >> 16);
 }
