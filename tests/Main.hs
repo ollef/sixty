@@ -10,7 +10,7 @@ import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.String (String)
 import qualified Data.Text as Text
-import Data.Text.Prettyprint.Doc
+import Prettyprinter
 import qualified Driver
 import Error (Error)
 import qualified Error

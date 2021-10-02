@@ -5,7 +5,7 @@
 module Plicity where
 
 import Data.Persist
-import Data.Text.Prettyprint.Doc
+import Prettyprinter
 import Protolude
 
 data Plicity

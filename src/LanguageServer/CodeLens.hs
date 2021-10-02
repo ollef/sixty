@@ -2,7 +2,7 @@
 
 module LanguageServer.CodeLens where
 
-import Data.Text.Prettyprint.Doc (Doc)
+import Prettyprinter (Doc)
 import qualified Data.Text.Unsafe as Text
 import qualified Elaboration.Context as Context
 import qualified Error.Hydrated as Error

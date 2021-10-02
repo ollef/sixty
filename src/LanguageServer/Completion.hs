@@ -14,7 +14,7 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef.Lifted
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
-import Data.Text.Prettyprint.Doc ((<+>))
+import Prettyprinter ((<+>))
 import qualified Elaboration
 import Elaboration.Context (Context)
 import qualified Elaboration.Context as Context

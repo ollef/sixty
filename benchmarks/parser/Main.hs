@@ -3,7 +3,7 @@
 module Main where
 
 import qualified Data.Text as Text
-import Data.Text.Prettyprint.Doc
+import Prettyprinter
 import qualified Gauge
 import qualified Lexer
 import qualified Parser

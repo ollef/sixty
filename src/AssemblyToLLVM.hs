@@ -15,7 +15,7 @@ import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import qualified Data.List as List
 import Data.String (fromString)
-import Data.Text.Prettyprint.Doc
+import Prettyprinter
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified LLVM.AST as LLVM

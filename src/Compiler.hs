@@ -6,7 +6,7 @@ module Compiler where
 
 import Data.String (String)
 import qualified Data.Text.Lazy.IO as Lazy
-import Data.Text.Prettyprint.Doc
+import Prettyprinter
 import LLVM.Pretty (ppllvm)
 import qualified Name
 import qualified Paths_sixty as Paths

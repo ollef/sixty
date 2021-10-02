@@ -28,7 +28,7 @@ import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import qualified Data.IntSet as IntSet
 import qualified Data.OrderedHashMap as OrderedHashMap
-import Data.Text.Prettyprint.Doc (Doc)
+import Prettyprinter (Doc)
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Elaboration.Clauses as Clauses

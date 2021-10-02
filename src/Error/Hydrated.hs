@@ -9,7 +9,7 @@ import qualified Core.Pretty as Pretty
 import Data.Coerce
 import Data.Persist
 import qualified Data.Text as Text
-import Data.Text.Prettyprint.Doc as Doc
+import Prettyprinter as Doc
 import qualified Data.Text.Unsafe as Text
 import Error (Error)
 import qualified Error

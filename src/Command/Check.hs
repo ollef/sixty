@@ -8,8 +8,8 @@ import qualified Core.Pretty as Pretty
 import qualified Core.Syntax as Syntax
 import qualified Data.HashSet as HashSet
 import qualified Data.Text as Text
-import Data.Text.Prettyprint.Doc
-import Data.Text.Prettyprint.Doc.Render.Text (putDoc)
+import Prettyprinter
+import Prettyprinter.Render.Text (putDoc)
 import Data.Time.Clock
 import qualified Driver
 import qualified Error.Hydrated

@@ -7,7 +7,7 @@ module Command.Compile where
 
 import qualified Compiler
 import qualified Data.Text as Text
-import Data.Text.Prettyprint.Doc
+import Prettyprinter
 import Data.Time.Clock
 import qualified Driver
 import qualified Error.Hydrated

@@ -4,7 +4,7 @@
 module LanguageServer.Hover where
 
 import qualified Core.TypeOf as TypeOf
-import Data.Text.Prettyprint.Doc (Doc, (<+>))
+import Prettyprinter (Doc, (<+>))
 import qualified Elaboration
 import qualified Elaboration.Context as Context
 import qualified Error.Hydrated as Error

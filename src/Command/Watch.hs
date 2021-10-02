@@ -6,9 +6,9 @@ import Data.HashMap.Lazy (HashMap)
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.Text as Text
-import Data.Text.Prettyprint.Doc (Doc)
-import qualified Data.Text.Prettyprint.Doc as Doc
-import Data.Text.Prettyprint.Doc.Render.Text (putDoc)
+import Prettyprinter (Doc)
+import qualified Prettyprinter as Doc
+import Prettyprinter.Render.Text (putDoc)
 import Data.Time.Clock
 import qualified Driver
 import qualified Error.Hydrated

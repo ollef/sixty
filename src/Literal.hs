@@ -4,7 +4,7 @@
 module Literal where
 
 import Data.Persist
-import Data.Text.Prettyprint.Doc
+import Prettyprinter
 import Protolude
 
 newtype Literal

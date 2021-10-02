@@ -9,7 +9,7 @@ module Name where
 import Data.Persist
 import Data.String
 import qualified Data.Text as Text
-import Data.Text.Prettyprint.Doc
+import Prettyprinter
 import Extra
 import Protolude hiding (Constructor)
 

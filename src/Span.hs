@@ -6,7 +6,7 @@
 module Span where
 
 import Data.Persist
-import Data.Text.Prettyprint.Doc
+import Prettyprinter
 import qualified Position
 import Protolude
 

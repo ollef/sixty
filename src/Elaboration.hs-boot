@@ -3,7 +3,7 @@ module Elaboration where
 import Protolude
 
 import Data.HashSet (HashSet)
-import Data.Text.Prettyprint.Doc (Doc)
+import Prettyprinter (Doc)
 
 import qualified Core.Domain as Domain
 import qualified Core.Syntax as Syntax

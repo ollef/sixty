@@ -8,7 +8,7 @@ import Core.Domain.Pattern (Pattern)
 import qualified Core.Syntax as Syntax
 import Data.HashSet (HashSet)
 import Data.Persist
-import Data.Text.Prettyprint.Doc
+import Prettyprinter
 import Data.Tsil (Tsil)
 import qualified Error.Parsing as Error
 import qualified Meta

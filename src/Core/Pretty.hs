@@ -17,7 +17,7 @@ import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Sequence as Seq
-import Data.Text.Prettyprint.Doc
+import Prettyprinter
 import qualified Data.Text.Unsafe as Text
 import Index
 import Name (Name (Name))
