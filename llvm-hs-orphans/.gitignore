@@ -1,0 +1,4 @@
+llvm-hs-orphans.cabal
+.stack-work
+tags
+stack.yaml.lock

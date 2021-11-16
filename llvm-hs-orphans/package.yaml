@@ -1,0 +1,34 @@
+name:                llvm-hs-orphans
+version:             0.1.0.0
+#synopsis:
+#description:
+homepage:            https://github.com/ollef/sixty
+license:             BSD3
+author:              Olle Fredriksson
+maintainer:          fredriksson.olle@gmail.com
+copyright:           2019-2021 Olle Fredriksson
+category:            Language, Compiler
+
+ghc-options:
+  - -Wall
+  - -Wcompat
+  - -Widentities
+  - -Wincomplete-record-updates
+  - -Wincomplete-uni-patterns
+  - -Wmissing-home-modules
+  - -Wpartial-fields
+  - -Wredundant-constraints
+  - -Wtabs
+  - -Wunused-packages
+  - -funbox-strict-fields
+
+dependencies:
+  - base >= 4.7 && < 5
+  - containers
+
+library:
+  source-dirs: src
+  dependencies:
+    - hashable
+    - llvm-hs-pure
+    - persist
