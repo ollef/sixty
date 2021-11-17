@@ -2,7 +2,6 @@
 
 module LanguageServer.CodeLens where
 
-import Prettyprinter (Doc)
 import qualified Data.Text.Unsafe as Text
 import qualified Elaboration.Context as Context
 import qualified Error.Hydrated as Error
@@ -11,6 +10,7 @@ import Monad
 import Name (Name (Name))
 import qualified Name
 import qualified Position
+import Prettyprinter (Doc)
 import Protolude hiding (IntMap, evaluate, moduleName)
 import Query (Query)
 import qualified Query
@@ -33,7 +33,7 @@ codeLens filePath =
               Name.Qualified moduleName name
 
             go = do
-              context <- Context.empty $ Scope.KeyedName Scope.Definition qualifiedName
+              context <- Context.empty Scope.Definition qualifiedName
               type_ <- fetch $ Query.ElaboratedType qualifiedName
               prettyType <- Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context type_
               pure

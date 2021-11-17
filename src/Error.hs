@@ -8,7 +8,6 @@ import Core.Domain.Pattern (Pattern)
 import qualified Core.Syntax as Syntax
 import Data.HashSet (HashSet)
 import Data.Persist
-import Prettyprinter
 import Data.Tsil (Tsil)
 import qualified Error.Parsing as Error
 import qualified Meta
@@ -16,17 +15,18 @@ import qualified Module
 import Name (Name)
 import qualified Name
 import Plicity
+import Prettyprinter
 import Protolude
 import qualified Scope
 import qualified Span
 
 data Error
   = Parse FilePath !Error.Parsing
-  | DuplicateName !Scope.KeyedName !Span.Absolute
+  | DuplicateName !Scope.EntityKind !Name.Qualified !Span.Absolute
   | ImportNotFound !Name.Module !Module.Import
   | MultipleFilesWithModuleName !Name.Module FilePath FilePath
   | ModuleFileNameMismatch !Name.Module !Name.Module !Span.Absolute FilePath
-  | Elaboration !Scope.KeyedName !Error.Spanned
+  | Elaboration !Scope.EntityKind !Name.Qualified !Error.Spanned
   deriving (Eq, Show, Generic, Persist)
 
 data Elaboration

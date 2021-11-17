@@ -36,7 +36,7 @@ typeOf context value =
       tele <- fetch $ Query.ConstructorType constr
       let type_ =
             Telescope.fold Syntax.Pi tele
-      constrType <- Evaluation.evaluate (Environment.empty $ Context.scopeKey context) type_
+      constrType <- Evaluation.evaluate Environment.empty type_
       typeOfApplications context constrType args
     Domain.Glued hd spine _ ->
       typeOf context $ Domain.Neutral hd spine
@@ -65,10 +65,10 @@ typeOfHead context hd =
       pure $ Context.lookupVarType var context
     Domain.Global global -> do
       type_ <- fetch $ Query.ElaboratedType global
-      Evaluation.evaluate (Environment.empty $ Context.scopeKey context) type_
+      Evaluation.evaluate Environment.empty type_
     Domain.Meta index -> do
       solution <- Context.lookupMeta context index
-      Evaluation.evaluate (Environment.empty $ Context.scopeKey context) $ Meta.entryType solution
+      Evaluation.evaluate Environment.empty $ Meta.entryType solution
 
 typeOfElimination :: Context v -> Domain.Type -> Domain.Elimination -> M Domain.Type
 typeOfElimination context type_ elimination =

@@ -95,8 +95,7 @@ environmentTo env = do
   values' <- mapM to $ Environment.values env
   pure
     Environment.Environment
-      { scopeKey = Environment.scopeKey env
-      , indices = Environment.indices env
+      { indices = Environment.indices env
       , values = values'
       , glueableBefore = Environment.glueableBefore env
       }

@@ -47,14 +47,13 @@ goToDefinition filePath (Position.LineColumn line column) = do
         )
         <> foreach
           (HashMap.toList spans)
-          ( \((key, name), span@(Span.Absolute defPos _)) -> do
+          ( \((entityKind, name), span@(Span.Absolute defPos _)) -> do
               guard $ span `Span.contains` pos
               occurrenceIntervals <-
                 lift $
                   fetch $
-                    Query.Occurrences $
-                      Scope.KeyedName key $
-                        Name.Qualified moduleName name
+                    Query.Occurrences entityKind $
+                      Name.Qualified moduleName name
               let relativePos =
                     Position.relativeTo defPos pos
 
@@ -64,7 +63,7 @@ goToDefinition filePath (Position.LineColumn line column) = do
               asum $
                 foreach items $ \case
                   Intervals.Var var -> do
-                    toLineColumns <- LineColumns.fromKeyedName $ Scope.KeyedName key $ Name.Qualified moduleName name
+                    toLineColumns <- LineColumns.fromDefinitionName entityKind $ Name.Qualified moduleName name
                     MaybeT $ pure $ (,) filePath . toLineColumns <$> Intervals.bindingSpan var relativePos occurrenceIntervals
                   Intervals.Global qualifiedName@(Name.Qualified definingModule _) ->
                     asum $
@@ -76,7 +75,7 @@ goToDefinition filePath (Position.LineColumn line column) = do
                           Nothing ->
                             empty
                           Just definingFile -> do
-                            toLineColumns <- LineColumns.fromKeyedName $ Scope.KeyedName definingKey qualifiedName
+                            toLineColumns <- LineColumns.fromDefinitionName entityKind qualifiedName
                             asum $ pure . (,) definingFile . toLineColumns <$> relativeSpans
                   Intervals.Con constr@(Name.QualifiedConstructor qualifiedName@(Name.Qualified definingModule _) _) -> do
                     relativeSpans <- Occurrences.definitionConstructorSpans Scope.Definition qualifiedName
@@ -85,7 +84,7 @@ goToDefinition filePath (Position.LineColumn line column) = do
                       Nothing ->
                         empty
                       Just definingFile -> do
-                        toLineColumns <- LineColumns.fromKeyedName $ Scope.KeyedName key qualifiedName
+                        toLineColumns <- LineColumns.fromDefinitionName entityKind qualifiedName
                         asum $
                           pure
                             <$> mapMaybe

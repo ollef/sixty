@@ -1,12 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module ClosureConverted.Evaluation where
 
 import qualified ClosureConverted.Domain as Domain
 import qualified ClosureConverted.Syntax as Syntax
+import Control.Exception.Lifted (try)
 import qualified Data.OrderedHashMap as OrderedHashMap
+import Data.Some (Some)
 import qualified Data.Tsil as Tsil
 import qualified Environment
 import GHC.Exts (fromList)
@@ -14,7 +17,8 @@ import qualified Index
 import Literal (Literal)
 import Monad
 import qualified Name
-import Protolude hiding (evaluate, force, head)
+import Protolude hiding (evaluate, force, head, try)
+import Query (Query)
 import qualified Query
 import Rock
 import Telescope (Telescope)
@@ -37,10 +41,10 @@ evaluate env term =
             | otherwise ->
               value
     Syntax.Global name -> do
-      maybeDefinition <- fetchVisibleDefinition env name
+      maybeDefinition <- fetchVisibleDefinition name
       case maybeDefinition of
         Just (Syntax.ConstantDefinition term') -> do
-          value <- lazy $ evaluate (Environment.emptyFrom env) term'
+          value <- lazy $ evaluate Environment.empty term'
           pure $ Domain.Glued (Domain.Global name) mempty $ Domain.Lazy value
         _ ->
           pure $ Domain.global name
@@ -128,7 +132,7 @@ apply env fun args =
       let neutral =
             Domain.Neutral hd $ spine <> (Domain.App <$> fromList args)
 
-      maybeDefinition <- fetchVisibleDefinition env global
+      maybeDefinition <- fetchVisibleDefinition global
       case maybeDefinition of
         Just (Syntax.FunctionDefinition tele) -> do
           maybeResult <- applyFunction env (Telescope.fromVoid tele) (funArgs <> args)
@@ -210,12 +214,13 @@ evaluateClosure (Domain.Closure env body) argument = do
   (env', _) <- Environment.extendValue env argument
   evaluate env' body
 
-fetchVisibleDefinition :: Domain.Environment v -> Name.Lifted -> M (Maybe Syntax.Definition)
-fetchVisibleDefinition env name@(Name.Lifted baseName _) = do
-  definitionVisible <- fetch $ Query.IsDefinitionVisible (Environment.scopeKey env) baseName
-  if definitionVisible
-    then Just <$> fetch (Query.ClosureConverted name)
-    else pure Nothing
+fetchVisibleDefinition :: Name.Lifted -> M (Maybe Syntax.Definition)
+fetchVisibleDefinition name = do
+  result <- try $ fetch $ Query.ClosureConverted name
+  pure $ case result of
+    Right def -> Just def
+    Left (Cyclic (_ :: Some Query)) ->
+      Nothing
 
 -- | Evaluate the head of a value through glued values.
 forceHead ::

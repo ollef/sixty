@@ -12,7 +12,6 @@ import Protolude hiding (moduleName)
 import Query (Query)
 import qualified Query
 import Rock
-import qualified Scope
 import qualified Span
 
 highlights ::
@@ -33,23 +32,21 @@ highlights filePath (Position.LineColumn line column) = do
 
   let itemSpans item =
         fmap concat $
-          forM (HashMap.toList spans) $ \((key, name), Span.Absolute defPos _) -> do
+          forM (HashMap.toList spans) $ \((entityKind, name), Span.Absolute defPos _) -> do
             occurrenceIntervals <-
               fetch $
-                Query.Occurrences $
-                  Scope.KeyedName key $
-                    Name.Qualified moduleName name
+                Query.Occurrences entityKind $
+                  Name.Qualified moduleName name
             pure $ toLineColumns . Span.absoluteFrom defPos <$> Intervals.itemSpans item occurrenceIntervals
 
   fmap concat $
-    forM (HashMap.toList spans) $ \((key, name), span@(Span.Absolute defPos _)) ->
+    forM (HashMap.toList spans) $ \((entityKind, name), span@(Span.Absolute defPos _)) ->
       if span `Span.contains` pos
         then do
           occurrenceIntervals <-
             fetch $
-              Query.Occurrences $
-                Scope.KeyedName key $
-                  Name.Qualified moduleName name
+              Query.Occurrences entityKind $
+                Name.Qualified moduleName name
           let relativePos =
                 Position.relativeTo defPos pos
 

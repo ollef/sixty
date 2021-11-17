@@ -8,18 +8,12 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Persist
-import Name (Name)
 import qualified Name
 import Orphans ()
 import Protolude
 
-data Key
-  = Type
-  | Definition
+data EntityKind = Type | Definition
   deriving (Eq, Ord, Show, Generic, Hashable, Persist)
-
-data KeyedName = KeyedName !Key !Name.Qualified
-  deriving (Eq, Ord, Show, Generic, Persist, Hashable)
 
 data Entry
   = Name !Name.Qualified
@@ -40,12 +34,6 @@ entryConstructors entry =
 
 type Scope =
   HashMap Name.Surface Entry
-
-type Visibility =
-  HashMap Name.Qualified Key
-
-type Module =
-  HashMap (Name, Key) (Scope, Visibility)
 
 instance Semigroup Entry where
   Name name1 <> Name name2

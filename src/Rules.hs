@@ -184,7 +184,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
           header <- fetch $ ModuleHeader module_
           scopes <- forM (Module._imports header) $ \import_ -> do
             importedHeader <- fetch $ ModuleHeader $ Module._module import_
-            ((_, publicScope, _), _) <- fetch $ Scopes $ Module._module import_
+            (_, publicScope) <- fetch $ ModuleScope $ Module._module import_
             pure $
               Resolution.importedNames import_ $
                 Resolution.exposedNames (Module._exposedNames importedHeader) publicScope
@@ -193,7 +193,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
     NameAliases module_ ->
       noError $ do
         importedNames <- fetch $ ImportedNames module_ Mapped.Map
-        ((localScope, _, _), _) <- fetch $ Scopes module_
+        (localScope, _) <- fetch $ ModuleScope module_
         pure $ Scope.aliases $ HashMap.unionWith (<>) localScope importedNames
     ParsedDefinition module_ subQuery ->
       noError $
@@ -205,7 +205,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
               pure $
                 HashMap.fromListWith
                   (\_new old -> old)
-                  [ ((Surface.key def, name), def)
+                  [ ((Surface.entityKind def, name), def)
                   | (_, (name, def)) <- defs
                   ]
     ModulePositionMap module_ ->
@@ -223,51 +223,37 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                   [] ->
                     []
                   [(loc, (name, def))] ->
-                    [((Surface.key def, name), Span.Absolute loc $ Position.Absolute $ Text.lengthWord16 text)]
+                    [((Surface.entityKind def, name), Span.Absolute loc $ Position.Absolute $ Text.lengthWord16 text)]
                   (loc1, (name, def)) : defs'@((loc2, _) : _) ->
-                    ((Surface.key def, name), Span.Absolute loc1 loc2) : go defs'
+                    ((Surface.entityKind def, name), Span.Absolute loc1 loc2) : go defs'
 
             pure $ HashMap.fromListWith (\_new old -> old) $ go defs
-    Scopes module_ ->
+    ModuleScope module_ ->
       nonInput $ do
         maybeFilePath <- fetch $ Query.ModuleFile module_
         fmap fold $
           forM maybeFilePath $ \filePath -> do
             (_, _, defs) <- fetch $ ParsedFile filePath
             pure $ Resolution.moduleScopes module_ defs
-    ResolvedName (Scope.KeyedName key (Name.Qualified module_ keyName)) surfaceName ->
+    ResolvedName module_ surfaceName ->
       noError $ do
-        (_, scopes) <- fetch $ Scopes module_
+        (privateScope, _) <- fetch $ ModuleScope module_
         importedScopeEntry <- fetchImportedName module_ surfaceName
         pure $
-          case HashMap.lookup (keyName, key) scopes of
+          case HashMap.lookup surfaceName privateScope of
             Nothing ->
               importedScopeEntry
-            Just (scope, _) ->
-              importedScopeEntry <> HashMap.lookup surfaceName scope
-    IsDefinitionVisible (Scope.KeyedName key (Name.Qualified keyModule keyName)) qualifiedName@(Name.Qualified nameModule _)
-      | keyModule == nameModule ->
-        noError $ do
-          (_, scopes) <- fetch $ Scopes keyModule
-          let (_, visibility) =
-                HashMap.lookupDefault mempty (keyName, key) scopes
-
-          pure $
-            HashMap.lookup qualifiedName visibility == Just Scope.Definition
-      | otherwise ->
-        noError $ do
-          ((_, _, finalVisibility), _) <- fetch $ Scopes nameModule
-          pure $
-            HashMap.lookup qualifiedName finalVisibility == Just Scope.Definition
-    ElaboratingDefinition keyedName@(Scope.KeyedName key qualifiedName@(Name.Qualified module_ name)) ->
+            Just localEntry ->
+              importedScopeEntry <> Just localEntry
+    ElaboratingDefinition entityKind qualifiedName@(Name.Qualified module_ name) ->
       nonInput $ do
-        mdef <- fetch $ ParsedDefinition module_ $ Mapped.Query (key, name)
+        mdef <- fetch $ ParsedDefinition module_ $ Mapped.Query (entityKind, name)
         case mdef of
           Nothing ->
             pure (Nothing, mempty)
           Just def -> do
             mtype <-
-              case key of
+              case entityKind of
                 Scope.Type ->
                   pure $ Just Builtin.type_
                 Scope.Definition -> do
@@ -275,22 +261,20 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                   forM mtype $ \_ ->
                     fetch $ ElaboratedType qualifiedName
 
-            runElaboratorWithDefault Nothing keyedName $
+            runElaboratorWithDefault Nothing entityKind qualifiedName $
               case mtype of
                 Nothing ->
-                  first Just <$> Elaboration.inferTopLevelDefinition keyedName def
+                  first Just <$> Elaboration.inferTopLevelDefinition entityKind qualifiedName def
                 Just type_ -> do
-                  typeValue <- Evaluation.evaluate (Environment.empty keyedName) type_
-                  ((def', metaVars), errs) <- Elaboration.checkTopLevelDefinition keyedName def typeValue
+                  typeValue <- Evaluation.evaluate Environment.empty type_
+                  ((def', metaVars), errs) <- Elaboration.checkTopLevelDefinition entityKind qualifiedName def typeValue
                   pure (Just (def', type_, metaVars), errs)
     ElaboratedType Builtin.TypeName ->
       nonInput $
         pure (Syntax.Global Builtin.TypeName, mempty)
     ElaboratedType qualifiedName ->
       nonInput $ do
-        let typeKey =
-              Scope.KeyedName Scope.Type qualifiedName
-        mtypeDecl <- fetch $ ElaboratingDefinition typeKey
+        mtypeDecl <- fetch $ ElaboratingDefinition Scope.Type qualifiedName
         case mtypeDecl of
           Nothing -> do
             (_, type_) <- fetch $ ElaboratedDefinition qualifiedName
@@ -300,8 +284,8 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
               )
           Just (typeDecl, type_, metaVars) -> do
             (typeDecl', errs) <-
-              runElaboratorWithDefault (Syntax.TypeDeclaration $ Builtin.fail Builtin.type_, Builtin.fail Builtin.type_) typeKey $
-                Elaboration.checkDefinitionMetaSolutions typeKey typeDecl type_ metaVars
+              runElaboratorWithDefault (Syntax.TypeDeclaration $ Builtin.fail Builtin.type_, Builtin.fail Builtin.type_) Scope.Type qualifiedName $
+                Elaboration.checkDefinitionMetaSolutions Scope.Type qualifiedName typeDecl type_ metaVars
             pure $
               case typeDecl' of
                 (Syntax.TypeDeclaration result, _) ->
@@ -310,16 +294,15 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                   panic "ElaboratedType: Not a type declaration"
     ElaboratedDefinition qualifiedName ->
       nonInput $ do
-        let defKey = Scope.KeyedName Scope.Definition qualifiedName
-        maybeDef <- fetch $ ElaboratingDefinition defKey
+        maybeDef <- fetch $ ElaboratingDefinition Scope.Definition qualifiedName
         case maybeDef of
           Nothing -> do
             type_ <- fetch $ ElaboratedType qualifiedName
             pure ((Syntax.TypeDeclaration type_, Builtin.type_), mempty)
           Just (def, type_, metaVars) -> do
             let fail = (Syntax.TypeDeclaration $ Builtin.fail Builtin.type_, Builtin.fail Builtin.type_)
-            runElaboratorWithDefault fail defKey $
-              Elaboration.checkDefinitionMetaSolutions defKey def type_ metaVars
+            runElaboratorWithDefault fail Scope.Definition qualifiedName $
+              Elaboration.checkDefinitionMetaSolutions Scope.Definition qualifiedName def type_ metaVars
     ConstructorType (Name.QualifiedConstructor dataTypeName constr) ->
       noError $ do
         (def, _) <- fetch $ ElaboratedDefinition dataTypeName
@@ -343,21 +326,21 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             pure $ go tele
           _ ->
             pure $ Telescope.Empty fail
-    KeyedNamePosition (Scope.KeyedName key (Name.Qualified module_ name)) ->
+    DefinitionPosition entityKind (Name.Qualified module_ name) ->
       noError $ do
         positions <- fetch $ ModulePositionMap module_
         maybeFilePath <- fetch $ Query.ModuleFile module_
         pure
           ( fromMaybe "<no file>" maybeFilePath
-          , HashMap.lookupDefault 0 (key, name) positions
+          , HashMap.lookupDefault 0 (entityKind, name) positions
           )
-    Occurrences scopeKey@(Scope.KeyedName key name) ->
+    Occurrences entityKind name ->
       noError $
         runM $
           Occurrences.run $
             Occurrences.definitionOccurrences
-              (Environment.empty scopeKey)
-              key
+              Environment.empty
+              entityKind
               name
     LambdaLifted qualifiedName ->
       noError $ do
@@ -388,10 +371,10 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
       noError $ do
         definition <- fetch $ LambdaLiftedDefinition name
         ClosureConversion.convertDefinition definition
-    ClosureConvertedType name@(Name.Lifted qualifiedName _) ->
+    ClosureConvertedType name ->
       noError $ do
         definition <- fetch $ ClosureConverted name
-        runM $ ClosureConverted.typeOfDefinition (ClosureConverted.Context.empty $ Scope.KeyedName Scope.Definition qualifiedName) definition
+        runM $ ClosureConverted.typeOfDefinition ClosureConverted.Context.empty definition
     ClosureConvertedConstructorType (Name.QualifiedConstructor dataTypeName constr) ->
       noError $ do
         definition <- fetch $ ClosureConverted $ Name.Lifted dataTypeName 0
@@ -424,7 +407,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
     ClosureConvertedSignature name ->
       noError $ do
         definition <- fetch $ ClosureConverted name
-        runM $ ClosureConverted.Representation.signature name definition
+        runM $ ClosureConverted.Representation.signature definition
     ConstructorRepresentations dataTypeName ->
       noError $ ClosureConverted.Representation.constructorRepresentations dataTypeName
     ConstructorRepresentation (Name.QualifiedConstructor dataTypeName constr) ->
@@ -472,17 +455,18 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
 
     runElaboratorWithDefault ::
       a ->
-      Scope.KeyedName ->
+      Scope.EntityKind ->
+      Name.Qualified ->
       M (a, [Error]) ->
       Task Query (a, [Error])
-    runElaboratorWithDefault default_ key m = do
+    runElaboratorWithDefault default_ entityKind defName m = do
       eitherResult <- try $ runM m
       pure $
         case eitherResult of
           Left err ->
             ( default_
             , pure $
-                Error.Elaboration key $
+                Error.Elaboration entityKind defName $
                   Error.Spanned (Span.Relative 0 0) err
             )
           Right (result, errs) ->

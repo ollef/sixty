@@ -17,12 +17,12 @@ import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Sequence as Seq
-import Prettyprinter
 import qualified Data.Text.Unsafe as Text
 import Index
 import Name (Name (Name))
 import qualified Name
 import Plicity
+import Prettyprinter
 import Protolude
 import Query (Query)
 import qualified Query
@@ -79,7 +79,7 @@ empty =
 emptyM :: MonadFetch Query m => Name.Module -> m (Environment Void)
 emptyM module_ = do
   importedNames <- fetch $ Query.ImportedNames module_ Mapped.Map
-  ((localScope, _, _), _) <- fetch $ Query.Scopes module_
+  (localScope, _) <- fetch $ Query.ModuleScope module_
   (constrAliases, aliases) <- fetch $ Query.NameAliases module_
   pure
     Environment

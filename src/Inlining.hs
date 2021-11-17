@@ -17,16 +17,14 @@ import Monad
 import qualified Name
 import Plicity
 import Protolude hiding (IntMap, Type, empty, evaluate)
-import qualified Scope
 import qualified Span
 import Telescope (Telescope)
 import qualified Telescope
 import Var (Var)
 
-inlineDefinition :: Scope.KeyedName -> Syntax.Definition -> M Syntax.Definition
-inlineDefinition scopeKey def = do
-  let env =
-        Environment.empty scopeKey
+inlineDefinition :: Syntax.Definition -> M Syntax.Definition
+inlineDefinition def = do
+  let env = Environment.empty
   case def of
     Syntax.TypeDeclaration type_ ->
       Syntax.TypeDeclaration <$> inlineTerm env type_
@@ -56,8 +54,7 @@ inlineTerm env term = do
   pure $
     readback
       Environment.Environment
-        { scopeKey = Environment.scopeKey env
-        , indices = Environment.indices env
+        { indices = Environment.indices env
         , values = mempty
         , glueableBefore = Environment.glueableBefore env
         }

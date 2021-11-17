@@ -1,5 +1,5 @@
 f = Type
-f : Type -- duplicate name error expected
+f : Type
 
 data D = MkD
-D : Type -- duplicate name error expected
+D : Type

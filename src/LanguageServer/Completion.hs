@@ -14,7 +14,6 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef.Lifted
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
-import Prettyprinter ((<+>))
 import qualified Elaboration
 import Elaboration.Context (Context)
 import qualified Elaboration.Context as Context
@@ -26,6 +25,7 @@ import Name (Name (Name))
 import qualified Name
 import Plicity
 import qualified Position
+import Prettyprinter ((<+>))
 import Protolude hiding (IntMap, catch, evaluate, moduleName)
 import Query (Query)
 import qualified Query
@@ -171,15 +171,11 @@ getUsableNames itemContext context varPositions = do
     CursorAction.DefinitionContext ->
       pure []
 
-  let Scope.KeyedName key (Name.Qualified module_ keyName) =
-        Context.scopeKey context
-  (_, scopes) <- fetch $ Query.Scopes module_
+  let module_ = Context.moduleName context
+  (_, moduleScope) <- fetch $ Query.ModuleScope module_
   importedScopeEntries <- fetch $ Query.ImportedNames module_ Mapped.Map
-  let (moduleScopeEntries, _) =
-        HashMap.lookupDefault mempty (keyName, key) scopes
-
-      scopeEntries =
-        moduleScopeEntries <> importedScopeEntries
+  let scopeEntries =
+        moduleScope <> importedScopeEntries
 
   imports <- forM (HashMap.toList scopeEntries) $ \(Name.Surface name, entry) ->
     case entry of

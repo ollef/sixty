@@ -15,7 +15,6 @@ import Protolude hiding (moduleName)
 import Query (Query)
 import qualified Query
 import Rock
-import qualified Scope
 import qualified Span
 
 references ::
@@ -37,12 +36,11 @@ references filePath (Position.LineColumn line column) = do
                 spans <- fetch $ Query.ModuleSpanMap moduleName
                 toLineColumns <- LineColumns.fromAbsolute moduleName
                 fmap concat $
-                  forM (HashMap.toList spans) $ \((key, name), Span.Absolute defPos _) -> do
+                  forM (HashMap.toList spans) $ \((entityKind, name), Span.Absolute defPos _) -> do
                     occurrenceIntervals <-
                       fetch $
-                        Query.Occurrences $
-                          Scope.KeyedName key $
-                            Name.Qualified moduleName name
+                        Query.Occurrences entityKind $
+                          Name.Qualified moduleName name
                     pure $ (,) inputFile . toLineColumns . Span.absoluteFrom defPos <$> Intervals.itemSpans item occurrenceIntervals
               else pure mempty
 
@@ -55,14 +53,13 @@ references filePath (Position.LineColumn line column) = do
   toLineColumns <- LineColumns.fromAbsolute originalModuleName
   spans <- fetch $ Query.ModuleSpanMap originalModuleName
   fmap concat $
-    forM (HashMap.toList spans) $ \((key, name), span@(Span.Absolute defPos _)) ->
+    forM (HashMap.toList spans) $ \((entityKind, name), span@(Span.Absolute defPos _)) ->
       if span `Span.contains` pos
         then do
           occurrenceIntervals <-
             fetch $
-              Query.Occurrences $
-                Scope.KeyedName key $
-                  Name.Qualified originalModuleName name
+              Query.Occurrences entityKind $
+                Name.Qualified originalModuleName name
           let relativePos =
                 Position.relativeTo defPos pos
 

@@ -31,12 +31,11 @@ import qualified Query
 import Representation (Representation)
 import qualified Representation
 import Rock
-import qualified Scope
 import Telescope (Telescope)
 import qualified Telescope
 
-signature :: Name.Lifted -> Syntax.Definition -> M Representation.Signature
-signature (Name.Lifted name _) def =
+signature :: Syntax.Definition -> M Representation.Signature
+signature def =
   case def of
     Syntax.TypeDeclaration (Syntax.Function tele) -> do
       telescopeSignature context tele mempty $ \context' body parameterRepresentations -> do
@@ -67,7 +66,7 @@ signature (Name.Lifted name _) def =
         pure $ Representation.FunctionSignature parameterRepresentations $ Representation.Direct Representation.Doesn'tContainHeapPointers
   where
     context =
-      Context.empty $ Scope.KeyedName Scope.Definition name
+      Context.empty
 
     env =
       Context.toEnvironment context
@@ -129,7 +128,7 @@ typeRepresentation env type_ =
         Syntax.TypeDeclaration _ ->
           pure $ Representation.Indirect Representation.MightContainHeapPointers
         Syntax.ConstantDefinition term -> do
-          value <- Evaluation.evaluate (Environment.emptyFrom env) term
+          value <- Evaluation.evaluate Environment.empty term
           type' <- Evaluation.apply env value args
           typeRepresentation env type'
         Syntax.FunctionDefinition tele -> do
@@ -143,7 +142,7 @@ typeRepresentation env type_ =
           pure $ Representation.Direct Representation.MightContainHeapPointers
         Syntax.DataDefinition Unboxed constructors -> do
           unless (liftedNameNumber == 0) $ panic "ClosureConverted.Representation. Data with name number /= 0"
-          unboxedDataRepresentation qualifiedName (Environment.emptyFrom env) constructors
+          unboxedDataRepresentation qualifiedName Environment.empty constructors
         Syntax.ParameterisedDataDefinition Boxed _ ->
           pure $ Representation.Direct Representation.MightContainHeapPointers
         Syntax.ParameterisedDataDefinition Unboxed tele -> do

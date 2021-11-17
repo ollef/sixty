@@ -37,7 +37,6 @@ import qualified Query
 import Representation (Representation)
 import qualified Representation
 import Rock
-import qualified Scope
 import Telescope (Telescope)
 import qualified Telescope
 import Var (Var (Var))
@@ -96,10 +95,10 @@ data Environment v = Environment
   , _varLocations :: IntMap Var Operand
   }
 
-emptyEnvironment :: Scope.KeyedName -> Environment Void
-emptyEnvironment scopeKey =
+emptyEnvironment :: Environment Void
+emptyEnvironment =
   Environment
-    { _context = Context.empty scopeKey
+    { _context = Context.empty
     , _varLocations = mempty
     }
 
@@ -644,8 +643,7 @@ withFunctionDefinitionParameters m = do
 generateDefinition :: Name.Lifted -> Syntax.Definition -> M (Maybe Assembly.Definition)
 generateDefinition name@(Name.Lifted qualifiedName _) definition = do
   signature <- fetch $ Query.ClosureConvertedSignature name
-  let env =
-        emptyEnvironment $ Scope.KeyedName Scope.Definition qualifiedName
+  let env = emptyEnvironment
   runBuilder $ do
     case (definition, signature) of
       (Syntax.TypeDeclaration _, _) ->

@@ -13,31 +13,24 @@ import qualified Index.Map
 import qualified Index.Map as Index
 import Monad
 import Protolude hiding (IntMap, empty)
-import qualified Scope
 import Var (Var)
 import qualified Var
 
 data Context v = Context
-  { scopeKey :: !Scope.KeyedName
-  , indices :: Index.Map v Var
+  { indices :: Index.Map v Var
   , values :: IntMap Var Domain.Value
   , types :: IntMap Var Domain.Type
   , glueableBefore :: !(Index (Succ v))
   }
 
-empty :: Scope.KeyedName -> Context Void
-empty scopeKey_ =
+empty :: Context Void
+empty =
   Context
-    { scopeKey = scopeKey_
-    , indices = Index.Map.Empty
+    { indices = Index.Map.Empty
     , values = mempty
     , types = mempty
     , glueableBefore = Index.Zero
     }
-
-emptyFrom :: Context v -> Context Void
-emptyFrom context =
-  empty $ scopeKey context
 
 lookupIndexVar :: Index v -> Context v -> Var
 lookupIndexVar index context =
@@ -54,8 +47,7 @@ toEnvironment ::
   Domain.Environment v
 toEnvironment context =
   Environment
-    { scopeKey = scopeKey context
-    , indices = indices context
+    { indices = indices context
     , values = values context
     , glueableBefore = glueableBefore context
     }

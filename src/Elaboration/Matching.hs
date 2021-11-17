@@ -116,7 +116,7 @@ resolvePattern ::
 resolvePattern context unspannedPattern type_ canPostpone = do
   case unspannedPattern of
     Surface.ConOrVar (Surface.SpannedName conSpan name) argPatterns -> do
-      maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
+      maybeScopeEntry <- fetch $ Query.ResolvedName (Context.moduleName context) name
       let varCase =
             case argPatterns of
               [] ->
@@ -745,7 +745,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
   (definition, _) <- fetch $ Query.ElaboratedDefinition typeName
   case definition of
     Syntax.DataDefinition _ tele -> do
-      tele' <- Evaluation.evaluateConstructorDefinitions (Environment.empty $ Context.scopeKey outerContext) tele
+      tele' <- Evaluation.evaluateConstructorDefinitions Environment.empty tele
       outerType' <- Context.forceHead outerContext outerType
       case outerType' of
         Domain.Neutral (Domain.Global typeName') (Domain.Apps params)
@@ -753,7 +753,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
             goParams (Context.spanned span outerContext) (toList params) mempty tele'
         _ -> do
           typeType <- fetch $ Query.ElaboratedType typeName
-          typeType' <- Evaluation.evaluate (Environment.empty $ Context.scopeKey outerContext) typeType
+          typeType' <- Evaluation.evaluate Environment.empty typeType
           let -- Ensure the metas don't depend on the scrutineeVar, because that
               -- is guaranteed to lead to circularity when solving scrutineeVar
               -- later.
@@ -1030,7 +1030,7 @@ uninhabitedType context fuel coveredConstructors type_ = do
       (definition, _) <- fetch $ Query.ElaboratedDefinition global
       case definition of
         Syntax.DataDefinition _ tele -> do
-          tele' <- Evaluation.evaluateConstructorDefinitions (Environment.empty $ Context.scopeKey context) tele
+          tele' <- Evaluation.evaluateConstructorDefinitions Environment.empty tele
           tele'' <- Domain.Telescope.apply tele' $ toList args
           case tele'' of
             Domain.Telescope.Empty constructors -> do

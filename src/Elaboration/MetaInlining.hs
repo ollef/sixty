@@ -29,7 +29,6 @@ import qualified Name
 import Plicity
 import qualified Postponement
 import Protolude hiding (IntMap, IntSet, Type, evaluate)
-import qualified Scope
 import qualified Span
 import Telescope (Telescope)
 import qualified Telescope
@@ -38,15 +37,14 @@ import qualified Var
 import Prelude (Show (showsPrec))
 
 inlineSolutions ::
-  Scope.KeyedName ->
   Syntax.MetaSolutions ->
   Syntax.Definition ->
   Syntax.Type Void ->
   M (Syntax.Definition, Syntax.Type Void)
-inlineSolutions scopeKey solutions def type_ = do
+inlineSolutions solutions def type_ = do
   solutionValues <- forM solutions $ \(metaTerm, metaType, metaOccurrences) -> do
-    metaValue <- evaluate (Environment.empty scopeKey) metaTerm
-    metaType' <- evaluate (Environment.empty scopeKey) metaType
+    metaValue <- evaluate Environment.empty metaTerm
+    metaType' <- evaluate Environment.empty metaType
     pure (metaValue, metaType', metaOccurrences)
 
   let sortedSolutions =
@@ -125,8 +123,8 @@ inlineSolutions scopeKey solutions def type_ = do
             tele'' <- inlineTeleSolutions env' tele'
             pure $ Telescope.Extend name paramType' plicity tele''
 
-  inlinedType <- inlineTermSolutions (Environment.empty scopeKey) type_
-  inlinedDef <- inlineDefSolutions (Environment.empty scopeKey) def
+  inlinedType <- inlineTermSolutions Environment.empty type_
+  inlinedDef <- inlineDefSolutions Environment.empty def
 
   pure
     ( inlinedDef

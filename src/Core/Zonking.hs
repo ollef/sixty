@@ -100,7 +100,7 @@ zonk env metas postponed term =
         Nothing ->
           pure $ Right term
         Just term' -> do
-          value <- Evaluation.evaluate (Environment.emptyFrom env) term'
+          value <- Evaluation.evaluate Environment.empty term'
           pure $ Left value
     Syntax.PostponedCheck index term' -> do
       maybeTerm <- postponed env index

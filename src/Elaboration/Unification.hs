@@ -41,7 +41,6 @@ import Plicity
 import Protolude hiding (catch, check, evaluate, force, head, throwIO)
 import qualified Query
 import Rock
-import qualified Scope
 import Telescope (Telescope)
 import qualified Telescope
 import Var
@@ -173,12 +172,8 @@ unify context flexibility value1 value2 = do
       | head1 == head2 ->
         unifySpines context Flexibility.Flexible spine1 spine2 `catch` \(_ :: Error.Elaboration) ->
           unify context flexibility value1'' value2''
-      | otherwise -> do
-        ordering <- compareHeadDepths head1 head2
-        case ordering of
-          LT -> unify context flexibility value1' value2''
-          GT -> unify context flexibility value1'' value2'
-          EQ -> unify context flexibility value1'' value2''
+      | otherwise ->
+        unify context flexibility value1'' value2''
     (Domain.Glued _ _ value1'', _) ->
       unify context flexibility value1'' value2'
     (_, Domain.Glued _ _ value2'') ->
@@ -385,22 +380,6 @@ unifyBranches
       can'tUnify =
         throwIO $ Error.TypeMismatch mempty
 
--- | Try to find out which of two heads was defined first so we can unfold
--- glued values that are defined later first (see "depth" in
--- https://arxiv.org/pdf/1505.04324.pdf).
-compareHeadDepths :: Domain.Head -> Domain.Head -> M Ordering
-compareHeadDepths head1 head2 =
-  case (head1, head2) of
-    (Domain.Global global1, Domain.Global global2) -> do
-      global1VisibleFromGlobal2 <- fetch $ Query.IsDefinitionVisible (Scope.KeyedName Scope.Definition global2) global1
-      pure $
-        if global1VisibleFromGlobal2
-          then LT
-          else GT
-    (_, Domain.Global _) -> pure LT
-    (Domain.Global _, _) -> pure GT
-    _ -> pure EQ
-
 -------------------------------------------------------------------------------
 -- Case expression inversion
 
@@ -499,11 +478,7 @@ instantiatedMetaType context meta args = do
   solution <- Context.lookupMeta context meta
   case solution of
     Meta.Unsolved metaType _ _ _ -> do
-      metaType' <-
-        Evaluation.evaluate
-          (Environment.empty $ Context.scopeKey context)
-          metaType
-
+      metaType' <- Evaluation.evaluate Environment.empty metaType
       Context.instantiateType context metaType' $ toList args
     Meta.Solved {} ->
       panic "instantiatedMetaType already solved"
@@ -522,7 +497,7 @@ fullyApplyToMetas context constr type_ = do
       constrType <- fetch $ Query.ConstructorType constr
       constrType' <-
         Evaluation.evaluate
-          (Environment.empty $ Context.scopeKey context)
+          Environment.empty
           (Syntax.fromVoid $ Telescope.fold Syntax.Pi constrType)
       instantiatedConstrType <- Context.instantiateType context constrType' $ toList typeArgs
       (metas, _) <- Elaboration.insertMetas context Elaboration.UntilTheEnd instantiatedConstrType
@@ -582,8 +557,7 @@ checkSolution outerContext meta vars value = do
           { occurs = Just meta
           , environment =
               Environment
-                { scopeKey = Context.scopeKey outerContext
-                , indices = Index.Map indices
+                { indices = Index.Map indices
                 , values = Context.values outerContext
                 , glueableBefore = Index $ IntSeq.length indices
                 }
@@ -619,8 +593,7 @@ addAndRenameLambdas outerContext meta plicities vars term =
               { occurs = Just meta
               , environment =
                   Environment
-                    { scopeKey = Context.scopeKey outerContext
-                    , indices = Index.Map vars'
+                    { indices = Index.Map vars'
                     , values = Context.values outerContext
                     , glueableBefore = Index $ IntSeq.length vars'
                     }
@@ -800,10 +773,7 @@ pruneMeta context meta allowedArgs = do
   case entry of
     Meta.Unsolved metaType _ _ _ -> do
       -- putText $ show metaType
-      metaType' <-
-        Evaluation.evaluate
-          (Environment.empty $ Context.scopeKey context)
-          metaType
+      metaType' <- Evaluation.evaluate Environment.empty metaType
       solution' <-
         go
           (toList allowedArgs)

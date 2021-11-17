@@ -14,11 +14,11 @@ libc = Lib.c
 libd : Type
 libd = Lib.d -- not in scope error expected
 
-a : Type
-a = LibExposingAll.a
-b : Type
-b = LibExposingAll.b
-c : Type
-c = LibExposingAll.c
-d : Type
-d = LibExposingAll.d -- not in scope error expected
+aa : Type
+aa = LibExposingAll.a
+bb : Type
+bb = LibExposingAll.b
+cc : Type
+cc = LibExposingAll.c
+dd : Type
+dd = LibExposingAll.d -- not in scope error expected

@@ -44,6 +44,7 @@ runTask sourceDirectories files prettyError task = do
   startedVar <- newIORef mempty
   errorsVar <- newIORef (mempty :: DHashMap Query (Const [Error]))
   -- printVar <- newMVar 0
+  threadDepsVar <- newIORef mempty
   let writeErrors :: Writer TaskKind Query a -> [Error] -> Task Query ()
       writeErrors (Writer q) errs =
         unless (null errs) $
@@ -67,7 +68,7 @@ runTask sourceDirectories files prettyError task = do
 
       rules :: Rules Query
       rules =
-        memoise startedVar $
+        memoiseWithCycleDetection startedVar threadDepsVar $
           writer ignoreTaskKind $
             -- traceFetch_ $
             writer writeErrors $
@@ -265,7 +266,7 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
 checkAll :: Task Query ()
 checkAll = do
   filePaths <- fetch Query.InputFiles
-  pooledForConcurrently_ filePaths $ \filePath -> do
+  forM_ filePaths $ \filePath -> do
     (module_, _, defs) <- fetch $ Query.ParsedFile filePath
     let names =
           HashSet.fromList $

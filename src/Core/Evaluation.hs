@@ -1,10 +1,12 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 
 module Core.Evaluation where
 
+import Control.Exception.Lifted (try)
 import Core.Binding (Binding)
 import Core.Bindings (Bindings)
 import qualified Core.Domain as Domain
@@ -13,6 +15,7 @@ import qualified Core.Domain.Telescope as Domain.Telescope
 import qualified Core.Syntax as Syntax
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
+import Data.Some (Some)
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Environment
@@ -21,7 +24,8 @@ import Literal (Literal)
 import Monad
 import qualified Name
 import Plicity
-import Protolude hiding (IntMap, Seq, evaluate, force, head)
+import Protolude hiding (IntMap, Seq, evaluate, force, head, try)
+import Query (Query)
 import qualified Query
 import Rock
 import Telescope (Telescope)
@@ -61,17 +65,15 @@ evaluate env term =
             | otherwise ->
               value
     Syntax.Global name -> do
-      definitionVisible <- fetch $ Query.IsDefinitionVisible (Environment.scopeKey env) name
-      if definitionVisible
-        then do
-          (definition, _) <- fetch $ Query.ElaboratedDefinition name
-          case definition of
-            Syntax.ConstantDefinition term' -> do
-              value <- lazyEvaluate (Environment.emptyFrom env) term'
-              pure $ Domain.Glued (Domain.Global name) mempty value
-            _ ->
-              pure $ Domain.global name
-        else pure $ Domain.global name
+      result <- try $ fetch $ Query.ElaboratedDefinition name
+      case result of
+        Right (Syntax.ConstantDefinition term', _) -> do
+          value <- lazyEvaluate Environment.empty term'
+          pure $ Domain.Glued (Domain.Global name) mempty value
+        Left (Cyclic (_ :: Some Query)) ->
+          pure $ Domain.global name
+        _ ->
+          pure $ Domain.global name
     Syntax.Con con ->
       pure $ Domain.con con
     Syntax.Lit lit ->

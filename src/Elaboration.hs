@@ -3,6 +3,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -10,6 +11,7 @@ module Elaboration where
 
 import Boxity
 import qualified Builtin
+import Control.Exception.Lifted (try)
 import Core.Binding (Binding)
 import qualified Core.Binding as Binding
 import qualified Core.Bindings as Bindings
@@ -28,7 +30,7 @@ import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import qualified Data.IntSet as IntSet
 import qualified Data.OrderedHashMap as OrderedHashMap
-import Prettyprinter (Doc)
+import Data.Some (Some)
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Elaboration.Clauses as Clauses
@@ -57,7 +59,9 @@ import Name (Name)
 import qualified Name
 import Plicity
 import qualified Postponement
-import Protolude hiding (IntMap, IntSet, Seq, check, evaluate, force, until)
+import Prettyprinter (Doc)
+import Protolude hiding (IntMap, IntSet, Seq, check, evaluate, force, try, until)
+import Query (Query)
 import qualified Query
 import Rock
 import qualified Scope
@@ -69,11 +73,12 @@ import Var (Var)
 import qualified Var
 
 inferTopLevelDefinition ::
-  Scope.KeyedName ->
+  Scope.EntityKind ->
+  Name.Qualified ->
   Surface.Definition ->
   M ((Syntax.Definition, Syntax.Type Void, Meta.EagerState), [Error])
-inferTopLevelDefinition key def = do
-  context <- Context.empty key
+inferTopLevelDefinition entityKind defName def = do
+  context <- Context.empty entityKind defName
   (def', type_) <- inferDefinition context def
   postponed <- readIORef $ Context.postponed context
   metaVars <- readIORef $ Context.metas context
@@ -83,12 +88,13 @@ inferTopLevelDefinition key def = do
   pure ((zonkedDef, type_, eagerMetaVars), toList errors)
 
 checkTopLevelDefinition ::
-  Scope.KeyedName ->
+  Scope.EntityKind ->
+  Name.Qualified ->
   Surface.Definition ->
   Domain.Type ->
   M ((Syntax.Definition, Meta.EagerState), [Error])
-checkTopLevelDefinition key def type_ = do
-  context <- Context.empty key
+checkTopLevelDefinition entityKind defName def type_ = do
+  context <- Context.empty entityKind defName
   def' <- checkDefinition context def type_
   postponed <- readIORef $ Context.postponed context
   metaVars <- readIORef $ Context.metas context
@@ -98,19 +104,20 @@ checkTopLevelDefinition key def type_ = do
   pure ((zonkedDef, eagerMetaVars), toList errors)
 
 checkDefinitionMetaSolutions ::
-  Scope.KeyedName ->
+  Scope.EntityKind ->
+  Name.Qualified ->
   Syntax.Definition ->
   Syntax.Type Void ->
   Meta.EagerState ->
   M ((Syntax.Definition, Syntax.Type Void), [Error])
-checkDefinitionMetaSolutions key def type_ metas = do
-  context <- Context.empty key
+checkDefinitionMetaSolutions entityKind defName def type_ metas = do
+  context <- Context.empty entityKind defName
   metasVar <- newIORef $ Meta.fromEagerState metas
   let context' = context {Context.metas = metasVar}
   metas' <- checkMetaSolutions context' metas
-  (def', type') <- MetaInlining.inlineSolutions key metas' def type_
-  def'' <- Inlining.inlineDefinition key def'
-  type'' <- Inlining.inlineTerm (Environment.empty key) type'
+  (def', type') <- MetaInlining.inlineSolutions metas' def type_
+  def'' <- Inlining.inlineDefinition def'
+  type'' <- Inlining.inlineTerm Environment.empty type'
   errors <- readIORef $ Context.errors context'
   pure ((def'', type''), toList errors)
 
@@ -180,14 +187,14 @@ inferDataDefinition ::
 inferDataDefinition context preParams constrs paramVars =
   case preParams of
     [] -> do
-      let Scope.KeyedName _ qualifiedThisName@(Name.Qualified _ (Name.Name thisName)) =
-            Context.scopeKey context
+      let qualifiedThisName@(Name.Qualified _ (Name.Name thisName)) =
+            Context.definitionName context
 
       thisType <-
         Syntax.fromVoid
           <$> varPis
             context
-            (Environment.empty $ Context.scopeKey context)
+            Environment.empty
             (toList paramVars)
             Builtin.Type
 
@@ -272,8 +279,8 @@ postProcessDataDefinition outerContext boxity outerTele = do
     go context postponed tele paramVars =
       case tele of
         Telescope.Empty (Compose (Syntax.ConstructorDefinitions constructorDefinitions)) -> do
-          let Scope.KeyedName _ qualifiedThisName =
-                Context.scopeKey context
+          let qualifiedThisName =
+                Context.definitionName context
 
               this =
                 Syntax.Global qualifiedThisName
@@ -313,8 +320,7 @@ addConstructorIndexEqualities context paramVars constrType =
       constrType' <- evaluate context constrType
       goValue context constrType'
   where
-    Scope.KeyedName _ dataName =
-      Context.scopeKey context
+    dataName = Context.definitionName context
 
     goValue :: Context v -> Domain.Value -> M (Syntax.Term v)
     goValue context' constrTypeValue = do
@@ -571,16 +577,21 @@ elaborateUnspanned context term mode canPostpone = do
           term' <- readback context value
           result context mode term' type_
         Nothing -> do
-          maybeScopeEntry <- fetch $ Query.ResolvedName (Context.scopeKey context) name
+          maybeScopeEntry <- fetch $ Query.ResolvedName (Context.moduleName context) name
 
           case maybeScopeEntry of
             Nothing -> do
               Context.report context $ Error.NotInScope name
               elaborationFailed context mode
             Just (Scope.Name qualifiedName) -> do
-              type_ <- fetch $ Query.ElaboratedType qualifiedName
-              type' <- evaluate context $ Syntax.fromVoid type_
-              result context mode (Syntax.Global qualifiedName) type'
+              typeResult <- try $ fetch $ Query.ElaboratedType qualifiedName
+              case typeResult of
+                Left (Cyclic (_ :: Some Query)) -> do
+                  Context.report context $ Error.NotInScope name
+                  elaborationFailed context mode
+                Right type_ -> do
+                  type' <- evaluate context $ Syntax.fromVoid type_
+                  result context mode (Syntax.Global qualifiedName) type'
             Just (Scope.Constructors constructorCandidates dataCandidates) -> do
               resolution <- resolveConstructor constructorCandidates dataCandidates $
                 case mode of

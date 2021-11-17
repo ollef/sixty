@@ -47,7 +47,7 @@ import Name (Name (Name))
 import qualified Name
 import Plicity
 import qualified Postponement
-import Protolude hiding (IntMap, IntSet, catch, check, force, state)
+import Protolude hiding (IntMap, IntSet, catch, check, force, moduleName, state)
 import qualified Query
 import Rock
 import qualified Scope
@@ -57,7 +57,8 @@ import qualified Telescope
 import Var
 
 data Context v = Context
-  { scopeKey :: !Scope.KeyedName
+  { entityKind :: !Scope.EntityKind
+  , definitionName :: !Name.Qualified
   , span :: !Span.Relative
   , indices :: Index.Map v Var
   , surfaceNames :: HashMap Name.Surface (Domain.Value, Domain.Type)
@@ -72,6 +73,11 @@ data Context v = Context
   , errors :: !(IORef (Tsil Error))
   }
 
+moduleName :: Context v -> Name.Module
+moduleName context = do
+  let Name.Qualified m _ = definitionName context
+  m
+
 type CoveredConstructors = IntMap Var (HashSet Name.QualifiedConstructor)
 
 type CoveredLiterals = IntMap Var (HashSet Literal)
@@ -81,20 +87,20 @@ toEnvironment ::
   Domain.Environment v
 toEnvironment context =
   Environment
-    { scopeKey = scopeKey context
-    , indices = indices context
+    { indices = indices context
     , values = values context
     , glueableBefore = Index.Zero
     }
 
-empty :: MonadBase IO m => Scope.KeyedName -> m (Context Void)
-empty key = do
+empty :: MonadBase IO m => Scope.EntityKind -> Name.Qualified -> m (Context Void)
+empty entityKind_ definitionName_ = do
   ms <- newIORef Meta.empty
   es <- newIORef mempty
   ps <- newIORef Postponed.empty
   pure
     Context
-      { scopeKey = key
+      { entityKind = entityKind_
+      , definitionName = definitionName_
       , span = Span.Relative 0 0
       , surfaceNames = mempty
       , varNames = mempty
@@ -112,7 +118,8 @@ empty key = do
 emptyFrom :: Context v -> Context Void
 emptyFrom context =
   Context
-    { scopeKey = scopeKey context
+    { entityKind = entityKind context
+    , definitionName = definitionName context
     , span = span context
     , surfaceNames = mempty
     , varNames = mempty
@@ -407,27 +414,21 @@ lookupVarValue var context =
 toPrettyableTerm :: Context v -> Syntax.Term v -> M Error.PrettyableTerm
 toPrettyableTerm context term = do
   term' <- zonk context term
-  let Scope.KeyedName _ (Name.Qualified module_ _) =
-        scopeKey context
   pure $
     Error.PrettyableTerm
-      module_
+      (moduleName context)
       ((`lookupVarName` context) <$> toList (indices context))
       (Syntax.coerce term')
 
 toPrettyableClosedTerm :: Context v -> Syntax.Term Void -> M Error.PrettyableTerm
 toPrettyableClosedTerm context term = do
   term' <- zonk (emptyFrom context) term
-  let Scope.KeyedName _ (Name.Qualified module_ _) =
-        scopeKey context
-  pure $ Error.PrettyableTerm module_ mempty (Syntax.coerce term')
+  pure $ Error.PrettyableTerm (moduleName context) mempty (Syntax.coerce term')
 
 toPrettyablePattern :: Context v -> Pattern -> Error.PrettyablePattern
 toPrettyablePattern context = do
-  let Scope.KeyedName _ (Name.Qualified module_ _) =
-        scopeKey context
   Error.PrettyablePattern
-    module_
+    (moduleName context)
     ((`lookupVarName` context) <$> toList (indices context))
 
 -------------------------------------------------------------------------------
@@ -457,8 +458,7 @@ piBoundVars context type_ = do
   type' <-
     Readback.readback
       Environment
-        { scopeKey = scopeKey context
-        , indices = Index.Map $ boundVars context
+        { indices = Index.Map $ boundVars context
         , values = values context
         , glueableBefore = Index arity
         }
@@ -478,8 +478,7 @@ piBoundVars context type_ = do
           varType' <-
             Readback.readback
               Environment
-                { scopeKey = scopeKey context
-                , indices = Index.Map vars'
+                { indices = Index.Map vars'
                 , values = values context
                 , glueableBefore = Index $ IntSeq.length vars'
                 }
@@ -570,7 +569,7 @@ forceHead context value =
 
       case meta of
         Meta.EagerSolved headValue _ _ -> do
-          headValue' <- Evaluation.evaluate (Environment.empty $ scopeKey context) headValue
+          headValue' <- Evaluation.evaluate Environment.empty headValue
           value' <- Evaluation.applySpine headValue' spine
           forceHead context value'
         Meta.EagerUnsolved {} ->
@@ -602,7 +601,7 @@ forceHeadGlue context value =
       case meta of
         Meta.EagerSolved headValue _ _ -> do
           lazyValue <- lazy $ do
-            headValue' <- Evaluation.evaluate (Environment.empty $ scopeKey context) headValue
+            headValue' <- Evaluation.evaluate Environment.empty headValue
             value' <- Evaluation.applySpine headValue' spine
             forceHeadGlue context value'
           pure $ Domain.Glued (Domain.Meta metaIndex) spine $ Domain.Lazy lazyValue
@@ -640,17 +639,14 @@ instantiateType context type_ spine = do
 report :: Context v -> Error.Elaboration -> M ()
 report context err =
   let err' =
-        Error.Elaboration (scopeKey context) $
+        Error.Elaboration (entityKind context) (definitionName context) $
           Error.Spanned (span context) err
    in atomicModifyIORef' (errors context) $ \errs ->
         (errs Tsil.:> err', ())
 
 reportParseError :: Context v -> Error.Parsing -> M ()
 reportParseError context err = do
-  let Scope.KeyedName _ (Name.Qualified module_ _) =
-        scopeKey context
-
-  maybeFilePath <- fetch $ Query.ModuleFile module_
+  maybeFilePath <- fetch $ Query.ModuleFile $ moduleName context
   forM_ maybeFilePath $ \filePath -> do
     let err' =
           Error.Parse filePath err
@@ -690,7 +686,7 @@ zonk context term = do
                   (IntMap.insert index Nothing indexMap', ())
                 pure Nothing
               Meta.EagerSolved term' _ _ -> do
-                term'' <- Zonking.zonkTerm (Environment.empty $ scopeKey context) zonkMeta zonkPostponed term'
+                term'' <- Zonking.zonkTerm Environment.empty zonkMeta zonkPostponed term'
                 atomicModifyIORef' metasRef $ \indexMap' ->
                   (IntMap.insert index (Just term'') indexMap', ())
                 pure $ Just term''

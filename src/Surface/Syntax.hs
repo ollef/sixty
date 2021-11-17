@@ -180,12 +180,8 @@ constructorSpans def =
         ADTConstructor span constr _ ->
           [(span, constr)]
 
-key :: Definition -> Scope.Key
-key def =
-  case def of
-    TypeDeclaration {} ->
-      Scope.Type
-    ConstantDefinition {} ->
-      Scope.Definition
-    DataDefinition {} ->
-      Scope.Definition
+entityKind :: Definition -> Scope.EntityKind
+entityKind def = case def of
+  TypeDeclaration {} -> Scope.Type
+  ConstantDefinition {} -> Scope.Definition
+  DataDefinition {} -> Scope.Definition

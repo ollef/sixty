@@ -9,7 +9,6 @@ import qualified Core.Pretty as Pretty
 import Data.Coerce
 import Data.Persist
 import qualified Data.Text as Text
-import Prettyprinter as Doc
 import qualified Data.Text.Unsafe as Text
 import Error (Error)
 import qualified Error
@@ -19,11 +18,11 @@ import Name (Name)
 import qualified Name
 import Plicity
 import qualified Position
+import Prettyprinter as Doc
 import Protolude hiding (moduleName)
 import Query (Query)
 import qualified Query
 import Rock
-import qualified Scope
 import qualified Span
 import qualified System.Directory as Directory
 
@@ -48,8 +47,8 @@ headingAndBody error =
               expected ->
                 line <> "Expected: " <> hcat (punctuate comma $ Doc.pretty <$> expected)
         )
-    Error.DuplicateName keyedName@(Scope.KeyedName _ name) _span -> do
-      (filePath, oldSpan) <- fetch $ Query.KeyedNamePosition keyedName
+    Error.DuplicateName entityKind name _span -> do
+      (filePath, oldSpan) <- fetch $ Query.DefinitionPosition entityKind name
       text <- fetch $ Query.FileText filePath
       let (lineColumn, _) =
             Position.lineColumn oldSpan text
@@ -89,7 +88,7 @@ headingAndBody error =
             <> indent 2 (Doc.pretty expectedModuleName)
             <> "."
         )
-    Error.Elaboration keyedName (Error.Spanned _ err') ->
+    Error.Elaboration entityKind definitionName (Error.Spanned _ err') ->
       case err' of
         Error.NotInScope name ->
           pure
@@ -106,7 +105,7 @@ headingAndBody error =
                   )
             )
         Error.DuplicateLetName name previousSpan -> do
-          (filePath, defSpan) <- fetch $ Query.KeyedNamePosition keyedName
+          (filePath, defSpan) <- fetch $ Query.DefinitionPosition entityKind definitionName
           text <- fetch $ Query.FileText filePath
           let (previousLineColumn, _) =
                 Span.lineColumn (Span.absoluteFrom defSpan previousSpan) text
@@ -265,7 +264,7 @@ fromError err = do
           ( filePath
           , (\p -> Span.Absolute p p) <$> Error.Parsing.position parseError
           )
-      Error.DuplicateName (Scope.KeyedName _ (Name.Qualified module_ _)) span -> do
+      Error.DuplicateName _entityKind (Name.Qualified module_ _) span -> do
         maybeModuleFile <- fetch $ Query.ModuleFile module_
         pure (fromMaybe "<no file>" maybeModuleFile, Right span)
       Error.ImportNotFound module_ import_ -> do
@@ -275,8 +274,8 @@ fromError err = do
         pure (file2, Right $ Span.Absolute 0 0)
       Error.ModuleFileNameMismatch _ _ span file ->
         pure (file, Right span)
-      Error.Elaboration keyedName (Error.Spanned relativeSpan _) -> do
-        (file, absolutePosition) <- fetch $ Query.KeyedNamePosition keyedName
+      Error.Elaboration entityKind name (Error.Spanned relativeSpan _) -> do
+        (file, absolutePosition) <- fetch $ Query.DefinitionPosition entityKind name
         pure (file, Right $ Span.absoluteFrom absolutePosition relativeSpan)
   text <- fetch $ Query.FileText filePath
   let (lineColumn, lineText) =

@@ -21,16 +21,13 @@ import qualified Surface.Syntax as Surface
 moduleScopes ::
   Name.Module ->
   [(Position.Absolute, (Name, Surface.Definition))] ->
-  (((Scope, Scope, Scope.Visibility), Scope.Module), [Error])
+  ((Scope, Scope), [Error])
 moduleScopes module_@(Name.Module moduleText) definitions =
-  let (finalPrivateScope, finalPublicScope, finalVisibility, scopes, errs) =
+  let (finalPrivateScope, finalPublicScope, _seen, errs) =
         foldl' go mempty definitions
-   in (((finalPrivateScope, finalPublicScope, finalVisibility), scopes), reverse errs)
+   in ((finalPrivateScope, finalPublicScope), reverse errs)
   where
-    duplicate key qualifiedName =
-      Error.DuplicateName (Scope.KeyedName key qualifiedName)
-
-    go (!privateScope, !publicScope, !visibility, !scopes, !errs) (position, (name@(Name nameText), def)) =
+    go (!privateScope, !publicScope, !seen, !errs) (position, (name@(Name nameText), def)) =
       let span
             | s : _ <- Surface.spans def =
               Span.absoluteFrom position s
@@ -46,55 +43,33 @@ moduleScopes module_@(Name.Module moduleText) definitions =
           qualifiedName =
             Name.Qualified module_ name
 
-          privateScope' =
-            HashMap.insertWith (<>) qualifiedSurfaceName (Scope.Name qualifiedName) $
-              HashMap.insertWith (<>) surfaceName (Scope.Name qualifiedName) privateScope
+          entity entityType
+            | HashSet.member (entityType, qualifiedName) seen =
+              ( privateScope
+              , publicScope
+              , seen
+              , Error.DuplicateName entityType qualifiedName span : errs
+              )
+            | otherwise =
+              let privateScope' =
+                    HashMap.insertWith (<>) qualifiedSurfaceName (Scope.Name qualifiedName) $
+                      HashMap.insertWith (<>) surfaceName (Scope.Name qualifiedName) privateScope
 
-          publicScope' =
-            HashMap.insertWith (<>) surfaceName (Scope.Name qualifiedName) publicScope
-
-          definitionCase =
-            let ok =
-                  ( privateScope'
+                  publicScope' =
+                    HashMap.insertWith (<>) surfaceName (Scope.Name qualifiedName) publicScope
+               in ( privateScope'
                   , publicScope'
-                  , HashMap.insertWith max qualifiedName Scope.Definition visibility
-                  , HashMap.insert (name, Scope.Definition) (privateScope, visibility) scopes
+                  , HashSet.insert (entityType, qualifiedName) seen
                   , errs
                   )
-             in case HashMap.lookup qualifiedName visibility of
-                  Nothing ->
-                    ok
-                  Just Scope.Type ->
-                    ok
-                  Just Scope.Definition ->
-                    ( privateScope
-                    , publicScope
-                    , visibility
-                    , scopes
-                    , duplicate Scope.Definition qualifiedName span : errs
-                    )
        in case def of
             Surface.TypeDeclaration {} ->
-              case HashMap.lookup qualifiedName visibility of
-                Just key ->
-                  ( privateScope
-                  , publicScope
-                  , visibility
-                  , scopes
-                  , duplicate key qualifiedName span : errs
-                  )
-                Nothing ->
-                  ( privateScope'
-                  , publicScope'
-                  , HashMap.insertWith max qualifiedName Scope.Type visibility
-                  , HashMap.insert (name, Scope.Type) (privateScope, visibility) scopes
-                  , errs
-                  )
+              entity Scope.Type
             Surface.ConstantDefinition {} ->
-              definitionCase
+              entity Scope.Definition
             Surface.DataDefinition _ _ _ constrDefs ->
-              let (privateScope'', publicScope'', visibility', scopes', errs') =
-                    definitionCase
+              let (privateScope', publicScope', seen', errs') =
+                    entity Scope.Definition
 
                   constructors =
                     [ (
@@ -120,22 +95,21 @@ moduleScopes module_@(Name.Module moduleText) definitions =
                     , constr@(Name.Constructor text) <- constrs
                     ]
 
-                  privateScope''' =
+                  privateScope'' =
                     HashMap.insertWith (<>) qualifiedSurfaceName (Scope.Constructors mempty $ HashSet.singleton qualifiedName) $
-                      HashMap.insertWith (<>) surfaceName (Scope.Constructors mempty $ HashSet.singleton qualifiedName) privateScope''
+                      HashMap.insertWith (<>) surfaceName (Scope.Constructors mempty $ HashSet.singleton qualifiedName) privateScope'
 
-                  publicScope''' =
-                    HashMap.insertWith (<>) surfaceName (Scope.Constructors mempty $ HashSet.singleton qualifiedName) publicScope''
+                  publicScope'' =
+                    HashMap.insertWith (<>) surfaceName (Scope.Constructors mempty $ HashSet.singleton qualifiedName) publicScope'
 
                   publicConstructors =
                     HashMap.fromListWith (<>) $ fst <$> constructors
 
                   privateConstructors =
                     HashMap.fromListWith (<>) $ concatMap (\(a, b) -> [a, b]) constructors
-               in ( HashMap.unionWith (<>) privateConstructors privateScope'''
-                  , HashMap.unionWith (<>) publicConstructors publicScope'''
-                  , visibility'
-                  , scopes'
+               in ( HashMap.unionWith (<>) privateConstructors privateScope''
+                  , HashMap.unionWith (<>) publicConstructors publicScope''
+                  , seen'
                   , errs'
                   )
 

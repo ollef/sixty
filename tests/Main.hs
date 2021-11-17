@@ -10,13 +10,13 @@ import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import Data.String (String)
 import qualified Data.Text as Text
-import Prettyprinter
 import qualified Driver
 import Error (Error)
 import qualified Error
 import qualified Error.Hydrated
 import qualified Error.Hydrated as Error (Hydrated)
 import qualified FileSystem
+import Prettyprinter
 import Protolude
 import qualified Query
 import Rock
@@ -169,7 +169,7 @@ errorToExpectedError err =
       MultipleFilesWithModuleName
     Error.ModuleFileNameMismatch {} ->
       ModuleFileNameMismatch
-    Error.Elaboration _ (Error.Spanned _ elaborationError) ->
+    Error.Elaboration _ _ (Error.Spanned _ elaborationError) ->
       case elaborationError of
         Error.NotInScope {} ->
           NotInScope

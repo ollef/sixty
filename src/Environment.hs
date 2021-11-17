@@ -7,32 +7,20 @@ import qualified Index.Map
 import qualified Index.Map as Index
 import Monad
 import Protolude hiding (IntMap)
-import qualified Scope
 import Var (Var)
 import qualified Var
 
 data Environment value v = Environment
-  { scopeKey :: !Scope.KeyedName
-  , indices :: Index.Map v Var
+  { indices :: Index.Map v Var
   , values :: IntMap Var value
   , glueableBefore :: !(Index (Succ v))
   }
   deriving (Show)
 
-empty :: Scope.KeyedName -> Environment value Void
-empty key =
+empty :: Environment value Void
+empty =
   Environment
-    { scopeKey = key
-    , indices = Index.Map.Empty
-    , values = mempty
-    , glueableBefore = Index.Zero
-    }
-
-emptyFrom :: Environment value' v -> Environment value Void
-emptyFrom env =
-  Environment
-    { scopeKey = scopeKey env
-    , indices = Index.Map.Empty
+    { indices = Index.Map.Empty
     , values = mempty
     , glueableBefore = Index.Zero
     }

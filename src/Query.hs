@@ -10,8 +10,6 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
--- deriveGShow triggers this for some reason
-{-# OPTIONS_GHC -Wno-unused-matches #-}
 
 module Query where
 
@@ -60,18 +58,17 @@ data Query a where
   ModuleHeader :: Name.Module -> Query Module.Header
   ImportedNames :: Name.Module -> Mapped.Query Name.Surface Scope.Entry a -> Query a
   NameAliases :: Name.Module -> Query (HashMap Name.QualifiedConstructor (HashSet Name.Surface), HashMap Name.Qualified (HashSet Name.Surface))
-  ModulePositionMap :: Name.Module -> Query (HashMap (Scope.Key, Name) Position.Absolute)
-  ModuleSpanMap :: Name.Module -> Query (HashMap (Scope.Key, Name) Span.Absolute)
-  ParsedDefinition :: Name.Module -> Mapped.Query (Scope.Key, Name) Surface.Definition a -> Query a
-  Scopes :: Name.Module -> Query ((Scope, Scope, Scope.Visibility), Scope.Module)
-  ResolvedName :: Scope.KeyedName -> Name.Surface -> Query (Maybe Scope.Entry)
-  IsDefinitionVisible :: Scope.KeyedName -> Name.Qualified -> Query Bool
-  ElaboratingDefinition :: Scope.KeyedName -> Query (Maybe (Syntax.Definition, Syntax.Type Void, Elaboration.Meta.EagerState))
+  ModulePositionMap :: Name.Module -> Query (HashMap (Scope.EntityKind, Name) Position.Absolute)
+  ModuleSpanMap :: Name.Module -> Query (HashMap (Scope.EntityKind, Name) Span.Absolute)
+  ParsedDefinition :: Name.Module -> Mapped.Query (Scope.EntityKind, Name) Surface.Definition a -> Query a
+  ModuleScope :: Name.Module -> Query (Scope, Scope)
+  ResolvedName :: Name.Module -> Name.Surface -> Query (Maybe Scope.Entry)
+  ElaboratingDefinition :: Scope.EntityKind -> Name.Qualified -> Query (Maybe (Syntax.Definition, Syntax.Type Void, Elaboration.Meta.EagerState))
   ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void)
   ElaboratedDefinition :: Name.Qualified -> Query (Syntax.Definition, Syntax.Type Void)
   ConstructorType :: Name.QualifiedConstructor -> Query (Telescope Binding Syntax.Type Syntax.Type Void)
-  KeyedNamePosition :: Scope.KeyedName -> Query (FilePath, Position.Absolute)
-  Occurrences :: Scope.KeyedName -> Query Occurrences.Intervals
+  DefinitionPosition :: Scope.EntityKind -> Name.Qualified -> Query (FilePath, Position.Absolute)
+  Occurrences :: Scope.EntityKind -> Name.Qualified -> Query Occurrences.Intervals
   LambdaLifted :: Name.Qualified -> Query (LambdaLifted.Definition, IntMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void))
   LambdaLiftedDefinition :: Name.Lifted -> Query LambdaLifted.Definition
   LambdaLiftedModuleDefinitions :: Name.Module -> Query (OrderedHashSet Name.Lifted)
@@ -116,31 +113,30 @@ instance Hashable (Query a) where
       ModuleHeader a -> h 6 a
       ImportedNames a b -> h 7 (a, b)
       NameAliases a -> h 8 a
-      ParsedDefinition a b -> h 9 (a, b)
-      ModulePositionMap a -> h 10 a
-      ModuleSpanMap a -> h 11 a
-      Scopes a -> h 12 a
+      ModulePositionMap a -> h 9 a
+      ModuleSpanMap a -> h 10 a
+      ParsedDefinition a b -> h 11 (a, b)
+      ModuleScope a -> h 12 a
       ResolvedName a b -> h 13 (a, b)
-      IsDefinitionVisible a b -> h 14 (a, b)
-      ElaboratingDefinition a -> h 15 a
-      ElaboratedType a -> h 16 a
-      ElaboratedDefinition a -> h 17 a
-      ConstructorType a -> h 18 a
-      KeyedNamePosition a -> h 19 a
-      Occurrences a -> h 20 a
-      LambdaLifted a -> h 21 a
-      LambdaLiftedDefinition a -> h 22 a
-      LambdaLiftedModuleDefinitions a -> h 23 a
-      ClosureConverted a -> h 24 a
-      ClosureConvertedType a -> h 25 a
-      ClosureConvertedConstructorType a -> h 26 a
-      ClosureConvertedSignature a -> h 27 a
-      ConstructorRepresentations a -> h 28 a
-      ConstructorRepresentation a -> h 29 a
-      Assembly a -> h 30 a
-      AssemblyModule a -> h 31 a
-      LLVMModule a -> h 32 a
-      LLVMModuleInitModule -> h 33 ()
+      ElaboratingDefinition a b -> h 14 (a, b)
+      ElaboratedType a -> h 15 a
+      ElaboratedDefinition a -> h 16 a
+      ConstructorType a -> h 17 a
+      DefinitionPosition a b -> h 18 (a, b)
+      Occurrences a b -> h 19 (a, b)
+      LambdaLifted a -> h 20 a
+      LambdaLiftedDefinition a -> h 21 a
+      LambdaLiftedModuleDefinitions a -> h 22 a
+      ClosureConverted a -> h 23 a
+      ClosureConvertedType a -> h 24 a
+      ClosureConvertedConstructorType a -> h 25 a
+      ClosureConvertedSignature a -> h 26 a
+      ConstructorRepresentations a -> h 27 a
+      ConstructorRepresentation a -> h 28 a
+      Assembly a -> h 29 a
+      AssemblyModule a -> h 30 a
+      LLVMModule a -> h 31 a
+      LLVMModuleInitModule -> h 32 ()
     where
       {-# INLINE h #-}
       h :: Hashable a => Int -> a -> Int
@@ -169,31 +165,30 @@ instance Persist (Some Query) where
       6 -> Some . ModuleHeader <$> get
       7 -> (\(x, Some y) -> Some $ ImportedNames x y) <$> get
       8 -> Some . NameAliases <$> get
-      9 -> (\(x, Some y) -> Some $ ParsedDefinition x y) <$> get
-      10 -> Some . ModulePositionMap <$> get
-      11 -> Some . ModuleSpanMap <$> get
-      12 -> Some . Scopes <$> get
+      9 -> Some . ModulePositionMap <$> get
+      10 -> Some . ModuleSpanMap <$> get
+      11 -> (\(x, Some y) -> Some $ ParsedDefinition x y) <$> get
+      12 -> Some . ModuleScope <$> get
       13 -> Some . uncurry ResolvedName <$> get
-      14 -> Some . uncurry IsDefinitionVisible <$> get
-      15 -> Some . ElaboratingDefinition <$> get
-      16 -> Some . ElaboratedType <$> get
-      17 -> Some . ElaboratedDefinition <$> get
-      18 -> Some . ConstructorType <$> get
-      19 -> Some . KeyedNamePosition <$> get
-      20 -> Some . Occurrences <$> get
-      21 -> Some . LambdaLifted <$> get
-      22 -> Some . LambdaLiftedDefinition <$> get
-      23 -> Some . LambdaLiftedModuleDefinitions <$> get
-      24 -> Some . ClosureConverted <$> get
-      25 -> Some . ClosureConvertedType <$> get
-      26 -> Some . ClosureConvertedConstructorType <$> get
-      27 -> Some . ClosureConvertedSignature <$> get
-      28 -> Some . ConstructorRepresentations <$> get
-      29 -> Some . ConstructorRepresentation <$> get
-      30 -> Some . Assembly <$> get
-      31 -> Some . AssemblyModule <$> get
-      32 -> Some . LLVMModule <$> get
-      33 -> pure $ Some LLVMModuleInitModule
+      14 -> (\(x, y) -> Some $ ElaboratingDefinition x y) <$> get
+      15 -> Some . ElaboratedType <$> get
+      16 -> Some . ElaboratedDefinition <$> get
+      17 -> Some . ConstructorType <$> get
+      18 -> (\(x, y) -> Some $ DefinitionPosition x y) <$> get
+      19 -> (\(x, y) -> Some $ Occurrences x y) <$> get
+      20 -> Some . LambdaLifted <$> get
+      21 -> Some . LambdaLiftedDefinition <$> get
+      22 -> Some . LambdaLiftedModuleDefinitions <$> get
+      23 -> Some . ClosureConverted <$> get
+      24 -> Some . ClosureConvertedType <$> get
+      25 -> Some . ClosureConvertedConstructorType <$> get
+      26 -> Some . ClosureConvertedSignature <$> get
+      27 -> Some . ConstructorRepresentations <$> get
+      28 -> Some . ConstructorRepresentation <$> get
+      29 -> Some . Assembly <$> get
+      30 -> Some . AssemblyModule <$> get
+      31 -> Some . LLVMModule <$> get
+      32 -> pure $ Some LLVMModuleInitModule
       _ -> fail "Persist (Some Query): no such tag"
 
   put (Some query) =
@@ -207,31 +202,30 @@ instance Persist (Some Query) where
       ModuleHeader a -> p 6 a
       ImportedNames a b -> p 7 (a, Some b)
       NameAliases a -> p 8 a
-      ParsedDefinition a b -> p 9 (a, Some b)
-      ModulePositionMap a -> p 10 a
-      ModuleSpanMap a -> p 11 a
-      Scopes a -> p 12 a
+      ModulePositionMap a -> p 9 a
+      ModuleSpanMap a -> p 10 a
+      ParsedDefinition a b -> p 11 (a, Some b)
+      ModuleScope a -> p 12 a
       ResolvedName a b -> p 13 (a, b)
-      IsDefinitionVisible a b -> p 14 (a, b)
-      ElaboratingDefinition a -> p 15 a
-      ElaboratedType a -> p 16 a
-      ElaboratedDefinition a -> p 17 a
-      ConstructorType a -> p 18 a
-      KeyedNamePosition a -> p 19 a
-      Occurrences a -> p 20 a
-      LambdaLifted a -> p 21 a
-      LambdaLiftedDefinition a -> p 22 a
-      LambdaLiftedModuleDefinitions a -> p 23 a
-      ClosureConverted a -> p 24 a
-      ClosureConvertedType a -> p 25 a
-      ClosureConvertedConstructorType a -> p 26 a
-      ClosureConvertedSignature a -> p 27 a
-      ConstructorRepresentations a -> p 28 a
-      ConstructorRepresentation a -> p 29 a
-      Assembly a -> p 30 a
-      AssemblyModule a -> p 31 a
-      LLVMModule a -> p 32 a
-      LLVMModuleInitModule -> p 33 ()
+      ElaboratingDefinition a b -> p 14 (a, b)
+      ElaboratedType a -> p 15 a
+      ElaboratedDefinition a -> p 16 a
+      ConstructorType a -> p 17 a
+      DefinitionPosition a b -> p 18 (a, b)
+      Occurrences a b -> p 19 (a, b)
+      LambdaLifted a -> p 20 a
+      LambdaLiftedDefinition a -> p 21 a
+      LambdaLiftedModuleDefinitions a -> p 22 a
+      ClosureConverted a -> p 23 a
+      ClosureConvertedType a -> p 24 a
+      ClosureConvertedConstructorType a -> p 25 a
+      ClosureConvertedSignature a -> p 26 a
+      ConstructorRepresentations a -> p 27 a
+      ConstructorRepresentation a -> p 28 a
+      Assembly a -> p 29 a
+      AssemblyModule a -> p 30 a
+      LLVMModule a -> p 31 a
+      LLVMModuleInitModule -> p 32 ()
     where
       -- Don't forget to add a case to `get` above!
 
