@@ -465,17 +465,17 @@ implicitLambdaResult context mode term type_ =
       pure $ Checked $ f $ Syntax.apps term args
 
 elaborate :: Functor result => Context v -> Surface.Term -> Mode result -> M (result (Syntax.Term v))
-elaborate context (Surface.Term span term) mode =
-  fmap (Syntax.Spanned span) <$> elaborateUnspanned (Context.spanned span context) term mode Postponement.CanPostpone
+elaborate context term@(Surface.Term span _) mode =
+  elaborateWith (Context.spanned span context) term mode Postponement.CanPostpone
 
-elaborateUnspanned ::
+elaborateWith ::
   Functor result =>
   Context v ->
-  Surface.UnspannedTerm ->
+  Surface.Term ->
   Mode result ->
   Postponement.CanPostpone ->
   M (result (Syntax.Term v))
-elaborateUnspanned context term mode canPostpone = do
+elaborateWith context spannedTerm@(Surface.Term span term) mode canPostpone = do
   mode' <- forceExpectedTypeHead context mode
   case (term, mode') of
     (Surface.Lam (Surface.ExplicitPattern pat) body, Check (Domain.Pi piBinding domain Explicit targetClosure)) -> do
@@ -486,32 +486,32 @@ elaborateUnspanned context term mode canPostpone = do
       target <- Evaluation.evaluateClosure targetClosure (Domain.var var)
       body' <- Matching.checkSingle context' var Explicit pat body target
       binding <- SuggestedName.patternBinding context pat name
-      pure $ Checked $ Syntax.Lam binding domain' Explicit body'
+      pure $ Checked $ Syntax.Spanned span $ Syntax.Lam binding domain' Explicit body'
     (Surface.Lam (Surface.ExplicitPattern pat) body, Check (Domain.Fun domain Explicit target)) -> do
       domain' <- readback context domain
       binding <- SuggestedName.patternBinding context pat "x"
       (context', var) <- Context.extend context (Bindings.toName binding) domain
       body' <- Matching.checkSingle context' var Explicit pat body target
-      pure $ Checked $ Syntax.Lam binding domain' Explicit body'
+      pure $ Checked $ Syntax.Spanned span $ Syntax.Lam binding domain' Explicit body'
     (Surface.Lam (Surface.ImplicitPattern _ namedPats) body, _)
       | HashMap.null namedPats ->
         elaborate context body mode
-    (Surface.Lam (Surface.ImplicitPattern span namedPats) body, Check (Domain.Pi piBinding domain Implicit targetClosure))
+    (Surface.Lam (Surface.ImplicitPattern patsSpan namedPats) body, Check (Domain.Pi piBinding domain Implicit targetClosure))
       | let name = Binding.toName piBinding
-        , name `HashMap.member` namedPats -> do
-        let pat =
-              namedPats HashMap.! name
-
-            body' =
-              Surface.Term (Context.span context) $
-                Surface.Lam (Surface.ImplicitPattern span (HashMap.delete name namedPats)) body
+        , Just patBinding <- HashMap.lookup name namedPats -> do
+        let body' =
+              Surface.Term span $
+                Surface.Lam (Surface.ImplicitPattern patsSpan (HashMap.delete name namedPats)) body
 
         (context', var) <- Context.extend context name domain
         domain' <- readback context domain
         target <- Evaluation.evaluateClosure targetClosure (Domain.var var)
-        body'' <- Matching.checkSingle context' var Implicit pat body' target
-        binding <- SuggestedName.patternBinding context pat name
-        pure $ Checked $ Syntax.Lam binding domain' Implicit body''
+        body'' <- Matching.checkSingle context' var Implicit (Surface.pattern_ patBinding) body' target
+        binding <- SuggestedName.patternBinding context (Surface.pattern_ patBinding) name
+        let lamSpan
+              | Surface.isTextuallyFirst patBinding = span
+              | otherwise = Span.add (Surface.spanIncludingName patBinding) span
+        pure $ Checked $ Syntax.Spanned lamSpan $ Syntax.Lam binding domain' Implicit body''
     (_, Check expectedType@(Domain.Pi binding domain plicity targetClosure))
       | isImplicitish plicity ->
         do
@@ -521,8 +521,8 @@ elaborateUnspanned context term mode canPostpone = do
                 (context', var) <- Context.extend context name domain
                 target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
                 domain' <- readback context domain
-                Checked term' <- elaborateUnspanned context' term (Check target) Postponement.CanPostpone
-                pure $ Checked $ Syntax.Lam (Bindings.Unspanned name) domain' plicity term'
+                Checked term' <- elaborate context' spannedTerm $ Check target
+                pure $ Checked $ Syntax.Lam (Bindings.Unspanned name) domain' plicity $ Syntax.Spanned span term'
 
           case term of
             Surface.Var varName
@@ -533,14 +533,14 @@ elaborateUnspanned context term mode canPostpone = do
                   Domain.Neutral (Domain.Meta _) _ -> do
                     success <- Context.try_ context $ Unification.unify context Flexibility.Rigid type' expectedType
                     term' <- readback context $ if success then value else Builtin.Fail expectedType
-                    pure $ Checked term'
+                    pure $ Checked $ Syntax.Spanned span term'
                   _ ->
                     checkUnderBinder
             _ ->
               checkUnderBinder
     (_, Check expectedType@(Domain.Neutral (Domain.Meta blockingMeta) _))
       | Postponement.CanPostpone <- canPostpone ->
-        postponeCheck context term expectedType blockingMeta
+        postponeCheck context spannedTerm expectedType blockingMeta
     (Surface.Lam plicitPattern body@(Surface.Term bodySpan _), _) -> do
       let patternSpan =
             Surface.plicitPatternSpan plicitPattern
@@ -556,18 +556,18 @@ elaborateUnspanned context term mode canPostpone = do
             k
               context
               mode
-              (Syntax.Lam binding domain' plicity body')
+              (Syntax.Spanned span $ Syntax.Lam binding domain' plicity body')
               ( Domain.Pi (Binding.Unspanned name) domain plicity $
                   Domain.Closure (Context.toEnvironment context) target'
               )
 
       case (canPostpone, plicitPattern, mode') of
         (Postponement.CanPostpone, _, Infer _) -> do
-          postponeInference context term
+          postponeInference context spannedTerm
         (_, Surface.ExplicitPattern pat, _) ->
           elaborateLambda Explicit "x" pat result
-        (_, Surface.ImplicitPattern _ (HashMap.toList -> [(name, pat)]), _) -> do
-          elaborateLambda Implicit name pat implicitLambdaResult
+        (_, Surface.ImplicitPattern _ (HashMap.toList -> [(name, patBinding)]), _) -> do
+          elaborateLambda Implicit name (Surface.pattern_ patBinding) implicitLambdaResult
         (_, Surface.ImplicitPattern _ _, _) -> do
           Context.report (Context.spanned patternSpan context) Error.UnableToInferImplicitLambda
           elaborationFailed context mode
@@ -575,7 +575,7 @@ elaborateUnspanned context term mode canPostpone = do
       case Context.lookupSurfaceName name context of
         Just (value, type_) -> do
           term' <- readback context value
-          result context mode term' type_
+          result context mode (Syntax.Spanned span term') type_
         Nothing -> do
           maybeScopeEntry <- fetch $ Query.ResolvedName (Context.moduleName context) name
 
@@ -591,7 +591,7 @@ elaborateUnspanned context term mode canPostpone = do
                   elaborationFailed context mode
                 Right type_ -> do
                   type' <- evaluate context $ Syntax.fromVoid type_
-                  result context mode (Syntax.Global qualifiedName) type'
+                  result context mode (Syntax.Spanned span $ Syntax.Global qualifiedName) type'
             Just (Scope.Constructors constructorCandidates dataCandidates) -> do
               resolution <- resolveConstructor constructorCandidates dataCandidates $
                 case mode of
@@ -603,9 +603,9 @@ elaborateUnspanned context term mode canPostpone = do
                 Left blockingMeta ->
                   case (canPostpone, mode) of
                     (Postponement.CanPostpone, Infer _) ->
-                      postponeInference context term
+                      postponeInference context spannedTerm
                     (Postponement.CanPostpone, Check expectedType) ->
-                      postponeCheck context term expectedType blockingMeta
+                      postponeCheck context spannedTerm expectedType blockingMeta
                     (Postponement.Can'tPostpone, _) -> do
                       Context.report context $ Error.Ambiguous name constructorCandidates dataCandidates
                       elaborationFailed context mode
@@ -615,16 +615,16 @@ elaborateUnspanned context term mode canPostpone = do
                 Right (ResolvedConstructor constr) -> do
                   type_ <- fetch $ Query.ConstructorType constr
                   type' <- evaluate context $ Syntax.fromVoid $ Telescope.fold Syntax.implicitPi type_
-                  result context mode (Syntax.Con constr) type'
+                  result context mode (Syntax.Spanned span $ Syntax.Con constr) type'
                 Right (ResolvedData data_) -> do
                   type_ <- fetch $ Query.ElaboratedType data_
                   type' <- evaluate context $ Syntax.fromVoid type_
-                  result context mode (Syntax.Global data_) type'
+                  result context mode (Syntax.Spanned span $ Syntax.Global data_) type'
             Just (Scope.Ambiguous constrCandidates dataCandidates) -> do
               Context.report context $ Error.Ambiguous name constrCandidates dataCandidates
               elaborationFailed context mode
     (Surface.Lit lit, _) ->
-      result context mode (Syntax.Lit lit) (inferLiteral lit)
+      result context mode (Syntax.Spanned span $ Syntax.Lit lit) (inferLiteral lit)
     (Surface.Lets lets body, _) ->
       map Syntax.Lets <$> elaborateLets context mempty mempty mempty lets body mode
     (Surface.Pi spannedName@(Surface.SpannedName _ name) plicity domain target, _) -> do
@@ -634,11 +634,15 @@ elaborateUnspanned context term mode canPostpone = do
       (context', _) <- Context.extendSurface context name domain''
 
       target' <- check context' target Builtin.Type
-      result context mode (Syntax.Pi (Binding.fromSurface spannedName) domain' plicity target') Builtin.Type
+      result
+        context
+        mode
+        (Syntax.Spanned span $ Syntax.Pi (Binding.fromSurface spannedName) domain' plicity target')
+        Builtin.Type
     (Surface.Fun domain target, _) -> do
       domain' <- check context domain Builtin.Type
       target' <- check context target Builtin.Type
-      result context mode (Syntax.Fun domain' Explicit target') Builtin.Type
+      result context mode (Syntax.Spanned span $ Syntax.Fun domain' Explicit target') Builtin.Type
     (Surface.Case scrutinee branches, _) -> do
       skipContext <- Context.skip context
       (scrutinee', scrutineeType) <- inferAndInsertMetas skipContext UntilExplicit scrutinee $ pure Nothing
@@ -646,9 +650,10 @@ elaborateUnspanned context term mode canPostpone = do
         Infer _ -> do
           expectedType <- Context.newMetaType context
           term' <- Matching.checkCase context scrutinee' scrutineeType branches expectedType Postponement.CanPostpone
-          pure $ Inferred term' expectedType
-        Check expectedType ->
-          Checked <$> Matching.checkCase context scrutinee' scrutineeType branches expectedType Postponement.CanPostpone
+          pure $ Inferred (Syntax.Spanned span term') expectedType
+        Check expectedType -> do
+          term' <- Matching.checkCase context scrutinee' scrutineeType branches expectedType Postponement.CanPostpone
+          pure $ Checked $ Syntax.Spanned span term'
     (Surface.App function argument@(Surface.Term argumentSpan _), _) -> do
       (function', functionType) <- inferAndInsertMetas context UntilExplicit function $ getModeExpectedTypeName context mode
       functionType' <- Context.forceHead context functionType
@@ -658,10 +663,10 @@ elaborateUnspanned context term mode canPostpone = do
           argument' <- check context argument domain
           argument'' <- lazyEvaluate context argument'
           target <- Evaluation.evaluateClosure targetClosure argument''
-          result context mode (Syntax.App function' Explicit argument') target
+          result context mode (Syntax.Spanned span $ Syntax.App function' Explicit argument') target
         Domain.Fun domain Explicit target -> do
           argument' <- check context argument domain
-          result context mode (Syntax.App function' Explicit argument') target
+          result context mode (Syntax.Spanned span $ Syntax.App function' Explicit argument') target
         _ -> do
           domain <- Context.newMetaType $ Context.spanned argumentSpan context
           (context', _) <- Context.extend context "x" domain
@@ -675,22 +680,22 @@ elaborateUnspanned context term mode canPostpone = do
           argument' <- check context argument domain
           argumentValue <- lazyEvaluate context argument'
           target'' <- Evaluation.evaluateClosure targetClosure argumentValue
-          result context mode (Syntax.App (f function') Explicit argument') target''
+          result context mode (Syntax.Spanned span $ Syntax.App (f function') Explicit argument') target''
     (Surface.ImplicitApps function arguments, _) -> do
       Inferred function' functionType <- infer context function $ getModeExpectedTypeName context mode
       (result_, resultType) <- inferImplicitApps context function' functionType arguments Postponement.CanPostpone
-      result context mode result_ resultType
+      result context mode (Syntax.Spanned span result_) resultType
     (Surface.Wildcard, Check expectedType) -> do
       term' <- Context.newMeta context expectedType
-      Checked <$> readback context term'
+      Checked . Syntax.Spanned span <$> readback context term'
     (Surface.Wildcard, Infer _) -> do
       type_ <- Context.newMetaType context
       term' <- Context.newMeta context type_
       term'' <- readback context term'
-      pure $ Inferred term'' type_
+      pure $ Inferred (Syntax.Spanned span term'') type_
     (Surface.ParseError err, _) -> do
       Context.reportParseError context err
-      elaborateUnspanned context Surface.Wildcard mode Postponement.CanPostpone
+      elaborateWith context (Surface.Term span Surface.Wildcard) mode Postponement.CanPostpone
 
 data LetBoundTerm where
   LetBoundTerm :: Context v -> Syntax.Term v -> LetBoundTerm
@@ -828,19 +833,19 @@ elaborationFailed context mode =
 
 postponeCheck ::
   Context v ->
-  Surface.UnspannedTerm ->
+  Surface.Term ->
   Domain.Type ->
   Meta.Index ->
   M (Checked (Syntax.Term v))
 postponeCheck context surfaceTerm expectedType blockingMeta =
   fmap Checked $
     postpone context expectedType blockingMeta $ \canPostpone -> do
-      Checked resultTerm <- elaborateUnspanned context surfaceTerm (Check expectedType) canPostpone
+      Checked resultTerm <- elaborateWith context surfaceTerm (Check expectedType) canPostpone
       pure resultTerm
 
 postponeInference ::
   Context v ->
-  Surface.UnspannedTerm ->
+  Surface.Term ->
   M (Inferred (Syntax.Term v))
 postponeInference context surfaceTerm = do
   (blockingMeta, _, expectedType) <- Context.newMetaReturningIndex context Builtin.Type

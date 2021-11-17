@@ -171,7 +171,7 @@ clauseImplicits :: Clause -> HashMap Name Surface.Pattern
 clauseImplicits clause =
   case clausePatterns clause of
     Surface.ImplicitPattern _ namedPats : _ ->
-      namedPats
+      Surface.pattern_ <$> namedPats
     _ ->
       mempty
 
@@ -180,14 +180,14 @@ shiftImplicit binding value type_ (Clause (Surface.Clause span patterns term) ma
   case patterns of
     Surface.ImplicitPattern patSpan namedPats : patterns'
       | let name = Binding.toName binding
-        , HashMap.member name namedPats ->
+        , Just patBinding <- HashMap.lookup name namedPats ->
         Clause
           ( Surface.Clause
               span
               (Surface.ImplicitPattern patSpan (HashMap.delete name namedPats) : patterns')
               term
           )
-          (matches Tsil.:> Matching.Match value value Implicit (Matching.unresolvedPattern $ namedPats HashMap.! name) type_)
+          (matches Tsil.:> Matching.Match value value Implicit (Matching.unresolvedPattern $ Surface.pattern_ patBinding) type_)
     _ ->
       Clause
         (Surface.Clause span patterns term)

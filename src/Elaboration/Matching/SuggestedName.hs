@@ -66,8 +66,8 @@ implicitNames :: Context v -> Name -> Surface.PlicitPattern -> M [(Span.Relative
 implicitNames context piName pattern_ =
   case pattern_ of
     Surface.ImplicitPattern _ namedPats
-      | Just pattern' <- HashMap.lookup piName namedPats ->
-        patternNames context pattern'
+      | Just p <- HashMap.lookup piName namedPats ->
+        patternNames context $ Surface.pattern_ p
     _ ->
       pure []
 

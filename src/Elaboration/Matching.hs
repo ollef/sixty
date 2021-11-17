@@ -606,7 +606,7 @@ matchSurfacePatterns context values patterns type_ =
       case type' of
         Domain.Pi binding domain Implicit targetClosure
           | let name = Binding.toName binding
-            , HashMap.member name namedPats -> do
+            , Just patBinding <- HashMap.lookup name namedPats -> do
             target <- Evaluation.evaluateClosure targetClosure value
             (matches, type'') <-
               matchSurfacePatterns
@@ -614,7 +614,7 @@ matchSurfacePatterns context values patterns type_ =
                 values'
                 (Surface.ImplicitPattern patSpan (HashMap.delete name namedPats) : patterns')
                 target
-            pure (Match value value Implicit (unresolvedPattern $ namedPats HashMap.! name) domain : matches, type'')
+            pure (Match value value Implicit (unresolvedPattern $ Surface.pattern_ patBinding) domain : matches, type'')
           | otherwise -> do
             target <- Evaluation.evaluateClosure targetClosure value
             matchSurfacePatterns context values' patterns target

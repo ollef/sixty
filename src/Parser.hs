@@ -5,6 +5,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnboxedTuples #-}
 
@@ -517,11 +518,13 @@ plicitPattern =
     <?> "explicit or implicit pattern"
   where
     mkImplicitPattern span1 pats span2 =
-      Surface.ImplicitPattern (Span.add span1 span2) $ HashMap.fromList pats
+      Surface.ImplicitPattern (Span.add span1 span2) $
+        HashMap.fromList $
+          zipWith (\(name, spanIncludingName, pat) isTextuallyFirst -> (name, Surface.ImplicitPatternBinding {pattern_ = pat, ..})) pats (True : repeat False)
     patName =
       spannedIdentifier
-        <**> ( (\pat (_, nameText) -> (Name nameText, pat)) <$ token Lexer.Equals <*> pattern_
-                <|> pure (\(span, nameText) -> (Name nameText, Surface.Pattern span $ Surface.ConOrVar (Surface.SpannedName span (Name.Surface nameText)) mempty))
+        <**> ( (\pat (span, nameText) -> (Name nameText, span, pat)) <$ token Lexer.Equals <*> pattern_
+                <|> pure (\(span, nameText) -> (Name nameText, span, Surface.Pattern span $ Surface.ConOrVar (Surface.SpannedName span (Name.Surface nameText)) mempty))
              )
 
 -------------------------------------------------------------------------------

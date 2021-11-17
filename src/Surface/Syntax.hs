@@ -64,7 +64,14 @@ data UnspannedPattern
 
 data PlicitPattern
   = ExplicitPattern !Pattern
-  | ImplicitPattern !Span.Relative (HashMap Name Pattern)
+  | ImplicitPattern !Span.Relative (HashMap Name ImplicitPatternBinding)
+  deriving (Eq, Show, Generic, Persist, Hashable)
+
+data ImplicitPatternBinding = ImplicitPatternBinding
+  { spanIncludingName :: !Span.Relative
+  , pattern_ :: !Pattern
+  , isTextuallyFirst :: !Bool
+  }
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 plicitPatternSpan :: PlicitPattern -> Span.Relative
