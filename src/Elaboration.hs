@@ -654,7 +654,7 @@ elaborateWith context spannedTerm@(Surface.Term span term) mode canPostpone = do
         Check expectedType -> do
           term' <- Matching.checkCase context scrutinee' scrutineeType branches expectedType Postponement.CanPostpone
           pure $ Checked $ Syntax.Spanned span term'
-    (Surface.App function argument@(Surface.Term argumentSpan _), _) -> do
+    (Surface.App function@(Surface.Term functionSpan _) argument@(Surface.Term argumentSpan _), _) -> do
       (function', functionType) <- inferAndInsertMetas context UntilExplicit function $ getModeExpectedTypeName context mode
       functionType' <- Context.forceHead context functionType
 
@@ -676,7 +676,7 @@ elaborateWith context spannedTerm@(Surface.Term span term) mode canPostpone = do
                 Domain.Closure (Context.toEnvironment context) target'
               metaFunctionType =
                 Domain.Pi (Binding.Unspanned "x") domain Explicit targetClosure
-          f <- Unification.tryUnify context functionType metaFunctionType
+          f <- Unification.tryUnify (Context.spanned functionSpan context) functionType metaFunctionType
           argument' <- check context argument domain
           argumentValue <- lazyEvaluate context argument'
           target'' <- Evaluation.evaluateClosure targetClosure argumentValue
