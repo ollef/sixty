@@ -239,12 +239,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
       noError $ do
         (privateScope, _) <- fetch $ ModuleScope module_
         importedScopeEntry <- fetchImportedName module_ surfaceName
-        pure $
-          case HashMap.lookup surfaceName privateScope of
-            Nothing ->
-              importedScopeEntry
-            Just localEntry ->
-              importedScopeEntry <> Just localEntry
+        pure $ importedScopeEntry <> HashMap.lookup surfaceName privateScope
     ElaboratingDefinition definitionKind qualifiedName@(Name.Qualified module_ name) ->
       nonInput $ do
         mdef <- fetch $ ParsedDefinition module_ $ Mapped.Query (definitionKind, name)
