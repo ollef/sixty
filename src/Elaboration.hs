@@ -73,12 +73,12 @@ import Var (Var)
 import qualified Var
 
 inferTopLevelDefinition ::
-  Scope.EntityKind ->
+  Scope.DefinitionKind ->
   Name.Qualified ->
   Surface.Definition ->
   M ((Syntax.Definition, Syntax.Type Void, Meta.EagerState), [Error])
-inferTopLevelDefinition entityKind defName def = do
-  context <- Context.empty entityKind defName
+inferTopLevelDefinition definitionKind defName def = do
+  context <- Context.empty definitionKind defName
   (def', type_) <- inferDefinition context def
   postponed <- readIORef $ Context.postponed context
   metaVars <- readIORef $ Context.metas context
@@ -88,13 +88,13 @@ inferTopLevelDefinition entityKind defName def = do
   pure ((zonkedDef, type_, eagerMetaVars), toList errors)
 
 checkTopLevelDefinition ::
-  Scope.EntityKind ->
+  Scope.DefinitionKind ->
   Name.Qualified ->
   Surface.Definition ->
   Domain.Type ->
   M ((Syntax.Definition, Meta.EagerState), [Error])
-checkTopLevelDefinition entityKind defName def type_ = do
-  context <- Context.empty entityKind defName
+checkTopLevelDefinition definitionKind defName def type_ = do
+  context <- Context.empty definitionKind defName
   def' <- checkDefinition context def type_
   postponed <- readIORef $ Context.postponed context
   metaVars <- readIORef $ Context.metas context
@@ -104,14 +104,14 @@ checkTopLevelDefinition entityKind defName def type_ = do
   pure ((zonkedDef, eagerMetaVars), toList errors)
 
 checkDefinitionMetaSolutions ::
-  Scope.EntityKind ->
+  Scope.DefinitionKind ->
   Name.Qualified ->
   Syntax.Definition ->
   Syntax.Type Void ->
   Meta.EagerState ->
   M ((Syntax.Definition, Syntax.Type Void), [Error])
-checkDefinitionMetaSolutions entityKind defName def type_ metas = do
-  context <- Context.empty entityKind defName
+checkDefinitionMetaSolutions definitionKind defName def type_ metas = do
+  context <- Context.empty definitionKind defName
   metasVar <- newIORef $ Meta.fromEagerState metas
   let context' = context {Context.metas = metasVar}
   metas' <- checkMetaSolutions context' metas

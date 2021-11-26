@@ -48,12 +48,12 @@ extend =
 
 definitionOccurrences ::
   Domain.Environment Void ->
-  Scope.EntityKind ->
+  Scope.DefinitionKind ->
   Name.Qualified ->
   M Intervals
-definitionOccurrences env entityKind qualifiedName =
+definitionOccurrences env definitionKind qualifiedName =
   definitionNameOccurrences <> do
-    mdef <- fetch $ Query.ElaboratingDefinition entityKind qualifiedName
+    mdef <- fetch $ Query.ElaboratingDefinition definitionKind qualifiedName
     case mdef of
       Nothing ->
         mempty
@@ -66,25 +66,25 @@ definitionOccurrences env entityKind qualifiedName =
   where
     definitionNameOccurrences :: M Intervals
     definitionNameOccurrences = do
-      constructorSpans <- definitionConstructorSpans entityKind qualifiedName
-      spans <- definitionNameSpans entityKind qualifiedName
+      constructorSpans <- definitionConstructorSpans definitionKind qualifiedName
+      spans <- definitionNameSpans definitionKind qualifiedName
       pure $
         mconcat $
           foreach constructorSpans (\(span, con) -> Intervals.singleton span $ Intervals.Con con)
             <> foreach spans (`Intervals.singleton` Intervals.Global qualifiedName)
 
-definitionNameSpans :: MonadFetch Query m => Scope.EntityKind -> Name.Qualified -> m [Span.Relative]
-definitionNameSpans entityKind (Name.Qualified moduleName name) = do
-  maybeParsedDefinition <- fetch $ Query.ParsedDefinition moduleName $ Mapped.Query (entityKind, name)
+definitionNameSpans :: MonadFetch Query m => Scope.DefinitionKind -> Name.Qualified -> m [Span.Relative]
+definitionNameSpans definitionKind (Name.Qualified moduleName name) = do
+  maybeParsedDefinition <- fetch $ Query.ParsedDefinition moduleName $ Mapped.Query (definitionKind, name)
   pure $ foldMap Surface.spans maybeParsedDefinition
 
 definitionConstructorSpans ::
   MonadFetch Query m =>
-  Scope.EntityKind ->
+  Scope.DefinitionKind ->
   Name.Qualified ->
   m [(Span.Relative, Name.QualifiedConstructor)]
-definitionConstructorSpans entityKind qualifiedName@(Name.Qualified moduleName name) = do
-  maybeParsedDefinition <- fetch $ Query.ParsedDefinition moduleName $ Mapped.Query (entityKind, name)
+definitionConstructorSpans definitionKind qualifiedName@(Name.Qualified moduleName name) = do
+  maybeParsedDefinition <- fetch $ Query.ParsedDefinition moduleName $ Mapped.Query (definitionKind, name)
   pure $
     case maybeParsedDefinition of
       Nothing ->

@@ -205,7 +205,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
               pure $
                 HashMap.fromListWith
                   (\_new old -> old)
-                  [ ((Surface.entityKind def, name), def)
+                  [ ((Surface.definitionKind def, name), def)
                   | (_, (name, def)) <- defs
                   ]
     ModulePositionMap module_ ->
@@ -223,9 +223,9 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                   [] ->
                     []
                   [(loc, (name, def))] ->
-                    [((Surface.entityKind def, name), Span.Absolute loc $ Position.Absolute $ Text.lengthWord16 text)]
+                    [((Surface.definitionKind def, name), Span.Absolute loc $ Position.Absolute $ Text.lengthWord16 text)]
                   (loc1, (name, def)) : defs'@((loc2, _) : _) ->
-                    ((Surface.entityKind def, name), Span.Absolute loc1 loc2) : go defs'
+                    ((Surface.definitionKind def, name), Span.Absolute loc1 loc2) : go defs'
 
             pure $ HashMap.fromListWith (\_new old -> old) $ go defs
     ModuleScope module_ ->
@@ -245,15 +245,15 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
               importedScopeEntry
             Just localEntry ->
               importedScopeEntry <> Just localEntry
-    ElaboratingDefinition entityKind qualifiedName@(Name.Qualified module_ name) ->
+    ElaboratingDefinition definitionKind qualifiedName@(Name.Qualified module_ name) ->
       nonInput $ do
-        mdef <- fetch $ ParsedDefinition module_ $ Mapped.Query (entityKind, name)
+        mdef <- fetch $ ParsedDefinition module_ $ Mapped.Query (definitionKind, name)
         case mdef of
           Nothing ->
             pure (Nothing, mempty)
           Just def -> do
             mtype <-
-              case entityKind of
+              case definitionKind of
                 Scope.Type ->
                   pure $ Just Builtin.type_
                 Scope.Definition -> do
@@ -261,13 +261,13 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                   forM mtype $ \_ ->
                     fetch $ ElaboratedType qualifiedName
 
-            runElaboratorWithDefault Nothing entityKind qualifiedName $
+            runElaboratorWithDefault Nothing definitionKind qualifiedName $
               case mtype of
                 Nothing ->
-                  first Just <$> Elaboration.inferTopLevelDefinition entityKind qualifiedName def
+                  first Just <$> Elaboration.inferTopLevelDefinition definitionKind qualifiedName def
                 Just type_ -> do
                   typeValue <- Evaluation.evaluate Environment.empty type_
-                  ((def', metaVars), errs) <- Elaboration.checkTopLevelDefinition entityKind qualifiedName def typeValue
+                  ((def', metaVars), errs) <- Elaboration.checkTopLevelDefinition definitionKind qualifiedName def typeValue
                   pure (Just (def', type_, metaVars), errs)
     ElaboratedType Builtin.TypeName ->
       nonInput $
@@ -326,21 +326,21 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             pure $ go tele
           _ ->
             pure $ Telescope.Empty fail
-    DefinitionPosition entityKind (Name.Qualified module_ name) ->
+    DefinitionPosition definitionKind (Name.Qualified module_ name) ->
       noError $ do
         positions <- fetch $ ModulePositionMap module_
         maybeFilePath <- fetch $ Query.ModuleFile module_
         pure
           ( fromMaybe "<no file>" maybeFilePath
-          , HashMap.lookupDefault 0 (entityKind, name) positions
+          , HashMap.lookupDefault 0 (definitionKind, name) positions
           )
-    Occurrences entityKind name ->
+    Occurrences definitionKind name ->
       noError $
         runM $
           Occurrences.run $
             Occurrences.definitionOccurrences
               Environment.empty
-              entityKind
+              definitionKind
               name
     LambdaLifted qualifiedName ->
       noError $ do
@@ -455,18 +455,18 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
 
     runElaboratorWithDefault ::
       a ->
-      Scope.EntityKind ->
+      Scope.DefinitionKind ->
       Name.Qualified ->
       M (a, [Error]) ->
       Task Query (a, [Error])
-    runElaboratorWithDefault default_ entityKind defName m = do
+    runElaboratorWithDefault default_ definitionKind defName m = do
       eitherResult <- try $ runM m
       pure $
         case eitherResult of
           Left err ->
             ( default_
             , pure $
-                Error.Elaboration entityKind defName $
+                Error.Elaboration definitionKind defName $
                   Error.Spanned (Span.Relative 0 0) err
             )
           Right (result, errs) ->

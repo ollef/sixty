@@ -12,7 +12,7 @@ import qualified Name
 import Orphans ()
 import Protolude
 
-data EntityKind = Type | Definition
+data DefinitionKind = Type | Definition
   deriving (Eq, Ord, Show, Generic, Hashable, Persist)
 
 data Entry

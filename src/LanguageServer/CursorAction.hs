@@ -87,7 +87,7 @@ cursorAction filePath (Position.LineColumn line column) k =
       asum $
         foreach
           (HashMap.toList spans)
-          ( \((entityKind, name), span@(Span.Absolute defPos _)) -> do
+          ( \((definitionKind, name), span@(Span.Absolute defPos _)) -> do
               guard $ span `Span.contains` pos
               let qualifiedName =
                     Name.Qualified moduleName name
@@ -97,7 +97,7 @@ cursorAction filePath (Position.LineColumn line column) k =
                     k
                       (Term itemContext (_context env) (_varSpans env) term)
                       (toLineColumns $ Span.absoluteFrom defPos actionSpan)
-              context <- Context.empty entityKind qualifiedName
+              context <- Context.empty definitionKind qualifiedName
               definitionAction
                 k'
                 Environment
@@ -105,7 +105,7 @@ cursorAction filePath (Position.LineColumn line column) k =
                   , _context = context
                   , _varSpans = mempty
                   }
-                entityKind
+                definitionKind
                 qualifiedName
           )
           <> foreach
@@ -163,12 +163,12 @@ definitionAction ::
   forall a.
   RelativeCallback a ->
   Environment Void ->
-  Scope.EntityKind ->
+  Scope.DefinitionKind ->
   Name.Qualified ->
   MaybeT M a
-definitionAction k env entityKind qualifiedName =
+definitionAction k env definitionKind qualifiedName =
   definitionNameActions <|> do
-    (def, _, metaVars) <- MaybeT $ fetch $ Query.ElaboratingDefinition entityKind qualifiedName
+    (def, _, metaVars) <- MaybeT $ fetch $ Query.ElaboratingDefinition definitionKind qualifiedName
     metaVarsVar <- newIORef $ Meta.fromEagerState metaVars
     let env' =
           env {_context = (_context env) {Context.metas = metaVarsVar}}
@@ -182,8 +182,8 @@ definitionAction k env entityKind qualifiedName =
   where
     definitionNameActions :: MaybeT M a
     definitionNameActions = do
-      constructorSpans <- Occurrences.definitionConstructorSpans entityKind qualifiedName
-      spans <- Occurrences.definitionNameSpans entityKind qualifiedName
+      constructorSpans <- Occurrences.definitionConstructorSpans definitionKind qualifiedName
+      spans <- Occurrences.definitionNameSpans definitionKind qualifiedName
       asum $
         foreach
           constructorSpans

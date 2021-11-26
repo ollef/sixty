@@ -59,7 +59,7 @@ import qualified Telescope
 import Var
 
 data Context v = Context
-  { entityKind :: !Scope.EntityKind
+  { definitionKind :: !Scope.DefinitionKind
   , definitionName :: !Name.Qualified
   , span :: !Span.Relative
   , indices :: Index.Map v Var
@@ -94,14 +94,14 @@ toEnvironment context =
     , glueableBefore = Index.Zero
     }
 
-empty :: MonadBase IO m => Scope.EntityKind -> Name.Qualified -> m (Context Void)
-empty entityKind_ definitionName_ = do
+empty :: MonadBase IO m => Scope.DefinitionKind -> Name.Qualified -> m (Context Void)
+empty definitionKind_ definitionName_ = do
   ms <- newIORef Meta.empty
   es <- newIORef mempty
   ps <- newIORef Postponed.empty
   pure
     Context
-      { entityKind = entityKind_
+      { definitionKind = definitionKind_
       , definitionName = definitionName_
       , span = Span.Relative 0 0
       , surfaceNames = mempty
@@ -120,7 +120,7 @@ empty entityKind_ definitionName_ = do
 emptyFrom :: Context v -> Context Void
 emptyFrom context =
   Context
-    { entityKind = entityKind context
+    { definitionKind = definitionKind context
     , definitionName = definitionName context
     , span = span context
     , surfaceNames = mempty
@@ -656,7 +656,7 @@ instantiateType context type_ spine = do
 report :: Context v -> Error.Elaboration -> M ()
 report context err =
   let err' =
-        Error.Elaboration (entityKind context) (definitionName context) $
+        Error.Elaboration (definitionKind context) (definitionName context) $
           Error.Spanned (span context) err
    in atomicModifyIORef' (errors context) $ \errs ->
         (errs Tsil.:> err', ())

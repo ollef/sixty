@@ -58,17 +58,17 @@ data Query a where
   ModuleHeader :: Name.Module -> Query Module.Header
   ImportedNames :: Name.Module -> Mapped.Query Name.Surface Scope.Entry a -> Query a
   NameAliases :: Name.Module -> Query (HashMap Name.QualifiedConstructor (HashSet Name.Surface), HashMap Name.Qualified (HashSet Name.Surface))
-  ModulePositionMap :: Name.Module -> Query (HashMap (Scope.EntityKind, Name) Position.Absolute)
-  ModuleSpanMap :: Name.Module -> Query (HashMap (Scope.EntityKind, Name) Span.Absolute)
-  ParsedDefinition :: Name.Module -> Mapped.Query (Scope.EntityKind, Name) Surface.Definition a -> Query a
+  ModulePositionMap :: Name.Module -> Query (HashMap (Scope.DefinitionKind, Name) Position.Absolute)
+  ModuleSpanMap :: Name.Module -> Query (HashMap (Scope.DefinitionKind, Name) Span.Absolute)
+  ParsedDefinition :: Name.Module -> Mapped.Query (Scope.DefinitionKind, Name) Surface.Definition a -> Query a
   ModuleScope :: Name.Module -> Query (Scope, Scope)
   ResolvedName :: Name.Module -> Name.Surface -> Query (Maybe Scope.Entry)
-  ElaboratingDefinition :: Scope.EntityKind -> Name.Qualified -> Query (Maybe (Syntax.Definition, Syntax.Type Void, Elaboration.Meta.EagerState))
+  ElaboratingDefinition :: Scope.DefinitionKind -> Name.Qualified -> Query (Maybe (Syntax.Definition, Syntax.Type Void, Elaboration.Meta.EagerState))
   ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void)
   ElaboratedDefinition :: Name.Qualified -> Query (Syntax.Definition, Syntax.Type Void)
   ConstructorType :: Name.QualifiedConstructor -> Query (Telescope Binding Syntax.Type Syntax.Type Void)
-  DefinitionPosition :: Scope.EntityKind -> Name.Qualified -> Query (FilePath, Position.Absolute)
-  Occurrences :: Scope.EntityKind -> Name.Qualified -> Query Occurrences.Intervals
+  DefinitionPosition :: Scope.DefinitionKind -> Name.Qualified -> Query (FilePath, Position.Absolute)
+  Occurrences :: Scope.DefinitionKind -> Name.Qualified -> Query Occurrences.Intervals
   LambdaLifted :: Name.Qualified -> Query (LambdaLifted.Definition, IntMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void))
   LambdaLiftedDefinition :: Name.Lifted -> Query LambdaLifted.Definition
   LambdaLiftedModuleDefinitions :: Name.Module -> Query (OrderedHashSet Name.Lifted)

@@ -32,20 +32,20 @@ highlights filePath (Position.LineColumn line column) = do
 
   let itemSpans item =
         fmap concat $
-          forM (HashMap.toList spans) $ \((entityKind, name), Span.Absolute defPos _) -> do
+          forM (HashMap.toList spans) $ \((definitionKind, name), Span.Absolute defPos _) -> do
             occurrenceIntervals <-
               fetch $
-                Query.Occurrences entityKind $
+                Query.Occurrences definitionKind $
                   Name.Qualified moduleName name
             pure $ toLineColumns . Span.absoluteFrom defPos <$> Intervals.itemSpans item occurrenceIntervals
 
   fmap concat $
-    forM (HashMap.toList spans) $ \((entityKind, name), span@(Span.Absolute defPos _)) ->
+    forM (HashMap.toList spans) $ \((definitionKind, name), span@(Span.Absolute defPos _)) ->
       if span `Span.contains` pos
         then do
           occurrenceIntervals <-
             fetch $
-              Query.Occurrences entityKind $
+              Query.Occurrences definitionKind $
                 Name.Qualified moduleName name
           let relativePos =
                 Position.relativeTo defPos pos

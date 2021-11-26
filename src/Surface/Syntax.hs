@@ -187,8 +187,8 @@ constructorSpans def =
         ADTConstructor span constr _ ->
           [(span, constr)]
 
-entityKind :: Definition -> Scope.EntityKind
-entityKind def = case def of
+definitionKind :: Definition -> Scope.DefinitionKind
+definitionKind def = case def of
   TypeDeclaration {} -> Scope.Type
   ConstantDefinition {} -> Scope.Definition
   DataDefinition {} -> Scope.Definition

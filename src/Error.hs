@@ -22,11 +22,11 @@ import qualified Span
 
 data Error
   = Parse FilePath !Error.Parsing
-  | DuplicateName !Scope.EntityKind !Name.Qualified !Span.Absolute
+  | DuplicateName !Scope.DefinitionKind !Name.Qualified !Span.Absolute
   | ImportNotFound !Name.Module !Module.Import
   | MultipleFilesWithModuleName !Name.Module FilePath FilePath
   | ModuleFileNameMismatch !Name.Module !Name.Module !Span.Absolute FilePath
-  | Elaboration !Scope.EntityKind !Name.Qualified !Error.Spanned
+  | Elaboration !Scope.DefinitionKind !Name.Qualified !Error.Spanned
   deriving (Eq, Show, Generic, Persist)
 
 data Elaboration

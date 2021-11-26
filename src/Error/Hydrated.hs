@@ -47,8 +47,8 @@ headingAndBody error =
               expected ->
                 line <> "Expected: " <> hcat (punctuate comma $ Doc.pretty <$> expected)
         )
-    Error.DuplicateName entityKind name _span -> do
-      (filePath, oldSpan) <- fetch $ Query.DefinitionPosition entityKind name
+    Error.DuplicateName definitionKind name _span -> do
+      (filePath, oldSpan) <- fetch $ Query.DefinitionPosition definitionKind name
       text <- fetch $ Query.FileText filePath
       let (lineColumn, _) =
             Position.lineColumn oldSpan text
@@ -88,7 +88,7 @@ headingAndBody error =
             <> indent 2 (Doc.pretty expectedModuleName)
             <> "."
         )
-    Error.Elaboration entityKind definitionName (Error.Spanned _ err') ->
+    Error.Elaboration definitionKind definitionName (Error.Spanned _ err') ->
       case err' of
         Error.NotInScope name ->
           pure
@@ -105,7 +105,7 @@ headingAndBody error =
                   )
             )
         Error.DuplicateLetName name previousSpan -> do
-          (filePath, defSpan) <- fetch $ Query.DefinitionPosition entityKind definitionName
+          (filePath, defSpan) <- fetch $ Query.DefinitionPosition definitionKind definitionName
           text <- fetch $ Query.FileText filePath
           let (previousLineColumn, _) =
                 Span.lineColumn (Span.absoluteFrom defSpan previousSpan) text
@@ -264,7 +264,7 @@ fromError err = do
           ( filePath
           , (\p -> Span.Absolute p p) <$> Error.Parsing.position parseError
           )
-      Error.DuplicateName _entityKind (Name.Qualified module_ _) span -> do
+      Error.DuplicateName _definitionKind (Name.Qualified module_ _) span -> do
         maybeModuleFile <- fetch $ Query.ModuleFile module_
         pure (fromMaybe "<no file>" maybeModuleFile, Right span)
       Error.ImportNotFound module_ import_ -> do
@@ -274,8 +274,8 @@ fromError err = do
         pure (file2, Right $ Span.Absolute 0 0)
       Error.ModuleFileNameMismatch _ _ span file ->
         pure (file, Right span)
-      Error.Elaboration entityKind name (Error.Spanned relativeSpan _) -> do
-        (file, absolutePosition) <- fetch $ Query.DefinitionPosition entityKind name
+      Error.Elaboration definitionKind name (Error.Spanned relativeSpan _) -> do
+        (file, absolutePosition) <- fetch $ Query.DefinitionPosition definitionKind name
         pure (file, Right $ Span.absoluteFrom absolutePosition relativeSpan)
   text <- fetch $ Query.FileText filePath
   let (lineColumn, lineText) =
