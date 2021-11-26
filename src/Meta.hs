@@ -7,8 +7,8 @@
 module Meta where
 
 import Data.Persist
-import Prettyprinter
 import Orphans ()
+import Prettyprinter
 import Protolude hiding (IntMap)
 
 newtype Index = Index Int

@@ -8,12 +8,12 @@ import qualified Core.Pretty as Pretty
 import qualified Core.Syntax as Syntax
 import qualified Data.HashSet as HashSet
 import qualified Data.Text as Text
-import Prettyprinter
-import Prettyprinter.Render.Text (putDoc)
 import Data.Time.Clock
 import qualified Driver
 import qualified Error.Hydrated
 import qualified Name
+import Prettyprinter
+import Prettyprinter.Render.Text (putDoc)
 import qualified Project
 import Protolude hiding (wait, withAsync)
 import qualified Query

@@ -16,8 +16,6 @@ import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Rope.UTF16 (Rope)
 import qualified Data.Rope.UTF16 as Rope
-import Prettyprinter (Doc)
-import qualified Prettyprinter as Doc
 import qualified Driver
 import qualified Error.Hydrated
 import qualified Error.Hydrated as Error (Hydrated)
@@ -37,6 +35,8 @@ import qualified LanguageServer.Hover as Hover
 import qualified LanguageServer.References as References
 import qualified Occurrences.Intervals
 import qualified Position
+import Prettyprinter (Doc)
+import qualified Prettyprinter as Doc
 import qualified Project
 import Protolude hiding (State, state)
 import Query (Query)

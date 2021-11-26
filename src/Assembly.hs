@@ -11,10 +11,10 @@
 module Assembly where
 
 import Data.Persist
-import Prettyprinter
 import Literal (Literal)
 import qualified Literal
 import qualified Name
+import Prettyprinter
 import Protolude hiding (Type, local, moduleName)
 
 data Local = Local !Int !NameSuggestion

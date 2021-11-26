@@ -6,10 +6,10 @@ module Compiler where
 
 import Data.String (String)
 import qualified Data.Text.Lazy.IO as Lazy
-import Prettyprinter
 import LLVM.Pretty (ppllvm)
 import qualified Name
 import qualified Paths_sixty as Paths
+import Prettyprinter
 import Protolude hiding (moduleName, wait, withAsync, (<.>))
 import Query (Query)
 import qualified Query

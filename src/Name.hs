@@ -9,8 +9,8 @@ module Name where
 import Data.Persist
 import Data.String
 import qualified Data.Text as Text
-import Prettyprinter
 import Extra
+import Prettyprinter
 import Protolude hiding (Constructor)
 
 newtype Surface = Surface Text

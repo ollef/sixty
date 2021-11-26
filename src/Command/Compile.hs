@@ -7,10 +7,10 @@ module Command.Compile where
 
 import qualified Compiler
 import qualified Data.Text as Text
-import Prettyprinter
 import Data.Time.Clock
 import qualified Driver
 import qualified Error.Hydrated
+import Prettyprinter
 import qualified Project
 import Protolude hiding (moduleName, wait, withAsync)
 import System.Directory

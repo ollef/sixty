@@ -15,7 +15,6 @@ import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import qualified Data.List as List
 import Data.String (fromString)
-import Prettyprinter
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified LLVM.AST as LLVM
@@ -28,6 +27,7 @@ import qualified LLVM.AST.ParameterAttribute as ParameterAttribute
 import qualified LLVM.AST.Type as LLVM.Type
 import qualified Literal
 import qualified Name
+import Prettyprinter
 import Protolude hiding (IntMap, cast, local, moduleName)
 
 type Assembler = State AssemblerState

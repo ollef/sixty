@@ -6,8 +6,8 @@
 module Span where
 
 import Data.Persist
-import Prettyprinter
 import qualified Position
+import Prettyprinter
 import Protolude
 
 data Absolute = Absolute !Position.Absolute !Position.Absolute

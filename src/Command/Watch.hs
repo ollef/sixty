@@ -6,13 +6,13 @@ import Data.HashMap.Lazy (HashMap)
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.Text as Text
-import Prettyprinter (Doc)
-import qualified Prettyprinter as Doc
-import Prettyprinter.Render.Text (putDoc)
 import Data.Time.Clock
 import qualified Driver
 import qualified Error.Hydrated
 import qualified FileSystem
+import Prettyprinter (Doc)
+import qualified Prettyprinter as Doc
+import Prettyprinter.Render.Text (putDoc)
 import Protolude hiding (check)
 import qualified System.Console.ANSI
 import qualified System.FSNotify as FSNotify

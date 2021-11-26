@@ -4,12 +4,12 @@
 module LanguageServer.Hover where
 
 import qualified Core.TypeOf as TypeOf
-import Prettyprinter (Doc, (<+>))
 import qualified Elaboration
 import qualified Elaboration.Context as Context
 import qualified Error.Hydrated as Error
 import qualified LanguageServer.CursorAction as CursorAction
 import qualified Position
+import Prettyprinter (Doc, (<+>))
 import Protolude hiding (evaluate, moduleName)
 import Query (Query)
 import Rock

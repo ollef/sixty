@@ -3,10 +3,10 @@
 module Main where
 
 import qualified Data.Text as Text
-import Prettyprinter
 import qualified Gauge
 import qualified Lexer
 import qualified Parser
+import Prettyprinter
 import Protolude
 import System.Directory
 import System.FilePath
