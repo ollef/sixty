@@ -36,6 +36,7 @@ import Environment (Environment (Environment))
 import qualified Environment
 import Error (Error)
 import qualified Error
+import qualified Error.Hydrated as Error
 import qualified Error.Parsing as Error
 import Index
 import qualified Index.Map
@@ -47,6 +48,7 @@ import Name (Name (Name))
 import qualified Name
 import Plicity
 import qualified Postponement
+import Prettyprinter (Doc)
 import Protolude hiding (IntMap, IntSet, catch, check, force, moduleName, state)
 import qualified Query
 import Rock
@@ -411,6 +413,16 @@ lookupVarValue var context =
 -------------------------------------------------------------------------------
 -- Prettyable terms
 
+prettyTerm :: Context v -> Syntax.Term v -> M (Doc ann)
+prettyTerm context term = do
+  pt <- toPrettyableTerm context term
+  Error.prettyPrettyableTerm 0 pt
+
+prettyValue :: Context v -> Domain.Value -> M (Doc ann)
+prettyValue context term = do
+  pt <- toPrettyableValue context term
+  Error.prettyPrettyableTerm 0 pt
+
 toPrettyableTerm :: Context v -> Syntax.Term v -> M Error.PrettyableTerm
 toPrettyableTerm context term = do
   term' <- zonk context term
@@ -419,6 +431,11 @@ toPrettyableTerm context term = do
       (moduleName context)
       ((`lookupVarName` context) <$> toList (indices context))
       (Syntax.coerce term')
+
+toPrettyableValue :: Context v -> Domain.Value -> M Error.PrettyableTerm
+toPrettyableValue context value = do
+  term <- Readback.readback (toEnvironment context) value
+  toPrettyableTerm context term
 
 toPrettyableClosedTerm :: Context v -> Syntax.Term Void -> M Error.PrettyableTerm
 toPrettyableClosedTerm context term = do
