@@ -61,6 +61,7 @@ import Var
 data Context v = Context
   { definitionKind :: !Scope.DefinitionKind
   , definitionName :: !Name.Qualified
+  , definitionType :: Maybe Domain.Type
   , span :: !Span.Relative
   , indices :: Index.Map v Var
   , surfaceNames :: HashMap Name.Surface (Domain.Value, Domain.Type)
@@ -103,6 +104,7 @@ empty definitionKind_ definitionName_ = do
     Context
       { definitionKind = definitionKind_
       , definitionName = definitionName_
+      , definitionType = Nothing
       , span = Span.Relative 0 0
       , surfaceNames = mempty
       , varNames = mempty
@@ -122,6 +124,7 @@ emptyFrom context =
   Context
     { definitionKind = definitionKind context
     , definitionName = definitionName context
+    , definitionType = definitionType context
     , span = span context
     , surfaceNames = mempty
     , varNames = mempty

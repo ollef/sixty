@@ -20,7 +20,6 @@ import qualified Core.Evaluation as Evaluation
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
 import Data.Coerce
-import Data.Functor.Compose
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
@@ -41,7 +40,6 @@ import Elaboration.Matching.SuggestedName as SuggestedName
 import qualified Elaboration.Meta as Meta
 import qualified Elaboration.MetaInlining as MetaInlining
 import qualified Elaboration.Postponed as Postponed
-import qualified Elaboration.Substitution as Substitution
 import qualified Elaboration.Unification as Unification
 import qualified Elaboration.ZonkPostponedChecks as ZonkPostponedChecks
 import qualified Environment
@@ -162,8 +160,8 @@ inferDefinition context def =
       let clauses' =
             [Clauses.Clause clause mempty | (_, clause) <- clauses]
       (term', type_) <- Clauses.infer context clauses'
-      def' <- postProcessDefinition context $ Syntax.ConstantDefinition term'
       type' <- readback context type_
+      def' <- postProcessDefinition context $ Syntax.ConstantDefinition term'
       pure (def', type')
     Surface.DataDefinition _span boxity params constrs -> do
       (tele, type_) <- inferDataDefinition context params constrs mempty
@@ -183,13 +181,10 @@ inferDataDefinition ::
   [(Surface.SpannedName, Surface.Type, Plicity)] ->
   [Surface.ConstructorDefinition] ->
   Tsil (Plicity, Var) ->
-  M (Telescope Binding Syntax.Type (Compose Syntax.ConstructorDefinitions Index.Succ) v, Syntax.Type v)
-inferDataDefinition context preParams constrs paramVars =
-  case preParams of
+  M (Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v, Syntax.Type v)
+inferDataDefinition context surfaceParams constrs paramVars =
+  case surfaceParams of
     [] -> do
-      let qualifiedThisName@(Name.Qualified _ (Name.Name thisName)) =
-            Context.definitionName context
-
       thisType <-
         Syntax.fromVoid
           <$> varPis
@@ -199,10 +194,7 @@ inferDataDefinition context preParams constrs paramVars =
             Builtin.Type
 
       thisType' <- evaluate context thisType
-
-      (context', _) <-
-        Context.extendSurface context (Name.Surface thisName) thisType'
-
+      let context' = context {Context.definitionType = Just thisType'}
       constrs' <- forM constrs $ \case
         Surface.GADTConstructors cs type_ -> do
           type' <- check context' type_ Builtin.Type
@@ -213,16 +205,16 @@ inferDataDefinition context preParams constrs paramVars =
 
           returnType <-
             readback context' $
-              Domain.Neutral (Domain.Global qualifiedThisName) $
+              Domain.Neutral (Domain.Global $ Context.definitionName context') $
                 Domain.Apps $ second Domain.var <$> paramVars
           let type_ =
                 Syntax.funs types' Explicit returnType
           pure [(constr, type_)]
       pure
-        ( Telescope.Empty (Compose $ Syntax.ConstructorDefinitions $ OrderedHashMap.fromList $ concat constrs')
+        ( Telescope.Empty $ Syntax.ConstructorDefinitions $ OrderedHashMap.fromList $ concat constrs'
         , Syntax.Global Builtin.TypeName
         )
-    (spannedName@(Surface.SpannedName _ name), type_, plicity) : preParams' -> do
+    (spannedName@(Surface.SpannedName _ name), type_, plicity) : surfaceParams' -> do
       type' <- check context type_ Builtin.Type
       type'' <- lazyEvaluate context type'
       (context', paramVar) <- Context.extendSurface context name type''
@@ -231,7 +223,7 @@ inferDataDefinition context preParams constrs paramVars =
 
           binding =
             Binding.fromSurface spannedName
-      (tele, dataType) <- inferDataDefinition context' preParams' constrs paramVars'
+      (tele, dataType) <- inferDataDefinition context' surfaceParams' constrs paramVars'
       pure
         ( Telescope.Extend binding type' plicity tele
         , Syntax.Pi binding type' plicity dataType
@@ -263,7 +255,7 @@ varPis context env vars target =
 postProcessDataDefinition ::
   Context Void ->
   Boxity.Boxity ->
-  Telescope Binding Syntax.Type (Compose Syntax.ConstructorDefinitions Index.Succ) Void ->
+  Telescope Binding Syntax.Type Syntax.ConstructorDefinitions Void ->
   M Syntax.Definition
 postProcessDataDefinition outerContext boxity outerTele = do
   Context.inferAllPostponedChecks outerContext
@@ -273,24 +265,17 @@ postProcessDataDefinition outerContext boxity outerTele = do
     go ::
       Context v ->
       Postponed.Checks ->
-      Telescope Binding Syntax.Type (Compose Syntax.ConstructorDefinitions Index.Succ) v ->
+      Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v ->
       Tsil (Plicity, Var) ->
       M (Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v)
     go context postponed tele paramVars =
       case tele of
-        Telescope.Empty (Compose (Syntax.ConstructorDefinitions constructorDefinitions)) -> do
-          let qualifiedThisName =
-                Context.definitionName context
-
-              this =
-                Syntax.Global qualifiedThisName
-
+        Telescope.Empty (Syntax.ConstructorDefinitions constructorDefinitions) -> do
           map (Telescope.Empty . Syntax.ConstructorDefinitions) $
             OrderedHashMap.forMUnordered constructorDefinitions $ \constructorType -> do
               let zonkedConstructorType =
                     ZonkPostponedChecks.zonkTerm postponed constructorType
-              constructorType' <- Substitution.let_ context this zonkedConstructorType
-              maybeConstructorType <- Context.try context $ addConstructorIndexEqualities context paramVars constructorType'
+              maybeConstructorType <- Context.try context $ addConstructorIndexEqualities context paramVars zonkedConstructorType
               pure $ fromMaybe (Builtin.fail Builtin.type_) maybeConstructorType
         Telescope.Extend name type_ plicity tele' -> do
           typeValue <- lazyEvaluate context type_
@@ -583,15 +568,19 @@ elaborateWith context spannedTerm@(Surface.Term span term) mode canPostpone = do
             Nothing -> do
               Context.report context $ Error.NotInScope name
               elaborationFailed context mode
-            Just (Scope.Name qualifiedName) -> do
-              typeResult <- try $ fetch $ Query.ElaboratedType qualifiedName
-              case typeResult of
-                Left (Cyclic (_ :: Some Query)) -> do
-                  Context.report context $ Error.NotInScope name
-                  elaborationFailed context mode
-                Right type_ -> do
-                  type' <- evaluate context $ Syntax.fromVoid type_
-                  result context mode (Syntax.Spanned span $ Syntax.Global qualifiedName) type'
+            Just (Scope.Name qualifiedName)
+              | qualifiedName == Context.definitionName context
+                , Just type_ <- Context.definitionType context ->
+                result context mode (Syntax.Spanned span $ Syntax.Global qualifiedName) type_
+              | otherwise -> do
+                typeResult <- try $ fetch $ Query.ElaboratedType qualifiedName
+                case typeResult of
+                  Left (Cyclic (_ :: Some Query)) -> do
+                    Context.report context $ Error.NotInScope name
+                    elaborationFailed context mode
+                  Right type_ -> do
+                    type' <- evaluate context $ Syntax.fromVoid type_
+                    result context mode (Syntax.Spanned span $ Syntax.Global qualifiedName) type'
             Just (Scope.Constructors constructorCandidates dataCandidates) -> do
               resolution <- resolveConstructor constructorCandidates dataCandidates $
                 case mode of
@@ -616,10 +605,19 @@ elaborateWith context spannedTerm@(Surface.Term span term) mode canPostpone = do
                   type_ <- fetch $ Query.ConstructorType constr
                   type' <- evaluate context $ Syntax.fromVoid $ Telescope.fold Syntax.implicitPi type_
                   result context mode (Syntax.Spanned span $ Syntax.Con constr) type'
-                Right (ResolvedData data_) -> do
-                  type_ <- fetch $ Query.ElaboratedType data_
-                  type' <- evaluate context $ Syntax.fromVoid type_
-                  result context mode (Syntax.Spanned span $ Syntax.Global data_) type'
+                Right (ResolvedData data_)
+                  | data_ == Context.definitionName context
+                    , Just type_ <- Context.definitionType context ->
+                    result context mode (Syntax.Spanned span $ Syntax.Global data_) type_
+                  | otherwise -> do
+                    typeResult <- try $ fetch $ Query.ElaboratedType data_
+                    case typeResult of
+                      Left (Cyclic (_ :: Some Query)) -> do
+                        Context.report context $ Error.NotInScope name
+                        elaborationFailed context mode
+                      Right type_ -> do
+                        type' <- evaluate context $ Syntax.fromVoid type_
+                        result context mode (Syntax.Spanned span $ Syntax.Global data_) type'
             Just (Scope.Ambiguous constrCandidates dataCandidates) -> do
               Context.report context $ Error.Ambiguous name constrCandidates dataCandidates
               elaborationFailed context mode
