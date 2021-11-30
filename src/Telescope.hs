@@ -74,6 +74,19 @@ foldr f g tele =
     Extend name t plicity scope ->
       f name t plicity $ Telescope.foldr f g scope
 
+foldMap ::
+  Monoid result =>
+  (forall v'. type_ v' -> result) ->
+  (forall v'. base v' -> result) ->
+  Telescope name type_ base v ->
+  result
+foldMap f g tele =
+  case tele of
+    Empty k ->
+      g k
+    Extend _ t _ scope ->
+      f t <> Telescope.foldMap f g scope
+
 fromVoid :: Telescope n t k Void -> Telescope n t k v
 fromVoid = unsafeCoerce
 
