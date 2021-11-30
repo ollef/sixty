@@ -2,6 +2,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Elaboration.Context where
@@ -475,36 +476,36 @@ piBoundVars :: Context v -> Domain.Type -> M (Syntax.Type Void, Int)
 piBoundVars context type_ = do
   let arity =
         IntSeq.length $ boundVars context
-  type' <-
-    Readback.readback
-      Environment
-        { indices = Index.Map $ boundVars context
-        , values = values context
-        , glueableBefore = Index arity
-        }
+  piType <-
+    varPis
+      context
+      Environment.empty {Environment.values = values context}
+      ((Explicit,) <$> toList (boundVars context))
       type_
-
-  piType <- pis (boundVars context) type'
   pure (piType, arity)
-  where
-    pis :: IntSeq Var -> Syntax.Type v -> M (Syntax.Type v')
-    pis vars_ term =
-      case vars_ of
-        IntSeq.Empty ->
-          pure $ Syntax.coerce term
-        vars' IntSeq.:> var -> do
-          let varType =
-                lookupVarType var context
-          varType' <-
-            Readback.readback
-              Environment
-                { indices = Index.Map vars'
-                , values = values context
-                , glueableBefore = Index $ IntSeq.length vars'
-                }
-              varType
-          let term' = Syntax.Pi (Binding.Unspanned $ lookupVarName var context) varType' Explicit $ Syntax.succ term
-          pis vars' term'
+
+varPis ::
+  Context v ->
+  Domain.Environment v' ->
+  [(Plicity, Var)] ->
+  Domain.Value ->
+  M (Syntax.Term v')
+varPis context env vars target =
+  case vars of
+    [] ->
+      Readback.readback env target
+    (plicity, var) : vars' -> do
+      let env' =
+            Environment.extendVar env var
+
+          domain =
+            lookupVarType var context
+      domain' <- Readback.readback env domain
+      target' <- varPis context env' vars' target
+      let binding =
+            Binding.Unspanned $ lookupVarName var context
+
+      pure $ Syntax.Pi binding domain' plicity target'
 
 lookupMeta ::
   Context v ->

@@ -187,7 +187,7 @@ inferDataDefinition context surfaceParams constrs paramVars =
     [] -> do
       thisType <-
         Syntax.fromVoid
-          <$> varPis
+          <$> Context.varPis
             context
             Environment.empty
             (toList paramVars)
@@ -228,29 +228,6 @@ inferDataDefinition context surfaceParams constrs paramVars =
         ( Telescope.Extend binding type' plicity tele
         , Syntax.Pi binding type' plicity dataType
         )
-
-varPis ::
-  Context v ->
-  Domain.Environment v' ->
-  [(Plicity, Var)] ->
-  Domain.Value ->
-  M (Syntax.Term v')
-varPis context env vars target =
-  case vars of
-    [] ->
-      Readback.readback env target
-    (plicity, var) : vars' -> do
-      let env' =
-            Environment.extendVar env var
-
-          domain =
-            Context.lookupVarType var context
-      domain' <- Readback.readback env domain
-      target' <- varPis context env' vars' target
-      let binding =
-            Binding.Unspanned $ Context.lookupVarName var context
-
-      pure $ Syntax.Pi binding domain' plicity target'
 
 postProcessDataDefinition ::
   Context Void ->
