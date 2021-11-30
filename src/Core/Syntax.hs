@@ -6,6 +6,8 @@ module Core.Syntax where
 import Boxity
 import Core.Binding (Binding)
 import Core.Bindings (Bindings)
+import Data.HashSet (HashSet)
+import qualified Data.HashSet as HashSet
 import Data.IntMap (IntMap)
 import Data.IntSet (IntSet)
 import Data.OrderedHashMap (OrderedHashMap)
@@ -21,6 +23,7 @@ import qualified Postponement
 import Protolude hiding (IntMap, IntSet, Type)
 import qualified Span
 import Telescope (Telescope)
+import qualified Telescope
 import Unsafe.Coerce
 
 data Term v
@@ -140,3 +143,44 @@ constructorFieldPlicities type_ =
       plicity : constructorFieldPlicities type'
     _ ->
       []
+
+dependencies :: Term v -> HashSet Name.Qualified
+dependencies term =
+  case term of
+    Var _ -> mempty
+    Global name -> HashSet.singleton name
+    Con (Name.QualifiedConstructor name _) -> HashSet.singleton name
+    Lit _ -> mempty
+    Meta _ -> mempty
+    PostponedCheck _ term' -> dependencies term'
+    Lets lets -> letsDependencies lets
+    Pi _ domain _ target -> dependencies domain <> dependencies target
+    Fun domain _ target -> dependencies domain <> dependencies target
+    Lam _ type_ _ body -> dependencies type_ <> dependencies body
+    App function _ argument -> dependencies function <> dependencies argument
+    Case scrutinee branches defaultBranch ->
+      dependencies scrutinee <> branchesDependencies branches <> foldMap dependencies defaultBranch
+    Spanned _ term' -> dependencies term'
+
+letsDependencies :: Lets v -> HashSet Name.Qualified
+letsDependencies lets =
+  case lets of
+    LetType _ type_ lets' -> dependencies type_ <> letsDependencies lets'
+    Let _ _ term lets' -> dependencies term <> letsDependencies lets'
+    In term -> dependencies term
+
+branchesDependencies :: Branches v -> HashSet Name.Qualified
+branchesDependencies branches =
+  case branches of
+    ConstructorBranches typeName constructorBranches ->
+      HashSet.singleton typeName
+        <> foldMap (foldMap $ Telescope.foldMap dependencies dependencies) constructorBranches
+    LiteralBranches literalBranches -> foldMap (foldMap dependencies) literalBranches
+
+definitionDependencies :: Definition -> HashSet Name.Qualified
+definitionDependencies def =
+  case def of
+    TypeDeclaration type_ -> dependencies type_
+    ConstantDefinition term -> dependencies term
+    DataDefinition _ constructorDefs ->
+      Telescope.foldMap dependencies (\(ConstructorDefinitions cs) -> foldMap dependencies cs) constructorDefs
