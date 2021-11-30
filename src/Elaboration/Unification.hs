@@ -40,6 +40,7 @@ import qualified Name
 import Plicity
 import Protolude hiding (catch, check, evaluate, force, head, throwIO)
 import qualified Query
+import qualified Query.Mapped as Mapped
 import Rock
 import Telescope (Telescope)
 import qualified Telescope
@@ -172,9 +173,12 @@ unify context flexibility value1 value2 = do
       | head1 == head2 ->
         unifySpines context Flexibility.Flexible spine1 spine2 `catch` \(_ :: Error.Elaboration) ->
           unify context flexibility value1'' value2''
-      | otherwise ->
-        -- TODO head depths?
-        unify context flexibility value1'' value2''
+      | otherwise -> do
+        ordering <- compareHeadDepths head1 head2
+        case ordering of
+          LT -> unify context flexibility value1' value2''
+          GT -> unify context flexibility value1'' value2'
+          EQ -> unify context flexibility value1'' value2''
     (Domain.Glued _ _ value1'', _) ->
       unify context flexibility value1'' value2'
     (_, Domain.Glued _ _ value2'') ->
@@ -276,6 +280,23 @@ unify context flexibility value1 value2 = do
 
     can'tUnify =
       throwIO $ Error.TypeMismatch mempty
+
+-- | Try to find out which of two heads might refer to the other so we can
+-- unfold glued values that are defined later first (see "depth" in
+-- https://arxiv.org/pdf/1505.04324.pdf).
+compareHeadDepths :: Domain.Head -> Domain.Head -> M Ordering
+compareHeadDepths head1 head2 =
+  case (head1, head2) of
+    (Domain.Global global1, Domain.Global global2) -> do
+      global1DependsOn2 <- fetch $ Query.TransitiveDependencies global2 $ Mapped.Query global1
+      global2DependsOn1 <- fetch $ Query.TransitiveDependencies global1 $ Mapped.Query global2
+      pure $ case (global1DependsOn2, global2DependsOn1) of
+        (Just _, Nothing) -> GT
+        (Nothing, Just _) -> LT
+        _ -> EQ
+    (_, Domain.Global _) -> pure LT
+    (Domain.Global _, _) -> pure GT
+    _ -> pure EQ
 
 unifySpines :: Context v -> Flexibility -> Domain.Spine -> Domain.Spine -> M ()
 unifySpines context flexibility spine1 spine2 =
