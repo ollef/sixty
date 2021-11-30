@@ -173,6 +173,7 @@ unify context flexibility value1 value2 = do
         unifySpines context Flexibility.Flexible spine1 spine2 `catch` \(_ :: Error.Elaboration) ->
           unify context flexibility value1'' value2''
       | otherwise ->
+        -- TODO head depths?
         unify context flexibility value1'' value2''
     (Domain.Glued _ _ value1'', _) ->
       unify context flexibility value1'' value2'
