@@ -66,6 +66,8 @@ data Query a where
   ElaboratingDefinition :: Scope.DefinitionKind -> Name.Qualified -> Query (Maybe (Syntax.Definition, Syntax.Type Void, Elaboration.Meta.EagerState))
   ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void)
   ElaboratedDefinition :: Name.Qualified -> Query (Syntax.Definition, Syntax.Type Void)
+  Dependencies :: Name.Qualified -> Mapped.Query Name.Qualified () a -> Query a
+  TransitiveDependencies :: Name.Qualified -> Mapped.Query Name.Qualified () a -> Query a
   ConstructorType :: Name.QualifiedConstructor -> Query (Telescope Binding Syntax.Type Syntax.Type Void)
   DefinitionPosition :: Scope.DefinitionKind -> Name.Qualified -> Query (FilePath, Position.Absolute)
   Occurrences :: Scope.DefinitionKind -> Name.Qualified -> Query Occurrences.Intervals
@@ -121,22 +123,24 @@ instance Hashable (Query a) where
       ElaboratingDefinition a b -> h 14 (a, b)
       ElaboratedType a -> h 15 a
       ElaboratedDefinition a -> h 16 a
-      ConstructorType a -> h 17 a
-      DefinitionPosition a b -> h 18 (a, b)
-      Occurrences a b -> h 19 (a, b)
-      LambdaLifted a -> h 20 a
-      LambdaLiftedDefinition a -> h 21 a
-      LambdaLiftedModuleDefinitions a -> h 22 a
-      ClosureConverted a -> h 23 a
-      ClosureConvertedType a -> h 24 a
-      ClosureConvertedConstructorType a -> h 25 a
-      ClosureConvertedSignature a -> h 26 a
-      ConstructorRepresentations a -> h 27 a
-      ConstructorRepresentation a -> h 28 a
-      Assembly a -> h 29 a
-      AssemblyModule a -> h 30 a
-      LLVMModule a -> h 31 a
-      LLVMModuleInitModule -> h 32 ()
+      Dependencies a b -> h 17 (a, b)
+      TransitiveDependencies a b -> h 18 (a, b)
+      ConstructorType a -> h 19 a
+      DefinitionPosition a b -> h 20 (a, b)
+      Occurrences a b -> h 21 (a, b)
+      LambdaLifted a -> h 22 a
+      LambdaLiftedDefinition a -> h 23 a
+      LambdaLiftedModuleDefinitions a -> h 24 a
+      ClosureConverted a -> h 25 a
+      ClosureConvertedType a -> h 26 a
+      ClosureConvertedConstructorType a -> h 27 a
+      ClosureConvertedSignature a -> h 28 a
+      ConstructorRepresentations a -> h 29 a
+      ConstructorRepresentation a -> h 30 a
+      Assembly a -> h 31 a
+      AssemblyModule a -> h 32 a
+      LLVMModule a -> h 33 a
+      LLVMModuleInitModule -> h 34 ()
     where
       {-# INLINE h #-}
       h :: Hashable a => Int -> a -> Int
@@ -173,22 +177,24 @@ instance Persist (Some Query) where
       14 -> (\(x, y) -> Some $ ElaboratingDefinition x y) <$> get
       15 -> Some . ElaboratedType <$> get
       16 -> Some . ElaboratedDefinition <$> get
-      17 -> Some . ConstructorType <$> get
-      18 -> (\(x, y) -> Some $ DefinitionPosition x y) <$> get
-      19 -> (\(x, y) -> Some $ Occurrences x y) <$> get
-      20 -> Some . LambdaLifted <$> get
-      21 -> Some . LambdaLiftedDefinition <$> get
-      22 -> Some . LambdaLiftedModuleDefinitions <$> get
-      23 -> Some . ClosureConverted <$> get
-      24 -> Some . ClosureConvertedType <$> get
-      25 -> Some . ClosureConvertedConstructorType <$> get
-      26 -> Some . ClosureConvertedSignature <$> get
-      27 -> Some . ConstructorRepresentations <$> get
-      28 -> Some . ConstructorRepresentation <$> get
-      29 -> Some . Assembly <$> get
-      30 -> Some . AssemblyModule <$> get
-      31 -> Some . LLVMModule <$> get
-      32 -> pure $ Some LLVMModuleInitModule
+      17 -> (\(x, Some y) -> Some $ Dependencies x y) <$> get
+      18 -> (\(x, Some y) -> Some $ TransitiveDependencies x y) <$> get
+      19 -> Some . ConstructorType <$> get
+      20 -> (\(x, y) -> Some $ DefinitionPosition x y) <$> get
+      21 -> (\(x, y) -> Some $ Occurrences x y) <$> get
+      22 -> Some . LambdaLifted <$> get
+      23 -> Some . LambdaLiftedDefinition <$> get
+      24 -> Some . LambdaLiftedModuleDefinitions <$> get
+      25 -> Some . ClosureConverted <$> get
+      26 -> Some . ClosureConvertedType <$> get
+      27 -> Some . ClosureConvertedConstructorType <$> get
+      28 -> Some . ClosureConvertedSignature <$> get
+      29 -> Some . ConstructorRepresentations <$> get
+      30 -> Some . ConstructorRepresentation <$> get
+      31 -> Some . Assembly <$> get
+      32 -> Some . AssemblyModule <$> get
+      33 -> Some . LLVMModule <$> get
+      34 -> pure $ Some LLVMModuleInitModule
       _ -> fail "Persist (Some Query): no such tag"
 
   put (Some query) =
@@ -210,22 +216,24 @@ instance Persist (Some Query) where
       ElaboratingDefinition a b -> p 14 (a, b)
       ElaboratedType a -> p 15 a
       ElaboratedDefinition a -> p 16 a
-      ConstructorType a -> p 17 a
-      DefinitionPosition a b -> p 18 (a, b)
-      Occurrences a b -> p 19 (a, b)
-      LambdaLifted a -> p 20 a
-      LambdaLiftedDefinition a -> p 21 a
-      LambdaLiftedModuleDefinitions a -> p 22 a
-      ClosureConverted a -> p 23 a
-      ClosureConvertedType a -> p 24 a
-      ClosureConvertedConstructorType a -> p 25 a
-      ClosureConvertedSignature a -> p 26 a
-      ConstructorRepresentations a -> p 27 a
-      ConstructorRepresentation a -> p 28 a
-      Assembly a -> p 29 a
-      AssemblyModule a -> p 30 a
-      LLVMModule a -> p 31 a
-      LLVMModuleInitModule -> p 32 ()
+      Dependencies a b -> p 17 (a, Some b)
+      TransitiveDependencies a b -> p 18 (a, Some b)
+      ConstructorType a -> p 19 a
+      DefinitionPosition a b -> p 20 (a, b)
+      Occurrences a b -> p 21 (a, b)
+      LambdaLifted a -> p 22 a
+      LambdaLiftedDefinition a -> p 23 a
+      LambdaLiftedModuleDefinitions a -> p 24 a
+      ClosureConverted a -> p 25 a
+      ClosureConvertedType a -> p 26 a
+      ClosureConvertedConstructorType a -> p 27 a
+      ClosureConvertedSignature a -> p 28 a
+      ConstructorRepresentations a -> p 29 a
+      ConstructorRepresentation a -> p 30 a
+      Assembly a -> p 31 a
+      AssemblyModule a -> p 32 a
+      LLVMModule a -> p 33 a
+      LLVMModuleInitModule -> p 34 ()
     where
       -- Don't forget to add a case to `get` above!
 

@@ -298,6 +298,25 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             let fail = (Syntax.TypeDeclaration $ Builtin.fail Builtin.type_, Builtin.fail Builtin.type_)
             runElaboratorWithDefault fail Scope.Definition qualifiedName $
               Elaboration.checkDefinitionMetaSolutions Scope.Definition qualifiedName def type_ metaVars
+    Dependencies qualifiedName subQuery ->
+      noError $
+        Mapped.rule (Dependencies qualifiedName) subQuery $ do
+          (def, type_) <- fetch $ ElaboratedDefinition qualifiedName
+          pure $ HashSet.toMap $ Syntax.definitionDependencies def <> Syntax.dependencies type_
+    TransitiveDependencies qualifiedName subQuery ->
+      noError $
+        Mapped.rule (TransitiveDependencies qualifiedName) subQuery $ do
+          let go [] done = pure done
+              go (dep : todo) done
+                | dep `HashSet.member` done = go todo done
+                | otherwise = do
+                  depDeps <- fetch $ TransitiveDependencies dep Mapped.Map
+                  go todo $ HashSet.insert dep done <> HashSet.fromMap depDeps
+          deps <- fetch $ Dependencies qualifiedName Mapped.Map
+          HashSet.toMap
+            <$> go
+              (HashMap.keys deps)
+              (HashSet.singleton qualifiedName)
     ConstructorType (Name.QualifiedConstructor dataTypeName constr) ->
       noError $ do
         (def, _) <- fetch $ ElaboratedDefinition dataTypeName
