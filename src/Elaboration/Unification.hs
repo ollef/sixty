@@ -53,7 +53,7 @@ tryUnify context value1 value2 = do
     then pure identity
     else do
       type_ <- Readback.readback (Context.toEnvironment context) value2
-      pure $ const $ Builtin.fail type_
+      pure $ const $ Builtin.unknown type_
 
 tryUnifyD :: Context v -> Domain.Value -> Domain.Value -> M (Domain.Value -> Domain.Value)
 tryUnifyD context value1 value2 = do
@@ -61,7 +61,7 @@ tryUnifyD context value1 value2 = do
   pure $
     if success
       then identity
-      else const $ Builtin.Fail value2
+      else const $ Builtin.Unknown value2
 
 unify :: Context v -> Flexibility -> Domain.Value -> Domain.Value -> M ()
 unify context flexibility value1 value2 = do
@@ -215,9 +215,9 @@ unify context flexibility value1 value2 = do
 
     -- Failure terms mean that there has been an earlier error that's already
     -- been reported, so let's not trigger more errors from them.
-    (Domain.Neutral (Domain.Global Builtin.FailName) _, _) ->
+    (Domain.Neutral (Domain.Global Builtin.UnknownName) _, _) ->
       pure ()
-    (_, Domain.Neutral (Domain.Global Builtin.FailName) _) ->
+    (_, Domain.Neutral (Domain.Global Builtin.UnknownName) _) ->
       pure ()
     _ ->
       can'tUnify

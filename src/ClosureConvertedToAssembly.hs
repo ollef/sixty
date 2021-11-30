@@ -1035,7 +1035,7 @@ storeTerm env term returnLocation returnType =
     Syntax.Case scrutinee branches maybeDefaultBranch -> do
       let defaultBranch =
             fromMaybe
-              (Syntax.Apply (Name.Lifted Builtin.FailName 0) [Syntax.Global $ Name.Lifted Builtin.UnitName 0])
+              (Syntax.Apply (Name.Lifted Builtin.UnknownName 0) [Syntax.Global $ Name.Lifted Builtin.UnitName 0])
               maybeDefaultBranch
       (scrutineeType, scrutineeRepresentation) <- typeOf env scrutinee
       (scrutinee', deallocateScrutinee) <- generateTypedTerm env scrutinee scrutineeType scrutineeRepresentation

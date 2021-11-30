@@ -279,7 +279,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
               )
           Just (typeDecl, type_, metaVars) -> do
             (typeDecl', errs) <-
-              runElaboratorWithDefault (Syntax.TypeDeclaration $ Builtin.fail Builtin.type_, Builtin.fail Builtin.type_) Scope.Type qualifiedName $
+              runElaboratorWithDefault (Syntax.TypeDeclaration $ Builtin.unknown Builtin.type_, Builtin.unknown Builtin.type_) Scope.Type qualifiedName $
                 Elaboration.checkDefinitionMetaSolutions Scope.Type qualifiedName typeDecl type_ metaVars
             pure $
               case typeDecl' of
@@ -295,8 +295,8 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             type_ <- fetch $ ElaboratedType qualifiedName
             pure ((Syntax.TypeDeclaration type_, Builtin.type_), mempty)
           Just (def, type_, metaVars) -> do
-            let fail = (Syntax.TypeDeclaration $ Builtin.fail Builtin.type_, Builtin.fail Builtin.type_)
-            runElaboratorWithDefault fail Scope.Definition qualifiedName $
+            let unknown = (Syntax.TypeDeclaration $ Builtin.unknown Builtin.type_, Builtin.unknown Builtin.type_)
+            runElaboratorWithDefault unknown Scope.Definition qualifiedName $
               Elaboration.checkDefinitionMetaSolutions Scope.Definition qualifiedName def type_ metaVars
     Dependencies qualifiedName subQuery ->
       noError $
@@ -321,7 +321,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
       noError $ do
         (def, _) <- fetch $ ElaboratedDefinition dataTypeName
         let fail =
-              Builtin.fail $ Builtin.fail Builtin.type_
+              Builtin.unknown $ Builtin.unknown Builtin.type_
 
         case def of
           Syntax.DataDefinition _ tele -> do
@@ -369,7 +369,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             _ ->
               LambdaLifted.ConstantDefinition $
                 IntMap.lookupDefault
-                  (Telescope.Empty $ LambdaLifted.Global $ Name.Lifted Builtin.FailName 0)
+                  (Telescope.Empty $ LambdaLifted.Global $ Name.Lifted Builtin.UnknownName 0)
                   index
                   liftedDefs
     LambdaLiftedModuleDefinitions module_ ->

@@ -144,7 +144,7 @@ checkDefinition context def expectedType =
           expectedType' <- readback context expectedType
           postProcessDefinition context $
             Syntax.ConstantDefinition $
-              Builtin.fail expectedType'
+              Builtin.unknown expectedType'
 
 inferDefinition ::
   Context Void ->
@@ -253,7 +253,7 @@ postProcessDataDefinition outerContext boxity outerTele = do
               let zonkedConstructorType =
                     ZonkPostponedChecks.zonkTerm postponed constructorType
               maybeConstructorType <- Context.try context $ addConstructorIndexEqualities context paramVars zonkedConstructorType
-              pure $ fromMaybe (Builtin.fail Builtin.type_) maybeConstructorType
+              pure $ fromMaybe (Builtin.unknown Builtin.type_) maybeConstructorType
         Telescope.Extend name type_ plicity tele' -> do
           typeValue <- lazyEvaluate context type_
           (context', paramVar) <- Context.extend context (Binding.toName name) typeValue
@@ -494,7 +494,7 @@ elaborateWith context spannedTerm@(Surface.Term span term) mode canPostpone = do
                   -- Approximate polymorphic variable inference
                   Domain.Neutral (Domain.Meta _) _ -> do
                     success <- Context.try_ context $ Unification.unify context Flexibility.Rigid type' expectedType
-                    term' <- readback context $ if success then value else Builtin.Fail expectedType
+                    term' <- readback context $ if success then value else Builtin.Unknown expectedType
                     pure $ Checked $ Syntax.Spanned span term'
                   _ ->
                     checkUnderBinder
@@ -697,7 +697,7 @@ elaborateLets context declaredNames undefinedVars definedVars lets body mode = d
                 fromMaybe (panic "elaborateLets: indexless var") $ Context.lookupVarIndex var context
 
               type_ = Context.lookupVarType var context
-          term <- readback context $ Builtin.Fail type_
+          term <- readback context $ Builtin.Unknown type_
           pure $ Syntax.Let (Bindings.Unspanned $ Name.Name nameText) index term <$> lets'
 
     -- Optimisation: No need to consider the rest of the bindings to be mutuals if they're all defined
@@ -801,10 +801,10 @@ elaborationFailed context mode =
     Infer _ -> do
       type_ <- Context.newMetaType context
       type' <- readback context type_
-      pure $ Inferred (Builtin.fail type') type_
+      pure $ Inferred (Builtin.unknown type') type_
     Check type_ -> do
       type' <- readback context type_
-      result context mode (Builtin.fail type') type_
+      result context mode (Builtin.unknown type') type_
 
 postponeCheck ::
   Context v ->
@@ -912,13 +912,13 @@ inferenceFailed context = do
   type_ <- Context.newMetaType context
   type' <- readback context type_
   pure
-    ( Builtin.fail type'
+    ( Builtin.unknown type'
     , type_
     )
 
 checkingFailed :: Context v -> Domain.Type -> M (Syntax.Term v)
 checkingFailed context type_ =
-  readback context $ Builtin.Fail type_
+  readback context $ Builtin.Unknown type_
 
 -------------------------------------------------------------------------------
 -- Postponement
@@ -955,7 +955,7 @@ postpone context expectedType blockingMeta check_ = do
 
     if success
       then pure resultTerm
-      else readback context $ Builtin.Fail expectedType
+      else readback context $ Builtin.Unknown expectedType
   pure $ Syntax.PostponedCheck postponementIndex resultMetaTerm
 
 -------------------------------------------------------------------------------
@@ -1182,7 +1182,7 @@ checkMetaSolutions context metaVars =
           body <- addLambdas context'' target
           pure $ Syntax.Lam (Bindings.Unspanned name) domain' Explicit body
         _ ->
-          readback context' $ Builtin.Fail type_
+          readback context' $ Builtin.Unknown type_
 
 -------------------------------------------------------------------------------
 

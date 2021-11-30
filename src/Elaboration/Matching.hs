@@ -352,7 +352,7 @@ check context config canPostpone = do
           patterns <- uncoveredScrutineePatterns context scrutinee
           pure $ (,) plicity <$> (Context.toPrettyablePattern context <$> patterns)
         Context.report context $ Error.NonExhaustivePatterns $ sequence scrutinees
-      Elaboration.readback context $ Builtin.Fail $ _expectedType config
+      Elaboration.readback context $ Builtin.Unknown $ _expectedType config
     firstClause : _ -> do
       let matches = _matches firstClause
 
@@ -360,7 +360,7 @@ check context config canPostpone = do
         splitConstructorOr context config' matches $ do
           let indeterminateIndexUnification = do
                 Context.report context $ Error.IndeterminateIndexUnification $ _matchKind config
-                Elaboration.readback context $ Builtin.Fail $ _expectedType config
+                Elaboration.readback context $ Builtin.Unknown $ _expectedType config
           case solved matches of
             Nothing ->
               case canPostpone of

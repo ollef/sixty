@@ -25,21 +25,21 @@ type_ :: Syntax.Term v
 type_ =
   Syntax.Global TypeName
 
-pattern FailName :: Name.Qualified
-pattern FailName =
-  "Sixten.Builtin.fail"
+pattern UnknownName :: Name.Qualified
+pattern UnknownName =
+  "Sixten.Builtin.unknown"
 
-pattern Fail :: Domain.Type -> Domain.Value
-pattern Fail type_ =
-  Domain.Neutral (Domain.Global FailName) (Domain.Apps (Tsil.Empty Tsil.:> (Explicit, type_)))
+pattern Unknown :: Domain.Type -> Domain.Value
+pattern Unknown type_ =
+  Domain.Neutral (Domain.Global UnknownName) (Domain.Apps (Tsil.Empty Tsil.:> (Explicit, type_)))
 
 pattern UnitName :: Name.Qualified
 pattern UnitName =
   "Sixten.Builtin.Unit"
 
-fail :: Syntax.Type v -> Syntax.Term v
-fail =
-  Syntax.App (Syntax.Global Builtin.FailName) Explicit
+unknown :: Syntax.Type v -> Syntax.Term v
+unknown =
+  Syntax.App (Syntax.Global Builtin.UnknownName) Explicit
 
 pattern EqualsName :: Name.Qualified
 pattern EqualsName =

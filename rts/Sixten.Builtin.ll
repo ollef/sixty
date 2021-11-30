@@ -7,7 +7,7 @@ declare void @exit(i32)
 @Sixten.Builtin.EmptyRepresentation =  unnamed_addr  constant i64 0
 @Sixten.Builtin.WordRepresentation =  unnamed_addr  constant i64 8
 
-define external fastcc { i64*, i64* } @Sixten.Builtin.fail(i64* %shadow_stack, i64* %heap_pointer, i64* %heap_limit, i64* %destination, i64 %a) {
+define external fastcc { i64*, i64* } @Sixten.Builtin.unknown(i64* %shadow_stack, i64* %heap_pointer, i64* %heap_limit, i64* %destination, i64 %a) {
   call void @exit(i32 7411)
   unreachable
 }
