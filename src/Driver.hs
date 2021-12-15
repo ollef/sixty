@@ -26,6 +26,7 @@ import qualified Data.Text.IO as Text
 import Error (Error)
 import qualified Error.Hydrated
 import qualified Error.Hydrated as Error (Hydrated)
+import qualified FileSystem
 import qualified Name
 import qualified Paths_sixty as Paths
 import Protolude hiding (State, getNumCapabilities, state)
@@ -35,7 +36,7 @@ import Rock
 import qualified Rules
 
 runTask ::
-  [FilePath] ->
+  HashSet FileSystem.Directory ->
   HashSet FilePath ->
   (Error.Hydrated -> Task Query err) ->
   Task Query a ->
@@ -136,7 +137,7 @@ data Prune
 runIncrementalTask ::
   State err ->
   HashSet FilePath ->
-  [FilePath] ->
+  HashSet FilePath ->
   HashMap FilePath Text ->
   (Error.Hydrated -> Task Query err) ->
   Prune ->

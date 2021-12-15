@@ -67,7 +67,7 @@ checkAndPrintErrors driverState changedFiles sourceDirectories files = do
     Driver.runIncrementalTask
       driverState
       changedFiles
-      sourceDirectories
+      (HashSet.fromList sourceDirectories)
       files
       Error.Hydrated.pretty
       Driver.Prune

@@ -19,7 +19,7 @@ newtype Project = Project
 
 Aeson.deriveJSON (Aeson.aesonDrop 1 Aeson.trainCase) ''Project
 
-filesFromArguments :: [FilePath] -> IO ([FilePath], HashSet FilePath)
+filesFromArguments :: [FilePath] -> IO (HashSet FilePath, HashSet FilePath)
 filesFromArguments files = do
   files' <- mapM Directory.canonicalizePath files
   case files' of
@@ -36,19 +36,19 @@ filesFromArguments files = do
               | isDir -> do
                 projectFiles <- filesFromProjectInDirectory file
                 if projectFiles == mempty
-                  then (,) [file] <$> listDirectoryRecursive isSourcePath file
+                  then (,) (HashSet.singleton file) <$> listDirectoryRecursive isSourcePath file
                   else pure projectFiles
               | isFile
                 , isProjectPath file ->
                 listProjectFile file
               | isFile
                 , isSourcePath file ->
-                pure ([FilePath.takeDirectory file], HashSet.singleton file)
+                pure (HashSet.singleton $ FilePath.takeDirectory file, HashSet.singleton file)
               | otherwise ->
                 -- TODO report error
                 pure mempty
 
-filesFromProjectInDirectory :: FilePath -> IO ([FilePath], HashSet FilePath)
+filesFromProjectInDirectory :: FilePath -> IO (HashSet FilePath, HashSet FilePath)
 filesFromProjectInDirectory directory = do
   maybeProjectFile <- findProjectFile directory
   case maybeProjectFile of
@@ -75,7 +75,7 @@ findProjectFile directory = do
         guard fileExists
         pure file
 
-listProjectFile :: FilePath -> IO ([FilePath], HashSet FilePath)
+listProjectFile :: FilePath -> IO (HashSet FilePath, HashSet FilePath)
 listProjectFile file = do
   maybeProject <- Aeson.decodeFileStrict file
   case maybeProject of
@@ -85,10 +85,10 @@ listProjectFile file = do
     Just project ->
       listProject file project
 
-listProject :: FilePath -> Project -> IO ([FilePath], HashSet FilePath)
+listProject :: FilePath -> Project -> IO (HashSet FilePath, HashSet FilePath)
 listProject file project = do
   sourceDirectories <- mapM (Directory.canonicalizePath . (FilePath.takeDirectory file FilePath.</>)) $ _sourceDirectories project
-  fmap ((,) sourceDirectories . mconcat) $
+  fmap ((,) (HashSet.fromList sourceDirectories) . mconcat) $
     forM sourceDirectories $
       listDirectoryRecursive isSourcePath
 

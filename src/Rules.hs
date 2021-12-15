@@ -56,18 +56,22 @@ import System.FilePath
 import Telescope (Telescope)
 import qualified Telescope
 
-rules :: [FilePath] -> HashSet FilePath -> (FilePath -> IO Text) -> GenRules (Writer [Error] (Writer TaskKind Query)) Query
+rules ::
+  HashSet FilePath ->
+  HashSet FilePath ->
+  (FilePath -> IO Text) ->
+  GenRules (Writer [Error] (Writer TaskKind Query)) Query
 rules sourceDirectories files readFile_ (Writer (Writer query)) =
   case query of
     SourceDirectories ->
       input $
         pure $
-          case (sourceDirectories, HashSet.toList files) of
+          case (HashSet.toList sourceDirectories, HashSet.toList files) of
             -- A little hack to allow opening single source files without a project file
             ([], [file]) ->
               [takeDirectory file]
-            _ ->
-              sourceDirectories
+            (sourceDirectoriesList, _) ->
+              sourceDirectoriesList
     InputFiles ->
       input $ do
         builtinFile <- liftIO $ Paths.getDataFileName "builtin/Builtin.vix"

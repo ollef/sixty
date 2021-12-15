@@ -64,7 +64,7 @@ checkFiles sourceDirectories files = do
   let prettyError err = do
         p <- Error.Hydrated.pretty err
         pure (err, p)
-  (moduleSources, errs) <- Driver.runTask sourceDirectories (HashSet.fromList files) prettyError $ do
+  (moduleSources, errs) <- Driver.runTask (HashSet.fromList sourceDirectories) (HashSet.fromList files) prettyError $ do
     Driver.checkAll
     forM files $ \filePath -> do
       moduleSource <- fetch $ Query.FileText filePath
@@ -85,7 +85,7 @@ compileFiles optimisationLevel sourceDirectories files = do
         pure (err, p)
   Command.Compile.withOutputFile Nothing $ \outputExecutableFile ->
     Command.Compile.withAssemblyDirectory Nothing $ \assemblyDir -> do
-      (moduleSources, errs) <- Driver.runTask sourceDirectories (HashSet.fromList files) prettyError $ do
+      (moduleSources, errs) <- Driver.runTask (HashSet.fromList sourceDirectories) (HashSet.fromList files) prettyError $ do
         Driver.checkAll
         Compiler.compile assemblyDir False outputExecutableFile optimisationLevel
         forM files $ \filePath -> do
