@@ -1,0 +1,9 @@
+module Cyclic2 exposing (..)
+
+import Cyclic1
+
+x : Int
+x = 610
+
+y : Int
+y = Cyclic1.y
