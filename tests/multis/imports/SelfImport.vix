@@ -1,0 +1,7 @@
+module SelfImport exposing (x)
+
+import SelfImport as SI
+
+y = SI.x
+
+x = 610
