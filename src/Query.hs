@@ -81,6 +81,7 @@ data Query a where
   ConstructorRepresentations :: Name.Qualified -> Query (Boxity, Maybe (HashMap Name.Constructor Int))
   ConstructorRepresentation :: Name.QualifiedConstructor -> Query (Boxity, Maybe Int)
   Assembly :: Name.Lifted -> Query (Maybe Assembly.Definition)
+  HeapAllocates :: Name.Lifted -> Query Bool
   AssemblyModule :: Name.Module -> Query [(Name.Lifted, Assembly.Definition)]
   LLVMModule :: Name.Module -> Query LLVM.Module
   LLVMModuleInitModule :: Query LLVM.Module
@@ -138,9 +139,10 @@ instance Hashable (Query a) where
       ConstructorRepresentations a -> h 29 a
       ConstructorRepresentation a -> h 30 a
       Assembly a -> h 31 a
-      AssemblyModule a -> h 32 a
-      LLVMModule a -> h 33 a
-      LLVMModuleInitModule -> h 34 ()
+      HeapAllocates a -> h 32 a
+      AssemblyModule a -> h 33 a
+      LLVMModule a -> h 34 a
+      LLVMModuleInitModule -> h 35 ()
     where
       {-# INLINE h #-}
       h :: Hashable a => Int -> a -> Int
@@ -192,9 +194,10 @@ instance Persist (Some Query) where
       29 -> Some . ConstructorRepresentations <$> get
       30 -> Some . ConstructorRepresentation <$> get
       31 -> Some . Assembly <$> get
-      32 -> Some . AssemblyModule <$> get
-      33 -> Some . LLVMModule <$> get
-      34 -> pure $ Some LLVMModuleInitModule
+      32 -> Some . HeapAllocates <$> get
+      33 -> Some . AssemblyModule <$> get
+      34 -> Some . LLVMModule <$> get
+      35 -> pure $ Some LLVMModuleInitModule
       _ -> fail "Persist (Some Query): no such tag"
 
   put (Some query) =
@@ -231,9 +234,10 @@ instance Persist (Some Query) where
       ConstructorRepresentations a -> p 29 a
       ConstructorRepresentation a -> p 30 a
       Assembly a -> p 31 a
-      AssemblyModule a -> p 32 a
-      LLVMModule a -> p 33 a
-      LLVMModuleInitModule -> p 34 ()
+      HeapAllocates a -> p 32 a
+      AssemblyModule a -> p 33 a
+      LLVMModule a -> p 34 a
+      LLVMModuleInitModule -> p 35 ()
     where
       -- Don't forget to add a case to `get` above!
 
