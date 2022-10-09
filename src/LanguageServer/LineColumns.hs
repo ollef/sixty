@@ -26,12 +26,8 @@ fromAbsolute moduleName = do
     Nothing ->
       pure $ const $ Span.LineColumns (Position.LineColumn 0 0) (Position.LineColumn 0 0)
     Just filePath -> do
-      contents <- fetch $ Query.FileText filePath
-      let -- TODO use the rope that we get from the LSP library instead
-          rope =
-            Rope.fromText contents
-
-          toLineColumn (Position.Absolute i) =
+      rope <- fetch $ Query.FileRope filePath
+      let toLineColumn (Position.Absolute i) =
             case Rope.splitAt (fromIntegral i) rope of
               Nothing -> Position.LineColumn 0 0
               Just (rope', _) ->

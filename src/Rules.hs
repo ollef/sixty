@@ -31,6 +31,8 @@ import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.OrderedHashSet as OrderedHashSet
 import qualified Data.Text as Text
 import qualified Data.Text.Unsafe as Text
+import Data.Text.Utf16.Rope (Rope)
+import qualified Data.Text.Utf16.Rope as Rope
 import qualified Elaboration
 import qualified Environment
 import Error (Error)
@@ -61,7 +63,7 @@ import qualified Telescope
 rules ::
   HashSet FilePath ->
   HashSet FilePath ->
-  (FilePath -> IO Text) ->
+  (FilePath -> IO (Either Rope Text)) ->
   GenRules (Writer [Error] (Writer TaskKind Query)) Query
 rules sourceDirectories files readFile_ (Writer (Writer query)) =
   case query of
@@ -79,7 +81,19 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
         builtinFile <- liftIO $ Paths.getDataFileName "builtin/Builtin.vix"
         pure $ HashSet.insert builtinFile files
     FileText filePath ->
-      input $ liftIO $ readFile_ filePath
+      input $
+        liftIO $ do
+          result <- readFile_ filePath
+          pure $ case result of
+            Left rope -> Rope.toText rope
+            Right text -> text
+    FileRope filePath ->
+      input $
+        liftIO $ do
+          result <- readFile_ filePath
+          pure $ case result of
+            Left rope -> rope
+            Right text -> Rope.fromText text
     ModuleFile Builtin.Module ->
       noError $
         Just <$> liftIO (Paths.getDataFileName "builtin/Builtin.vix")

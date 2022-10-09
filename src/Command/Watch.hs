@@ -68,7 +68,7 @@ checkAndPrintErrors driverState changedFiles sourceDirectories files = do
       driverState
       changedFiles
       (HashSet.fromList sourceDirectories)
-      files
+      (fmap Right files)
       Error.Hydrated.pretty
       Driver.Prune
       Driver.checkAll

@@ -416,7 +416,7 @@ runTask state prune task = do
         pure (err, heading <> Doc.line <> body)
 
       files =
-        HashMap.fromList (fmap (bimap (uriToFilePath . LSP.fromNormalizedUri) (Rope.toText . view LSP.file_text)) $ Map.toList $ vfs ^. LSP.vfsMap) <> _diskFiles state
+        HashMap.fromList (fmap (bimap (uriToFilePath . LSP.fromNormalizedUri) (Left . view LSP.file_text)) $ Map.toList $ vfs ^. LSP.vfsMap) <> fmap Right (_diskFiles state)
 
   Driver.runIncrementalTask
     (_driverState state)

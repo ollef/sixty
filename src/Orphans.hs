@@ -20,6 +20,8 @@ import qualified Data.IntSet as IntSet
 import Data.IntervalMap.FingerTree (IntervalMap)
 import qualified Data.IntervalMap.FingerTree as IntervalMap
 import Data.Persist
+import Data.Text.Utf16.Rope (Rope)
+import qualified Data.Text.Utf16.Rope as Rope
 import LLVM.Orphans ()
 import Protolude hiding (IntMap, IntSet, get, put)
 import Rock.Traces
@@ -114,3 +116,10 @@ instance Persist a => Persist (Const a b) where
 
   get =
     Const <$> get
+
+instance Persist Rope where
+  put = put . Rope.toText
+  get = Rope.fromText <$> get
+
+instance Hashable Rope where
+  hashWithSalt s = hashWithSalt s . Rope.toText

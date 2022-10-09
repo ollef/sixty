@@ -23,13 +23,12 @@ goToDefinition :: FilePath -> Position.LineColumn -> Task Query (Maybe (FilePath
 goToDefinition filePath (Position.LineColumn line column) = do
   (moduleName, moduleHeader, _) <- fetch $ Query.ParsedFile filePath
   spans <- fetch $ Query.ModuleSpanMap moduleName
-  contents <- fetch $ Query.FileText filePath
-  let -- TODO use the rope that we get from the LSP library instead
-      pos =
+  rope <- fetch $ Query.FileRope filePath
+  let pos =
         Position.Absolute $
-          case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral column)) $ Rope.fromText contents of
+          case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral column)) rope of
             Nothing -> 0
-            Just (rope, _) -> fromIntegral $ Rope.length rope
+            Just (rope', _) -> fromIntegral $ Rope.length rope'
 
   runMaybeT $
     asum $

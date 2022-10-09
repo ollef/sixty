@@ -28,6 +28,7 @@ import Data.IntMap (IntMap)
 import Data.OrderedHashSet (OrderedHashSet)
 import Data.Persist as Persist
 import Data.Some (Some (Some))
+import Data.Text.Utf16.Rope (Rope)
 import qualified Elaboration.Meta
 import Extra
 import qualified FileSystem
@@ -52,6 +53,7 @@ data Query a where
   SourceDirectories :: Query [FileSystem.Directory]
   InputFiles :: Query (HashSet FilePath)
   FileText :: FilePath -> Query Text
+  FileRope :: FilePath -> Query Rope
   ModuleFile :: Name.Module -> Query (Maybe FilePath)
   ParsedFile :: FilePath -> Query (Name.Module, Module.Header, [(Position.Absolute, (Name, Surface.Definition))])
   ModuleDefinitions :: Name.Module -> Query (OrderedHashSet Name)
@@ -110,39 +112,40 @@ instance Hashable (Query a) where
       SourceDirectories -> h 0 ()
       InputFiles -> h 1 ()
       FileText a -> h 2 a
-      ModuleFile a -> h 3 a
-      ParsedFile a -> h 4 a
-      ModuleDefinitions a -> h 5 a
-      ModuleHeader a -> h 6 a
-      ImportedNames a b -> h 7 (a, b)
-      NameAliases a -> h 8 a
-      ModulePositionMap a -> h 9 a
-      ModuleSpanMap a -> h 10 a
-      ParsedDefinition a b -> h 11 (a, b)
-      ModuleScope a -> h 12 a
-      ResolvedName a b -> h 13 (a, b)
-      ElaboratingDefinition a b -> h 14 (a, b)
-      ElaboratedType a -> h 15 a
-      ElaboratedDefinition a -> h 16 a
-      Dependencies a b -> h 17 (a, b)
-      TransitiveDependencies a b -> h 18 (a, b)
-      ConstructorType a -> h 19 a
-      DefinitionPosition a b -> h 20 (a, b)
-      Occurrences a b -> h 21 (a, b)
-      LambdaLifted a -> h 22 a
-      LambdaLiftedDefinition a -> h 23 a
-      LambdaLiftedModuleDefinitions a -> h 24 a
-      ClosureConverted a -> h 25 a
-      ClosureConvertedType a -> h 26 a
-      ClosureConvertedConstructorType a -> h 27 a
-      ClosureConvertedSignature a -> h 28 a
-      ConstructorRepresentations a -> h 29 a
-      ConstructorRepresentation a -> h 30 a
-      Assembly a -> h 31 a
-      HeapAllocates a -> h 32 a
-      AssemblyModule a -> h 33 a
-      LLVMModule a -> h 34 a
-      LLVMModuleInitModule -> h 35 ()
+      FileRope a -> h 3 a
+      ModuleFile a -> h 4 a
+      ParsedFile a -> h 5 a
+      ModuleDefinitions a -> h 6 a
+      ModuleHeader a -> h 7 a
+      ImportedNames a b -> h 8 (a, b)
+      NameAliases a -> h 9 a
+      ModulePositionMap a -> h 10 a
+      ModuleSpanMap a -> h 11 a
+      ParsedDefinition a b -> h 12 (a, b)
+      ModuleScope a -> h 13 a
+      ResolvedName a b -> h 14 (a, b)
+      ElaboratingDefinition a b -> h 15 (a, b)
+      ElaboratedType a -> h 16 a
+      ElaboratedDefinition a -> h 17 a
+      Dependencies a b -> h 18 (a, b)
+      TransitiveDependencies a b -> h 19 (a, b)
+      ConstructorType a -> h 20 a
+      DefinitionPosition a b -> h 21 (a, b)
+      Occurrences a b -> h 22 (a, b)
+      LambdaLifted a -> h 23 a
+      LambdaLiftedDefinition a -> h 24 a
+      LambdaLiftedModuleDefinitions a -> h 25 a
+      ClosureConverted a -> h 26 a
+      ClosureConvertedType a -> h 27 a
+      ClosureConvertedConstructorType a -> h 28 a
+      ClosureConvertedSignature a -> h 29 a
+      ConstructorRepresentations a -> h 30 a
+      ConstructorRepresentation a -> h 31 a
+      Assembly a -> h 32 a
+      HeapAllocates a -> h 33 a
+      AssemblyModule a -> h 34 a
+      LLVMModule a -> h 35 a
+      LLVMModuleInitModule -> h 36 ()
     where
       {-# INLINE h #-}
       h :: Hashable a => Int -> a -> Int
@@ -165,39 +168,40 @@ instance Persist (Some Query) where
       0 -> pure $ Some SourceDirectories
       1 -> pure $ Some InputFiles
       2 -> Some . FileText <$> get
-      3 -> Some . ModuleFile <$> get
-      4 -> Some . ParsedFile <$> get
-      5 -> Some . ModuleDefinitions <$> get
-      6 -> Some . ModuleHeader <$> get
-      7 -> (\(x, Some y) -> Some $ ImportedNames x y) <$> get
-      8 -> Some . NameAliases <$> get
-      9 -> Some . ModulePositionMap <$> get
-      10 -> Some . ModuleSpanMap <$> get
-      11 -> (\(x, Some y) -> Some $ ParsedDefinition x y) <$> get
-      12 -> Some . ModuleScope <$> get
-      13 -> Some . uncurry ResolvedName <$> get
-      14 -> (\(x, y) -> Some $ ElaboratingDefinition x y) <$> get
-      15 -> Some . ElaboratedType <$> get
-      16 -> Some . ElaboratedDefinition <$> get
-      17 -> (\(x, Some y) -> Some $ Dependencies x y) <$> get
-      18 -> (\(x, Some y) -> Some $ TransitiveDependencies x y) <$> get
-      19 -> Some . ConstructorType <$> get
-      20 -> (\(x, y) -> Some $ DefinitionPosition x y) <$> get
-      21 -> (\(x, y) -> Some $ Occurrences x y) <$> get
-      22 -> Some . LambdaLifted <$> get
-      23 -> Some . LambdaLiftedDefinition <$> get
-      24 -> Some . LambdaLiftedModuleDefinitions <$> get
-      25 -> Some . ClosureConverted <$> get
-      26 -> Some . ClosureConvertedType <$> get
-      27 -> Some . ClosureConvertedConstructorType <$> get
-      28 -> Some . ClosureConvertedSignature <$> get
-      29 -> Some . ConstructorRepresentations <$> get
-      30 -> Some . ConstructorRepresentation <$> get
-      31 -> Some . Assembly <$> get
-      32 -> Some . HeapAllocates <$> get
-      33 -> Some . AssemblyModule <$> get
-      34 -> Some . LLVMModule <$> get
-      35 -> pure $ Some LLVMModuleInitModule
+      3 -> Some . FileRope <$> get
+      4 -> Some . ModuleFile <$> get
+      5 -> Some . ParsedFile <$> get
+      6 -> Some . ModuleDefinitions <$> get
+      7 -> Some . ModuleHeader <$> get
+      8 -> (\(x, Some y) -> Some $ ImportedNames x y) <$> get
+      9 -> Some . NameAliases <$> get
+      10 -> Some . ModulePositionMap <$> get
+      11 -> Some . ModuleSpanMap <$> get
+      12 -> (\(x, Some y) -> Some $ ParsedDefinition x y) <$> get
+      13 -> Some . ModuleScope <$> get
+      14 -> Some . uncurry ResolvedName <$> get
+      15 -> (\(x, y) -> Some $ ElaboratingDefinition x y) <$> get
+      16 -> Some . ElaboratedType <$> get
+      17 -> Some . ElaboratedDefinition <$> get
+      18 -> (\(x, Some y) -> Some $ Dependencies x y) <$> get
+      19 -> (\(x, Some y) -> Some $ TransitiveDependencies x y) <$> get
+      20 -> Some . ConstructorType <$> get
+      21 -> (\(x, y) -> Some $ DefinitionPosition x y) <$> get
+      22 -> (\(x, y) -> Some $ Occurrences x y) <$> get
+      23 -> Some . LambdaLifted <$> get
+      24 -> Some . LambdaLiftedDefinition <$> get
+      25 -> Some . LambdaLiftedModuleDefinitions <$> get
+      26 -> Some . ClosureConverted <$> get
+      27 -> Some . ClosureConvertedType <$> get
+      28 -> Some . ClosureConvertedConstructorType <$> get
+      29 -> Some . ClosureConvertedSignature <$> get
+      30 -> Some . ConstructorRepresentations <$> get
+      31 -> Some . ConstructorRepresentation <$> get
+      32 -> Some . Assembly <$> get
+      33 -> Some . HeapAllocates <$> get
+      34 -> Some . AssemblyModule <$> get
+      35 -> Some . LLVMModule <$> get
+      36 -> pure $ Some LLVMModuleInitModule
       _ -> fail "Persist (Some Query): no such tag"
 
   put (Some query) =
@@ -205,39 +209,40 @@ instance Persist (Some Query) where
       SourceDirectories -> p 0 ()
       InputFiles -> p 1 ()
       FileText a -> p 2 a
-      ModuleFile a -> p 3 a
-      ParsedFile a -> p 4 a
-      ModuleDefinitions a -> p 5 a
-      ModuleHeader a -> p 6 a
-      ImportedNames a b -> p 7 (a, Some b)
-      NameAliases a -> p 8 a
-      ModulePositionMap a -> p 9 a
-      ModuleSpanMap a -> p 10 a
-      ParsedDefinition a b -> p 11 (a, Some b)
-      ModuleScope a -> p 12 a
-      ResolvedName a b -> p 13 (a, b)
-      ElaboratingDefinition a b -> p 14 (a, b)
-      ElaboratedType a -> p 15 a
-      ElaboratedDefinition a -> p 16 a
-      Dependencies a b -> p 17 (a, Some b)
-      TransitiveDependencies a b -> p 18 (a, Some b)
-      ConstructorType a -> p 19 a
-      DefinitionPosition a b -> p 20 (a, b)
-      Occurrences a b -> p 21 (a, b)
-      LambdaLifted a -> p 22 a
-      LambdaLiftedDefinition a -> p 23 a
-      LambdaLiftedModuleDefinitions a -> p 24 a
-      ClosureConverted a -> p 25 a
-      ClosureConvertedType a -> p 26 a
-      ClosureConvertedConstructorType a -> p 27 a
-      ClosureConvertedSignature a -> p 28 a
-      ConstructorRepresentations a -> p 29 a
-      ConstructorRepresentation a -> p 30 a
-      Assembly a -> p 31 a
-      HeapAllocates a -> p 32 a
-      AssemblyModule a -> p 33 a
-      LLVMModule a -> p 34 a
-      LLVMModuleInitModule -> p 35 ()
+      FileRope a -> p 3 a
+      ModuleFile a -> p 4 a
+      ParsedFile a -> p 5 a
+      ModuleDefinitions a -> p 6 a
+      ModuleHeader a -> p 7 a
+      ImportedNames a b -> p 8 (a, Some b)
+      NameAliases a -> p 9 a
+      ModulePositionMap a -> p 10 a
+      ModuleSpanMap a -> p 11 a
+      ParsedDefinition a b -> p 12 (a, Some b)
+      ModuleScope a -> p 13 a
+      ResolvedName a b -> p 14 (a, b)
+      ElaboratingDefinition a b -> p 15 (a, b)
+      ElaboratedType a -> p 16 a
+      ElaboratedDefinition a -> p 17 a
+      Dependencies a b -> p 18 (a, Some b)
+      TransitiveDependencies a b -> p 19 (a, Some b)
+      ConstructorType a -> p 20 a
+      DefinitionPosition a b -> p 21 (a, b)
+      Occurrences a b -> p 22 (a, b)
+      LambdaLifted a -> p 23 a
+      LambdaLiftedDefinition a -> p 24 a
+      LambdaLiftedModuleDefinitions a -> p 25 a
+      ClosureConverted a -> p 26 a
+      ClosureConvertedType a -> p 27 a
+      ClosureConvertedConstructorType a -> p 28 a
+      ClosureConvertedSignature a -> p 29 a
+      ConstructorRepresentations a -> p 30 a
+      ConstructorRepresentation a -> p 31 a
+      Assembly a -> p 32 a
+      HeapAllocates a -> p 33 a
+      AssemblyModule a -> p 34 a
+      LLVMModule a -> p 35 a
+      LLVMModuleInitModule -> p 36 ()
     where
       -- Don't forget to add a case to `get` above!
 

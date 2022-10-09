@@ -23,6 +23,8 @@ import Data.IORef.Lifted
 import Data.Persist (Persist)
 import qualified Data.Persist as Persist
 import qualified Data.Text.IO as Text
+import Data.Text.Utf16.Rope (Rope)
+import qualified Data.Text.Utf16.Rope as Rope
 import Error (Error)
 import qualified Error.Hydrated
 import qualified Error.Hydrated as Error (Hydrated)
@@ -75,7 +77,7 @@ runTask sourceDirectories files prettyError task = do
             -- traceFetch_ $
             writer writeErrors $
               Rules.rules sourceDirectories files $ \file ->
-                readFile file `catch` \(_ :: IOException) -> pure mempty
+                Right <$> readFile file `catch` \(_ :: IOException) -> pure mempty
 
   Rock.runTask rules $ do
     -- Rock.runMemoisedTask startedVar rules $ do
@@ -139,7 +141,7 @@ runIncrementalTask ::
   State err ->
   HashSet FilePath ->
   HashSet FilePath ->
-  HashMap FilePath Text ->
+  HashMap FilePath (Either Rope Text) ->
   (Error.Hydrated -> Task Query err) ->
   Prune ->
   Task Query a ->
@@ -162,12 +164,12 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
               atomicWriteIORef (_hashesVar state) mempty
             else do
               changedFiles' <- flip filterM (toList changedFiles) $ \file ->
-                pure $ case DHashMap.lookup (Query.FileText file) started of
-                  Just (Done text) ->
-                    Just text /= HashMap.lookup file files
-                  _ ->
-                    True
-              -- Text.hPutStrLn stderr $ "Driver changed files " <> show changedFiles'
+                pure $ case (HashMap.lookup file files, DHashMap.lookup (Query.FileRope file) started, DHashMap.lookup (Query.FileText file) started) of
+                  (Just (Left rope), Just (Done rope'), _) -> rope /= rope'
+                  (Just (Left rope), _, Just (Done text')) -> Rope.toText rope /= text'
+                  (Just (Right text), _, Just (Done text')) -> text /= text'
+                  (Just (Right text), Just (Done rope'), _) -> text /= Rope.toText rope'
+                  _ -> True
               let (keysToInvalidate, reverseDependencies') =
                     foldl'
                       ( \(keysToInvalidate_, reverseDependencies_) file ->
@@ -197,10 +199,10 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
 
     threadDepsVar <- newIORef mempty
     let readSourceFile_ file
-          | Just text <- HashMap.lookup file files =
-            return text
+          | Just contents <- HashMap.lookup file files =
+            return contents
           | otherwise =
-            readFile file `catch` \(_ :: IOException) -> pure mempty
+            Right <$> readFile file `catch` \(_ :: IOException) -> pure mempty
 
         traceFetch_ ::
           GenRules (Writer TaskKind Query) Query ->
