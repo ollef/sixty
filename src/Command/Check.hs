@@ -40,7 +40,9 @@ check argumentFiles printElaborated = do
               liftIO $ putDoc $ Pretty.prettyDefinition emptyPrettyEnv name (Syntax.TypeDeclaration type_) <> line
               (definition, _) <- fetch $ Query.ElaboratedDefinition name
               liftIO $ do
-                putDoc $ Pretty.prettyDefinition emptyPrettyEnv name definition <> line
+                case definition of
+                  Syntax.TypeDeclaration {} -> pure ()
+                  _ -> putDoc $ Pretty.prettyDefinition emptyPrettyEnv name definition <> line
                 putDoc line
           wait checkedAll
         else void Driver.checkAll
