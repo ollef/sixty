@@ -78,7 +78,7 @@ goToDefinition filePath (Position.LineColumn line column) = do
                           Nothing ->
                             empty
                           Just definingFile -> do
-                            toLineColumns <- LineColumns.fromDefinitionName definitionKind qualifiedName
+                            toLineColumns <- MaybeT $ LineColumns.fromDefinitionName definingKey qualifiedName
                             asum $ pure . (,) definingFile . toLineColumns <$> relativeSpans
                   Intervals.Con constr@(Name.QualifiedConstructor qualifiedName@(Name.Qualified definingModule _) _) -> do
                     relativeSpans <- Occurrences.definitionConstructorSpans Scope.Definition qualifiedName
