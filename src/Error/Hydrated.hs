@@ -48,10 +48,10 @@ headingAndBody error =
                 line <> "Expected: " <> hcat (punctuate comma $ Doc.pretty <$> expected)
         )
     Error.DuplicateName definitionKind name _span -> do
-      (filePath, oldSpan) <- fetch $ Query.DefinitionPosition definitionKind name
+      (filePath, maybeOldSpan) <- fetch $ Query.DefinitionPosition definitionKind name
       text <- fetch $ Query.FileText filePath
       let (lineColumn, _) =
-            Position.lineColumn oldSpan text
+            Position.lineColumn (fromMaybe 0 maybeOldSpan) text
       pure
         ( "Duplicate name:" <+> Doc.pretty name
         , Doc.pretty name <+> "has already been defined at" <+> Doc.pretty (Span.LineColumns lineColumn lineColumn) <> "."
@@ -68,7 +68,8 @@ headingAndBody error =
       file2' <- liftIO $ Directory.makeRelativeToCurrentDirectory file2
       pure
         ( "Multiple files use the module name" <+> Doc.pretty moduleName
-        , "Both" <> line
+        , "Both"
+            <> line
             <> indent 2 (Doc.pretty file1')
             <> line
             <> "and"
@@ -80,7 +81,8 @@ headingAndBody error =
     Error.ModuleFileNameMismatch givenModuleName expectedModuleName _ _ ->
       pure
         ( "Module name doesn't match file name"
-        , "The module name given in the module header is" <> line
+        , "The module name given in the module header is"
+            <> line
             <> indent 2 (Doc.pretty givenModuleName)
             <> line
             <> "but from the file's location I expected it to be"
@@ -105,10 +107,10 @@ headingAndBody error =
                   )
             )
         Error.DuplicateLetName name previousSpan -> do
-          (filePath, defSpan) <- fetch $ Query.DefinitionPosition definitionKind definitionName
+          (filePath, maybeDefSpan) <- fetch $ Query.DefinitionPosition definitionKind definitionName
           text <- fetch $ Query.FileText filePath
           let (previousLineColumn, _) =
-                Span.lineColumn (Span.absoluteFrom defSpan previousSpan) text
+                Span.lineColumn (Span.absoluteFrom (fromMaybe 0 maybeDefSpan) previousSpan) text
           pure
             ( "Duplicate name in let block:" <+> Doc.pretty name
             , Doc.pretty name <+> "has already been defined at" <+> Doc.pretty previousLineColumn <> "."
@@ -159,14 +161,20 @@ headingAndBody error =
           type' <- prettyPrettyableTerm 0 type_
           pure
             ( "Unsolved meta variable"
-            , "A meta variable was created here but was never solved:" <> line <> line
-                <> Doc.pretty index <+> ":" <+> type'
+            , "A meta variable was created here but was never solved:"
+                <> line
+                <> line
+                <> Doc.pretty index
+                <+> ":"
+                <+> type'
             )
         Error.NonExhaustivePatterns patterns -> do
           prettyPatterns <- mapM (mapM $ prettyPrettyablePattern $ Pretty.appPrec + 1) patterns
           pure
             ( "Non-exhaustive patterns"
-            , "Patterns not matched:" <> line <> line
+            , "Patterns not matched:"
+                <> line
+                <> line
                 <> vcat (hsep <$> prettyPatterns)
             )
         Error.RedundantMatch matchKind ->
@@ -174,21 +182,26 @@ headingAndBody error =
         Error.IndeterminateIndexUnification fieldOrArg ->
           pure
             ( "Indeterminate index unification"
-            , "I don't know whether this" <+> Doc.pretty fieldOrArg
+            , "I don't know whether this"
+                <+> Doc.pretty fieldOrArg
                 <+> "applies or not, because the unification of a constructor type's indices failed to produce a definite result."
             )
         Error.PlicityMismatch fieldOrArg plicityMismatch ->
           pure $ case plicityMismatch of
             Error.Mismatch expected_ actual ->
               ( "Plicity mismatch"
-              , "Expected an" <+> Doc.pretty expected_ <+> Doc.pretty fieldOrArg
+              , "Expected an"
+                  <+> Doc.pretty expected_
+                  <+> Doc.pretty fieldOrArg
                   <+> "but got an"
                   <+> Doc.pretty actual
                   <+> Doc.pretty fieldOrArg
               )
             Error.Missing expected_ ->
               ( "Missing" <+> Doc.pretty fieldOrArg
-              , "Expected an" <+> Doc.pretty expected_ <+> Doc.pretty fieldOrArg
+              , "Expected an"
+                  <+> Doc.pretty expected_
+                  <+> Doc.pretty fieldOrArg
                   <+> "but didn't get any"
               )
             Error.Extra ->
@@ -202,7 +215,9 @@ headingAndBody error =
           type' <- prettyPrettyableTerm 0 type_
           pure
             ( "Plicity mismatch"
-            , "The term" <> line <> line
+            , "The term"
+                <> line
+                <> line
                 <> indent 4 term'
                 <> line
                 <> line
@@ -223,11 +238,14 @@ pretty h = do
   filePath <- liftIO $ Directory.makeRelativeToCurrentDirectory $ _filePath h
   (heading, body) <- headingAndBody $ _error h
   pure $
-    Doc.pretty filePath <> ":" <> Doc.pretty (_lineColumn h) <> ":" <+> heading <> line <> line
-      <> body
-      <> line
-      <> line
-      <> spannedLine
+    Doc.pretty filePath <> ":" <> Doc.pretty (_lineColumn h) <> ":"
+      <+> heading
+        <> line
+        <> line
+        <> body
+        <> line
+        <> line
+        <> spannedLine
   where
     spannedLine =
       let Span.LineColumns
@@ -246,7 +264,9 @@ pretty h = do
               (endColumnNumber - startColumnNumber, mempty)
             | otherwise =
               (Text.lengthWord16 (_lineText h) - startColumnNumber, "...")
-       in Doc.pretty (Text.replicate (lineNumberTextLength + 1) " ") <> "| " <> line
+       in Doc.pretty (Text.replicate (lineNumberTextLength + 1) " ")
+            <> "| "
+            <> line
             <> Doc.pretty lineNumberText
             <> " | "
             <> Doc.pretty (_lineText h)
@@ -275,8 +295,8 @@ fromError err = do
       Error.ModuleFileNameMismatch _ _ span file ->
         pure (file, Right span)
       Error.Elaboration definitionKind name (Error.Spanned relativeSpan _) -> do
-        (file, absolutePosition) <- fetch $ Query.DefinitionPosition definitionKind name
-        pure (file, Right $ Span.absoluteFrom absolutePosition relativeSpan)
+        (file, maybeAbsolutePosition) <- fetch $ Query.DefinitionPosition definitionKind name
+        pure (file, Right $ Span.absoluteFrom (fromMaybe 0 maybeAbsolutePosition) relativeSpan)
   text <- fetch $ Query.FileText filePath
   let (lineColumn, lineText) =
         case eofOrSpan of

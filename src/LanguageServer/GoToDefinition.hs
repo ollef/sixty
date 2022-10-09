@@ -64,8 +64,10 @@ goToDefinition filePath (Position.LineColumn line column) = do
               asum $
                 foreach items $ \case
                   Intervals.Var var -> do
-                    toLineColumns <- LineColumns.fromDefinitionName definitionKind $ Name.Qualified moduleName name
-                    MaybeT $ pure $ (,) filePath . toLineColumns <$> Intervals.bindingSpan var relativePos occurrenceIntervals
+                    toLineColumns <- MaybeT $ LineColumns.fromDefinitionName definitionKind $ Name.Qualified moduleName name
+                    MaybeT $
+                      pure $
+                        (,) filePath . toLineColumns <$> Intervals.bindingSpan var relativePos occurrenceIntervals
                   Intervals.Global qualifiedName@(Name.Qualified definingModule _) ->
                     asum $
                       foreach [Scope.Type, Scope.Definition] $ \definingKey -> do
@@ -85,7 +87,7 @@ goToDefinition filePath (Position.LineColumn line column) = do
                       Nothing ->
                         empty
                       Just definingFile -> do
-                        toLineColumns <- LineColumns.fromDefinitionName definitionKind qualifiedName
+                        toLineColumns <- MaybeT $ LineColumns.fromDefinitionName definitionKind qualifiedName
                         asum $
                           pure
                             <$> mapMaybe

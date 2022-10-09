@@ -69,7 +69,7 @@ data Query a where
   Dependencies :: Name.Qualified -> Mapped.Query Name.Qualified () a -> Query a
   TransitiveDependencies :: Name.Qualified -> Mapped.Query Name.Qualified () a -> Query a
   ConstructorType :: Name.QualifiedConstructor -> Query (Telescope Binding Syntax.Type Syntax.Type Void)
-  DefinitionPosition :: Scope.DefinitionKind -> Name.Qualified -> Query (FilePath, Position.Absolute)
+  DefinitionPosition :: Scope.DefinitionKind -> Name.Qualified -> Query (FilePath, Maybe Position.Absolute)
   Occurrences :: Scope.DefinitionKind -> Name.Qualified -> Query Occurrences.Intervals
   LambdaLifted :: Name.Qualified -> Query (LambdaLifted.Definition, IntMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void))
   LambdaLiftedDefinition :: Name.Lifted -> Query LambdaLifted.Definition

@@ -352,7 +352,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
         maybeFilePath <- fetch $ Query.ModuleFile module_
         pure
           ( fromMaybe "<no file>" maybeFilePath
-          , HashMap.lookupDefault 0 (definitionKind, name) positions
+          , HashMap.lookup (definitionKind, name) positions
           )
     Occurrences definitionKind name ->
       noError $
