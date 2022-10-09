@@ -3,3 +3,6 @@ record-brace-space: true
 indent-wheres: true
 respectful: false
 haddock-style: single-line
+comma-style: leading
+import-export-comma-style: leading
+function-arrows: leading

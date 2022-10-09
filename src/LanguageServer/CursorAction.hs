@@ -305,8 +305,8 @@ constructorBranchAction k env typeName scrutinee (constr, (spans, tele)) =
         case scrutineeType' of
           Domain.Neutral (Domain.Global headName) (Domain.appsView -> Just args)
             | headName == typeName -> do
-                args' <- lift $ mapM (mapM $ Elaboration.readback $ _context env) args
-                k PatternContext env (Syntax.Con qualifiedConstr `Syntax.apps` fmap (first implicitise) args') span
+              args' <- lift $ mapM (mapM $ Elaboration.readback $ _context env) args
+              k PatternContext env (Syntax.Con qualifiedConstr `Syntax.apps` fmap (first implicitise) args') span
           _ ->
             k PatternContext env (Syntax.Con qualifiedConstr) span
     )

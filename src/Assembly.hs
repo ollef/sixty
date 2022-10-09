@@ -166,20 +166,23 @@ instance Pretty Instruction where
         case result of
           Void -> ""
           Return local -> pretty local <+> "= "
-          <> "switch" <+> pretty scrutinee
-          <> line
-          <> indent
-            2
-            ( vsep
-                [ pretty i <+> "->" <> line
-                  <> indent 2 (pretty basicBlock)
-                | (i, basicBlock) <- branches
-                ]
-                <> line
-                <> "_ -> "
-                <> line
-                <> indent 2 (pretty default_)
-            )
+          <> "switch"
+          <+> pretty scrutinee
+            <> line
+            <> indent
+              2
+              ( vsep
+                  [ pretty i
+                    <+> "->"
+                      <> line
+                      <> indent 2 (pretty basicBlock)
+                  | (i, basicBlock) <- branches
+                  ]
+                  <> line
+                  <> "_ -> "
+                  <> line
+                  <> indent 2 (pretty default_)
+              )
     where
       voidInstr name args =
         name <+> hsep (pretty <$> args)
@@ -191,14 +194,27 @@ instance Pretty Definition where
   pretty definition =
     case definition of
       KnownConstantDefinition type_ knownConstant _isConstant ->
-        "known" <+> pretty type_ <+> "constant" <+> "=" <> line
-          <> indent 2 (pretty knownConstant)
+        "known"
+          <+> pretty type_
+          <+> "constant"
+          <+> "="
+            <> line
+            <> indent 2 (pretty knownConstant)
       ConstantDefinition type_ returnType constantParameters basicBlock ->
-        pretty type_ <+> "constant" <+> pretty returnType <+> tupled (pretty <$> constantParameters) <+> "=" <> line
-          <> indent 2 (pretty basicBlock)
+        pretty type_
+          <+> "constant"
+          <+> pretty returnType
+          <+> tupled (pretty <$> constantParameters)
+          <+> "="
+            <> line
+            <> indent 2 (pretty basicBlock)
       FunctionDefinition returnType args basicBlock ->
-        "function" <+> pretty returnType <+> tupled (pretty <$> args) <+> "=" <> line
-          <> indent 2 (pretty basicBlock)
+        "function"
+          <+> pretty returnType
+          <+> tupled (pretty <$> args)
+          <+> "="
+            <> line
+            <> indent 2 (pretty basicBlock)
 
 instance Pretty BasicBlock where
   pretty (BasicBlock instrs result) =
