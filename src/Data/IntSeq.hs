@@ -1,24 +1,20 @@
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PackageImports #-}
 {-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Data.IntSeq where
 
-import Data.IntMap (IntMap)
-import qualified Data.IntMap as IntMap
-import qualified "containers" Data.IntMap
+import Data.EnumMap (EnumMap)
+import qualified Data.EnumMap as EnumMap
 import qualified Data.Sequence as Seq
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
-import Protolude hiding (IntMap, seq, splitAt, unsnoc)
+import Protolude hiding (seq, splitAt, unsnoc)
 import Prelude (Show (showsPrec), showParen, showString, shows)
 
-data IntSeq a = IntSeq !(Seq a) (IntMap a Int)
+data IntSeq a = IntSeq !(Seq a) (EnumMap a Int)
 
 instance Semigroup (IntSeq a) where
   IntSeq seq1 indices1 <> IntSeq seq2 indices2 =
@@ -37,23 +33,23 @@ instance Foldable IntSeq where
   foldMap f (IntSeq seq _) =
     foldMap f seq
 
-pattern Empty :: (Coercible a Data.IntMap.Key) => IntSeq a
+pattern Empty :: Enum a => IntSeq a
 pattern Empty <-
   IntSeq Seq.Empty _
   where
     Empty = mempty
 
-pattern (:>) :: (Coercible a Data.IntMap.Key) => IntSeq a -> a -> IntSeq a
+pattern (:>) :: Enum a => IntSeq a -> a -> IntSeq a
 pattern as :> a <-
   (unsnoc -> Just (as, a))
   where
-    IntSeq seq indices :> a = IntSeq (seq Seq.:|> a) (IntMap.insert a (Seq.length seq) indices)
+    IntSeq seq indices :> a = IntSeq (seq Seq.:|> a) (EnumMap.insert a (Seq.length seq) indices)
 
-unsnoc :: (Coercible a Data.IntMap.Key) => IntSeq a -> Maybe (IntSeq a, a)
+unsnoc :: Enum a => IntSeq a -> Maybe (IntSeq a, a)
 unsnoc (IntSeq seq indices) =
   case seq of
     seq' Seq.:|> a ->
-      Just (IntSeq seq' $ IntMap.delete a indices, a)
+      Just (IntSeq seq' $ EnumMap.delete a indices, a)
     _ -> Nothing
 
 {-# COMPLETE Empty, (:>) #-}
@@ -62,17 +58,17 @@ length :: IntSeq a -> Int
 length (IntSeq seq _) =
   Seq.length seq
 
-singleton :: (Coercible a Data.IntMap.Key) => a -> IntSeq a
+singleton :: Enum a => a -> IntSeq a
 singleton a =
   Empty :> a
 
-member :: (Coercible a Data.IntMap.Key) => a -> IntSeq a -> Bool
+member :: Enum a => a -> IntSeq a -> Bool
 member a (IntSeq _ indices) =
-  IntMap.member a indices
+  EnumMap.member a indices
 
-elemIndex :: (Coercible a Data.IntMap.Key) => a -> IntSeq a -> Maybe Int
+elemIndex :: Enum a => a -> IntSeq a -> Maybe Int
 elemIndex a (IntSeq _ indices) =
-  IntMap.lookup a indices
+  EnumMap.lookup a indices
 
 index :: IntSeq a -> Int -> a
 index (IntSeq seq _) =
@@ -83,15 +79,15 @@ splitAt i (IntSeq seq indices) =
   (IntSeq seq1 indices1, IntSeq seq2 indices2)
   where
     (seq1, seq2) = Seq.splitAt i seq
-    (indices1, indices2) = IntMap.mapEither (\j -> if j < i then Left j else Right $ j - i) indices
+    (indices1, indices2) = EnumMap.mapEither (\j -> if j < i then Left j else Right $ j - i) indices
 
-insertAt :: (Coercible a Data.IntMap.Key) => Int -> a -> IntSeq a -> IntSeq a
+insertAt :: Enum a => Int -> a -> IntSeq a -> IntSeq a
 insertAt i a (IntSeq seq indices) =
-  IntSeq (Seq.insertAt i a seq) (IntMap.insert a i indices')
+  IntSeq (Seq.insertAt i a seq) (EnumMap.insert a i indices')
   where
     indices' = map (\j -> if j < i then j else j + 1) indices
 
-delete :: (Coercible a Data.IntMap.Key) => a -> IntSeq a -> IntSeq a
+delete :: Enum a => a -> IntSeq a -> IntSeq a
 delete a as =
   case elemIndex a as of
     Nothing ->
@@ -104,7 +100,7 @@ deleteAt i (IntSeq seq indices) =
   IntSeq (Seq.deleteAt i seq) indices'
   where
     indices' =
-      IntMap.mapMaybe
+      EnumMap.mapMaybe
         ( \j ->
             case compare j i of
               LT ->
@@ -116,7 +112,7 @@ deleteAt i (IntSeq seq indices) =
         )
         indices
 
-fromTsil :: (Coercible a Data.IntMap.Key) => Tsil a -> IntSeq a
+fromTsil :: Enum a => Tsil a -> IntSeq a
 fromTsil tsil =
   case tsil of
     Tsil.Empty ->

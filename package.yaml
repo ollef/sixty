@@ -54,6 +54,7 @@ library:
     - dependent-sum
     - dependent-sum-template
     - directory
+    - enummapset
     - filepath
     - fingertree
     - fsnotify
