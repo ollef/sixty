@@ -5,10 +5,6 @@
 module LLVM.Orphans.Hashable where
 
 import Data.Hashable
-import Data.Map (Map)
-import qualified Data.Map as Map
-import Data.Set (Set)
-import qualified Data.Set as Set
 import qualified LLVM.AST
 import qualified LLVM.AST.AddrSpace
 import qualified LLVM.AST.COMDAT
@@ -27,12 +23,6 @@ import qualified LLVM.AST.ParameterAttribute
 import qualified LLVM.AST.RMWOperation
 import qualified LLVM.AST.ThreadLocalStorage
 import qualified LLVM.AST.Visibility
-
-instance (Hashable k, Hashable v) => Hashable (Map k v) where
-  hashWithSalt s = hashWithSalt s . Map.toList
-
-instance (Hashable k) => Hashable (Set k) where
-  hashWithSalt s = hashWithSalt s . Set.toList
 
 deriving instance Hashable LLVM.AST.AddrSpace.AddrSpace
 

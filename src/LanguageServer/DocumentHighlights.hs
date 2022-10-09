@@ -3,7 +3,7 @@
 module LanguageServer.DocumentHighlights where
 
 import Data.HashMap.Lazy as HashMap
-import qualified Data.Rope.UTF16 as Rope
+import qualified Data.Text.Utf16.Rope as Rope
 import qualified LanguageServer.LineColumns as LineColumns
 import qualified Name
 import qualified Occurrences.Intervals as Intervals
@@ -25,8 +25,9 @@ highlights filePath (Position.LineColumn line column) = do
   let -- TODO use the rope that we get from the LSP library instead
       pos =
         Position.Absolute $
-          Rope.rowColumnCodeUnits (Rope.RowColumn line column) $
-            Rope.fromText contents
+          case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral column)) $ Rope.fromText contents of
+            Nothing -> 0
+            Just (rope, _) -> fromIntegral $ Rope.length rope
 
   toLineColumns <- LineColumns.fromAbsolute moduleName
 

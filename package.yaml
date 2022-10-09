@@ -57,27 +57,25 @@ library:
     - filepath
     - fingertree
     - fsnotify
-    - hashable
-    - haskell-lsp
     - lens
+    - lsp
     - lifted-async
     - lifted-base
     - llvm-hs-orphans
     - llvm-hs-pretty
     - llvm-hs-pure
     - monad-control
-    - mtl
     - parsers
     - persist
     - prettyprinter
     - process
     - random
     - rock
-    - rope-utf16-splay
     - stm
     - template-haskell
     - temporary
     - text
+    - text-rope
     - time
     - transformers
     - transformers-base

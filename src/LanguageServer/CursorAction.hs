@@ -20,7 +20,7 @@ import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.OrderedHashMap as OrderedHashMap
-import qualified Data.Rope.UTF16 as Rope
+import qualified Data.Text.Utf16.Rope as Rope
 import qualified Elaboration
 import Elaboration.Context (Context)
 import qualified Elaboration.Context as Context
@@ -80,8 +80,9 @@ cursorAction filePath (Position.LineColumn line column) k =
       let -- TODO use the rope that we get from the LSP library instead
           pos =
             Position.Absolute $
-              Rope.rowColumnCodeUnits (Rope.RowColumn line column) $
-                Rope.fromText contents
+              case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral column)) $ Rope.fromText contents of
+                Nothing -> 0
+                Just (rope, _) -> fromIntegral $ Rope.length rope
 
       toLineColumns <- LineColumns.fromAbsolute moduleName
       asum $
@@ -304,8 +305,8 @@ constructorBranchAction k env typeName scrutinee (constr, (spans, tele)) =
         case scrutineeType' of
           Domain.Neutral (Domain.Global headName) (Domain.appsView -> Just args)
             | headName == typeName -> do
-              args' <- lift $ mapM (mapM $ Elaboration.readback $ _context env) args
-              k PatternContext env (Syntax.Con qualifiedConstr `Syntax.apps` fmap (first implicitise) args') span
+                args' <- lift $ mapM (mapM $ Elaboration.readback $ _context env) args
+                k PatternContext env (Syntax.Con qualifiedConstr `Syntax.apps` fmap (first implicitise) args') span
           _ ->
             k PatternContext env (Syntax.Con qualifiedConstr) span
     )

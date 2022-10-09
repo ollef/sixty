@@ -2,7 +2,7 @@
 
 module LanguageServer.LineColumns where
 
-import qualified Data.Rope.UTF16 as Rope
+import qualified Data.Text.Utf16.Rope as Rope
 import qualified Name
 import qualified Position
 import Protolude hiding (moduleName)
@@ -32,9 +32,11 @@ fromAbsolute moduleName = do
             Rope.fromText contents
 
           toLineColumn (Position.Absolute i) =
-            let rope' =
-                  Rope.take i rope
-             in Position.LineColumn (Rope.rows rope') (Rope.columns rope')
+            case Rope.splitAt (fromIntegral i) rope of
+              Nothing -> Position.LineColumn 0 0
+              Just (rope', _) ->
+                let Rope.Position row column = Rope.lengthAsPosition rope'
+                 in Position.LineColumn (fromIntegral row) (fromIntegral column)
 
           toLineColumns (Span.Absolute start end) =
             Span.LineColumns (toLineColumn start) (toLineColumn end)

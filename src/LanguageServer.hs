@@ -1,8 +1,10 @@
-{-# LANGUAGE DisambiguateRecordFields #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module LanguageServer where
@@ -14,19 +16,19 @@ import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
-import Data.Rope.UTF16 (Rope)
-import qualified Data.Rope.UTF16 as Rope
+import qualified Data.Map as Map
+import Data.Text.Utf16.Rope (Rope)
+import qualified Data.Text.Utf16.Rope as Rope
 import qualified Driver
 import qualified Error.Hydrated
 import qualified Error.Hydrated as Error (Hydrated)
 import qualified FileSystem
-import qualified Language.Haskell.LSP.Control as LSP
-import qualified Language.Haskell.LSP.Core
-import qualified Language.Haskell.LSP.Core as LSP
-import qualified Language.Haskell.LSP.Messages as LSP
-import qualified Language.Haskell.LSP.Types as LSP
-import qualified Language.Haskell.LSP.Types.Lens as LSP hiding (rootPath)
-import qualified Language.Haskell.LSP.VFS as LSP
+import qualified Language.LSP.Diagnostics as LSP
+import qualified Language.LSP.Server as LSP
+import qualified Language.LSP.Server as LSP.Server
+import qualified Language.LSP.Types as LSP
+import qualified Language.LSP.Types.Lens as LSP hiding (rootPath)
+import qualified Language.LSP.VFS as LSP
 import qualified LanguageServer.CodeLens as CodeLens
 import qualified LanguageServer.Completion as Completion
 import qualified LanguageServer.DocumentHighlights as DocumentHighlights
@@ -52,12 +54,12 @@ run = do
   diskFileStateVar <- newMVar mempty
   stopListeningVar <- newMVar mempty
   _ <-
-    LSP.run
-      LSP.InitializeCallbacks
-        { LSP.onInitialConfiguration = \_ -> Right ()
-        , LSP.onConfigurationChange = \_ -> Right ()
-        , LSP.onStartup = \lf -> do
-            case LSP.rootPath lf of
+    LSP.runServer
+      LSP.ServerDefinition
+        { LSP.defaultConfig = ()
+        , LSP.onConfigurationChange = \_ _ -> Right ()
+        , LSP.doInitialize = \env _req -> do
+            case LSP.resRootPath env of
               Nothing -> pure ()
               Just rootPath -> do
                 maybeProjectFile <- Project.findProjectFile rootPath
@@ -72,26 +74,23 @@ run = do
                     join $ swapMVar stopListeningVar stopListening
 
             driverState <- Driver.initialState
-            _ <-
-              forkIO $
-                messagePump
+            let state =
                   State
-                    { _lspFuncs = lf
+                    { _env = env
                     , _driverState = driverState
                     , _receiveMessage = readTQueue messageQueue
                     , _diskChangeSignalled = takeTMVar signalChangeVar
                     , _diskFileStateVar = diskFileStateVar
                     , _sourceDirectories = mempty
                     , _diskFiles = mempty
-                    , _openFiles = mempty
                     , _changedFiles = mempty
                     }
-
-            pure Nothing
+            _ <- forkIO $ messagePump state
+            pure $ Right ()
+        , staticHandlers = handlers $ atomically . writeTQueue messageQueue
+        , options
+        , interpretHandler = \() -> LSP.Iso identity identity
         }
-      (handlers $ atomically . writeTQueue messageQueue)
-      options
-      Nothing -- (Just "sixten-lsp.log")
       `finally` do
         join $ swapMVar stopListeningVar mempty
 
@@ -102,46 +101,49 @@ run = do
         { FSNotify.confDebounce = FSNotify.Debounce 0.010
         }
 
-handlers :: (LSP.FromClientMessage -> IO ()) -> LSP.Handlers
-handlers sendMessage =
-  def
-    { LSP.initializedHandler = Just $ sendMessage . LSP.NotInitialized
-    , LSP.didOpenTextDocumentNotificationHandler = Just $ sendMessage . LSP.NotDidOpenTextDocument
-    , LSP.didChangeTextDocumentNotificationHandler = Just $ sendMessage . LSP.NotDidChangeTextDocument
-    , LSP.didCloseTextDocumentNotificationHandler = Just $ sendMessage . LSP.NotDidCloseTextDocument
-    , LSP.hoverHandler = Just $ sendMessage . LSP.ReqHover
-    , LSP.definitionHandler = Just $ sendMessage . LSP.ReqDefinition
-    , LSP.completionHandler = Just $ sendMessage . LSP.ReqCompletion
-    , LSP.documentHighlightHandler = Just $ sendMessage . LSP.ReqDocumentHighlights
-    , LSP.referencesHandler = Just $ sendMessage . LSP.ReqFindReferences
-    , LSP.renameHandler = Just $ sendMessage . LSP.ReqRename
-    , LSP.codeLensHandler = Just $ sendMessage . LSP.ReqCodeLens
-    }
+handlers :: (ReceivedMessage -> IO ()) -> LSP.Handlers IO
+handlers onReceivedMessage =
+  mconcat
+    [ LSP.notificationHandler LSP.STextDocumentDidOpen $ onReceivedMessage . ReceivedNotification
+    , LSP.notificationHandler LSP.STextDocumentDidOpen $ onReceivedMessage . ReceivedNotification
+    , LSP.notificationHandler LSP.STextDocumentDidChange $ onReceivedMessage . ReceivedNotification
+    , LSP.notificationHandler LSP.STextDocumentDidClose $ onReceivedMessage . ReceivedNotification
+    , LSP.requestHandler LSP.STextDocumentHover $ \req -> onReceivedMessage . ReceivedRequest req
+    , LSP.requestHandler LSP.STextDocumentDefinition $ \req -> onReceivedMessage . ReceivedRequest req
+    , LSP.requestHandler LSP.STextDocumentCompletion $ \req -> onReceivedMessage . ReceivedRequest req
+    , LSP.requestHandler LSP.STextDocumentDocumentHighlight $ \req -> onReceivedMessage . ReceivedRequest req
+    , LSP.requestHandler LSP.STextDocumentReferences $ \req -> onReceivedMessage . ReceivedRequest req
+    , LSP.requestHandler LSP.STextDocumentRename $ \req -> onReceivedMessage . ReceivedRequest req
+    , LSP.requestHandler LSP.STextDocumentCodeLens $ \req -> onReceivedMessage . ReceivedRequest req
+    ]
 
 options :: LSP.Options
 options =
   def
-    { Language.Haskell.LSP.Core.textDocumentSync =
+    { LSP.Server.textDocumentSync =
         Just
           LSP.TextDocumentSyncOptions
             { LSP._openClose = Just True
             , LSP._change = Just LSP.TdSyncIncremental
             , LSP._willSave = Just False
             , LSP._willSaveWaitUntil = Just False
-            , LSP._save = Just $ LSP.SaveOptions $ Just False
+            , LSP._save = Just $ LSP.InR $ LSP.SaveOptions {_includeText = Just False}
             }
     , LSP.completionTriggerCharacters = Just "?"
     }
 
+data ReceivedMessage where
+  ReceivedRequest :: LSP.RequestMessage m -> (Either LSP.ResponseError (LSP.ResponseResult m) -> IO ()) -> ReceivedMessage
+  ReceivedNotification :: LSP.NotificationMessage m -> ReceivedMessage
+
 data State = State
-  { _lspFuncs :: !(LSP.LspFuncs ())
+  { _env :: !(LSP.LanguageContextEnv ())
   , _driverState :: !(Driver.State (Error.Hydrated, Doc Void))
-  , _receiveMessage :: !(STM LSP.FromClientMessage)
+  , _receiveMessage :: !(STM ReceivedMessage)
   , _diskChangeSignalled :: !(STM ())
   , _diskFileStateVar :: !(MVar (HashSet FilePath, [FileSystem.Directory], HashMap FilePath Text))
   , _sourceDirectories :: [FileSystem.Directory]
   , _diskFiles :: HashMap FilePath Text
-  , _openFiles :: HashMap FilePath Rope
   , _changedFiles :: HashSet FilePath
   }
 
@@ -150,7 +152,7 @@ messagePump state = do
   sendNotification state $ "messagePump changed files: " <> show (_changedFiles state)
   join $
     atomically $
-      onMessage <$> _receiveMessage state
+      onMessage messagePump <$> _receiveMessage state
         <|> onDiskChange <$ _diskChangeSignalled state
         <|> onOutOfDate <$ guard (not $ HashSet.null $ _changedFiles state)
   where
@@ -171,60 +173,42 @@ messagePump state = do
           { _changedFiles = mempty
           }
 
-    onMessage message =
-      case message of
-        LSP.NotInitialized _ ->
-          messagePump state
-        LSP.NotDidOpenTextDocument notification -> do
-          let document =
-                notification ^. LSP.params . LSP.textDocument
-
-              uri =
-                document ^. LSP.uri
-
-              text =
-                document ^. LSP.text
-
+    onMessage :: (State -> IO k) -> ReceivedMessage -> IO k
+    onMessage k (ReceivedNotification message) =
+      case message ^. LSP.method of
+        LSP.STextDocumentDidOpen -> do
+          let document = message ^. LSP.params . LSP.textDocument
+              uri = document ^. LSP.uri
           filePath <- Directory.canonicalizePath $ uriToFilePath uri
-
-          messagePump
+          k
             state
-              { _openFiles = HashMap.insert filePath (Rope.fromText text) (_openFiles state)
-              , _changedFiles = HashSet.insert filePath (_changedFiles state)
+              { _changedFiles = HashSet.insert filePath (_changedFiles state)
               }
-        LSP.NotDidChangeTextDocument notification -> do
-          let uri =
-                notification ^. LSP.params . LSP.textDocument . LSP.uri
-
+        LSP.STextDocumentDidChange -> do
+          let document = message ^. LSP.params . LSP.textDocument
+              uri = document ^. LSP.uri
           filePath <- Directory.canonicalizePath $ uriToFilePath uri
-
-          messagePump
+          k
             state
-              { _openFiles =
-                  HashMap.adjust
-                    (flip LSP.applyChanges $ toList $ notification ^. LSP.params . LSP.contentChanges)
-                    filePath
-                    (_openFiles state)
-              , _changedFiles = HashSet.insert filePath (_changedFiles state)
+              { _changedFiles = HashSet.insert filePath (_changedFiles state)
               }
-        LSP.NotDidCloseTextDocument notification -> do
-          let document =
-                notification ^. LSP.params . LSP.textDocument
-
-              uri =
-                document ^. LSP.uri
-
+        LSP.STextDocumentDidClose -> do
+          let document = message ^. LSP.params . LSP.textDocument
+              uri = document ^. LSP.uri
           filePath <- Directory.canonicalizePath $ uriToFilePath uri
-
-          messagePump
+          k
             state
-              { _openFiles = HashMap.delete filePath $ _openFiles state
-              , _changedFiles = HashSet.insert filePath $ _changedFiles state
+              { _changedFiles = HashSet.insert filePath $ _changedFiles state
               }
-        LSP.ReqHover req -> do
-          sendNotification state $ "messagePump: HoverRequest: " <> show req
-          let LSP.TextDocumentPositionParams (LSP.TextDocumentIdentifier uri) position _ =
-                req ^. LSP.params
+        _ ->
+          k state
+    onMessage k (ReceivedRequest message respond) =
+      case message ^. LSP.method of
+        LSP.STextDocumentHover -> do
+          sendNotification state $ "messagePump: HoverRequest: " <> show message
+          let document = message ^. LSP.params . LSP.textDocument
+              uri = document ^. LSP.uri
+              position = message ^. LSP.params . LSP.position
 
           (maybeAnnotation, _) <-
             runTask state Driver.Don'tPrune $
@@ -243,12 +227,13 @@ messagePump state = do
                       , _range = Just $ spanToRange span
                       }
 
-          LSP.sendFunc (_lspFuncs state) $ LSP.RspHover $ LSP.makeResponseMessage req response
-          messagePump state
-        LSP.ReqDefinition req -> do
-          sendNotification state $ "messagePump: DefinitionRequest: " <> show req
-          let LSP.TextDocumentPositionParams (LSP.TextDocumentIdentifier uri) position _ =
-                req ^. LSP.params
+          respond $ Right response
+          k state
+        LSP.STextDocumentDefinition -> do
+          sendNotification state $ "messagePump: DefinitionRequest: " <> show message
+          let document = message ^. LSP.params . LSP.textDocument
+              uri = document ^. LSP.uri
+              position = message ^. LSP.params . LSP.position
 
           (maybeLocation, _) <-
             runTask state Driver.Don'tPrune $
@@ -256,22 +241,18 @@ messagePump state = do
 
           case maybeLocation of
             Nothing ->
-              LSP.sendErrorResponseS
-                (LSP.sendFunc $ _lspFuncs state)
-                (LSP.responseId $ req ^. LSP.id)
-                LSP.UnknownErrorCode
-                "Couldn't find a definition to jump to under the cursor"
+              respond $
+                Left
+                  LSP.ResponseError {_code = LSP.UnknownErrorCode, _message = "Couldn't find a definition to jump to under the cursor", _xdata = Nothing}
             Just (file, span) ->
-              LSP.sendFunc (_lspFuncs state) $
-                LSP.RspDefinition $
-                  LSP.makeResponseMessage req $
-                    LSP.SingleLoc $
-                      spanToLocation file span
-          messagePump state
-        LSP.ReqCompletion req -> do
-          sendNotification state $ "messagePump: CompletionRequest: " <> show req
-          let LSP.CompletionParams (LSP.TextDocumentIdentifier uri) position maybeContext _ =
-                req ^. LSP.params
+              respond $ Right $ LSP.InL $ spanToLocation file span
+          k state
+        LSP.STextDocumentCompletion -> do
+          sendNotification state $ "messagePump: CompletionRequest: " <> show message
+          let document = message ^. LSP.params . LSP.textDocument
+              uri = document ^. LSP.uri
+              position = message ^. LSP.params . LSP.position
+              maybeContext = message ^. LSP.params . LSP.context
 
           (completions, _) <-
             runTask state Driver.Don'tPrune $
@@ -285,17 +266,17 @@ messagePump state = do
 
           let response =
                 LSP.CompletionList
-                  LSP.CompletionListType
-                    { LSP._isIncomplete = False
-                    , LSP._items = LSP.List $ fold completions
-                    }
+                  { LSP._isIncomplete = False
+                  , LSP._items = LSP.List $ fold completions
+                  }
 
-          LSP.sendFunc (_lspFuncs state) $ LSP.RspCompletion $ LSP.makeResponseMessage req response
-          messagePump state
-        LSP.ReqDocumentHighlights req -> do
-          sendNotification state $ "messagePump: document highlights request: " <> show req
-          let LSP.TextDocumentPositionParams (LSP.TextDocumentIdentifier uri) position _ =
-                req ^. LSP.params
+          respond $ Right $ LSP.InR response
+          k state
+        LSP.STextDocumentDocumentHighlight -> do
+          sendNotification state $ "messagePump: document highlights request: " <> show message
+          let document = message ^. LSP.params . LSP.textDocument
+              uri = document ^. LSP.uri
+              position = message ^. LSP.params . LSP.position
 
           (highlights, _) <-
             runTask state Driver.Don'tPrune $
@@ -311,13 +292,13 @@ messagePump state = do
                   ]
 
           sendNotification state $ "messagePump: document highlights response: " <> show highlights
-          LSP.sendFunc (_lspFuncs state) $ LSP.RspDocumentHighlights $ LSP.makeResponseMessage req response
-          messagePump state
-        LSP.ReqFindReferences req -> do
-          sendNotification state $ "messagePump: references request: " <> show req
-          let -- TODO use context
-              LSP.ReferenceParams (LSP.TextDocumentIdentifier uri) position _context _ =
-                req ^. LSP.params
+          respond $ Right response
+          k state
+        LSP.STextDocumentReferences -> do
+          sendNotification state $ "messagePump: references request: " <> show message
+          let document = message ^. LSP.params . LSP.textDocument
+              uri = document ^. LSP.uri
+              position = message ^. LSP.params . LSP.position
 
           (references, _) <-
             runTask state Driver.Don'tPrune $
@@ -334,12 +315,14 @@ messagePump state = do
                   ]
 
           sendNotification state $ "messagePump: references response: " <> show response
-          LSP.sendFunc (_lspFuncs state) $ LSP.RspFindReferences $ LSP.makeResponseMessage req response
-          messagePump state
-        LSP.ReqRename req -> do
-          sendNotification state $ "messagePump: rename request: " <> show req
-          let LSP.RenameParams (LSP.TextDocumentIdentifier uri) position newName _ =
-                req ^. LSP.params
+          respond $ Right response
+          k state
+        LSP.STextDocumentRename -> do
+          sendNotification state $ "messagePump: rename request: " <> show message
+          let document = message ^. LSP.params . LSP.textDocument
+              uri = document ^. LSP.uri
+              position = message ^. LSP.params . LSP.position
+              newName = message ^. LSP.params . LSP.newName
 
           (references, _) <-
             runTask state Driver.Don'tPrune $
@@ -363,18 +346,20 @@ messagePump state = do
                           , (filePath, span) <- references'
                           ]
                   , _documentChanges = Nothing
+                  , _changeAnnotations = Nothing
                   }
 
           sendNotification state $ "messagePump: rename response: " <> show references
-          LSP.sendFunc (_lspFuncs state) $ LSP.RspRename $ LSP.makeResponseMessage req response
-          messagePump state
-        LSP.ReqCodeLens req -> do
-          let LSP.CodeLensParams (LSP.TextDocumentIdentifier uri) _ =
-                req ^. LSP.params
+          respond $ Right response
+          k state
+        LSP.STextDocumentCodeLens -> do
+          let document = message ^. LSP.params . LSP.textDocument
+              uri = document ^. LSP.uri
 
           (codeLenses, _) <-
             runTask state Driver.Don'tPrune $
-              CodeLens.codeLens $ uriToFilePath uri
+              CodeLens.codeLens $
+                uriToFilePath uri
           let response =
                 LSP.List
                   [ LSP.CodeLens
@@ -390,17 +375,18 @@ messagePump state = do
                     }
                   | (span, doc) <- codeLenses
                   ]
-          LSP.sendFunc (_lspFuncs state) $ LSP.RspCodeLens $ LSP.makeResponseMessage req response
-          messagePump state
+          respond $ Right response
+          k state
         _ ->
-          messagePump state
+          k state
 
 -------------------------------------------------------------------------------
 
 checkAllAndPublishDiagnostics :: State -> IO ()
 checkAllAndPublishDiagnostics state = do
+  vfs <- LSP.runLspT (_env state) LSP.getVirtualFiles
   let allFiles =
-        fmap mempty (_openFiles state) <> fmap mempty (_diskFiles state)
+        fmap mempty (HashMap.fromList $ fmap (bimap (uriToFilePath . LSP.fromNormalizedUri) (view LSP.file_text)) $ Map.toList $ vfs ^. LSP.vfsMap) <> fmap mempty (_diskFiles state)
   (_, errors) <- runTask state Driver.Prune Driver.checkAll
   let errorsByFilePath =
         HashMap.fromListWith
@@ -410,8 +396,11 @@ checkAllAndPublishDiagnostics state = do
           ]
           <> allFiles
 
-  forM_ (HashMap.toList errorsByFilePath) $ \(filePath, diagnostics) ->
-    publishDiagnostics state (LSP.filePathToUri filePath) diagnostics
+  forM_ (HashMap.toList errorsByFilePath) $ \(filePath, diagnostics) -> do
+    let uri = LSP.filePathToUri filePath
+    versionedDoc <- LSP.runLspT (_env state) $ LSP.getVersionedTextDoc $ LSP.TextDocumentIdentifier uri
+
+    publishDiagnostics state (LSP.toNormalizedUri uri) (versionedDoc ^. LSP.version) diagnostics
 
 runTask ::
   forall a.
@@ -420,13 +409,14 @@ runTask ::
   Task Query a ->
   IO (a, [(Error.Hydrated, Doc Void)])
 runTask state prune task = do
+  vfs <- LSP.runLspT (_env state) LSP.getVirtualFiles
   let prettyError :: Error.Hydrated -> Task Query (Error.Hydrated, Doc ann)
       prettyError err = do
         (heading, body) <- Error.Hydrated.headingAndBody $ Error.Hydrated._error err
         pure (err, heading <> Doc.line <> body)
 
       files =
-        fmap Rope.toText (_openFiles state) <> _diskFiles state
+        HashMap.fromList (fmap (bimap (uriToFilePath . LSP.fromNormalizedUri) (Rope.toText . view LSP.file_text)) $ Map.toList $ vfs ^. LSP.vfsMap) <> _diskFiles state
 
   Driver.runIncrementalTask
     (_driverState state)
@@ -441,17 +431,18 @@ runTask state prune task = do
 
 sendNotification :: State -> Text -> IO ()
 sendNotification state s =
-  LSP.sendFunc (_lspFuncs state) $
-    LSP.NotLogMessage $
-      LSP.NotificationMessage "2.0" LSP.WindowLogMessage $
-        LSP.LogMessageParams LSP.MtInfo s
+  LSP.runLspT
+    (_env state)
+    $ LSP.sendNotification
+      LSP.SWindowLogMessage
+      LSP.LogMessageParams {_xtype = LSP.MtInfo, _message = s}
 
-publishDiagnostics :: State -> LSP.Uri -> [LSP.Diagnostic] -> IO ()
-publishDiagnostics state uri diagnostics =
-  LSP.sendFunc (_lspFuncs state) $
-    LSP.NotPublishDiagnostics $
-      LSP.NotificationMessage "2.0" LSP.TextDocumentPublishDiagnostics $
-        LSP.PublishDiagnosticsParams uri (LSP.List diagnostics)
+publishDiagnostics :: State -> LSP.NormalizedUri -> LSP.TextDocumentVersion -> [LSP.Diagnostic] -> IO ()
+publishDiagnostics state uri version diagnostics =
+  LSP.runLspT (_env state) $
+    LSP.Server.publishDiagnostics maxDiagnostics uri version (LSP.partitionBySource diagnostics)
+  where
+    maxDiagnostics = 100
 
 diagnosticSource :: LSP.DiagnosticSource
 diagnosticSource = "sixten"
@@ -485,14 +476,31 @@ spanToRange (Span.LineColumns start end) =
 positionToPosition :: Position.LineColumn -> LSP.Position
 positionToPosition (Position.LineColumn line column) =
   LSP.Position
-    { _line = line
-    , _character = column
+    { _line = fromIntegral line
+    , _character = fromIntegral column
     }
 
 positionFromPosition :: LSP.Position -> Position.LineColumn
 positionFromPosition (LSP.Position line column) =
-  Position.LineColumn line column
+  Position.LineColumn (fromIntegral line) (fromIntegral column)
 
 uriToFilePath :: LSP.Uri -> FilePath
 uriToFilePath =
   fromMaybe "<TODO no filepath>" . LSP.uriToFilePath
+
+applyChanges :: Rope -> [LSP.TextDocumentContentChangeEvent] -> Rope
+applyChanges = foldl' applyChange
+
+applyChange :: Rope -> LSP.TextDocumentContentChangeEvent -> Rope
+applyChange _ (LSP.TextDocumentContentChangeEvent Nothing _ str) =
+  Rope.fromText str
+applyChange str (LSP.TextDocumentContentChangeEvent (Just (LSP.Range (LSP.Position sl sc) (LSP.Position fl fc))) _ txt) =
+  changeChars str (Rope.Position (fromIntegral sl) (fromIntegral sc)) (Rope.Position (fromIntegral fl) (fromIntegral fc)) txt
+
+changeChars :: Rope -> Rope.Position -> Rope.Position -> Text -> Rope
+changeChars str start finish new = do
+  case Rope.splitAtPosition finish str of
+    Nothing -> panic "split inside code point"
+    Just (before, after) -> case Rope.splitAtPosition start before of
+      Nothing -> panic "split inside code point"
+      Just (before', _) -> mconcat [before', Rope.fromText new, after]

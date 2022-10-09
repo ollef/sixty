@@ -18,7 +18,7 @@ import qualified Elaboration
 import Elaboration.Context (Context)
 import qualified Elaboration.Context as Context
 import qualified Error.Hydrated as Error
-import qualified Language.Haskell.LSP.Types as LSP
+import qualified Language.LSP.Types as LSP
 import qualified LanguageServer.CursorAction as CursorAction
 import Monad
 import Name (Name (Name))
@@ -60,6 +60,7 @@ complete filePath (Position.LineColumn line column) =
                 , _filterText = Nothing
                 , _insertText = Nothing
                 , _insertTextFormat = Nothing
+                , _insertTextMode = Nothing
                 , _textEdit = Nothing
                 , _additionalTextEdits = Nothing
                 , _commitCharacters = Nothing
@@ -125,31 +126,33 @@ questionMark filePath (Position.LineColumn line column) =
                       , _filterText = Nothing
                       , _insertText = Nothing
                       , _insertTextFormat = Just LSP.Snippet
+                      , _insertTextMode = Nothing
                       , _textEdit =
-                          Just
-                            LSP.TextEdit
-                              { _range =
-                                  LSP.Range
-                                    { _start =
-                                        LSP.Position
-                                          { _line = line
-                                          , _character = column - 1
-                                          }
-                                    , _end =
-                                        LSP.Position
-                                          { _line = line
-                                          , _character = column
-                                          }
-                                    }
-                              , _newText =
-                                  (if null explicitArgs then "" else "(")
-                                    <> name
-                                    <> mconcat
-                                      [ " ${" <> show (n :: Int) <> ":?}"
-                                      | (n, _) <- zip [1 ..] explicitArgs
-                                      ]
-                                    <> (if null explicitArgs then "" else ")")
-                              }
+                          Just $
+                            LSP.CompletionEditText
+                              LSP.TextEdit
+                                { _range =
+                                    LSP.Range
+                                      { _start =
+                                          LSP.Position
+                                            { _line = fromIntegral line
+                                            , _character = fromIntegral $ column - 1
+                                            }
+                                      , _end =
+                                          LSP.Position
+                                            { _line = fromIntegral line
+                                            , _character = fromIntegral column
+                                            }
+                                      }
+                                , _newText =
+                                    (if null explicitArgs then "" else "(")
+                                      <> name
+                                      <> mconcat
+                                        [ " ${" <> show (n :: Int) <> ":?}"
+                                        | (n, _) <- zip [1 ..] explicitArgs
+                                        ]
+                                      <> (if null explicitArgs then "" else ")")
+                                }
                       , _additionalTextEdits = Nothing
                       , _commitCharacters = Nothing
                       , _command = Nothing

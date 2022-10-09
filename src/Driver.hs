@@ -49,7 +49,8 @@ runTask sourceDirectories files prettyError task = do
   let writeErrors :: Writer TaskKind Query a -> [Error] -> Task Query ()
       writeErrors (Writer q) errs =
         unless (null errs) $
-          atomicModifyIORef' errorsVar $ (,()) . DHashMap.insert q (Const errs)
+          atomicModifyIORef' errorsVar $
+            (,()) . DHashMap.insert q (Const errs)
 
       ignoreTaskKind :: Query a -> TaskKind -> Task Query ()
       ignoreTaskKind _ _ =
@@ -197,14 +198,14 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
     threadDepsVar <- newIORef mempty
     let readSourceFile_ file
           | Just text <- HashMap.lookup file files =
-            return text
+              return text
           | otherwise =
-            readFile file `catch` \(_ :: IOException) -> pure mempty
+              readFile file `catch` \(_ :: IOException) -> pure mempty
 
         traceFetch_ ::
           GenRules (Writer TaskKind Query) Query ->
           GenRules (Writer TaskKind Query) Query
-        traceFetch_ = identity
+        traceFetch_ r = r
         -- traceFetch_ =
         --   traceFetch
         --     (\(Writer key) -> modifyMVar_ printVar $ \n -> do
@@ -221,25 +222,25 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
 
         rules :: Rules Query
         rules =
-          memoiseWithCycleDetection (_startedVar state) threadDepsVar $
-            trackReverseDependencies (_reverseDependenciesVar state) $
-              verifyTraces
-                (_tracesVar state)
-                ( \query value -> do
-                    hashed <- readIORef $ _hashesVar state
-                    case DHashMap.lookup query hashed of
-                      Just h ->
-                        pure h
-                      Nothing -> do
-                        let h =
-                              Const $ has' @Hashable @Identity query $ hash $ Identity value
-                        atomicModifyIORef' (_hashesVar state) $
-                          (,()) . DHashMap.insert query h
-                        pure h
-                )
-                $ traceFetch_ $
-                  writer writeErrors $
-                    Rules.rules sourceDirectories (HashSet.fromMap $ void files) readSourceFile_
+          memoiseWithCycleDetection (_startedVar state) threadDepsVar
+            $ trackReverseDependencies (_reverseDependenciesVar state)
+            $ verifyTraces
+              (_tracesVar state)
+              ( \query value -> do
+                  hashed <- readIORef $ _hashesVar state
+                  case DHashMap.lookup query hashed of
+                    Just h ->
+                      pure h
+                    Nothing -> do
+                      let h =
+                            Const $ has' @Hashable @Identity query $ hash $ Identity value
+                      atomicModifyIORef' (_hashesVar state) $
+                        (,()) . DHashMap.insert query h
+                      pure h
+              )
+            $ traceFetch_
+            $ writer writeErrors
+            $ Rules.rules sourceDirectories (HashSet.fromMap $ void files) readSourceFile_
     -- result <- Rock.runMemoisedTask (_startedVar state) rules task
     result <- Rock.runTask rules task
     started <- readIORef $ _startedVar state

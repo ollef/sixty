@@ -5,7 +5,7 @@ module LanguageServer.GoToDefinition where
 
 import Control.Monad.Trans.Maybe
 import qualified Data.HashMap.Lazy as HashMap
-import qualified Data.Rope.UTF16 as Rope
+import qualified Data.Text.Utf16.Rope as Rope
 import qualified LanguageServer.LineColumns as LineColumns
 import qualified Module
 import qualified Name
@@ -27,8 +27,9 @@ goToDefinition filePath (Position.LineColumn line column) = do
   let -- TODO use the rope that we get from the LSP library instead
       pos =
         Position.Absolute $
-          Rope.rowColumnCodeUnits (Rope.RowColumn line column) $
-            Rope.fromText contents
+          case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral column)) $ Rope.fromText contents of
+            Nothing -> 0
+            Just (rope, _) -> fromIntegral $ Rope.length rope
 
   runMaybeT $
     asum $
