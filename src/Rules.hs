@@ -23,10 +23,10 @@ import Control.Exception.Lifted
 import Core.Binding (Binding)
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Syntax as Syntax
+import qualified Data.EnumMap as EnumMap
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
-import qualified Data.IntMap as IntMap
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.OrderedHashSet as OrderedHashSet
 import qualified Data.Text as Text
@@ -388,7 +388,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             0 -> def
             _ ->
               LambdaLifted.ConstantDefinition $
-                IntMap.lookupDefault
+                EnumMap.findWithDefault
                   (Telescope.Empty $ LambdaLifted.Global $ Name.Lifted Builtin.UnknownName 0)
                   index
                   liftedDefs
@@ -400,7 +400,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             let qualifiedName =
                   Name.Qualified module_ name
             (_, extras) <- fetch $ LambdaLifted qualifiedName
-            pure $ Name.Lifted qualifiedName <$> 0 : IntMap.keys extras
+            pure $ Name.Lifted qualifiedName <$> 0 : EnumMap.keys extras
     ClosureConverted name ->
       noError $ do
         definition <- fetch $ LambdaLiftedDefinition name

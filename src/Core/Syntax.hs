@@ -6,10 +6,10 @@ module Core.Syntax where
 import Boxity
 import Core.Binding (Binding)
 import Core.Bindings (Bindings)
+import Data.EnumMap (EnumMap)
+import Data.EnumSet (EnumSet)
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
-import Data.IntMap (IntMap)
-import Data.IntSet (IntSet)
 import Data.OrderedHashMap (OrderedHashMap)
 import Data.Persist
 import Data.Tsil (Tsil)
@@ -20,7 +20,7 @@ import qualified Meta
 import qualified Name
 import Plicity
 import qualified Postponement
-import Protolude hiding (IntMap, IntSet, Type)
+import Protolude hiding (Type)
 import qualified Span
 import Telescope (Telescope)
 import qualified Telescope
@@ -122,7 +122,7 @@ coerce =
   unsafeCoerce
 
 type MetaSolutions =
-  IntMap Meta.Index (Term Void, Type Void, IntSet Meta.Index)
+  EnumMap Meta.Index (Term Void, Type Void, EnumSet Meta.Index)
 
 data Definition
   = TypeDeclaration !(Type Void)

@@ -13,3 +13,5 @@ extra-deps:
 - lsp-1.6.0.0
 - lsp-types-1.6.0.0
 - co-log-core-0.3.1.0
+- git: https://github.com/Mikolaj/enummapset
+  commit: e2f9abd83045964ad137f95805b997da560524cb

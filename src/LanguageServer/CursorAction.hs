@@ -14,10 +14,10 @@ import qualified Core.Bindings as Bindings
 import qualified Core.Domain as Domain
 import qualified Core.Syntax as Syntax
 import qualified Core.TypeOf as TypeOf
+import Data.EnumMap (EnumMap)
+import qualified Data.EnumMap as EnumMap
 import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef.Lifted
-import Data.IntMap (IntMap)
-import qualified Data.IntMap as IntMap
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Text.Utf16.Rope as Rope
@@ -35,7 +35,7 @@ import qualified Name
 import qualified Occurrences
 import Plicity
 import qualified Position
-import Protolude hiding (IntMap, evaluate, moduleName)
+import Protolude hiding (evaluate, moduleName)
 import Query (Query)
 import qualified Query
 import Rock
@@ -44,7 +44,6 @@ import qualified Span
 import Telescope (Telescope)
 import qualified Telescope
 import Var (Var)
-import qualified Var
 
 type Callback a = ItemUnderCursor -> Span.LineColumn -> MaybeT M a
 
@@ -52,7 +51,7 @@ data ItemUnderCursor where
   Term ::
     ItemContext ->
     Context v ->
-    IntMap Var (NonEmpty Span.Relative) ->
+    EnumMap Var (NonEmpty Span.Relative) ->
     Syntax.Term v ->
     ItemUnderCursor
   Import ::
@@ -121,7 +120,7 @@ cursorAction filePath (Position.LineColumn line column) k =
 data Environment v = Environment
   { _actionPosition :: !Position.Relative
   , _context :: Context v
-  , _varSpans :: IntMap Var (NonEmpty Span.Relative)
+  , _varSpans :: EnumMap Var (NonEmpty Span.Relative)
   }
 
 extendBinding :: Environment v -> Binding -> Syntax.Type v -> MaybeT M (Environment (Index.Succ v), Var)
@@ -139,7 +138,7 @@ extend env name spans type_ = do
   pure
     ( env
         { _context = context'
-        , _varSpans = maybe identity (IntMap.insert var) (NonEmpty.nonEmpty spans) (_varSpans env)
+        , _varSpans = maybe identity (EnumMap.insert var) (NonEmpty.nonEmpty spans) (_varSpans env)
         }
     , var
     )
@@ -152,7 +151,7 @@ extendDef env bindings term type_ = do
   pure
     ( env
         { _context = context'
-        , _varSpans = maybe identity (IntMap.insert var) (NonEmpty.nonEmpty $ Bindings.spans bindings) (_varSpans env)
+        , _varSpans = maybe identity (EnumMap.insert var) (NonEmpty.nonEmpty $ Bindings.spans bindings) (_varSpans env)
         }
     , var
     )

@@ -20,11 +20,11 @@ import Control.Monad.Fail
 import Core.Binding (Binding)
 import qualified Core.Syntax as Syntax
 import Data.Constraint.Extras.TH
+import Data.EnumMap (EnumMap)
 import Data.GADT.Compare.TH
 import Data.GADT.Show.TH
 import Data.HashMap.Lazy (HashMap)
 import Data.HashSet (HashSet)
-import Data.IntMap (IntMap)
 import Data.OrderedHashSet (OrderedHashSet)
 import Data.Persist as Persist
 import Data.Some (Some (Some))
@@ -39,7 +39,7 @@ import Name (Name)
 import qualified Name
 import qualified Occurrences.Intervals as Occurrences
 import qualified Position
-import Protolude hiding (IntMap, get, put)
+import Protolude hiding (get, put)
 import qualified Query.Mapped as Mapped
 import qualified Representation
 import Rock
@@ -73,7 +73,7 @@ data Query a where
   ConstructorType :: Name.QualifiedConstructor -> Query (Telescope Binding Syntax.Type Syntax.Type Void)
   DefinitionPosition :: Scope.DefinitionKind -> Name.Qualified -> Query (FilePath, Maybe Position.Absolute)
   Occurrences :: Scope.DefinitionKind -> Name.Qualified -> Query Occurrences.Intervals
-  LambdaLifted :: Name.Qualified -> Query (LambdaLifted.Definition, IntMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void))
+  LambdaLifted :: Name.Qualified -> Query (LambdaLifted.Definition, EnumMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void))
   LambdaLiftedDefinition :: Name.Lifted -> Query LambdaLifted.Definition
   LambdaLiftedModuleDefinitions :: Name.Module -> Query (OrderedHashSet Name.Lifted)
   ClosureConverted :: Name.Lifted -> Query ClosureConverted.Definition

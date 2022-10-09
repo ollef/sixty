@@ -10,11 +10,11 @@ import qualified Core.Domain as Domain
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
+import Data.EnumMap (EnumMap)
+import qualified Data.EnumMap as EnumMap
+import Data.EnumSet (EnumSet)
+import qualified Data.EnumSet as EnumSet
 import Data.Graph (SCC (AcyclicSCC))
-import Data.IntMap (IntMap)
-import qualified Data.IntMap as IntMap
-import Data.IntSet (IntSet)
-import qualified Data.IntSet as IntSet
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
@@ -28,18 +28,17 @@ import Monad
 import Name (Name)
 import qualified Name
 import Plicity
-import Protolude hiding (IntMap, IntSet, Type, evaluate, state)
+import Protolude hiding (Type, evaluate, state)
 import qualified Query
 import Rock
 import Telescope (Telescope)
 import qualified Telescope
 import Var (Var)
-import qualified Var
 
 liftDefinition ::
   Name.Qualified ->
   Syntax.Definition ->
-  M (LambdaLifted.Definition, IntMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void))
+  M (LambdaLifted.Definition, EnumMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void))
 liftDefinition name def = do
   let env = Environment.empty
   case def of
@@ -86,7 +85,7 @@ data Branches
   | LiteralBranches (OrderedHashMap Literal Value)
   deriving (Show)
 
-type Occurrences = IntSet Var
+type Occurrences = EnumSet Var
 
 occurrences :: Value -> Occurrences
 occurrences (Value _ occs) =
@@ -95,7 +94,7 @@ occurrences (Value _ occs) =
 makeVar :: Environment v -> Var -> Value
 makeVar env var =
   Value (Var var) $
-    IntSet.singleton var
+    EnumSet.singleton var
       <> foldMap (occurrences . snd) (Environment.lookupVarValue var env)
 
 makeGlobal :: Name.Lifted -> Value
@@ -117,13 +116,13 @@ makeLet name var value type_ body =
   Value (Let name var value type_ body) $
     occurrences value
       <> occurrences type_
-      <> IntSet.delete var (occurrences body)
+      <> EnumSet.delete var (occurrences body)
 
 makePi :: Name -> Var -> Type -> Value -> Value
 makePi name var domain target =
   Value (Pi name var domain target) $
     occurrences domain
-      <> IntSet.delete var (occurrences target)
+      <> EnumSet.delete var (occurrences target)
 
 makeApp :: Value -> Value -> Value
 makeApp fun arg =
@@ -157,13 +156,13 @@ telescopeOccurrences tele body =
       occurrences body
     (_, var, type_) : tele' ->
       occurrences type_
-        <> IntSet.delete var (telescopeOccurrences tele' body)
+        <> EnumSet.delete var (telescopeOccurrences tele' body)
 
 -------------------------------------------------------------------------------
 
 data LiftState = LiftState
   { _nextIndex :: !Int
-  , _liftedDefinitions :: IntMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void)
+  , _liftedDefinitions :: EnumMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void)
   }
   deriving (Show)
 
@@ -238,7 +237,7 @@ evaluate baseName env term args =
       modify $ \s ->
         s
           { _nextIndex = i + 1
-          , _liftedDefinitions = IntMap.insert i def $ _liftedDefinitions s
+          , _liftedDefinitions = EnumMap.insert i def $ _liftedDefinitions s
           }
       pure $ makeApps (makeGlobal liftedName) $ makeVar env <$> argVars
     Syntax.App function plicity argument ->
@@ -408,8 +407,8 @@ liftLambda baseName env term = do
         acyclic
           <$> topoSortWith
             identity
-            (\var -> IntSet.toList $ foldMap (occurrences . snd) $ Environment.lookupVarValue var env)
-            (IntSet.toList occs)
+            (\var -> EnumSet.toList $ foldMap (occurrences . snd) $ Environment.lookupVarValue var env)
+            (EnumSet.toList occs)
 
       occurrenceTele =
         [ ("x", var, type_)

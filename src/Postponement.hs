@@ -13,7 +13,7 @@ import Protolude hiding (IntMap)
 
 newtype Index = Index Int
   deriving (Eq, Ord, Show)
-  deriving newtype (Persist, Hashable, Num)
+  deriving newtype (Enum, Persist, Hashable, Num)
 
 instance Pretty Index where
   pretty (Index i) =

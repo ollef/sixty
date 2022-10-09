@@ -20,14 +20,14 @@ import qualified Core.Evaluation as Evaluation
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
 import Data.Coerce
+import Data.EnumMap (EnumMap)
+import qualified Data.EnumMap as EnumMap
+import qualified Data.EnumSet as EnumSet
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import Data.IORef.Lifted
-import Data.IntMap (IntMap)
-import qualified Data.IntMap as IntMap
-import qualified Data.IntSet as IntSet
 import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Some (Some)
 import Data.Tsil (Tsil)
@@ -58,7 +58,7 @@ import qualified Name
 import Plicity
 import qualified Postponement
 import Prettyprinter (Doc)
-import Protolude hiding (IntMap, IntSet, Seq, check, evaluate, force, try, until)
+import Protolude hiding (Seq, check, evaluate, force, try, until)
 import Query (Query)
 import qualified Query
 import Rock
@@ -68,7 +68,6 @@ import qualified Surface.Syntax as Surface
 import Telescope (Telescope)
 import qualified Telescope
 import Var (Var)
-import qualified Var
 
 inferTopLevelDefinition ::
   Scope.DefinitionKind ->
@@ -206,7 +205,8 @@ inferDataDefinition context surfaceParams constrs paramVars =
           returnType <-
             readback context' $
               Domain.Neutral (Domain.Global $ Context.definitionName context') $
-                Domain.Apps $ second Domain.var <$> paramVars
+                Domain.Apps $
+                  second Domain.var <$> paramVars
           let type_ =
                 Syntax.funs types' Explicit returnType
           pure [(constr, type_)]
@@ -374,7 +374,8 @@ addConstructorIndexEqualities context paramVars constrType =
         ([], []) ->
           readback context' $
             Domain.Neutral (Domain.Global dataName) $
-              Domain.Apps $ second Domain.var <$> paramVars
+              Domain.Apps $
+                second Domain.var <$> paramVars
         _ ->
           panic "indexEqualities length mismatch"
 
@@ -679,7 +680,7 @@ elaborateLets ::
   Functor result =>
   Context v ->
   HashMap Name.Surface (Span.Relative, Var) ->
-  IntMap Var (Span.Relative, Name.Surface) ->
+  EnumMap Var (Span.Relative, Name.Surface) ->
   Tsil (Var, LetBoundTerm) ->
   [Surface.Let] ->
   Surface.Term ->
@@ -689,7 +690,7 @@ elaborateLets context declaredNames undefinedVars definedVars lets body mode = d
   case lets of
     [] -> do
       body' <- elaborate context body mode
-      foldlM reportUndefinedName (Syntax.In <$> body') (IntMap.toList undefinedVars)
+      foldlM reportUndefinedName (Syntax.In <$> body') (EnumMap.toList undefinedVars)
       where
         reportUndefinedName lets' (var, (span, surfaceName@(Name.Surface nameText))) = do
           Context.report (Context.spanned span context) $ Error.UndefinedLetName surfaceName
@@ -702,7 +703,7 @@ elaborateLets context declaredNames undefinedVars definedVars lets body mode = d
 
     -- Optimisation: No need to consider the rest of the bindings to be mutuals if they're all defined
     _
-      | IntMap.null undefinedVars
+      | EnumMap.null undefinedVars
         , not (Tsil.null definedVars) -> do
         lets' <- elaborateLets context mempty mempty mempty lets body mode
         pure $ Syntax.In . Syntax.Lets <$> lets'
@@ -719,7 +720,7 @@ elaborateLets context declaredNames undefinedVars definedVars lets body mode = d
                 HashMap.insert surfaceName (span, var) declaredNames
 
               undefinedVars' =
-                IntMap.insert var (span, surfaceName) undefinedVars
+                EnumMap.insert var (span, surfaceName) undefinedVars
           lets'' <- elaborateLets context' declaredNames' undefinedVars' definedVars lets' body mode
           pure $ Syntax.LetType (Binding.fromSurface spannedName) typeTerm <$> lets''
     Surface.Let surfaceName@(Name.Surface nameText) clauses : lets' -> do
@@ -769,7 +770,7 @@ elaborateLets context declaredNames undefinedVars definedVars lets body mode = d
                     fromMaybe (panic "elaborateLets: indexless var") $ Context.lookupVarIndex var context
 
                   undefinedVars' =
-                    IntMap.delete var undefinedVars
+                    EnumMap.delete var undefinedVars
 
                   definedVars' =
                     definedVars Tsil.:> (var, LetBoundTerm context boundTerm)
@@ -944,7 +945,7 @@ postpone context expectedType blockingMeta check_ = do
         resultValue <- evaluate context resultTerm
         Context.try_ context $ Unification.unify context Flexibility.Rigid resultValue resultMetaValue
       Meta.EagerUnsolved _ _ postponements _
-        | IntSet.null postponements -> do
+        | EnumSet.null postponements -> do
           lazySolution <- lazy metaSolution
           Context.lazilySolveMeta context resultMeta lazySolution
           pure True
@@ -1152,7 +1153,7 @@ checkMetaSolutions ::
   Meta.EagerState ->
   M Syntax.MetaSolutions
 checkMetaSolutions context metaVars =
-  flip IntMap.traverseWithKey (Meta.eagerEntries metaVars) $ \index entry ->
+  flip EnumMap.traverseWithKey (Meta.eagerEntries metaVars) $ \index entry ->
     case entry of
       Meta.EagerUnsolved type_ _ _ span -> do
         ptype <- Context.toPrettyableClosedTerm context type_

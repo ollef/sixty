@@ -8,37 +8,33 @@ module Orphans where
 import Data.Constraint.Extras
 import Data.Dependent.HashMap (DHashMap)
 import qualified Data.Dependent.HashMap as DHashMap
+import Data.EnumMap (EnumMap)
+import qualified Data.EnumMap as EnumMap
+import Data.EnumSet (EnumSet)
+import qualified Data.EnumSet as EnumSet
 import Data.GADT.Compare (GEq)
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
-import Data.IntMap (IntMap)
-import qualified Data.IntMap as IntMap
-import Data.IntSet (IntSet)
-import qualified Data.IntSet as IntSet
 import Data.IntervalMap.FingerTree (IntervalMap)
 import qualified Data.IntervalMap.FingerTree as IntervalMap
 import Data.Persist
 import Data.Text.Utf16.Rope (Rope)
 import qualified Data.Text.Utf16.Rope as Rope
 import LLVM.Orphans ()
-import Protolude hiding (IntMap, IntSet, get, put)
+import Protolude hiding (IntSet, get, put)
 import Rock.Traces
 
-instance (Persist k, Persist v, Coercible Int k) => Persist (IntMap k v) where
-  put =
-    put . IntMap.toList
+instance (Persist k, Persist v, Enum k) => Persist (EnumMap k v) where
+  put = put . EnumMap.toList
 
-  get =
-    IntMap.fromList <$> get
+  get = EnumMap.fromList <$> get
 
-instance (Persist k, Coercible Int k) => Persist (IntSet k) where
-  put =
-    put . IntSet.toList
+instance (Persist k, Enum k) => Persist (EnumSet k) where
+  put = put . EnumSet.toList
 
-  get =
-    IntSet.fromList <$> get
+  get = EnumSet.fromList <$> get
 
 instance (Persist k, Eq k, Hashable k, Persist v) => Persist (HashMap k v) where
   put =
@@ -62,14 +58,15 @@ instance Persist k => Persist (IntervalMap.Interval k) where
     uncurry IntervalMap.Interval <$> get
 
 instance (Persist k, Ord k, Persist v) => Persist (IntervalMap k v) where
-  put m =
-    put $
-      fold $
-        (`IntervalMap.intersections` m)
-          <$> IntervalMap.bounds m
+  put m = put $ foldMap (`IntervalMap.intersections` m) $ IntervalMap.bounds m
 
-  get =
-    mconcat . map (uncurry IntervalMap.singleton) <$> get
+  get = mconcat . map (uncurry IntervalMap.singleton) <$> get
+
+instance (Enum k, Hashable k, Hashable v) => Hashable (EnumMap k v) where
+  hashWithSalt s = hashWithSalt s . EnumMap.toList
+
+instance (Enum k, Hashable k) => Hashable (EnumSet k) where
+  hashWithSalt s = hashWithSalt s . EnumSet.toList
 
 instance Hashable k => Hashable (IntervalMap.Interval k) where
   hashWithSalt s (IntervalMap.Interval a b) =

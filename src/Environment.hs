@@ -1,18 +1,17 @@
 module Environment where
 
-import Data.IntMap (IntMap)
-import qualified Data.IntMap as IntMap
+import Data.EnumMap (EnumMap)
+import qualified Data.EnumMap as EnumMap
 import Index
 import qualified Index.Map
 import qualified Index.Map as Index
 import Monad
-import Protolude hiding (IntMap)
+import Protolude
 import Var (Var)
-import qualified Var
 
 data Environment value v = Environment
   { indices :: Index.Map v Var
-  , values :: IntMap Var value
+  , values :: EnumMap Var value
   , glueableBefore :: !(Index (Succ v))
   }
   deriving (Show)
@@ -51,7 +50,7 @@ extendValue env value = do
   pure
     ( env
         { indices = indices env Index.Map.:> var
-        , values = IntMap.insert var value (values env)
+        , values = EnumMap.insert var value (values env)
         , glueableBefore = Index.Succ $ glueableBefore env
         }
     , var
@@ -59,7 +58,7 @@ extendValue env value = do
 
 define :: Environment value v -> Var -> value -> Environment value v
 define env var value =
-  env {values = IntMap.insert var value (values env)}
+  env {values = EnumMap.insert var value (values env)}
 
 lookupVarIndex :: Var -> Environment value v -> Maybe (Index v)
 lookupVarIndex var context =
@@ -75,4 +74,4 @@ lookupIndexValue index env =
 
 lookupVarValue :: Var -> Environment value v -> Maybe value
 lookupVarValue v env =
-  IntMap.lookup v $ values env
+  EnumMap.lookup v $ values env

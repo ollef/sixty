@@ -13,9 +13,9 @@ import qualified Core.Domain as Domain
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
+import qualified Data.EnumSet as EnumSet
 import Data.IntSeq (IntSeq)
 import qualified Data.IntSeq as IntSeq
-import qualified Data.IntSet as IntSet
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
@@ -675,7 +675,7 @@ renameValue outerContext renaming value = do
       case occurs renaming of
         Just occursMeta -> do
           metas <- Context.metaSolutionMetas outerContext meta
-          if IntSet.member occursMeta metas
+          if EnumSet.member occursMeta metas
             then -- The meta solution might contain `occurs`, so we need to force.
               renameValue outerContext renaming value''
             else -- The solved meta (`meta`) does contain the meta we're solving

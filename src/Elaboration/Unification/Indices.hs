@@ -13,10 +13,10 @@ import qualified Core.Bindings as Bindings
 import qualified Core.Domain as Domain
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Syntax as Syntax
-import qualified Data.IntMap as IntMap
+import qualified Data.EnumMap as EnumMap
+import Data.EnumSet (EnumSet)
+import qualified Data.EnumSet as EnumSet
 import qualified Data.IntSeq as IntSeq
-import Data.IntSet (IntSet)
-import qualified Data.IntSet as IntSet
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Tsil as Tsil
@@ -28,7 +28,7 @@ import qualified Flexibility
 import Index
 import qualified Index.Map
 import Monad
-import Protolude hiding (IntSet, catch, force, throwIO)
+import Protolude hiding (catch, force, throwIO)
 import Telescope (Telescope)
 import qualified Telescope
 import Var
@@ -41,7 +41,7 @@ data Error
 unify ::
   Context v ->
   Flexibility ->
-  IntSet Var ->
+  EnumSet Var ->
   Domain.Value ->
   Domain.Value ->
   M (Context v)
@@ -89,14 +89,14 @@ unify context flexibility untouchables value1 value2 = do
         context1 <- unify context flexibility untouchables domain2 domain1
         (context2, var) <- Context.extend context1 (Binding.toName binding1) domain1
         target1 <- Evaluation.evaluateClosure targetClosure1 $ Domain.var var
-        context3 <- unify context2 flexibility (IntSet.insert var untouchables) target1 target2
+        context3 <- unify context2 flexibility (EnumSet.insert var untouchables) target1 target2
         pure $ unextend context3
     (Domain.Fun domain1 plicity1 target1, Domain.Pi binding2 domain2 plicity2 targetClosure2)
       | plicity1 == plicity2 -> do
         context1 <- unify context flexibility untouchables domain2 domain1
         (context2, var) <- Context.extend context1 (Binding.toName binding2) domain2
         target2 <- Evaluation.evaluateClosure targetClosure2 $ Domain.var var
-        context3 <- unify context2 flexibility (IntSet.insert var untouchables) target1 target2
+        context3 <- unify context2 flexibility (EnumSet.insert var untouchables) target1 target2
         pure $ unextend context3
     (Domain.Fun domain1 plicity1 target1, Domain.Fun domain2 plicity2 target2)
       | plicity1 == plicity2 -> do
@@ -112,7 +112,7 @@ unify context flexibility untouchables value1 value2 = do
       body1 <- Evaluation.evaluateClosure closure1 varValue
       body2 <- Evaluation.apply v2 plicity1 varValue
 
-      context2 <- unify context1 flexibility (IntSet.insert var untouchables) body1 body2
+      context2 <- unify context1 flexibility (EnumSet.insert var untouchables) body1 body2
       pure $ unextend context2
     (v1, Domain.Lam bindings2 type2 plicity2 closure2) -> do
       (context1, var) <- Context.extend context (Bindings.toName bindings2) type2
@@ -122,7 +122,7 @@ unify context flexibility untouchables value1 value2 = do
       body1 <- Evaluation.apply v1 plicity2 varValue
       body2 <- Evaluation.evaluateClosure closure2 varValue
 
-      context2 <- unify context1 flexibility (IntSet.insert var untouchables) body1 body2
+      context2 <- unify context1 flexibility (EnumSet.insert var untouchables) body1 body2
       pure $ unextend context2
 
     -- Vars
@@ -144,20 +144,20 @@ unify context flexibility untouchables value1 value2 = do
 
       body1 <- Evaluation.evaluateClosure closure1 varValue
       body2 <- Evaluation.evaluateClosure closure2 varValue
-      context3 <- unify context2 flexibility (IntSet.insert var untouchables) body1 body2
+      context3 <- unify context2 flexibility (EnumSet.insert var untouchables) body1 body2
       pure $ unextend context3
 
     solve var value
-      | IntSet.member var untouchables =
+      | EnumSet.member var untouchables =
         throwIO Dunno
       | otherwise = do
-        occurs context Flexibility.Rigid (IntSet.insert var untouchables) value
+        occurs context Flexibility.Rigid (EnumSet.insert var untouchables) value
         Context.define context var value
 
 unifySpines ::
   Context v ->
   Flexibility ->
-  IntSet Var ->
+  EnumSet Var ->
   Domain.Spine ->
   Domain.Spine ->
   M (Context v)
@@ -182,7 +182,7 @@ unifyBranches ::
   forall v.
   Context v ->
   Flexibility ->
-  IntSet Var ->
+  EnumSet Var ->
   Domain.Branches ->
   Domain.Branches ->
   M (Context v)
@@ -241,7 +241,7 @@ unifyBranches
       unifyTele ::
         Domain.Environment v1 ->
         Domain.Environment v2 ->
-        IntSet Var ->
+        EnumSet Var ->
         Context v' ->
         Telescope Bindings Syntax.Type Syntax.Term v1 ->
         Telescope Bindings Syntax.Type Syntax.Term v2 ->
@@ -258,7 +258,7 @@ unifyBranches
                 unifyTele
                   (Environment.extendVar env1 var)
                   (Environment.extendVar env2 var)
-                  (IntSet.insert var untouchables)
+                  (EnumSet.insert var untouchables)
                   context''
                   tele1'
                   tele2'
@@ -275,15 +275,15 @@ unextend context =
   case (Context.indices context, Context.boundVars context) of
     (indices Index.Map.:> var, boundVars IntSeq.:> _) ->
       context
-        { Context.varNames = IntMap.delete var $ Context.varNames context
+        { Context.varNames = EnumMap.delete var $ Context.varNames context
         , Context.indices = indices
-        , Context.types = IntMap.delete var $ Context.types context
+        , Context.types = EnumMap.delete var $ Context.types context
         , Context.boundVars = boundVars
         }
     _ ->
       panic "Unification.Indices.unextend"
 
-occurs :: Context v -> Flexibility -> IntSet Var -> Domain.Value -> M ()
+occurs :: Context v -> Flexibility -> EnumSet Var -> Domain.Value -> M ()
 occurs context flexibility untouchables value = do
   value' <- Context.forceHeadGlue context value
   case value' of
@@ -321,13 +321,13 @@ occurs context flexibility untouchables value = do
 
 occursHead ::
   Flexibility ->
-  IntSet Var ->
+  EnumSet Var ->
   Domain.Head ->
   M ()
 occursHead flexibility untouchables hd =
   case hd of
     Domain.Var var
-      | IntSet.member var untouchables ->
+      | EnumSet.member var untouchables ->
         throwIO $
           case flexibility of
             Flexibility.Rigid ->
@@ -344,7 +344,7 @@ occursHead flexibility untouchables hd =
 occursElimination ::
   Context v ->
   Flexibility ->
-  IntSet Var ->
+  EnumSet Var ->
   Domain.Elimination ->
   M ()
 occursElimination context flexibility untouchables elimination =
@@ -357,7 +357,7 @@ occursElimination context flexibility untouchables elimination =
 occursBranches ::
   Context v ->
   Flexibility ->
-  IntSet Var ->
+  EnumSet Var ->
   Domain.Branches ->
   M ()
 occursBranches outerContext flexibility outerUntouchables (Domain.Branches outerEnv branches defaultBranch) = do
@@ -373,7 +373,7 @@ occursBranches outerContext flexibility outerUntouchables (Domain.Branches outer
   where
     occursTele ::
       Context v ->
-      IntSet Var ->
+      EnumSet Var ->
       Domain.Environment v1 ->
       Telescope Bindings Syntax.Type Syntax.Term v1 ->
       M ()
@@ -385,7 +385,7 @@ occursBranches outerContext flexibility outerUntouchables (Domain.Branches outer
           (context'', var) <- Context.extend context (Bindings.toName bindings) type'
           occursTele
             context''
-            (IntSet.insert var untouchables)
+            (EnumSet.insert var untouchables)
             (Environment.extendVar env var)
             tele'
         Telescope.Empty body -> do

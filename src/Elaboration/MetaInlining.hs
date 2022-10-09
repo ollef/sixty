@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveFoldable #-}
-{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -11,11 +9,11 @@ import Core.Binding (Binding)
 import Core.Bindings (Bindings)
 import qualified Core.Domain as Domain
 import qualified Core.Syntax as Syntax
+import Data.EnumMap (EnumMap)
+import qualified Data.EnumMap as EnumMap
+import Data.EnumSet (EnumSet)
+import qualified Data.EnumSet as EnumSet
 import Data.Graph
-import Data.IntMap (IntMap)
-import qualified Data.IntMap as IntMap
-import Data.IntSet (IntSet)
-import qualified Data.IntSet as IntSet
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
@@ -28,12 +26,11 @@ import Monad
 import qualified Name
 import Plicity
 import qualified Postponement
-import Protolude hiding (IntMap, IntSet, Type, evaluate)
+import Protolude hiding (Type, evaluate)
 import qualified Span
 import Telescope (Telescope)
 import qualified Telescope
 import Var (Var)
-import qualified Var
 import Prelude (Show (showsPrec))
 
 inlineSolutions ::
@@ -51,20 +48,20 @@ inlineSolutions solutions def type_ = do
         acyclic
           <$> topoSortWith
             fst
-            (\(_, (_, _, metaOccurrences)) -> IntSet.toList metaOccurrences)
-            (IntMap.toList solutionValues)
+            (\(_, (_, _, metaOccurrences)) -> EnumSet.toList metaOccurrences)
+            (EnumMap.toList solutionValues)
 
       lookupMetaIndex metas index =
-        IntMap.lookupDefault
+        EnumMap.findWithDefault
           (panic "Elaboration.MetaInlining.inlineSolutions: unknown index")
           index
           metas
 
       inlineTermSolutions :: Domain.Environment v -> Syntax.Term v -> M (Syntax.Term v)
       inlineTermSolutions env term = do
-        let go :: (Meta.Index, (Value, Type, unused)) -> (Value, IntMap Meta.Index (Var, [Maybe DuplicableValue])) -> M (Value, IntMap Meta.Index (Var, [Maybe DuplicableValue]))
+        let go :: (Meta.Index, (Value, Type, unused)) -> (Value, EnumMap Meta.Index (Var, [Maybe DuplicableValue])) -> M (Value, EnumMap Meta.Index (Var, [Maybe DuplicableValue]))
             go (index, (solutionValue, solutionType, _)) (value, metaVars) =
-              case IntMap.lookup index $ occurrencesMap value of
+              case EnumMap.lookup index $ occurrencesMap value of
                 Nothing ->
                   pure (value, metaVars)
                 Just (occurrenceCount, duplicableArgs) -> do
@@ -73,7 +70,7 @@ inlineSolutions solutions def type_ = do
                         toList duplicableArgs
 
                       duplicableVars =
-                        IntSet.fromList
+                        EnumSet.fromList
                           [ var
                           | Just (DuplicableVar var) <- duplicableArgsList
                           ]
@@ -87,7 +84,7 @@ inlineSolutions solutions def type_ = do
                             inlineIndex index duplicableVars (solutionVar, occurrenceCount, duplicableArgsList, inlinedSolutionValue, inlinedSolutionType) value
 
                       metaVars' =
-                        IntMap.insert index (solutionVar, duplicableArgsList) metaVars
+                        EnumMap.insert index (solutionVar, duplicableArgsList) metaVars
 
                   pure (value', metaVars')
         value <- evaluate env term
@@ -204,12 +201,12 @@ data Branches
   | LiteralBranches (OrderedHashMap Literal ([Span.Relative], Value))
   deriving (Show)
 
-newtype Occurrences = Occurrences {unoccurrences :: IntMap Meta.Index (Int, Tsil (Maybe DuplicableValue))}
+newtype Occurrences = Occurrences {unoccurrences :: EnumMap Meta.Index (Int, Tsil (Maybe DuplicableValue))}
 
 instance Semigroup Occurrences where
   Occurrences occs1 <> Occurrences occs2 =
     Occurrences $
-      IntMap.unionWith
+      EnumMap.unionWith
         (\(count1, args1) (count2, args2) -> (count1 + count2, Tsil.zipWith (\arg1 arg2 -> if arg1 == arg2 then arg1 else Nothing) args1 args2))
         occs1
         occs2
@@ -223,7 +220,7 @@ occurrences (Value _ occs) = occs
 letOccurrences :: Lets -> Occurrences
 letOccurrences (Lets _ occs) = occs
 
-occurrencesMap :: Value -> IntMap Meta.Index (Int, Tsil (Maybe DuplicableValue))
+occurrencesMap :: Value -> EnumMap Meta.Index (Int, Tsil (Maybe DuplicableValue))
 occurrencesMap = unoccurrences . occurrences
 
 type Type = Value
@@ -247,7 +244,7 @@ makeLit lit =
 makeMeta :: Meta.Index -> Tsil Value -> Value
 makeMeta index arguments =
   Value (Meta index arguments) $
-    Occurrences (IntMap.singleton index (1, duplicableView <$> arguments))
+    Occurrences (EnumMap.singleton index (1, duplicableView <$> arguments))
       <> foldMap occurrences arguments
 
 makePostponedCheck :: Postponement.Index -> Value -> Value
@@ -298,7 +295,7 @@ makeApp0 fun@(Value fun' (Occurrences occs)) plicity arg =
   case (fun', plicity) of
     (Meta index args, Explicit) ->
       Value (Meta index (args Tsil.:> arg)) $
-        Occurrences (IntMap.adjust (second (Tsil.:> duplicableView arg)) index occs)
+        Occurrences (EnumMap.adjust (second (Tsil.:> duplicableView arg)) index occs)
           <> occurrences arg
     _ ->
       makeApp fun plicity arg
@@ -528,7 +525,7 @@ inlineArguments ::
   Value ->
   Value ->
   [Maybe DuplicableValue] ->
-  IntMap Var Value ->
+  EnumMap Var Value ->
   Shared (Value, Value)
 inlineArguments value@(Value innerValue _) type_@(Value innerType _) args subst =
   case args of
@@ -538,8 +535,8 @@ inlineArguments value@(Value innerValue _) type_@(Value innerType _) args subst 
       case (innerValue, innerType) of
         (Lam _ var _ _ body, Pi _ var' _ _ target) ->
           let subst' =
-                IntMap.insert var (unduplicable arg) $
-                  IntMap.insert var' (unduplicable arg) subst
+                EnumMap.insert var (unduplicable arg) $
+                  EnumMap.insert var' (unduplicable arg) subst
            in inlineArguments body target args' subst'
         _ ->
           (,) <$> substitute subst value <*> substitute subst type_
@@ -558,9 +555,9 @@ inlineArguments value@(Value innerValue _) type_@(Value innerType _) args subst 
         _ ->
           (,) <$> substitute subst value <*> substitute subst type_
 
-substitute :: IntMap Var Value -> Value -> Shared Value
+substitute :: EnumMap Var Value -> Value -> Shared Value
 substitute subst
-  | IntMap.null subst =
+  | EnumMap.null subst =
     pure
   | otherwise =
     go
@@ -569,7 +566,7 @@ substitute subst
       sharing value $
         case innerValue of
           Var var ->
-            case IntMap.lookup var subst of
+            case EnumMap.lookup var subst of
               Nothing ->
                 pure value
               Just value' -> do
@@ -662,7 +659,7 @@ unShared (Shared _ a) =
 
 inlineIndex ::
   Meta.Index ->
-  IntSet Var ->
+  EnumSet Var ->
   (Var, Int, [Maybe DuplicableValue], Value, Value) ->
   Value ->
   Shared Value
@@ -673,7 +670,7 @@ inlineIndex index targetScope solution@(solutionVar, occurrenceCount, duplicable
 
       recurseScope var value' =
         sharing value' $
-          inlineIndex index (IntSet.delete var targetScope) solution value'
+          inlineIndex index (EnumSet.delete var targetScope) solution value'
   case innerValue of
     Meta index' args
       | index == index' -> do
@@ -685,8 +682,8 @@ inlineIndex index targetScope solution@(solutionVar, occurrenceCount, duplicable
                   (zip (duplicableArgs <> repeat Nothing) (toList args))
         pure $ foldl' (\v1 v2 -> makeApp v1 Explicit v2) solutionValue remainingArgs
     _
-      | IntSet.null targetScope && occurrenceCount > 1 ->
-        if index `IntMap.member` occurrencesMap value
+      | EnumSet.null targetScope && occurrenceCount > 1 ->
+        if index `EnumMap.member` occurrencesMap value
           then do
             modified
             pure $
@@ -739,7 +736,7 @@ inlineIndex index targetScope solution@(solutionVar, occurrenceCount, duplicable
                         pure ([], body')
                       (name, var, type_, plicity) : bindings'' -> do
                         type' <- sharing type_ $ inlineIndex index targetScope' solution type_
-                        (bindings''', body') <- go (IntSet.delete var targetScope') bindings''
+                        (bindings''', body') <- go (EnumSet.delete var targetScope') bindings''
                         pure ((name, var, type', plicity) : bindings''', body')
 
               (bindings', body') <- go targetScope bindings
@@ -751,7 +748,7 @@ inlineIndex index targetScope solution@(solutionVar, occurrenceCount, duplicable
     Spanned span value' ->
       makeSpanned span <$> recurse (Value value' occs)
 
-inlineLetsIndex :: Meta.Index -> IntSet Var -> (Var, Int, [Maybe DuplicableValue], Value, Value) -> Lets -> Shared Lets
+inlineLetsIndex :: Meta.Index -> EnumSet Var -> (Var, Int, [Maybe DuplicableValue], Value, Value) -> Lets -> Shared Lets
 inlineLetsIndex index targetScope solution lets@(Lets innerLets occs) =
   sharing lets $
     case innerLets of
@@ -766,7 +763,7 @@ inlineLetsIndex index targetScope solution lets@(Lets innerLets occs) =
       inlineLetsIndex index targetScope solution lets'
 
     recurseScope var lets' =
-      inlineLetsIndex index (IntSet.delete var targetScope) solution lets'
+      inlineLetsIndex index (EnumSet.delete var targetScope) solution lets'
 
     recurseValue value =
       inlineIndex index targetScope solution value

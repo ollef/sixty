@@ -4,11 +4,11 @@
 module Elaboration.Postponed where
 
 import qualified Core.Syntax as Syntax
-import Data.IntMap (IntMap)
-import qualified Data.IntMap as IntMap
+import Data.EnumMap (EnumMap)
+import qualified Data.EnumMap as EnumMap
 import Monad
 import qualified Postponement
-import Protolude hiding (IntMap, check)
+import Protolude hiding (check)
 
 data Check where
   Unchecked :: (Postponement.CanPostpone -> M (Syntax.Term v)) -> Check
@@ -16,7 +16,7 @@ data Check where
   Checked :: Syntax.Term v -> Check
 
 data Checks = Checks
-  { checks :: !(IntMap Postponement.Index Check)
+  { checks :: !(EnumMap Postponement.Index Check)
   , nextIndex :: !Postponement.Index
   }
 
@@ -29,19 +29,19 @@ empty =
 
 lookup :: Postponement.Index -> Checks -> Check
 lookup index p =
-  checks p IntMap.! index
+  checks p EnumMap.! index
 
 insert :: (Postponement.CanPostpone -> M (Syntax.Term v)) -> Checks -> (Checks, Postponement.Index)
 insert check p =
-  (Checks (IntMap.insert (nextIndex p) (Unchecked check) (checks p)) (nextIndex p + 1), nextIndex p)
+  (Checks (EnumMap.insert (nextIndex p) (Unchecked check) (checks p)) (nextIndex p + 1), nextIndex p)
 
 update :: Postponement.Index -> Check -> Checks -> Checks
 update index newCheck p =
-  p {checks = IntMap.insert index newCheck $ checks p}
+  p {checks = EnumMap.insert index newCheck $ checks p}
 
 adjustF :: Functor f => (Check -> f Check) -> Postponement.Index -> Checks -> f Checks
 adjustF adjust index p =
-  (\checks' -> p {checks = checks'}) <$> IntMap.alterF alter index (checks p)
+  (\checks' -> p {checks = checks'}) <$> EnumMap.alterF alter index (checks p)
   where
     alter maybeCheck =
       case maybeCheck of

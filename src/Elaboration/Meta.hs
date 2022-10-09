@@ -6,29 +6,29 @@
 module Elaboration.Meta where
 
 import qualified Core.Syntax as Syntax
-import Data.IntMap (IntMap)
-import qualified Data.IntMap as IntMap
-import Data.IntSet (IntSet)
-import qualified Data.IntSet as IntSet
+import Data.EnumMap (EnumMap)
+import qualified Data.EnumMap as EnumMap
+import Data.EnumSet (EnumSet)
+import qualified Data.EnumSet as EnumSet
 import Data.List (partition)
 import Data.Persist
 import qualified Meta
 import Orphans ()
 import qualified Postponement
-import Protolude hiding (IntMap, IntSet, State, link, link2, state)
+import Protolude hiding (State, link, link2, state)
 import qualified Span
 import Telescope (Telescope)
 import qualified Telescope
 
 data Entry m
-  = Unsolved (Syntax.Type Void) !Int (IntSet Postponement.Index) !Span.Relative
+  = Unsolved (Syntax.Type Void) !Int (EnumSet Postponement.Index) !Span.Relative
   | Solved (Syntax.Term Void) !CachedMetas (Syntax.Type Void)
   | LazilySolved !(m (Syntax.Term Void)) (Syntax.Type Void)
 
 data CachedMetas = CachedMetas
-  { direct :: IntSet Meta.Index
-  , unsolved :: IntSet Meta.Index -- Or unknown
-  , solved :: IntSet Meta.Index
+  { direct :: EnumSet Meta.Index
+  , unsolved :: EnumSet Meta.Index -- Or unknown
+  , solved :: EnumSet Meta.Index
   }
   deriving (Eq, Show, Generic, Persist, Hashable)
 
@@ -50,7 +50,7 @@ entryType entry =
       type_
 
 data State m = State
-  { entries :: IntMap Meta.Index (Entry m)
+  { entries :: EnumMap Meta.Index (Entry m)
   , nextIndex :: !Meta.Index
   }
 
@@ -63,25 +63,25 @@ empty =
 
 lookup :: Meta.Index -> State m -> Entry m
 lookup index state =
-  entries state IntMap.! index
+  entries state EnumMap.! index
 
 new :: Syntax.Term Void -> Int -> Span.Relative -> State m -> (State m, Meta.Index)
 new type_ arity span state =
   let index =
         nextIndex state
    in ( State
-          { entries = IntMap.insert index (Unsolved type_ arity mempty span) $ entries state
+          { entries = EnumMap.insert index (Unsolved type_ arity mempty span) $ entries state
           , nextIndex = nextIndex state + 1
           }
       , index
       )
 
-solve :: Meta.Index -> Syntax.Term Void -> State m -> (State m, (Int, IntSet Postponement.Index))
+solve :: Meta.Index -> Syntax.Term Void -> State m -> (State m, (Int, EnumSet Postponement.Index))
 solve index term state =
   (state {entries = entries'}, data_)
   where
     (data_, entries') =
-      IntMap.alterF alter index $ entries state
+      EnumMap.alterF alter index $ entries state
 
     alter maybeVar =
       case maybeVar of
@@ -96,12 +96,12 @@ solve index term state =
         Just LazilySolved {} ->
           panic "Solving an already solved meta variable"
 
-lazilySolve :: Meta.Index -> m (Syntax.Term Void) -> State m -> (State m, (Int, IntSet Postponement.Index))
+lazilySolve :: Meta.Index -> m (Syntax.Term Void) -> State m -> (State m, (Int, EnumSet Postponement.Index))
 lazilySolve index mterm state =
   (state {entries = entries'}, data_)
   where
     (data_, entries') =
-      IntMap.alterF alter index $ entries state
+      EnumMap.alterF alter index $ entries state
 
     alter maybeVar =
       case maybeVar of
@@ -116,20 +116,20 @@ lazilySolve index mterm state =
 
 addPostponedIndex :: Meta.Index -> Postponement.Index -> State m -> State m
 addPostponedIndex index postponementIndex state =
-  state {entries = IntMap.adjust adjust index $ entries state}
+  state {entries = EnumMap.adjust adjust index $ entries state}
   where
     adjust entry =
       case entry of
         Unsolved type_ arity postponed span ->
-          Unsolved type_ arity (IntSet.insert postponementIndex postponed) span
+          Unsolved type_ arity (EnumSet.insert postponementIndex postponed) span
         Solved {} ->
           panic "Adding postponement index to an already solved meta variable"
         LazilySolved {} ->
           panic "Adding postponement index to an already solved meta variable"
 
-addPostponedIndices :: Meta.Index -> IntSet Postponement.Index -> State m -> State m
+addPostponedIndices :: Meta.Index -> EnumSet Postponement.Index -> State m -> State m
 addPostponedIndices index postponementIndices state =
-  state {entries = IntMap.adjust adjust index $ entries state}
+  state {entries = EnumMap.adjust adjust index $ entries state}
   where
     adjust entry =
       case entry of
@@ -144,12 +144,12 @@ addPostponedIndices index postponementIndices state =
 -- Eager entries
 
 data EagerEntry
-  = EagerUnsolved (Syntax.Type Void) !Int (IntSet Postponement.Index) !Span.Relative
+  = EagerUnsolved (Syntax.Type Void) !Int (EnumSet Postponement.Index) !Span.Relative
   | EagerSolved (Syntax.Term Void) CachedMetas (Syntax.Type Void)
   deriving (Eq, Generic, Persist, Hashable)
 
 data EagerState = EagerState
-  { eagerEntries :: IntMap Meta.Index EagerEntry
+  { eagerEntries :: EnumMap Meta.Index EagerEntry
   , eagerNextIndex :: !Meta.Index
   }
   deriving (Eq, Generic, Persist, Hashable)
@@ -192,7 +192,7 @@ toEagerState state definition maybeType = do
       }
   where
     go todo done
-      | IntMap.null todo' =
+      | EnumMap.null todo' =
         pure done
       | otherwise = do
         newlyDone <- traverse toEagerEntry todo'
@@ -210,7 +210,7 @@ toEagerState state definition maybeType = do
         go newTodo (done <> newlyDone)
       where
         todo' =
-          IntMap.difference (IntMap.fromSet (entries state IntMap.!) todo) done
+          EnumMap.difference (EnumMap.fromSet (entries state EnumMap.!) todo) done
 
 -------------------------------------------------------------------------------
 
@@ -220,15 +220,15 @@ solutionMetas metaIndex state = do
     Unsolved {} ->
       pure (Nothing, state)
     Solved solution metas type_
-      | IntSet.null $ unsolved metas ->
+      | EnumSet.null $ unsolved metas ->
         pure (Just metas, state)
       | otherwise ->
         flip runStateT state $ do
-          indirects <- forM (IntSet.toList $ unsolved metas) $ \i ->
+          indirects <- forM (EnumSet.toList $ unsolved metas) $ \i ->
             (,) i <$> StateT (solutionMetas i)
 
           let (directUnsolvedMetas, directSolvedMetas) =
-                bimap (IntSet.fromList . map fst) (IntSet.fromList . map fst) $
+                bimap (EnumSet.fromList . map fst) (EnumSet.fromList . map fst) $
                   partition (isNothing . snd) indirects
 
               indirectMetas =
@@ -246,7 +246,7 @@ solutionMetas metaIndex state = do
                   , solved = solved'
                   }
 
-          modify $ \s -> s {entries = IntMap.insert metaIndex (Solved solution metas' type_) $ entries s}
+          modify $ \s -> s {entries = EnumMap.insert metaIndex (Solved solution metas' type_) $ entries s}
 
           pure $ Just metas'
     LazilySolved msolution type_ -> do
@@ -257,10 +257,10 @@ solutionMetas metaIndex state = do
         metaIndex
         state
           { entries =
-              IntMap.insert metaIndex (Solved solution CachedMetas {direct = metas, unsolved = metas, solved = mempty} type_) $ entries state
+              EnumMap.insert metaIndex (Solved solution CachedMetas {direct = metas, unsolved = metas, solved = mempty} type_) $ entries state
           }
 
-definitionMetas :: Syntax.Definition -> IntSet Meta.Index
+definitionMetas :: Syntax.Definition -> EnumSet Meta.Index
 definitionMetas definition =
   case definition of
     Syntax.TypeDeclaration type_ ->
@@ -270,7 +270,7 @@ definitionMetas definition =
     Syntax.DataDefinition _boxity tele ->
       dataDefinitionMetas tele
 
-dataDefinitionMetas :: Telescope binding Syntax.Type Syntax.ConstructorDefinitions v -> IntSet Meta.Index
+dataDefinitionMetas :: Telescope binding Syntax.Type Syntax.ConstructorDefinitions v -> EnumSet Meta.Index
 dataDefinitionMetas tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constructorDefinitions) ->
@@ -278,7 +278,7 @@ dataDefinitionMetas tele =
     Telescope.Extend _binding type_ _plixity tele' ->
       termMetas type_ <> dataDefinitionMetas tele'
 
-termMetas :: Syntax.Term v -> IntSet Meta.Index
+termMetas :: Syntax.Term v -> EnumSet Meta.Index
 termMetas term =
   case term of
     Syntax.Var _ ->
@@ -290,7 +290,7 @@ termMetas term =
     Syntax.Lit _ ->
       mempty
     Syntax.Meta index ->
-      IntSet.singleton index
+      EnumSet.singleton index
     Syntax.PostponedCheck {} ->
       panic "Elaboration.Meta.termMetas: PostponedCheck"
     Syntax.Lets lets ->
@@ -314,7 +314,7 @@ termMetas term =
     Syntax.Spanned _span term' ->
       termMetas term'
 
-telescopeMetas :: Telescope binding Syntax.Type Syntax.Term v -> IntSet Meta.Index
+telescopeMetas :: Telescope binding Syntax.Type Syntax.Term v -> EnumSet Meta.Index
 telescopeMetas tele =
   case tele of
     Telescope.Empty term ->
@@ -322,7 +322,7 @@ telescopeMetas tele =
     Telescope.Extend _binding type_ _plixity tele' ->
       termMetas type_ <> telescopeMetas tele'
 
-letsMetas :: Syntax.Lets v -> IntSet Meta.Index
+letsMetas :: Syntax.Lets v -> EnumSet Meta.Index
 letsMetas lets =
   case lets of
     Syntax.LetType _ type_ lets' ->

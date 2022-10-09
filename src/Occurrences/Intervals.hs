@@ -8,12 +8,12 @@ import Core.Binding (Binding)
 import qualified Core.Binding as Binding
 import Core.Bindings (Bindings)
 import qualified Core.Bindings as Bindings
+import Data.EnumMap (EnumMap)
+import qualified Data.EnumMap as EnumMap
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
-import Data.IntMap (IntMap)
-import qualified Data.IntMap as IntMap
 import Data.IntervalMap.FingerTree (IntervalMap)
 import qualified Data.IntervalMap.FingerTree as IntervalMap
 import qualified Data.List as List
@@ -23,10 +23,9 @@ import Literal (Literal)
 import qualified Name
 import Orphans ()
 import qualified Position
-import Protolude hiding (IntMap)
+import Protolude
 import qualified Span
 import Var (Var)
-import qualified Var
 
 data Item
   = Global Name.Qualified
@@ -38,7 +37,7 @@ data Item
 data Intervals = Intervals
   { _intervals :: IntervalMap Position.Relative Item
   , _items :: HashMap Item (HashSet Span.Relative)
-  , _varBindingSpans :: IntMap Var (NonEmpty Span.Relative)
+  , _varBindingSpans :: EnumMap Var (NonEmpty Span.Relative)
   }
   deriving (Eq, Show, Generic, Persist, Hashable)
 
@@ -63,7 +62,7 @@ binding b var =
   case b of
     Binding.Spanned span _ -> do
       singleton span (Var var)
-        <> Intervals mempty mempty (IntMap.singleton var $ pure span)
+        <> Intervals mempty mempty (EnumMap.singleton var $ pure span)
     Binding.Unspanned _ ->
       mempty
 
@@ -75,7 +74,7 @@ bindings b var =
             fst <$> spannedNames
 
       foldMap (\span -> singleton span $ Var var) spans
-        <> Intervals mempty mempty (IntMap.singleton var spans)
+        <> Intervals mempty mempty (EnumMap.singleton var spans)
     Bindings.Unspanned _ ->
       mempty
 
@@ -94,7 +93,7 @@ itemSpans item (Intervals _ items _) =
 
 bindingSpan :: Var -> Position.Relative -> Intervals -> Maybe Span.Relative
 bindingSpan var position intervals =
-  case IntMap.lookup var (_varBindingSpans intervals) of
+  case EnumMap.lookup var (_varBindingSpans intervals) of
     Nothing ->
       Nothing
     Just bindingSpans -> do
@@ -110,7 +109,7 @@ varSpans :: Var -> Position.Relative -> Intervals -> [Span.Relative]
 varSpans var position intervals = do
   let candidates =
         itemSpans (Var var) intervals
-  case IntMap.lookup var (_varBindingSpans intervals) of
+  case EnumMap.lookup var (_varBindingSpans intervals) of
     Nothing ->
       candidates
     Just bindingSpans -> do

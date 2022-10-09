@@ -23,12 +23,12 @@ import qualified Core.Domain.Telescope as Domain.Telescope
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
+import qualified Data.EnumMap as EnumMap
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import Data.IORef.Lifted
-import qualified Data.IntMap as IntMap
 import qualified Data.IntSeq as IntSeq
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
@@ -54,7 +54,7 @@ import Name (Name)
 import qualified Name
 import Plicity
 import qualified Postponement
-import Protolude hiding (IntMap, IntSet, check, force, try)
+import Protolude hiding (check, force, try)
 import qualified Query
 import Rock
 import qualified Scope
@@ -63,7 +63,6 @@ import qualified Surface.Syntax as Surface
 import Telescope (Telescope)
 import qualified Telescope
 import Var (Var)
-import qualified Var
 
 data Config = Config
   { _expectedType :: !Domain.Value
@@ -420,7 +419,7 @@ uncoveredScrutineePatterns context value = do
   case value' of
     Domain.Neutral (Domain.Var v) Domain.Empty -> do
       let covered =
-            IntMap.lookupDefault mempty v $ Context.coveredConstructors context
+            EnumMap.findWithDefault mempty v $ Context.coveredConstructors context
 
       case HashSet.toList covered of
         [] ->
@@ -551,11 +550,11 @@ simplifyMatch context canPostpone match@(Match value forcedValue plicity pat typ
           | otherwise ->
             fail "Literal mismatch"
         (Domain.Neutral (Domain.Var var) Domain.Empty, Con _ constr _)
-          | Just coveredConstrs <- IntMap.lookup var (Context.coveredConstructors context)
+          | Just coveredConstrs <- EnumMap.lookup var (Context.coveredConstructors context)
             , HashSet.member constr coveredConstrs ->
             fail "Constructor already covered"
         (Domain.Neutral (Domain.Var var) Domain.Empty, Lit lit)
-          | Just coveredLits <- IntMap.lookup var (Context.coveredLiterals context)
+          | Just coveredLits <- EnumMap.lookup var (Context.coveredLiterals context)
             , HashSet.member lit coveredLits ->
             fail "Literal already covered"
         _ ->
@@ -804,7 +803,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
                   <$> check
                     context
                       { Context.coveredConstructors =
-                          IntMap.insertWith (<>) scrutineeVar (HashSet.fromMap $ void $ OrderedHashMap.toMap matchedConstructors) $
+                          EnumMap.insertWith (<>) scrutineeVar (HashSet.fromMap $ void $ OrderedHashMap.toMap matchedConstructors) $
                             Context.coveredConstructors context
                       }
                     config
@@ -920,7 +919,7 @@ splitLiteral context config scrutineeValue scrutineeVar span lit outerType = do
       <$> check
         context
           { Context.coveredLiterals =
-              IntMap.insertWith (<>) scrutineeVar (HashSet.fromMap $ void $ OrderedHashMap.toMap matchedLiterals) $
+              EnumMap.insertWith (<>) scrutineeVar (HashSet.fromMap $ void $ OrderedHashMap.toMap matchedLiterals) $
                 Context.coveredLiterals context
           }
         config
@@ -1000,7 +999,7 @@ uninhabitedScrutinee context value = do
       let varType =
             Context.lookupVarType var context
       type_ <- Context.instantiateType context varType $ toList args
-      uninhabitedType context 1 (IntMap.lookupDefault mempty var $ Context.coveredConstructors context) type_
+      uninhabitedType context 1 (EnumMap.findWithDefault mempty var $ Context.coveredConstructors context) type_
     Domain.Con constr constructorArgs -> do
       constrType <- fetch $ Query.ConstructorType constr
       let args = snd <$> drop (Telescope.length constrType) (toList constructorArgs)

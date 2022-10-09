@@ -18,8 +18,8 @@ import qualified ClosureConverted.Representation
 import qualified ClosureConverted.Syntax as Syntax
 import qualified ClosureConverted.TypeOf as TypeOf
 import Control.Monad.Fail
-import Data.IntMap (IntMap)
-import qualified Data.IntMap as IntMap
+import Data.EnumMap (EnumMap)
+import qualified Data.EnumMap as EnumMap
 import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
@@ -30,7 +30,7 @@ import qualified Module
 import Monad
 import Name (Name (Name))
 import qualified Name
-import Protolude hiding (IntMap, local, moduleName, state, typeOf)
+import Protolude hiding (local, moduleName, state, typeOf)
 import Query (Query)
 import qualified Query
 import Representation (Representation)
@@ -38,7 +38,7 @@ import qualified Representation
 import Rock
 import Telescope (Telescope)
 import qualified Telescope
-import Var (Var (Var))
+import Var (Var)
 
 newtype Builder a = Builder (StateT BuilderState M a)
   deriving (Functor, Applicative, Monad, MonadIO, MonadFetch Query, MonadState BuilderState)
@@ -91,7 +91,7 @@ wordBytes = 8
 
 data Environment v = Environment
   { _context :: Context v
-  , _varLocations :: IntMap Var Operand
+  , _varLocations :: EnumMap Var Operand
   }
 
 emptyEnvironment :: Environment Void
@@ -110,7 +110,7 @@ extend env type_ location =
       pure
         Environment
           { _context = context'
-          , _varLocations = IntMap.insert var location $ _varLocations env
+          , _varLocations = EnumMap.insert var location $ _varLocations env
           }
 
 operandNameSuggestion :: Assembly.Operand -> Assembly.NameSuggestion
@@ -196,7 +196,8 @@ indexOperand index env = do
   let var =
         Context.lookupIndexVar index $ _context env
   fromMaybe (panic "ClosureConvertedToAssembly.indexOperand") $
-    IntMap.lookup var $ _varLocations env
+    EnumMap.lookup var $
+      _varLocations env
 
 globalConstantOperand :: Name.Lifted -> Builder Operand
 globalConstantOperand name = do
@@ -575,7 +576,9 @@ generateModuleInit moduleName definitions =
               pure $ Assembly.Return globalPointer''
           )
         ]
-        $ pure $ Assembly.Return $ Assembly.LocalOperand globalPointer
+        $ pure $
+          Assembly.Return $
+            Assembly.LocalOperand globalPointer
     heapPointer <- gets _heapPointer
     heapLimit <- gets _heapLimit
     instructions <- gets _instructions
@@ -591,7 +594,8 @@ generateModuleInit moduleName definitions =
             , (Assembly.WordPointer, globalPointer)
             ]
             ( Assembly.BasicBlock (toList instructions) $
-                Assembly.Return $ Assembly.StructOperand [globalPointer', heapPointer, heapLimit]
+                Assembly.Return $
+                  Assembly.StructOperand [globalPointer', heapPointer, heapLimit]
             )
         )
       ,

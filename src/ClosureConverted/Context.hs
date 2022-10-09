@@ -4,22 +4,21 @@
 module ClosureConverted.Context where
 
 import qualified ClosureConverted.Domain as Domain
-import Data.IntMap (IntMap)
-import qualified Data.IntMap as IntMap
+import Data.EnumMap (EnumMap)
+import qualified Data.EnumMap as EnumMap
 import Environment (Environment (Environment))
 import qualified Environment
 import Index
 import qualified Index.Map
 import qualified Index.Map as Index
 import Monad
-import Protolude hiding (IntMap, empty)
+import Protolude hiding (empty)
 import Var (Var)
-import qualified Var
 
 data Context v = Context
   { indices :: Index.Map v Var
-  , values :: IntMap Var Domain.Value
-  , types :: IntMap Var Domain.Type
+  , values :: EnumMap Var Domain.Value
+  , types :: EnumMap Var Domain.Type
   , glueableBefore :: !(Index (Succ v))
   }
 
@@ -39,7 +38,7 @@ lookupIndexVar index context =
 lookupVarType :: Var -> Context v -> Domain.Type
 lookupVarType var context =
   fromMaybe (panic $ "ClosureConverted.Context.lookupVarType " <> show var) $
-    IntMap.lookup var $
+    EnumMap.lookup var $
       types context
 
 toEnvironment ::
@@ -61,7 +60,7 @@ extend context type_ = do
   pure
     ( context
         { indices = indices context Index.Map.:> var
-        , types = IntMap.insert var type_ (types context)
+        , types = EnumMap.insert var type_ (types context)
         , glueableBefore = Index.Succ $ glueableBefore context
         }
     , var

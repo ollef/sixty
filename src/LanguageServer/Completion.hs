@@ -10,10 +10,10 @@ import qualified Core.Domain as Domain
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Syntax as Syntax
 import qualified Core.TypeOf as TypeOf
+import Data.EnumMap (EnumMap)
+import qualified Data.EnumMap as EnumMap
 import qualified Data.HashMap.Lazy as HashMap
 import Data.IORef.Lifted
-import Data.IntMap (IntMap)
-import qualified Data.IntMap as IntMap
 import qualified Elaboration
 import Elaboration.Context (Context)
 import qualified Elaboration.Context as Context
@@ -26,14 +26,13 @@ import qualified Name
 import Plicity
 import qualified Position
 import Prettyprinter ((<+>))
-import Protolude hiding (IntMap, catch, evaluate, moduleName)
+import Protolude hiding (catch, evaluate, moduleName)
 import Query (Query)
 import qualified Query
 import qualified Query.Mapped as Mapped
 import Rock
 import qualified Scope
 import Var (Var)
-import qualified Var
 
 complete :: FilePath -> Position.LineColumn -> Task Query (Maybe [LSP.CompletionItem])
 complete filePath (Position.LineColumn line column) =
@@ -160,12 +159,12 @@ questionMark filePath (Position.LineColumn line column) =
                       , _tags = mempty
                       }
 
-getUsableNames :: CursorAction.ItemContext -> Context v -> IntMap Var value -> M [(Text, Domain.Value, LSP.CompletionItemKind)]
+getUsableNames :: CursorAction.ItemContext -> Context v -> EnumMap Var value -> M [(Text, Domain.Value, LSP.CompletionItemKind)]
 getUsableNames itemContext context varPositions = do
   hPutStrLn stderr $ "getUsableNames " ++ show itemContext
   locals <- case itemContext of
     CursorAction.ExpressionContext ->
-      forM (IntMap.toList varPositions) $ \(var, _) -> do
+      forM (EnumMap.toList varPositions) $ \(var, _) -> do
         let Name text =
               Context.lookupVarName var context
         pure (text, Domain.var var, LSP.CiVariable)
