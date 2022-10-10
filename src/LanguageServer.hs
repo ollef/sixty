@@ -105,8 +105,8 @@ handlers :: (ReceivedMessage -> IO ()) -> LSP.Handlers IO
 handlers onReceivedMessage =
   mconcat
     [ LSP.notificationHandler LSP.STextDocumentDidOpen $ onReceivedMessage . ReceivedNotification
-    , LSP.notificationHandler LSP.STextDocumentDidOpen $ onReceivedMessage . ReceivedNotification
     , LSP.notificationHandler LSP.STextDocumentDidChange $ onReceivedMessage . ReceivedNotification
+    , LSP.notificationHandler LSP.STextDocumentDidSave $ onReceivedMessage . ReceivedNotification
     , LSP.notificationHandler LSP.STextDocumentDidClose $ onReceivedMessage . ReceivedNotification
     , LSP.requestHandler LSP.STextDocumentHover $ \req -> onReceivedMessage . ReceivedRequest req
     , LSP.requestHandler LSP.STextDocumentDefinition $ \req -> onReceivedMessage . ReceivedRequest req
@@ -185,6 +185,14 @@ messagePump state = do
               { _changedFiles = HashSet.insert filePath (_changedFiles state)
               }
         LSP.STextDocumentDidChange -> do
+          let document = message ^. LSP.params . LSP.textDocument
+              uri = document ^. LSP.uri
+          filePath <- Directory.canonicalizePath $ uriToFilePath uri
+          k
+            state
+              { _changedFiles = HashSet.insert filePath (_changedFiles state)
+              }
+        LSP.STextDocumentDidSave -> do
           let document = message ^. LSP.params . LSP.textDocument
               uri = document ^. LSP.uri
           filePath <- Directory.canonicalizePath $ uriToFilePath uri
