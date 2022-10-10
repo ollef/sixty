@@ -213,6 +213,34 @@ unify context flexibility value1 value2 = do
         matches <- potentiallyMatchingBranches context value1' branches
         invertCase meta spine args matches
 
+    -- Last call for cases: all branches have to unify with the RHS.
+    (Domain.Neutral _ (_ Domain.:> Domain.Case (Domain.Branches env1 brs1 defaultBranch1)), v2) -> do
+      case defaultBranch1 of
+        Just br -> do
+          v1 <- Evaluation.evaluate env1 br
+          unify context flexibility v1 v2
+        Nothing -> pure ()
+      case brs1 of
+        Syntax.ConstructorBranches _ constructorBranches ->
+          forM_ constructorBranches $ \(_, tele1) -> withInstantiatedTele context env1 tele1 $ \context' v1 ->
+            unify context' flexibility v1 v2
+        Syntax.LiteralBranches literalBranches -> forM_ literalBranches $ \(_, term1) -> do
+          v1 <- Evaluation.evaluate env1 term1
+          unify context flexibility v1 v2
+    (v1, Domain.Neutral _ (_ Domain.:> Domain.Case (Domain.Branches env2 brs2 defaultBranch2))) -> do
+      case defaultBranch2 of
+        Just br -> do
+          v2 <- Evaluation.evaluate env2 br
+          unify context flexibility v1 v2
+        Nothing -> pure ()
+      case brs2 of
+        Syntax.ConstructorBranches _ constructorBranches ->
+          forM_ constructorBranches $ \(_, tele2) -> withInstantiatedTele context env2 tele2 $ \context' v2 ->
+            unify context' flexibility v1 v2
+        Syntax.LiteralBranches literalBranches -> forM_ literalBranches $ \(_, term2) -> do
+          v2 <- Evaluation.evaluate env2 term2
+          unify context flexibility v1 v2
+
     -- Failure terms mean that there has been an earlier error that's already
     -- been reported, so let's not trigger more errors from them.
     (Domain.Neutral (Domain.Global Builtin.UnknownName) _, _) ->
