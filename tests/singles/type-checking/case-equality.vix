@@ -1,0 +1,84 @@
+data Bool = False | True
+
+isZero : Int -> Bool
+isZero x = case x of
+  0 -> True
+  1 -> False
+  _ -> False
+
+isZero' : Int -> Bool
+isZero' x = case x of
+  0 -> True
+  1 -> False
+  2 -> False
+  _ -> False
+
+isZero'' : Int -> Bool
+isZero'' x = case x of
+  0 -> True
+  1 -> False
+  2 -> False
+  3 -> True
+  _ -> False
+
+data Equals forall T. (A B : T) where
+  Refl : Equals A A
+
+isZeroIsIsZero' : Equals isZero isZero'
+isZeroIsIsZero' = Refl
+
+isZeroIsIsZero'' : Equals isZero isZero''
+isZeroIsIsZero'' = Refl -- type mismatch error expected
+
+isZero'IsIsZero'' : Equals isZero' isZero''
+isZero'IsIsZero'' = Refl -- type mismatch error expected
+
+data Maybe a = Nothing | Just a
+
+isNothing : Maybe Int -> Bool
+isNothing Nothing = True
+isNothing (Just _) = False
+
+isNothing' : Maybe Int -> Bool
+isNothing' Nothing = True
+isNothing' (Just 0) = False
+isNothing' (Just _) = False
+
+isNothing'' : Maybe Int -> Bool
+isNothing'' Nothing = True
+isNothing'' (Just 0) = True
+isNothing'' (Just _) = False
+
+isNothingIsIsNothing' : Equals isNothing isNothing'
+isNothingIsIsNothing' = Refl
+
+isNothingIsIsNothing'' : Equals isNothing isNothing''
+isNothingIsIsNothing'' = Refl -- type mismatch error expected
+
+isNothing'IsIsNothing'' : Equals isNothing' isNothing''
+isNothing'IsIsNothing'' = Refl -- type mismatch error expected
+
+data Three = A | B | C
+
+isA : Three -> Bool
+isA A = True
+isA B = False
+isA C = False
+
+isA' : Three -> Bool
+isA' A = True
+isA' _ = False
+
+isA'' : Three -> Bool
+isA'' A = True
+isA'' B = False
+isA'' _ = True
+
+isAIsIsA' : Equals isA isA'
+isAIsIsA' = Refl
+
+isAIsIsA'' : Equals isA isA''
+isAIsIsA'' = Refl -- type mismatch error expected
+
+isA'IsIsA'' : Equals isA' isA''
+isA'IsIsA'' = Refl -- type mismatch error expected
