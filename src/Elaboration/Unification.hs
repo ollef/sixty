@@ -1,5 +1,6 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Elaboration.Unification where
@@ -16,7 +17,6 @@ import qualified Core.Syntax as Syntax
 import qualified Data.EnumSet as EnumSet
 import Data.IntSeq (IntSeq)
 import qualified Data.IntSeq as IntSeq
-import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
@@ -330,46 +330,44 @@ unifyBranches
     case (branches1, branches2) of
       (Syntax.ConstructorBranches conTypeName1 conBranches1, Syntax.ConstructorBranches conTypeName2 conBranches2)
         | conTypeName1 == conTypeName2 ->
-          unifyMaps conBranches1 conBranches2 $ unifyTele outerContext outerEnv1 outerEnv2
+          unifyMaps conBranches1 conBranches2
       (Syntax.LiteralBranches litBranches1, Syntax.LiteralBranches litBranches2) ->
-        unifyMaps litBranches1 litBranches2 unifyTerms
+        unifyMaps (second Telescope.Empty <$> litBranches1) (second Telescope.Empty <$> litBranches2)
       _ ->
         can'tUnify
     where
-      unifyMaps ::
-        (Eq k, Hashable k) =>
-        OrderedHashMap k (x, v1) ->
-        OrderedHashMap k (x, v2) ->
-        (v1 -> v2 -> M ()) ->
-        M ()
-      unifyMaps brs1 brs2 k = do
-        let branches =
-              OrderedHashMap.intersectionWith (,) brs1 brs2
+      unifyMaps brs1 brs2 = do
+        let branches = OrderedHashMap.intersectionWith (,) brs1 brs2
+            extras1 = OrderedHashMap.difference brs1 branches
+            extras2 = OrderedHashMap.difference brs2 branches
 
-            missing1 =
-              OrderedHashMap.difference brs1 branches
-
-            missing2 =
-              OrderedHashMap.difference brs2 branches
-        unless
-          (OrderedHashMap.null missing1 && OrderedHashMap.null missing2)
+        when
+          ( (not (OrderedHashMap.null extras1) && isNothing defaultBranch2)
+              || (not (OrderedHashMap.null extras2) && isNothing defaultBranch1)
+          )
           can'tUnify
 
+        defaultBranch1' <- forM defaultBranch1 $ Evaluation.evaluate outerEnv1
+        defaultBranch2' <- forM defaultBranch2 $ Evaluation.evaluate outerEnv2
+
+        forM_ defaultBranch2' $ \branch2 ->
+          forM_ extras1 $ \(_, tele1) ->
+            withInstantiatedTele outerContext outerEnv1 tele1 $ \context' branch1 -> do
+              unify context' flexibility branch1 branch2
+
+        forM_ defaultBranch1' $ \branch1 ->
+          forM_ extras2 $ \(_, tele2) ->
+            withInstantiatedTele outerContext outerEnv2 tele2 $ \context' branch2 ->
+              unify context' flexibility branch1 branch2
+
         forM_ branches $ \((_, tele1), (_, tele2)) ->
-          k tele1 tele2
+          unifyTele outerContext outerEnv1 outerEnv2 tele1 tele2
 
-        case (defaultBranch1, defaultBranch2) of
+        case (defaultBranch1', defaultBranch2') of
           (Just branch1, Just branch2) ->
-            unifyTerms branch1 branch2
-          (Nothing, Nothing) ->
-            pure ()
+            unify outerContext flexibility branch1 branch2
           _ ->
-            can'tUnify
-
-      unifyTerms term1 term2 = do
-        term1' <- Evaluation.evaluate outerEnv1 term1
-        term2' <- Evaluation.evaluate outerEnv2 term2
-        unify outerContext flexibility term1' term2'
+            pure ()
 
       unifyTele ::
         Context v ->
@@ -401,6 +399,22 @@ unifyBranches
 
       can'tUnify =
         throwIO $ Error.TypeMismatch mempty
+
+withInstantiatedTele ::
+  Context v ->
+  Domain.Environment v1 ->
+  Telescope Bindings Syntax.Type Syntax.Term v1 ->
+  (forall v'. Context v' -> Domain.Value -> M k) ->
+  M k
+withInstantiatedTele context env tele k =
+  case tele of
+    Telescope.Empty body -> do
+      body' <- Evaluation.evaluate env body
+      k context body'
+    Telescope.Extend bindings type_ _plicity tele' -> do
+      type' <- Evaluation.evaluate env type_
+      (context', var) <- Context.extend context (Bindings.toName bindings) type'
+      withInstantiatedTele context' (Environment.extendVar env var) tele' k
 
 -------------------------------------------------------------------------------
 -- Case expression inversion
