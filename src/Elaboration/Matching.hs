@@ -963,7 +963,7 @@ splitEqualityOr context config matches k =
           _
           (Pattern _ Wildcard)
           (Builtin.Equals type_ value1 value2) -> do
-            unificationResult <- try $ Indices.unify context Flexibility.Rigid mempty value1 value2
+            unificationResult <- try $ Indices.unify context Flexibility.Rigid value1 value2
             case unificationResult of
               Left Indices.Nope ->
                 check
@@ -1017,7 +1017,7 @@ uninhabitedType context fuel coveredConstructors type_ = do
   type' <- Context.forceHead context type_
   case type' of
     Builtin.Equals _ value1 value2 -> do
-      result <- try $ Indices.unify context Flexibility.Rigid mempty value1 value2
+      result <- try $ Indices.unify context Flexibility.Rigid value1 value2
       pure $ case result of
         Left Indices.Nope ->
           True

@@ -1,5 +1,4 @@
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -14,10 +13,7 @@ import qualified Core.Domain as Domain
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Syntax as Syntax
 import qualified Data.EnumMap as EnumMap
-import Data.EnumSet (EnumSet)
-import qualified Data.EnumSet as EnumSet
 import qualified Data.IntSeq as IntSeq
-import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Tsil as Tsil
 import Elaboration.Context (Context)
@@ -28,6 +24,7 @@ import qualified Flexibility
 import Index
 import qualified Index.Map
 import Monad
+import Name (Name)
 import Protolude hiding (catch, force, throwIO)
 import Telescope (Telescope)
 import qualified Telescope
@@ -38,46 +35,92 @@ data Error
   | Dunno
   deriving (Eq, Ord, Show, Exception)
 
-unify ::
-  Context v ->
-  Flexibility ->
-  EnumSet Var ->
-  Domain.Value ->
-  Domain.Value ->
-  M (Context v)
-unify context flexibility untouchables value1 value2 = do
-  value1' <- Context.forceHeadGlue context value1
-  value2' <- Context.forceHeadGlue context value2
+data UnificationState v = UnificationState
+  { context :: !(Context v)
+  , touchableBefore :: !(Index (Succ v))
+  }
+
+type Unify v = StateT (UnificationState v) M
+
+unify :: Context v -> Flexibility -> Domain.Value -> Domain.Value -> M (Context v)
+unify context_ flexibility value1 value2 =
+  context
+    <$> execStateT
+      (unifyM flexibility value1 value2)
+      UnificationState
+        { context = context_
+        , touchableBefore = Index.Zero
+        }
+
+isTouchable :: Var -> Unify v Bool
+isTouchable var = do
+  touchableIndex <- gets touchableBefore
+  context_ <- gets context
+  pure $ case Context.lookupVarIndex var context_ of
+    Just varIndex -> Index.Succ varIndex > touchableIndex
+    Nothing -> False
+
+extend :: Name -> Domain.Type -> (Var -> Unify (Succ v) a) -> Unify v a
+extend name type_ k = do
+  st <- get
+  (result, st') <- lift $ do
+    (context', var) <- Context.extend (context st) name type_
+    runStateT (k var) st {context = context', touchableBefore = Index.Succ $ touchableBefore st}
+  put st' {context = unextend $ context st', touchableBefore = touchableBefore st}
+  pure result
+
+unextend :: Context (Succ v) -> Context v
+unextend context_ =
+  case (Context.indices context_, Context.boundVars context_) of
+    (indices Index.Map.:> var, boundVars IntSeq.:> _) ->
+      context_
+        { Context.varNames = EnumMap.delete var $ Context.varNames context_
+        , Context.indices = indices
+        , Context.types = EnumMap.delete var $ Context.types context_
+        , Context.boundVars = boundVars
+        }
+    _ ->
+      panic "Unification.Indices.unextend"
+
+contextual1 :: (Context v -> a -> M b) -> a -> Unify v b
+contextual1 f x = do
+  c <- gets context
+  lift $ f c x
+
+contextual2 :: (Context v -> a -> b -> M c) -> a -> b -> Unify v c
+contextual2 f x y = do
+  c <- gets context
+  lift $ f c x y
+
+unifyM :: Flexibility -> Domain.Value -> Domain.Value -> Unify v ()
+unifyM flexibility value1 value2 = do
+  value1' <- contextual1 Context.forceHeadGlue value1
+  value2' <- contextual1 Context.forceHeadGlue value2
   case (value1', value2') of
     -- Same heads
     (Domain.Neutral head1 spine1, Domain.Neutral head2 spine2)
       | head1 == head2 -> do
-        let flexibility' =
-              max (Domain.headFlexibility head1) flexibility
-
-        unifySpines context flexibility' untouchables spine1 spine2
+        let flexibility' = max (Domain.headFlexibility head1) flexibility
+        unifySpines flexibility' spine1 spine2
     (Domain.Con con1 args1, Domain.Con con2 args2)
       | con1 == con2
         , map fst args1 == map fst args2 ->
-        foldM
-          (\context' -> uncurry (unify context' flexibility untouchables `on` snd))
-          context
-          (Tsil.zip args1 args2)
+        Tsil.zipWithM_ (unifyM flexibility `on` snd) args1 args2
       | otherwise ->
         throwIO Nope
     (Domain.Lit lit1, Domain.Lit lit2)
       | lit1 == lit2 ->
-        pure context
+        pure ()
       | otherwise ->
         throwIO Nope
     (Domain.Glued head1 spine1 value1'', Domain.Glued head2 spine2 value2'')
       | head1 == head2 ->
-        unifySpines context Flexibility.Flexible untouchables spine1 spine2 `catch` \(_ :: Error) ->
-          unify context flexibility untouchables value1'' value2''
+        unifySpines Flexibility.Flexible spine1 spine2 `catch` \(_ :: Error) ->
+          unifyM flexibility value1'' value2''
     (Domain.Glued _ _ value1'', _) ->
-      unify context flexibility untouchables value1'' value2'
+      unifyM flexibility value1'' value2'
     (_, Domain.Glued _ _ value2'') ->
-      unify context flexibility untouchables value1' value2''
+      unifyM flexibility value1' value2''
     (Domain.Lam bindings1 type1 plicity1 closure1, Domain.Lam _ type2 plicity2 closure2)
       | plicity1 == plicity2 ->
         unifyAbstraction (Bindings.toName bindings1) type1 closure1 type2 closure2
@@ -86,44 +129,34 @@ unify context flexibility untouchables value1 value2 = do
         unifyAbstraction (Binding.toName binding1) domain1 targetClosure1 domain2 targetClosure2
     (Domain.Pi binding1 domain1 plicity1 targetClosure1, Domain.Fun domain2 plicity2 target2)
       | plicity1 == plicity2 -> do
-        context1 <- unify context flexibility untouchables domain2 domain1
-        (context2, var) <- Context.extend context1 (Binding.toName binding1) domain1
-        target1 <- Evaluation.evaluateClosure targetClosure1 $ Domain.var var
-        context3 <- unify context2 flexibility (EnumSet.insert var untouchables) target1 target2
-        pure $ unextend context3
+        unifyM flexibility domain2 domain1
+        extend (Binding.toName binding1) domain1 $ \var -> do
+          target1 <- lift $ Evaluation.evaluateClosure targetClosure1 $ Domain.var var
+          unifyM flexibility target1 target2
     (Domain.Fun domain1 plicity1 target1, Domain.Pi binding2 domain2 plicity2 targetClosure2)
       | plicity1 == plicity2 -> do
-        context1 <- unify context flexibility untouchables domain2 domain1
-        (context2, var) <- Context.extend context1 (Binding.toName binding2) domain2
-        target2 <- Evaluation.evaluateClosure targetClosure2 $ Domain.var var
-        context3 <- unify context2 flexibility (EnumSet.insert var untouchables) target1 target2
-        pure $ unextend context3
+        unifyM flexibility domain2 domain1
+        extend (Binding.toName binding2) domain2 $ \var -> do
+          target2 <- lift $ Evaluation.evaluateClosure targetClosure2 $ Domain.var var
+          unifyM flexibility target1 target2
     (Domain.Fun domain1 plicity1 target1, Domain.Fun domain2 plicity2 target2)
       | plicity1 == plicity2 -> do
-        context1 <- unify context flexibility untouchables domain2 domain1
-        unify context1 flexibility untouchables target1 target2
+        unifyM flexibility domain2 domain1
+        unifyM flexibility target1 target2
 
     -- Eta expand
-    (Domain.Lam bindings1 type1 plicity1 closure1, v2) -> do
-      (context1, var) <- Context.extend context (Bindings.toName bindings1) type1
-      let varValue =
-            Domain.var var
-
-      body1 <- Evaluation.evaluateClosure closure1 varValue
-      body2 <- Evaluation.apply v2 plicity1 varValue
-
-      context2 <- unify context1 flexibility (EnumSet.insert var untouchables) body1 body2
-      pure $ unextend context2
-    (v1, Domain.Lam bindings2 type2 plicity2 closure2) -> do
-      (context1, var) <- Context.extend context (Bindings.toName bindings2) type2
-      let varValue =
-            Domain.var var
-
-      body1 <- Evaluation.apply v1 plicity2 varValue
-      body2 <- Evaluation.evaluateClosure closure2 varValue
-
-      context2 <- unify context1 flexibility (EnumSet.insert var untouchables) body1 body2
-      pure $ unextend context2
+    (Domain.Lam bindings1 type1 plicity1 closure1, v2) ->
+      extend (Bindings.toName bindings1) type1 $ \var -> do
+        let varValue = Domain.var var
+        body1 <- lift $ Evaluation.evaluateClosure closure1 varValue
+        body2 <- lift $ Evaluation.apply v2 plicity1 varValue
+        unifyM flexibility body1 body2
+    (v1, Domain.Lam bindings2 type2 plicity2 closure2) ->
+      extend (Bindings.toName bindings2) type2 $ \var -> do
+        let varValue = Domain.var var
+        body1 <- lift $ Evaluation.apply v1 plicity2 varValue
+        body2 <- lift $ Evaluation.evaluateClosure closure2 varValue
+        unifyM flexibility body1 body2
 
     -- Vars
     (Domain.Neutral (Domain.Var var1) Domain.Empty, _)
@@ -136,258 +169,223 @@ unify context flexibility untouchables value1 value2 = do
       throwIO Dunno
   where
     unifyAbstraction name type1 closure1 type2 closure2 = do
-      context1 <- unify context flexibility untouchables type1 type2
+      unifyM flexibility type1 type2
 
-      (context2, var) <- Context.extend context1 name type1
-      let varValue =
-            Domain.var var
+      extend name type1 $ \var -> do
+        let varValue = Domain.var var
+        body1 <- lift $ Evaluation.evaluateClosure closure1 varValue
+        body2 <- lift $ Evaluation.evaluateClosure closure2 varValue
+        unifyM flexibility body1 body2
 
-      body1 <- Evaluation.evaluateClosure closure1 varValue
-      body2 <- Evaluation.evaluateClosure closure2 varValue
-      context3 <- unify context2 flexibility (EnumSet.insert var untouchables) body1 body2
-      pure $ unextend context3
-
-    solve var value
-      | EnumSet.member var untouchables =
-        throwIO Dunno
-      | otherwise = do
-        occurs context Flexibility.Rigid (EnumSet.insert var untouchables) value
-        Context.define context var value
+    solve var value = do
+      touchable <- isTouchable var
+      if touchable
+        then do
+          occurs var Flexibility.Rigid value
+          context' <- contextual2 Context.define var value
+          modify $ \st -> st {context = context'}
+        else throwIO Dunno
 
 unifySpines ::
-  Context v ->
   Flexibility ->
-  EnumSet Var ->
   Domain.Spine ->
   Domain.Spine ->
-  M (Context v)
-unifySpines context flexibility untouchables spine1 spine2 =
+  Unify v ()
+unifySpines flexibility spine1 spine2 =
   case (spine1, spine2) of
-    (Domain.Empty, Domain.Empty) ->
-      pure context
+    (Domain.Empty, Domain.Empty) -> pure ()
     (spine1' Domain.:> elimination1, spine2' Domain.:> elimination2) -> do
-      context' <- unifySpines context flexibility untouchables spine1' spine2'
+      unifySpines flexibility spine1' spine2'
       case (elimination1, elimination2) of
         (Domain.App plicity1 arg1, Domain.App plicity2 arg2)
-          | plicity1 == plicity2 ->
-            unify context' flexibility untouchables arg1 arg2
+          | plicity1 == plicity2 -> unifyM flexibility arg1 arg2
         (Domain.Case branches1, Domain.Case branches2) ->
-          unifyBranches context' flexibility untouchables branches1 branches2
+          unifyBranches flexibility branches1 branches2
         _ ->
           throwIO Dunno
     _ ->
       throwIO Dunno
 
-unifyBranches ::
-  forall v.
-  Context v ->
-  Flexibility ->
-  EnumSet Var ->
-  Domain.Branches ->
-  Domain.Branches ->
-  M (Context v)
+unifyBranches :: Flexibility -> Domain.Branches -> Domain.Branches -> Unify v ()
 unifyBranches
-  outerContext
   flexibility
-  outerUntouchables
   (Domain.Branches outerEnv1 branches1 defaultBranch1)
   (Domain.Branches outerEnv2 branches2 defaultBranch2) =
     case (branches1, branches2) of
       (Syntax.ConstructorBranches conTypeName1 conBranches1, Syntax.ConstructorBranches conTypeName2 conBranches2)
         | conTypeName1 == conTypeName2 ->
-          unifyMaps conBranches1 conBranches2 $ unifyTele outerEnv1 outerEnv2 outerUntouchables
+          unifyMaps conBranches1 conBranches2
       (Syntax.LiteralBranches litBranches1, Syntax.LiteralBranches litBranches2) ->
-        unifyMaps litBranches1 litBranches2 unifyTerms
+        unifyMaps (second Telescope.Empty <$> litBranches1) (second Telescope.Empty <$> litBranches2)
       _ ->
         throwIO Dunno
     where
-      unifyMaps ::
-        (Eq k, Hashable k) =>
-        OrderedHashMap k (x, v1) ->
-        OrderedHashMap k (x, v2) ->
-        (Context v -> v1 -> v2 -> M (Context v)) ->
-        M (Context v)
-      unifyMaps brs1 brs2 k = do
-        let branches =
-              OrderedHashMap.intersectionWith (,) brs1 brs2
+      unifyMaps brs1 brs2 = do
+        let branches = OrderedHashMap.intersectionWith (,) brs1 brs2
+            extras1 = OrderedHashMap.difference brs1 branches
+            extras2 = OrderedHashMap.difference brs2 branches
 
-            missing1 =
-              OrderedHashMap.difference brs1 branches
+        when
+          ( (not (OrderedHashMap.null extras1) && isNothing defaultBranch2)
+              || (not (OrderedHashMap.null extras2) && isNothing defaultBranch1)
+          )
+          $ throwIO Dunno
 
-            missing2 =
-              OrderedHashMap.difference brs2 branches
-        unless (OrderedHashMap.null missing1 && OrderedHashMap.null missing2) $
-          throwIO Dunno
+        defaultBranch1' <- forM defaultBranch1 $ lift . Evaluation.evaluate outerEnv1
+        defaultBranch2' <- forM defaultBranch2 $ lift . Evaluation.evaluate outerEnv2
 
-        context' <-
-          foldM
-            (\context ((_, tele1), (_, tele2)) -> k context tele1 tele2)
-            outerContext
-            branches
+        forM_ defaultBranch2' $ \branch2 ->
+          forM_ extras1 $ \(_, tele1) ->
+            withInstantiatedTele outerEnv1 tele1 $ \branch1 -> do
+              unifyM flexibility branch1 branch2
 
-        case (defaultBranch1, defaultBranch2) of
+        forM_ defaultBranch1' $ \branch1 ->
+          forM_ extras2 $ \(_, tele2) ->
+            withInstantiatedTele outerEnv2 tele2 $ \branch2 ->
+              unifyM flexibility branch1 branch2
+
+        forM_ branches $ \((_, tele1), (_, tele2)) ->
+          unifyTele outerEnv1 outerEnv2 tele1 tele2
+
+        case (defaultBranch1', defaultBranch2') of
           (Just branch1, Just branch2) ->
-            unifyTerms context' branch1 branch2
-          (Nothing, Nothing) ->
-            pure context'
+            unifyM flexibility branch1 branch2
           _ ->
-            throwIO Dunno
-
-      unifyTerms context term1 term2 = do
-        term1' <- Evaluation.evaluate outerEnv1 term1
-        term2' <- Evaluation.evaluate outerEnv2 term2
-        unify context flexibility outerUntouchables term1' term2'
+            pure ()
 
       unifyTele ::
         Domain.Environment v1 ->
         Domain.Environment v2 ->
-        EnumSet Var ->
-        Context v' ->
         Telescope Bindings Syntax.Type Syntax.Term v1 ->
         Telescope Bindings Syntax.Type Syntax.Term v2 ->
-        M (Context v')
-      unifyTele env1 env2 untouchables context tele1 tele2 =
+        Unify v ()
+      unifyTele env1 env2 tele1 tele2 =
         case (tele1, tele2) of
           (Telescope.Extend bindings1 type1 plicity1 tele1', Telescope.Extend _bindings2 type2 plicity2 tele2')
             | plicity1 == plicity2 -> do
-              type1' <- Evaluation.evaluate env1 type1
-              type2' <- Evaluation.evaluate env2 type2
-              context' <- unify context flexibility untouchables type1' type2'
-              (context'', var) <- Context.extend context' (Bindings.toName bindings1) type1'
-              context''' <-
+              type1' <- lift $ Evaluation.evaluate env1 type1
+              type2' <- lift $ Evaluation.evaluate env2 type2
+              unifyM flexibility type1' type2'
+              extend (Bindings.toName bindings1) type1' $ \var ->
                 unifyTele
                   (Environment.extendVar env1 var)
                   (Environment.extendVar env2 var)
-                  (EnumSet.insert var untouchables)
-                  context''
                   tele1'
                   tele2'
-              pure $ unextend context'''
           (Telescope.Empty body1, Telescope.Empty body2) -> do
-            body1' <- Evaluation.evaluate env1 body1
-            body2' <- Evaluation.evaluate env2 body2
-            unify context flexibility untouchables body1' body2'
+            body1' <- lift $ Evaluation.evaluate env1 body1
+            body2' <- lift $ Evaluation.evaluate env2 body2
+            unifyM flexibility body1' body2'
           _ ->
             panic "unifyTele"
 
-unextend :: Context (Succ v) -> Context v
-unextend context =
-  case (Context.indices context, Context.boundVars context) of
-    (indices Index.Map.:> var, boundVars IntSeq.:> _) ->
-      context
-        { Context.varNames = EnumMap.delete var $ Context.varNames context
-        , Context.indices = indices
-        , Context.types = EnumMap.delete var $ Context.types context
-        , Context.boundVars = boundVars
-        }
-    _ ->
-      panic "Unification.Indices.unextend"
+withInstantiatedTele ::
+  Domain.Environment v1 ->
+  Telescope Bindings Syntax.Type Syntax.Term v1 ->
+  (forall v'. Domain.Value -> Unify v' k) ->
+  Unify v k
+withInstantiatedTele env tele k =
+  case tele of
+    Telescope.Empty body -> do
+      body' <- lift $ Evaluation.evaluate env body
+      k body'
+    Telescope.Extend bindings type_ _plicity tele' -> do
+      type' <- lift $ Evaluation.evaluate env type_
+      extend (Bindings.toName bindings) type' $ \var ->
+        withInstantiatedTele (Environment.extendVar env var) tele' k
 
-occurs :: Context v -> Flexibility -> EnumSet Var -> Domain.Value -> M ()
-occurs context flexibility untouchables value = do
-  value' <- Context.forceHeadGlue context value
+occurs :: Var -> Flexibility -> Domain.Value -> Unify v ()
+occurs occ flexibility value = do
+  value' <- contextual1 Context.forceHeadGlue value
   case value' of
     Domain.Neutral hd spine -> do
-      occursHead flexibility untouchables hd
-      Domain.mapM_ (occursElimination context (max (Domain.headFlexibility hd) flexibility) untouchables) spine
+      occursHead occ flexibility hd
+      Domain.mapM_ (occursElimination occ (max (Domain.headFlexibility hd) flexibility)) spine
     Domain.Con _ args ->
-      mapM_ (occurs context flexibility untouchables . snd) args
+      mapM_ (occurs occ flexibility . snd) args
     Domain.Lit _ ->
       pure ()
     Domain.Glued (Domain.Var _) _ value'' ->
-      occurs context flexibility untouchables value''
+      occurs occ flexibility value''
     Domain.Lazy lazyValue -> do
-      value'' <- force lazyValue
-      occurs context flexibility untouchables value''
+      value'' <- lift $ force lazyValue
+      occurs occ flexibility value''
     Domain.Glued hd spine value'' ->
-      occurs context Flexibility.Flexible untouchables (Domain.Neutral hd spine) `catch` \(_ :: Error) ->
-        occurs context flexibility untouchables value''
+      occurs occ Flexibility.Flexible (Domain.Neutral hd spine) `catch` \(_ :: Error) ->
+        occurs occ flexibility value''
     Domain.Lam bindings type_ _ closure ->
       occursAbstraction (Bindings.toName bindings) type_ closure
     Domain.Pi binding domain _ targetClosure ->
       occursAbstraction (Binding.toName binding) domain targetClosure
     Domain.Fun domain _ target -> do
-      occurs context flexibility untouchables domain
-      occurs context flexibility untouchables target
+      occurs occ flexibility domain
+      occurs occ flexibility target
   where
     occursAbstraction name type_ closure = do
-      occurs context flexibility untouchables type_
-      (context', var) <- Context.extend context name type_
-      let varValue =
-            Domain.var var
+      occurs occ flexibility type_
+      extend name type_ $ \var -> do
+        let varValue = Domain.var var
+        body <- lift $ Evaluation.evaluateClosure closure varValue
+        occurs occ flexibility body
 
-      body <- Evaluation.evaluateClosure closure varValue
-      occurs context' flexibility untouchables body
-
-occursHead ::
-  Flexibility ->
-  EnumSet Var ->
-  Domain.Head ->
-  M ()
-occursHead flexibility untouchables hd =
+occursHead :: Var -> Flexibility -> Domain.Head -> Unify v ()
+occursHead occ flexibility hd =
   case hd of
     Domain.Var var
-      | EnumSet.member var untouchables ->
+      | var == occ ->
         throwIO $
           case flexibility of
-            Flexibility.Rigid ->
-              Nope
-            Flexibility.Flexible ->
-              Dunno
-      | otherwise ->
-        pure ()
-    Domain.Global _ ->
-      pure ()
-    Domain.Meta _ ->
-      pure ()
+            Flexibility.Rigid -> Nope
+            Flexibility.Flexible -> Dunno
+      | otherwise -> do
+        touchable <- isTouchable var
+        unless touchable $
+          throwIO $
+            case flexibility of
+              Flexibility.Rigid -> Nope
+              Flexibility.Flexible -> Dunno
+    Domain.Global _ -> pure ()
+    Domain.Meta _ -> pure ()
 
 occursElimination ::
-  Context v ->
+  Var ->
   Flexibility ->
-  EnumSet Var ->
   Domain.Elimination ->
-  M ()
-occursElimination context flexibility untouchables elimination =
+  Unify v ()
+occursElimination occ flexibility elimination =
   case elimination of
-    Domain.App _plicity arg ->
-      occurs context flexibility untouchables arg
-    Domain.Case branches ->
-      occursBranches context flexibility untouchables branches
+    Domain.App _plicity arg -> occurs occ flexibility arg
+    Domain.Case branches -> occursBranches occ flexibility branches
 
 occursBranches ::
-  Context v ->
+  Var ->
   Flexibility ->
-  EnumSet Var ->
   Domain.Branches ->
-  M ()
-occursBranches outerContext flexibility outerUntouchables (Domain.Branches outerEnv branches defaultBranch) = do
+  Unify v ()
+occursBranches occ flexibility (Domain.Branches outerEnv branches defaultBranch) = do
   case branches of
     Syntax.ConstructorBranches _ constructorBranches ->
-      forM_ constructorBranches $ mapM_ $ occursTele outerContext outerUntouchables outerEnv
+      forM_ constructorBranches $ mapM_ $ occursTele outerEnv
     Syntax.LiteralBranches literalBranches ->
       forM_ literalBranches $
         mapM_ $ \branch ->
-          occursTele outerContext outerUntouchables outerEnv $ Telescope.Empty branch
+          occursTele outerEnv $ Telescope.Empty branch
   forM_ defaultBranch $ \branch ->
-    occursTele outerContext outerUntouchables outerEnv $ Telescope.Empty branch
+    occursTele outerEnv $ Telescope.Empty branch
   where
     occursTele ::
-      Context v ->
-      EnumSet Var ->
       Domain.Environment v1 ->
       Telescope Bindings Syntax.Type Syntax.Term v1 ->
-      M ()
-    occursTele context untouchables env tele =
+      Unify v ()
+    occursTele env tele =
       case tele of
         Telescope.Extend bindings type_ _plicity tele' -> do
-          type' <- Evaluation.evaluate env type_
-          occurs context flexibility untouchables type'
-          (context'', var) <- Context.extend context (Bindings.toName bindings) type'
-          occursTele
-            context''
-            (EnumSet.insert var untouchables)
-            (Environment.extendVar env var)
-            tele'
+          type' <- lift $ Evaluation.evaluate env type_
+          occurs occ flexibility type'
+          extend (Bindings.toName bindings) type' $ \var ->
+            occursTele
+              (Environment.extendVar env var)
+              tele'
         Telescope.Empty body -> do
-          body' <- Evaluation.evaluate env body
-          occurs context flexibility untouchables body'
+          body' <- lift $ Evaluation.evaluate env body
+          occurs occ flexibility body'
