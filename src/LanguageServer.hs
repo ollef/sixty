@@ -5,7 +5,6 @@
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 
 module LanguageServer where
 
@@ -411,7 +410,6 @@ checkAllAndPublishDiagnostics state = do
     publishDiagnostics state (LSP.toNormalizedUri uri) (versionedDoc ^. LSP.version) diagnostics
 
 runTask ::
-  forall a.
   State ->
   Driver.Prune ->
   Task Query a ->
