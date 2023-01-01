@@ -29,7 +29,7 @@ data Operand
   | GlobalFunction !Name.Lifted !(Return Type) [Type]
   | StructOperand [Operand]
   | Lit !Literal
-  deriving (Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Persist, Hashable)
 
 data Type
   = Word
@@ -66,18 +66,18 @@ data Instruction
   | ExtractHeapPointerConstructorTag !Local !Operand
   | ExtractValue !Local !Operand !Int
   | Switch !(Return (Type, Local)) !Operand [(Integer, BasicBlock)] BasicBlock
-  deriving (Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Persist, Hashable)
 
 data Definition
   = KnownConstantDefinition !Type !Literal !Bool
   | ConstantDefinition !Type !(Return Type) [(Type, Local)] BasicBlock
   | FunctionDefinition !(Return Type) [(Type, Local)] BasicBlock
-  deriving (Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Persist, Hashable)
 
 type StackPointer = Local
 
 data BasicBlock = BasicBlock [Instruction] !(Return Operand)
-  deriving (Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Persist, Hashable)
 
 instance Applicative Return where
   pure = Return
