@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
 
 module Core.Syntax where
 
@@ -132,7 +133,8 @@ data Definition
 
 newtype ConstructorDefinitions v
   = ConstructorDefinitions (OrderedHashMap Name.Constructor (Type v))
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Show, Generic)
+  deriving newtype (Eq, Persist, Hashable)
 
 constructorFieldPlicities :: Type v -> [Plicity]
 constructorFieldPlicities type_ =

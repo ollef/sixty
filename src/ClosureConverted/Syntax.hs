@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
 
 module ClosureConverted.Syntax where
 
@@ -19,7 +20,7 @@ General idea:
 
 xs |- t : T
 -------------------------
-|- \xs. t : Function xs T
+\|- \xs. t : Function xs T
 
 f : Function xs T
 ts : xs[ts/xs]
@@ -82,7 +83,8 @@ data Definition
 
 newtype ConstructorDefinitions v
   = ConstructorDefinitions (OrderedHashMap Name.Constructor (Type v))
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Show, Generic)
+  deriving newtype (Eq, Persist, Hashable)
 
 fromVoid :: Term Void -> Term v
 fromVoid =

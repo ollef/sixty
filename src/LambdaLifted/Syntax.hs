@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE RankNTypes #-}
 
 module LambdaLifted.Syntax where
@@ -67,4 +68,5 @@ data Definition
 
 newtype ConstructorDefinitions v
   = ConstructorDefinitions (OrderedHashMap Name.Constructor (Type v))
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Show, Generic)
+  deriving newtype (Eq, Persist, Hashable)
