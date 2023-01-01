@@ -2,6 +2,7 @@ module Environment where
 
 import Data.EnumMap (EnumMap)
 import qualified Data.EnumMap as EnumMap
+import Data.Kind
 import Index
 import qualified Index.Map
 import qualified Index.Map as Index
@@ -9,7 +10,7 @@ import Monad
 import Protolude
 import Var (Var)
 
-data Environment value v = Environment
+data Environment value (v :: Data.Kind.Type) = Environment
   { indices :: Index.Map v Var
   , values :: EnumMap Var value
   , glueableBefore :: !(Index (Succ v))
@@ -24,27 +25,27 @@ empty =
     , glueableBefore = Index.Zero
     }
 
-extend ::
-  Environment value v ->
-  M (Environment value (Succ v), Var)
+extend
+  :: Environment value v
+  -> M (Environment value (Succ v), Var)
 extend env = do
   var <- freshVar
   pure (extendVar env var, var)
 
-extendVar ::
-  Environment value v ->
-  Var ->
-  Environment value (Succ v)
+extendVar
+  :: Environment value v
+  -> Var
+  -> Environment value (Succ v)
 extendVar env v =
   env
     { indices = indices env Index.Map.:> v
     , glueableBefore = Index.Succ $ glueableBefore env
     }
 
-extendValue ::
-  Environment value v ->
-  value ->
-  M (Environment value (Succ v), Var)
+extendValue
+  :: Environment value v
+  -> value
+  -> M (Environment value (Succ v), Var)
 extendValue env value = do
   var <- freshVar
   pure
