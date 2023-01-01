@@ -19,10 +19,10 @@ import qualified System.FilePath as FilePath
 type Directory = FilePath
 
 newtype Watcher a = Watcher
-  { runWatcher ::
-      FSNotify.WatchManager ->
-      (a -> IO ()) ->
-      IO FSNotify.StopListening
+  { runWatcher
+      :: FSNotify.WatchManager
+      -> (a -> IO ())
+      -> IO FSNotify.StopListening
   }
   deriving (Functor)
 
@@ -73,11 +73,11 @@ instance Monad Watcher where
           stopListening2
           mempty
 
-bindForM ::
-  (Eq key, Hashable key, Monoid value) =>
-  Watcher (HashSet key) ->
-  (key -> Watcher value) ->
-  Watcher value
+bindForM
+  :: (Hashable key, Monoid value)
+  => Watcher (HashSet key)
+  -> (key -> Watcher value)
+  -> Watcher value
 bindForM (Watcher watchKeys) watchKey =
   Watcher $ \manager onChange -> do
     valuesVar <- newMVar mempty
@@ -137,28 +137,28 @@ watcherFromArguments files =
           case () of
             _
               | isDir ->
-                pure $
-                  ( \(changedFiles, files') ->
-                      ( changedFiles
-                      , [file']
-                      , files'
-                      )
-                  )
-                    <$> directoryWatcher Project.isSourcePath file'
+                  pure $
+                    ( \(changedFiles, files') ->
+                        ( changedFiles
+                        , [file']
+                        , files'
+                        )
+                    )
+                      <$> directoryWatcher Project.isSourcePath file'
               | Project.isProjectPath file' ->
-                pure $ projectWatcher file'
+                  pure $ projectWatcher file'
               | Project.isSourcePath file' ->
-                pure $
-                  ( \maybeText ->
-                      ( HashSet.singleton file'
-                      , [FilePath.takeDirectory file']
-                      , foldMap (HashMap.singleton file') maybeText
-                      )
-                  )
-                    <$> fileWatcher file'
+                  pure $
+                    ( \maybeText ->
+                        ( HashSet.singleton file'
+                        , [FilePath.takeDirectory file']
+                        , foldMap (HashMap.singleton file') maybeText
+                        )
+                    )
+                      <$> fileWatcher file'
               | otherwise ->
-                -- TODO report error?
-                mempty
+                  -- TODO report error?
+                  mempty
 
 projectWatcher :: FilePath -> Watcher (HashSet FilePath, [Directory], HashMap FilePath Text)
 projectWatcher file =
@@ -193,10 +193,10 @@ jsonFileWatcher filePath = Watcher $ \manager onChange -> do
         onChange maybeValue
     )
 
-directoryWatcher ::
-  (FilePath -> Bool) ->
-  FilePath ->
-  Watcher (HashSet FilePath, HashMap FilePath Text)
+directoryWatcher
+  :: (FilePath -> Bool)
+  -> FilePath
+  -> Watcher (HashSet FilePath, HashMap FilePath Text)
 directoryWatcher predicate directory = Watcher $ \manager onChange -> do
   filesVar <- newEmptyMVar
   stopListening <-
