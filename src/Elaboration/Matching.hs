@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 
@@ -106,12 +107,12 @@ unresolvedPattern :: Surface.Pattern -> Pattern
 unresolvedPattern (Surface.Pattern span unspannedPattern) =
   UnresolvedPattern span unspannedPattern
 
-resolvePattern ::
-  Context v ->
-  Surface.UnspannedPattern ->
-  Domain.Type ->
-  Postponement.CanPostpone ->
-  ExceptT Meta.Index M UnspannedPattern
+resolvePattern
+  :: Context v
+  -> Surface.UnspannedPattern
+  -> Domain.Type
+  -> Postponement.CanPostpone
+  -> ExceptT Meta.Index M UnspannedPattern
 resolvePattern context unspannedPattern type_ canPostpone = do
   case unspannedPattern of
     Surface.ConOrVar (Surface.SpannedName conSpan name) argPatterns -> do
@@ -162,14 +163,14 @@ resolvePattern context unspannedPattern type_ canPostpone = do
 
 -------------------------------------------------------------------------------
 
-checkCase ::
-  Context v ->
-  Syntax.Term (Index.Succ v) ->
-  Domain.Type ->
-  [(Surface.Pattern, Surface.Term)] ->
-  Domain.Type ->
-  Postponement.CanPostpone ->
-  M (Syntax.Term v)
+checkCase
+  :: Context v
+  -> Syntax.Term (Index.Succ v)
+  -> Domain.Type
+  -> [(Surface.Pattern, Surface.Term)]
+  -> Domain.Type
+  -> Postponement.CanPostpone
+  -> M (Syntax.Term v)
 checkCase context scrutinee scrutineeType branches expectedType canPostpone = do
   skippedContext <- Context.skip context
   scrutineeValue <- Elaboration.evaluate skippedContext scrutinee
@@ -210,14 +211,14 @@ checkCase context scrutinee scrutineeType branches expectedType canPostpone = do
             Syntax.Let "scrutinee" Index.Zero scrutinee $
               Syntax.In term
 
-postponeCaseCheck ::
-  Context v ->
-  Syntax.Term (Index.Succ v) ->
-  Domain.Type ->
-  [(Surface.Pattern, Surface.Term)] ->
-  Domain.Type ->
-  Meta.Index ->
-  M (Syntax.Term v)
+postponeCaseCheck
+  :: Context v
+  -> Syntax.Term (Index.Succ v)
+  -> Domain.Type
+  -> [(Surface.Pattern, Surface.Term)]
+  -> Domain.Type
+  -> Meta.Index
+  -> M (Syntax.Term v)
 postponeCaseCheck context scrutinee scrutineeType branches expectedType blockingMeta =
   Elaboration.postpone context expectedType blockingMeta $
     checkCase context scrutinee scrutineeType branches expectedType
@@ -254,25 +255,25 @@ isPatternValue context value = do
     Domain.Fun {} ->
       pure False
   where
-    dropTypeArgs ::
-      Telescope n t t' v ->
-      [(Plicity, value)] ->
-      [(Plicity, value)]
+    dropTypeArgs
+      :: Telescope n t t' v
+      -> [(Plicity, value)]
+      -> [(Plicity, value)]
     dropTypeArgs tele args =
       case (tele, args) of
         (Telescope.Empty _, _) ->
           args
         (Telescope.Extend _ _ plicity1 tele', (plicity2, _) : args')
           | plicity1 == plicity2 ->
-            dropTypeArgs tele' args'
+              dropTypeArgs tele' args'
         _ ->
           panic "chooseBranch arg mismatch"
 
-checkClauses ::
-  Context v ->
-  [Clause] ->
-  Domain.Type ->
-  M (Syntax.Term v)
+checkClauses
+  :: Context v
+  -> [Clause]
+  -> Domain.Type
+  -> M (Syntax.Term v)
 checkClauses context clauses expectedType = do
   usedClauses <- newIORef mempty
 
@@ -291,14 +292,14 @@ checkClauses context clauses expectedType = do
       , _matchKind = Error.Clause
       }
 
-checkSingle ::
-  Context v ->
-  Var ->
-  Plicity ->
-  Surface.Pattern ->
-  Surface.Term ->
-  Domain.Type ->
-  M (Syntax.Term v)
+checkSingle
+  :: Context v
+  -> Var
+  -> Plicity
+  -> Surface.Pattern
+  -> Surface.Term
+  -> Domain.Type
+  -> M (Syntax.Term v)
 checkSingle context scrutinee plicity pat@(Surface.Pattern patSpan _) rhs@(Surface.Term rhsSpan _) expectedType = do
   let scrutineeValue =
         Domain.var scrutinee
@@ -410,16 +411,16 @@ checkForcedPattern context match =
     _ ->
       pure ()
 
-uncoveredScrutineePatterns ::
-  Context v ->
-  Domain.Value ->
-  M [Domain.Pattern]
+uncoveredScrutineePatterns
+  :: Context v
+  -> Domain.Value
+  -> M [Domain.Pattern]
 uncoveredScrutineePatterns context value = do
   value' <- Context.forceHead context value
   case value' of
     Domain.Neutral (Domain.Var v) Domain.Empty -> do
       let covered =
-            EnumMap.findWithDefault mempty v $ Context.coveredConstructors context
+            EnumMap.findWithDefault mempty v context.coveredConstructors
 
       case HashSet.toList covered of
         [] ->
@@ -474,17 +475,17 @@ uncoveredScrutineePatterns context value = do
     Domain.Fun {} ->
       pure []
   where
-    dropTypeArgs ::
-      Telescope n t t' v ->
-      [(Plicity, value)] ->
-      [(Plicity, value)]
+    dropTypeArgs
+      :: Telescope n t t' v
+      -> [(Plicity, value)]
+      -> [(Plicity, value)]
     dropTypeArgs tele args =
       case (tele, args) of
         (Telescope.Empty _, _) ->
           args
         (Telescope.Extend _ _ plicity1 tele', (plicity2, _) : args')
           | plicity1 == plicity2 ->
-            dropTypeArgs tele' args'
+              dropTypeArgs tele' args'
         _ ->
           panic "chooseBranch arg mismatch"
 
@@ -506,11 +507,11 @@ simplifyClause context canPostpone clause = do
         Just expandedMatches ->
           simplifyClause context canPostpone clause {_matches = expandedMatches}
 
-simplifyMatch ::
-  Context v ->
-  Postponement.CanPostpone ->
-  Match ->
-  MaybeT M [Match]
+simplifyMatch
+  :: Context v
+  -> Postponement.CanPostpone
+  -> Match
+  -> MaybeT M [Match]
 simplifyMatch context canPostpone match@(Match value forcedValue plicity pat type_) = do
   case pat of
     UnresolvedPattern span unspannedSurfacePattern -> do
@@ -528,43 +529,43 @@ simplifyMatch context canPostpone match@(Match value forcedValue plicity pat typ
       case (forcedValue', unspannedPattern) of
         (Domain.Con constr args, Con _ constr' pats)
           | constr == constr' -> do
-            matches' <- lift $ do
-              constrType <- fetch $ Query.ConstructorType constr
-              (patsType, patSpine) <-
-                instantiateConstructorType
-                  (Context.toEnvironment context)
-                  (Telescope.fromVoid constrType)
-                  (toList args)
+              matches' <- lift $ do
+                constrType <- fetch $ Query.ConstructorType constr
+                (patsType, patSpine) <-
+                  instantiateConstructorType
+                    (Context.toEnvironment context)
+                    (Telescope.fromVoid constrType)
+                    (toList args)
 
-              (matches', type') <- matchSurfacePatterns context patSpine pats patsType
-              let context' =
-                    Context.spanned span context
-              _ <- Context.try_ context' $ Unification.unify context' Flexibility.Rigid type_ type'
-              pure matches'
-            concat <$> mapM (simplifyMatch context canPostpone) matches'
+                (matches', type') <- matchSurfacePatterns context patSpine pats patsType
+                let context' =
+                      Context.spanned span context
+                _ <- Context.try_ context' $ Unification.unify context' Flexibility.Rigid type_ type'
+                pure matches'
+              concat <$> mapM (simplifyMatch context canPostpone) matches'
           | otherwise ->
-            fail "Constructor mismatch"
+              fail "Constructor mismatch"
         (Domain.Lit lit, Lit lit')
           | lit == lit' ->
-            pure []
+              pure []
           | otherwise ->
-            fail "Literal mismatch"
+              fail "Literal mismatch"
         (Domain.Neutral (Domain.Var var) Domain.Empty, Con _ constr _)
-          | Just coveredConstrs <- EnumMap.lookup var (Context.coveredConstructors context)
-            , HashSet.member constr coveredConstrs ->
-            fail "Constructor already covered"
+          | Just coveredConstrs <- EnumMap.lookup var context.coveredConstructors
+          , HashSet.member constr coveredConstrs ->
+              fail "Constructor already covered"
         (Domain.Neutral (Domain.Var var) Domain.Empty, Lit lit)
-          | Just coveredLits <- EnumMap.lookup var (Context.coveredLiterals context)
-            , HashSet.member lit coveredLits ->
-            fail "Literal already covered"
+          | Just coveredLits <- EnumMap.lookup var context.coveredLiterals
+          , HashSet.member lit coveredLits ->
+              fail "Literal already covered"
         _ ->
           pure [match']
 
-instantiateConstructorType ::
-  Domain.Environment v ->
-  Telescope Binding Syntax.Type Syntax.Type v ->
-  [(Plicity, Domain.Value)] ->
-  M (Domain.Type, [(Plicity, Domain.Value)])
+instantiateConstructorType
+  :: Domain.Environment v
+  -> Telescope Binding Syntax.Type Syntax.Type v
+  -> [(Plicity, Domain.Value)]
+  -> M (Domain.Type, [(Plicity, Domain.Value)])
 instantiateConstructorType env tele spine =
   case (tele, spine) of
     (Telescope.Empty constrType, _) -> do
@@ -572,17 +573,17 @@ instantiateConstructorType env tele spine =
       pure (constrType', spine)
     (Telescope.Extend _ _ plicity1 tele', (plicity2, arg) : spine')
       | plicity1 == plicity2 -> do
-        (env', _) <- Environment.extendValue env arg
-        instantiateConstructorType env' tele' spine'
+          (env', _) <- Environment.extendValue env arg
+          instantiateConstructorType env' tele' spine'
     _ ->
       panic $ "instantiateConstructorType: " <> show (tele, fst <$> spine)
 
-matchSurfacePatterns ::
-  Context v ->
-  [(Plicity, Domain.Value)] ->
-  [Surface.PlicitPattern] ->
-  Domain.Type ->
-  M ([Match], Domain.Type)
+matchSurfacePatterns
+  :: Context v
+  -> [(Plicity, Domain.Value)]
+  -> [Surface.PlicitPattern]
+  -> Domain.Type
+  -> M ([Match], Domain.Type)
 matchSurfacePatterns context values patterns type_ =
   case (patterns, values) of
     ([], []) ->
@@ -599,24 +600,24 @@ matchSurfacePatterns context values patterns type_ =
           panic "matchSurfacePatterns explicit non-pi"
     (Surface.ImplicitPattern _ namedPats : patterns', _)
       | HashMap.null namedPats ->
-        matchSurfacePatterns context values patterns' type_
+          matchSurfacePatterns context values patterns' type_
     (Surface.ImplicitPattern patSpan namedPats : patterns', (Implicit, value) : values') -> do
       type' <- Context.forceHead context type_
       case type' of
         Domain.Pi binding domain Implicit targetClosure
           | let name = Binding.toName binding
-            , Just patBinding <- HashMap.lookup name namedPats -> do
-            target <- Evaluation.evaluateClosure targetClosure value
-            (matches, type'') <-
-              matchSurfacePatterns
-                context
-                values'
-                (Surface.ImplicitPattern patSpan (HashMap.delete name namedPats) : patterns')
-                target
-            pure (Match value value Implicit (unresolvedPattern $ Surface.pattern_ patBinding) domain : matches, type'')
+          , Just patBinding <- HashMap.lookup name namedPats -> do
+              target <- Evaluation.evaluateClosure targetClosure value
+              (matches, type'') <-
+                matchSurfacePatterns
+                  context
+                  values'
+                  (Surface.ImplicitPattern patSpan (HashMap.delete name namedPats) : patterns')
+                  target
+              pure (Match value value Implicit (unresolvedPattern $ Surface.pattern_ patBinding) domain : matches, type'')
           | otherwise -> do
-            target <- Evaluation.evaluateClosure targetClosure value
-            matchSurfacePatterns context values' patterns target
+              target <- Evaluation.evaluateClosure targetClosure value
+              matchSurfacePatterns context values' patterns target
         _ ->
           panic "matchSurfacePatterns implicit non-pi"
     (_, (Implicit, value) : values') -> do
@@ -634,7 +635,7 @@ matchSurfacePatterns context values patterns type_ =
       let go domain target = do
             (matches, type'') <- matchSurfacePatterns context values' patterns target
             let pattern_ =
-                  Pattern (Context.span context) Wildcard
+                  Pattern context.span Wildcard
             pure (Match value value Constraint pattern_ domain : matches, type'')
 
       case type' of
@@ -650,7 +651,7 @@ matchSurfacePatterns context values patterns type_ =
       pure ([], type_)
     ([], (Explicit, _) : _) -> do
       Context.report context $ Error.PlicityMismatch Error.Field $ Error.Missing Explicit
-      matchSurfacePatterns context values [Surface.ExplicitPattern $ Surface.Pattern (Context.span context) Surface.WildcardPattern] type_
+      matchSurfacePatterns context values [Surface.ExplicitPattern $ Surface.Pattern context.span Surface.WildcardPattern] type_
     (Surface.ImplicitPattern patSpan _ : patterns', (Explicit, _) : _) -> do
       Context.report (Context.spanned patSpan context) $ Error.PlicityMismatch Error.Field (Error.Mismatch Explicit Implicit)
       matchSurfacePatterns context values patterns' type_
@@ -665,10 +666,10 @@ withPatternInstantiation :: PatternInstantiation -> Context v -> Context v
 withPatternInstantiation inst context =
   foldr (\(name, value, type_) -> Context.withSurfaceNameValue name value type_) context inst
 
-expandAnnotations ::
-  Context v ->
-  [Match] ->
-  MaybeT M [Match]
+expandAnnotations
+  :: Context v
+  -> [Match]
+  -> MaybeT M [Match]
 expandAnnotations context matches =
   case matches of
     [] ->
@@ -712,12 +713,12 @@ solved =
 
 -------------------------------------------------------------------------------
 
-splitConstructorOr ::
-  Context v ->
-  Config ->
-  [Match] ->
-  M (Syntax.Term v) ->
-  M (Syntax.Term v)
+splitConstructorOr
+  :: Context v
+  -> Config
+  -> [Match]
+  -> M (Syntax.Term v)
+  -> M (Syntax.Term v)
 splitConstructorOr context config matches k =
   case matches of
     [] ->
@@ -731,15 +732,15 @@ splitConstructorOr context config matches k =
         _ ->
           splitConstructorOr context config matches' k
 
-splitConstructor ::
-  Context v ->
-  Config ->
-  Domain.Value ->
-  Var ->
-  Span.Relative ->
-  Name.QualifiedConstructor ->
-  Domain.Type ->
-  M (Syntax.Term v)
+splitConstructor
+  :: Context v
+  -> Config
+  -> Domain.Value
+  -> Var
+  -> Span.Relative
+  -> Name.QualifiedConstructor
+  -> Domain.Type
+  -> M (Syntax.Term v)
 splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.QualifiedConstructor typeName _) outerType = do
   (definition, _) <- fetch $ Query.ElaboratedDefinition typeName
   case definition of
@@ -749,7 +750,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
       case outerType' of
         Domain.Neutral (Domain.Global typeName') (Domain.Apps params)
           | typeName == typeName' ->
-            goParams (Context.spanned span outerContext) (toList params) mempty tele'
+              goParams (Context.spanned span outerContext) (toList params) mempty tele'
         _ -> do
           typeType <- fetch $ Query.ElaboratedType typeName
           typeType' <- Evaluation.evaluate Environment.empty typeType
@@ -758,7 +759,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
               -- later.
               contextWithoutScrutineeVar =
                 outerContext
-                  { Context.boundVars = IntSeq.delete scrutineeVar $ Context.boundVars outerContext
+                  { Context.boundVars = IntSeq.delete scrutineeVar outerContext.boundVars
                   }
           (metas, _) <- Elaboration.insertMetas contextWithoutScrutineeVar Elaboration.UntilTheEnd typeType'
           f <- Unification.tryUnify outerContext (Domain.Neutral (Domain.Global typeName) $ Domain.Apps $ fromList metas) outerType
@@ -767,12 +768,12 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
     _ ->
       panic "splitConstructor no data definition"
   where
-    goParams ::
-      Context v ->
-      [(Plicity, Domain.Value)] ->
-      Tsil (Plicity, Domain.Value) ->
-      Domain.Telescope (OrderedHashMap Name.Constructor Domain.Type) ->
-      M (Syntax.Type v)
+    goParams
+      :: Context v
+      -> [(Plicity, Domain.Value)]
+      -> Tsil (Plicity, Domain.Value)
+      -> Domain.Telescope (OrderedHashMap Name.Constructor Domain.Type)
+      -> M (Syntax.Type v)
     goParams context params conArgs dataTele =
       case (params, dataTele) of
         ([], Domain.Telescope.Empty constructors) -> do
@@ -803,8 +804,11 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
                   <$> check
                     context
                       { Context.coveredConstructors =
-                          EnumMap.insertWith (<>) scrutineeVar (HashSet.fromMap $ void $ OrderedHashMap.toMap matchedConstructors) $
-                            Context.coveredConstructors context
+                          EnumMap.insertWith
+                            (<>)
+                            scrutineeVar
+                            (HashSet.fromMap $ void $ OrderedHashMap.toMap matchedConstructors)
+                            context.coveredConstructors
                       }
                     config
                     Postponement.CanPostpone
@@ -814,18 +818,18 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
           pure $ Syntax.Case scrutinee (Syntax.ConstructorBranches typeName $ OrderedHashMap.fromList branches) defaultBranch
         ((plicity1, param) : params', Domain.Telescope.Extend _ _ plicity2 targetClosure)
           | plicity1 == plicity2 -> do
-            target <- targetClosure param
-            goParams context params' (conArgs Tsil.:> (implicitise plicity1, param)) target
+              target <- targetClosure param
+              goParams context params' (conArgs Tsil.:> (implicitise plicity1, param)) target
         _ ->
           panic "goParams mismatch"
 
-    goConstrFields ::
-      Context v ->
-      Name.QualifiedConstructor ->
-      Tsil (Plicity, Domain.Value) ->
-      Domain.Type ->
-      [[Surface.PlicitPattern]] ->
-      M (Telescope Bindings Syntax.Type Syntax.Term v)
+    goConstrFields
+      :: Context v
+      -> Name.QualifiedConstructor
+      -> Tsil (Plicity, Domain.Value)
+      -> Domain.Type
+      -> [[Surface.PlicitPattern]]
+      -> M (Telescope Bindings Syntax.Type Syntax.Term v)
     goConstrFields context constr conArgs type_ patterns =
       case type_ of
         Domain.Pi piBinding domain plicity targetClosure -> do
@@ -876,29 +880,29 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
           result <- check context' config Postponement.CanPostpone
           pure $ Telescope.Empty result
 
-findVarConstructorMatches ::
-  Var ->
-  [Match] ->
-  [(Name.QualifiedConstructor, [(Span.Relative, [Surface.PlicitPattern])])]
+findVarConstructorMatches
+  :: Var
+  -> [Match]
+  -> [(Name.QualifiedConstructor, [(Span.Relative, [Surface.PlicitPattern])])]
 findVarConstructorMatches var matches =
   case matches of
     [] ->
       []
     Match _ (Domain.Neutral (Domain.Var var') Domain.Empty) _ (Pattern _ (Con span constr patterns)) _ : matches'
       | var == var' ->
-        (constr, [(span, patterns)]) : findVarConstructorMatches var matches'
+          (constr, [(span, patterns)]) : findVarConstructorMatches var matches'
     _ : matches' ->
       findVarConstructorMatches var matches'
 
-splitLiteral ::
-  Context v ->
-  Config ->
-  Domain.Value ->
-  Var ->
-  Span.Relative ->
-  Literal ->
-  Domain.Type ->
-  M (Syntax.Term v)
+splitLiteral
+  :: Context v
+  -> Config
+  -> Domain.Value
+  -> Var
+  -> Span.Relative
+  -> Literal
+  -> Domain.Type
+  -> M (Syntax.Term v)
 splitLiteral context config scrutineeValue scrutineeVar span lit outerType = do
   let matchedLiterals =
         OrderedHashMap.fromListWith (<>) $
@@ -919,8 +923,11 @@ splitLiteral context config scrutineeValue scrutineeVar span lit outerType = do
       <$> check
         context
           { Context.coveredLiterals =
-              EnumMap.insertWith (<>) scrutineeVar (HashSet.fromMap $ void $ OrderedHashMap.toMap matchedLiterals) $
-                Context.coveredLiterals context
+              EnumMap.insertWith
+                (<>)
+                scrutineeVar
+                (HashSet.fromMap $ void $ OrderedHashMap.toMap matchedLiterals)
+                context.coveredLiterals
           }
         config
         Postponement.CanPostpone
@@ -929,28 +936,28 @@ splitLiteral context config scrutineeValue scrutineeVar span lit outerType = do
 
   pure $ f $ Syntax.Case scrutinee (Syntax.LiteralBranches $ OrderedHashMap.fromList branches) defaultBranch
 
-findVarLiteralMatches ::
-  Var ->
-  [Match] ->
-  [(Literal, [Span.Relative])]
+findVarLiteralMatches
+  :: Var
+  -> [Match]
+  -> [(Literal, [Span.Relative])]
 findVarLiteralMatches var matches =
   case matches of
     [] ->
       []
     Match _ (Domain.Neutral (Domain.Var var') Domain.Empty) _ (Pattern span (Lit lit)) _ : matches'
       | var == var' ->
-        (lit, [span]) : findVarLiteralMatches var matches'
+          (lit, [span]) : findVarLiteralMatches var matches'
     _ : matches' ->
       findVarLiteralMatches var matches'
 
 -------------------------------------------------------------------------------
 
-splitEqualityOr ::
-  Context v ->
-  Config ->
-  [Match] ->
-  M (Syntax.Term v) ->
-  M (Syntax.Term v)
+splitEqualityOr
+  :: Context v
+  -> Config
+  -> [Match]
+  -> M (Syntax.Term v)
+  -> M (Syntax.Term v)
 splitEqualityOr context config matches k =
   case matches of
     [] ->
@@ -999,7 +1006,7 @@ uninhabitedScrutinee context value = do
       let varType =
             Context.lookupVarType var context
       type_ <- Context.instantiateType context varType $ toList args
-      uninhabitedType context 1 (EnumMap.findWithDefault mempty var $ Context.coveredConstructors context) type_
+      uninhabitedType context 1 (EnumMap.findWithDefault mempty var context.coveredConstructors) type_
     Domain.Con constr constructorArgs -> do
       constrType <- fetch $ Query.ConstructorType constr
       let args = snd <$> drop (Telescope.length constrType) (toList constructorArgs)
@@ -1007,12 +1014,12 @@ uninhabitedScrutinee context value = do
     _ ->
       pure False
 
-uninhabitedType ::
-  Context v ->
-  Int ->
-  HashSet Name.QualifiedConstructor ->
-  Domain.Type ->
-  M Bool
+uninhabitedType
+  :: Context v
+  -> Int
+  -> HashSet Name.QualifiedConstructor
+  -> Domain.Type
+  -> M Bool
 uninhabitedType context fuel coveredConstructors type_ = do
   type' <- Context.forceHead context type_
   case type' of

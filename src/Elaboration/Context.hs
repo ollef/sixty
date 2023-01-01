@@ -1,8 +1,11 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE NoFieldSelectors #-}
 
 module Elaboration.Context where
 
@@ -28,6 +31,7 @@ import Data.HashSet (HashSet)
 import Data.IORef.Lifted
 import Data.IntSeq (IntSeq)
 import qualified Data.IntSeq as IntSeq
+import qualified Data.Kind
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Elaboration.Meta as Meta
@@ -58,7 +62,7 @@ import Telescope (Telescope)
 import qualified Telescope
 import Var
 
-data Context v = Context
+data Context (v :: Data.Kind.Type) = Context
   { definitionKind :: !Scope.DefinitionKind
   , definitionName :: !Name.Qualified
   , definitionType :: Maybe Domain.Type
@@ -77,33 +81,31 @@ data Context v = Context
   }
 
 moduleName :: Context v -> Name.Module
-moduleName context = do
-  let Name.Qualified m _ = definitionName context
-  m
+moduleName context = context.definitionName.moduleName
 
 type CoveredConstructors = EnumMap Var (HashSet Name.QualifiedConstructor)
 
 type CoveredLiterals = EnumMap Var (HashSet Literal)
 
-toEnvironment ::
-  Context v ->
-  Domain.Environment v
+toEnvironment
+  :: Context v
+  -> Domain.Environment v
 toEnvironment context =
   Environment
-    { indices = indices context
-    , values = values context
+    { indices = context.indices
+    , values = context.values
     , glueableBefore = Index.Zero
     }
 
 empty :: MonadBase IO m => Scope.DefinitionKind -> Name.Qualified -> m (Context Void)
-empty definitionKind_ definitionName_ = do
+empty definitionKind definitionName = do
   ms <- newIORef Meta.empty
   es <- newIORef mempty
   ps <- newIORef Postponed.empty
   pure
     Context
-      { definitionKind = definitionKind_
-      , definitionName = definitionName_
+      { definitionKind
+      , definitionName
       , definitionType = Nothing
       , span = Span.Relative 0 0
       , surfaceNames = mempty
@@ -122,19 +124,19 @@ empty definitionKind_ definitionName_ = do
 emptyFrom :: Context v -> Context Void
 emptyFrom context =
   Context
-    { definitionKind = definitionKind context
-    , definitionName = definitionName context
-    , definitionType = definitionType context
-    , span = span context
+    { definitionKind = context.definitionKind
+    , definitionName = context.definitionName
+    , definitionType = context.definitionType
+    , span = context.span
     , surfaceNames = mempty
     , varNames = mempty
     , indices = Index.Map.Empty
     , values = mempty
     , types = mempty
     , boundVars = mempty
-    , metas = metas context
-    , postponed = postponed context
-    , errors = errors context
+    , metas = context.metas
+    , postponed = context.postponed
+    , errors = context.errors
     , coveredConstructors = mempty
     , coveredLiterals = mempty
     }
@@ -148,56 +150,56 @@ spanned s context =
 -------------------------------------------------------------------------------
 -- Extension
 
-extendSurface ::
-  Context v ->
-  Name.Surface ->
-  Domain.Type ->
-  M (Context (Succ v), Var)
+extendSurface
+  :: Context v
+  -> Name.Surface
+  -> Domain.Type
+  -> M (Context (Succ v), Var)
 extendSurface context name@(Name.Surface nameText) type_ = do
   var <- freshVar
   pure
     ( context
-        { surfaceNames = HashMap.insert name (Domain.var var, type_) $ surfaceNames context
-        , varNames = EnumMap.insert var (Name nameText) $ varNames context
-        , indices = indices context Index.Map.:> var
-        , types = EnumMap.insert var type_ (types context)
-        , boundVars = boundVars context IntSeq.:> var
+        { surfaceNames = HashMap.insert name (Domain.var var, type_) context.surfaceNames
+        , varNames = EnumMap.insert var (Name nameText) $ context.varNames
+        , indices = context.indices Index.Map.:> var
+        , types = EnumMap.insert var type_ context.types
+        , boundVars = context.boundVars IntSeq.:> var
         }
     , var
     )
 
-extend ::
-  Context v ->
-  Name ->
-  Domain.Type ->
-  M (Context (Succ v), Var)
+extend
+  :: Context v
+  -> Name
+  -> Domain.Type
+  -> M (Context (Succ v), Var)
 extend context name type_ = do
   var <- freshVar
   pure
     ( context
-        { varNames = EnumMap.insert var name $ varNames context
-        , indices = indices context Index.Map.:> var
-        , types = EnumMap.insert var type_ (types context)
-        , boundVars = boundVars context IntSeq.:> var
+        { varNames = EnumMap.insert var name context.varNames
+        , indices = context.indices Index.Map.:> var
+        , types = EnumMap.insert var type_ context.types
+        , boundVars = context.boundVars IntSeq.:> var
         }
     , var
     )
 
-extendSurfaceDef ::
-  Context v ->
-  Name.Surface ->
-  Domain.Value ->
-  Domain.Type ->
-  M (Context (Succ v), Var)
+extendSurfaceDef
+  :: Context v
+  -> Name.Surface
+  -> Domain.Value
+  -> Domain.Type
+  -> M (Context (Succ v), Var)
 extendSurfaceDef context surfaceName@(Name.Surface nameText) value type_ = do
   var <- freshVar
   pure
     ( context
-        { surfaceNames = HashMap.insert surfaceName (Domain.var var, type_) $ surfaceNames context
-        , varNames = EnumMap.insert var (Name nameText) $ varNames context
-        , indices = indices context Index.Map.:> var
-        , values = EnumMap.insert var value (values context)
-        , types = EnumMap.insert var type_ (types context)
+        { surfaceNames = HashMap.insert surfaceName (Domain.var var, type_) context.surfaceNames
+        , varNames = EnumMap.insert var (Name nameText) context.varNames
+        , indices = context.indices Index.Map.:> var
+        , values = EnumMap.insert var value context.values
+        , types = EnumMap.insert var type_ context.types
         }
     , var
     )
@@ -205,46 +207,44 @@ extendSurfaceDef context surfaceName@(Name.Surface nameText) value type_ = do
 withSurfaceNameValue :: Name.Surface -> Domain.Value -> Domain.Type -> Context v -> Context v
 withSurfaceNameValue name value type_ context =
   context
-    { surfaceNames = HashMap.insert name (value, type_) $ surfaceNames context
+    { surfaceNames = HashMap.insert name (value, type_) context.surfaceNames
     }
 
-extendDef ::
-  Context v ->
-  Name ->
-  Domain.Value ->
-  Domain.Type ->
-  M (Context (Succ v), Var)
+extendDef
+  :: Context v
+  -> Name
+  -> Domain.Value
+  -> Domain.Type
+  -> M (Context (Succ v), Var)
 extendDef context name value type_ = do
   var <- freshVar
   pure
     ( context
-        { varNames = EnumMap.insert var name $ varNames context
-        , indices = indices context Index.Map.:> var
-        , values = EnumMap.insert var value (values context)
-        , types = EnumMap.insert var type_ (types context)
+        { varNames = EnumMap.insert var name context.varNames
+        , indices = context.indices Index.Map.:> var
+        , values = EnumMap.insert var value context.values
+        , types = EnumMap.insert var type_ context.types
         }
     , var
     )
 
-extendBefore ::
-  Context v ->
-  Var ->
-  Bindings ->
-  Domain.Type ->
-  M (Context (Succ v), Var)
+extendBefore
+  :: Context v
+  -> Var
+  -> Bindings
+  -> Domain.Type
+  -> M (Context (Succ v), Var)
 extendBefore context beforeVar binding type_ = do
   var <- freshVar
   pure
     ( context
-        { varNames = EnumMap.insert var (Bindings.toName binding) $ varNames context
-        , indices = indices context Index.Map.:> var
-        , types = EnumMap.insert var type_ (types context)
+        { varNames = EnumMap.insert var (Bindings.toName binding) context.varNames
+        , indices = context.indices Index.Map.:> var
+        , types = EnumMap.insert var type_ context.types
         , boundVars =
-            case IntSeq.elemIndex beforeVar $ boundVars context of
-              Nothing ->
-                panic "extendBefore no such var"
-              Just i ->
-                IntSeq.insertAt i var $ boundVars context
+            case IntSeq.elemIndex beforeVar context.boundVars of
+              Nothing -> panic "extendBefore no such var"
+              Just i -> IntSeq.insertAt i var context.boundVars
         }
     , var
     )
@@ -252,8 +252,8 @@ extendBefore context beforeVar binding type_ = do
 defineWellOrdered :: Context v -> Var -> Domain.Value -> Context v
 defineWellOrdered context var value =
   context
-    { values = EnumMap.insert var value $ values context
-    , boundVars = IntSeq.delete var $ boundVars context
+    { values = EnumMap.insert var value context.values
+    , boundVars = IntSeq.delete var context.boundVars
     }
 
 skip :: Context v -> M (Context (Succ v))
@@ -270,7 +270,7 @@ define context var value = do
       (pre, post) =
         Tsil.partition (`EnumSet.member` deps) $
           IntSeq.toTsil $
-            boundVars context'
+            context'.boundVars
 
   pure
     context'
@@ -279,10 +279,10 @@ define context var value = do
       }
 
 -- TODO: Move
-dependencies ::
-  Context v ->
-  Domain.Value ->
-  StateT (EnumMap Var (EnumSet Var)) M (EnumSet Var)
+dependencies
+  :: Context v
+  -> Domain.Value
+  -> StateT (EnumMap Var (EnumSet Var)) M (EnumSet Var)
 dependencies context value = do
   value' <- lift $ forceHeadGlue context value
   case value' of
@@ -329,29 +329,29 @@ dependencies context value = do
     headVars hd =
       case hd of
         Domain.Var v
-          | v `IntSeq.member` boundVars context -> do
-            cache <- get
-            typeDeps <- case EnumMap.lookup v cache of
-              Nothing -> do
-                typeDeps <- dependencies context $ lookupVarType v context
-                modify $ EnumMap.insert v typeDeps
-                pure typeDeps
-              Just typeDeps ->
-                pure typeDeps
+          | v `IntSeq.member` context.boundVars -> do
+              cache <- get
+              typeDeps <- case EnumMap.lookup v cache of
+                Nothing -> do
+                  typeDeps <- dependencies context $ lookupVarType v context
+                  modify $ EnumMap.insert v typeDeps
+                  pure typeDeps
+                Just typeDeps ->
+                  pure typeDeps
 
-            pure $ typeDeps <> EnumSet.singleton v
+              pure $ typeDeps <> EnumSet.singleton v
           | otherwise ->
-            pure $ EnumSet.singleton v
+              pure $ EnumSet.singleton v
         Domain.Global _ ->
           pure mempty
         Domain.Meta _ ->
           pure mempty
 
-    branchVars ::
-      Context v ->
-      Domain.Environment v' ->
-      Syntax.Branches v' ->
-      StateT (EnumMap Var (EnumSet Var)) M (EnumSet Var)
+    branchVars
+      :: Context v
+      -> Domain.Environment v'
+      -> Syntax.Branches v'
+      -> StateT (EnumMap Var (EnumSet Var)) M (EnumSet Var)
     branchVars context' env branches =
       fold
         <$> case branches of
@@ -362,11 +362,11 @@ dependencies context value = do
               branch' <- lift $ Evaluation.evaluate env branch
               dependencies context' branch'
 
-    telescopeVars ::
-      Context v ->
-      Domain.Environment v' ->
-      Telescope Bindings Syntax.Type Syntax.Term v' ->
-      StateT (EnumMap Var (EnumSet Var)) M (EnumSet Var)
+    telescopeVars
+      :: Context v
+      -> Domain.Environment v'
+      -> Telescope Bindings Syntax.Type Syntax.Term v'
+      -> StateT (EnumMap Var (EnumSet Var)) M (EnumSet Var)
     telescopeVars context' env tele =
       case tele of
         Telescope.Empty body -> do
@@ -387,19 +387,19 @@ dependencies context value = do
 
 lookupSurfaceName :: Name.Surface -> Context v -> Maybe (Domain.Value, Domain.Type)
 lookupSurfaceName surfaceName context =
-  HashMap.lookup surfaceName (surfaceNames context)
+  HashMap.lookup surfaceName context.surfaceNames
 
 lookupVarIndex :: Var -> Context v -> Maybe (Index v)
 lookupVarIndex var context =
-  Index.Map.elemIndex var (indices context)
+  Index.Map.elemIndex var context.indices
 
 lookupVarName :: Var -> Context v -> Name
 lookupVarName var context =
-  EnumMap.findWithDefault (panic "Context.lookupVarName") var $ varNames context
+  EnumMap.findWithDefault (panic "Context.lookupVarName") var context.varNames
 
 lookupIndexVar :: Index v -> Context v -> Var
 lookupIndexVar index context =
-  Index.Map.index (indices context) index
+  Index.Map.index context.indices index
 
 lookupIndexType :: Index v -> Context v -> Domain.Type
 lookupIndexType index context =
@@ -407,11 +407,11 @@ lookupIndexType index context =
 
 lookupVarType :: Var -> Context v -> Domain.Type
 lookupVarType var context =
-  EnumMap.findWithDefault (panic $ "Context.lookupVarType " <> show var) var $ types context
+  EnumMap.findWithDefault (panic $ "Context.lookupVarType " <> show var) var context.types
 
 lookupVarValue :: Var -> Context v -> Maybe Domain.Type
 lookupVarValue var context =
-  EnumMap.lookup var (values context)
+  EnumMap.lookup var context.values
 
 -------------------------------------------------------------------------------
 -- Prettyable terms
@@ -432,7 +432,7 @@ toPrettyableTerm context term = do
   pure $
     Error.PrettyableTerm
       (moduleName context)
-      ((`lookupVarName` context) <$> toList (indices context))
+      ((`lookupVarName` context) <$> toList context.indices)
       (Syntax.coerce term')
 
 toPrettyableValue :: Context v -> Domain.Value -> M Error.PrettyableTerm
@@ -449,7 +449,7 @@ toPrettyablePattern :: Context v -> Pattern -> Error.PrettyablePattern
 toPrettyablePattern context = do
   Error.PrettyablePattern
     (moduleName context)
-    ((`lookupVarName` context) <$> toList (indices context))
+    ((`lookupVarName` context) <$> toList context.indices)
 
 -------------------------------------------------------------------------------
 -- Meta variables
@@ -466,74 +466,66 @@ newMetaType context =
 newMetaReturningIndex :: Context v -> Domain.Type -> M (Meta.Index, Tsil (Plicity, Var), Domain.Value)
 newMetaReturningIndex context type_ = do
   (closedType, arity) <- piBoundVars context type_
-  i <- atomicModifyIORef' (metas context) $ Meta.new closedType arity (span context)
+  i <- atomicModifyIORef' context.metas $ Meta.new closedType arity context.span
   let args =
-        (,) Explicit <$> IntSeq.toTsil (boundVars context)
+        (,) Explicit <$> IntSeq.toTsil context.boundVars
   pure (i, args, Domain.Neutral (Domain.Meta i) $ Domain.Apps (second Domain.var <$> args))
 
 piBoundVars :: Context v -> Domain.Type -> M (Syntax.Type Void, Int)
 piBoundVars context type_ = do
-  let arity =
-        IntSeq.length $ boundVars context
+  let arity = IntSeq.length context.boundVars
   piType <-
     varPis
       context
-      Environment.empty {Environment.values = values context}
-      ((Explicit,) <$> toList (boundVars context))
+      Environment.empty {Environment.values = context.values}
+      ((Explicit,) <$> toList context.boundVars)
       type_
   pure (piType, arity)
 
-varPis ::
-  Context v ->
-  Domain.Environment v' ->
-  [(Plicity, Var)] ->
-  Domain.Value ->
-  M (Syntax.Term v')
+varPis
+  :: Context v
+  -> Domain.Environment v'
+  -> [(Plicity, Var)]
+  -> Domain.Value
+  -> M (Syntax.Term v')
 varPis context env vars target =
   case vars of
-    [] ->
-      Readback.readback env target
+    [] -> Readback.readback env target
     (plicity, var) : vars' -> do
-      let env' =
-            Environment.extendVar env var
-
-          domain =
-            lookupVarType var context
+      let env' = Environment.extendVar env var
+          domain = lookupVarType var context
       domain' <- Readback.readback env domain
       target' <- varPis context env' vars' target
-      let binding =
-            Binding.Unspanned $ lookupVarName var context
-
+      let binding = Binding.Unspanned $ lookupVarName var context
       pure $ Syntax.Pi binding domain' plicity target'
 
-lookupMeta ::
-  Context v ->
-  Meta.Index ->
-  M (Meta.Entry M)
+lookupMeta
+  :: Context v
+  -> Meta.Index
+  -> M (Meta.Entry M)
 lookupMeta context i = do
-  m <- readIORef (metas context)
+  m <- readIORef context.metas
   pure $ Meta.lookup i m
 
-lookupEagerMeta ::
-  Context v ->
-  Meta.Index ->
-  M Meta.EagerEntry
+lookupEagerMeta
+  :: Context v
+  -> Meta.Index
+  -> M Meta.EagerEntry
 lookupEagerMeta context i = do
-  m <- readIORef (metas context)
+  m <- readIORef context.metas
   Meta.toEagerEntry $ Meta.lookup i m
 
-solveMeta ::
-  Context v ->
-  Meta.Index ->
-  Syntax.Term Void ->
-  M ()
+solveMeta
+  :: Context v
+  -> Meta.Index
+  -> Syntax.Term Void
+  -> M ()
 solveMeta context meta term = do
-  (arity, unblocked) <- atomicModifyIORef' (metas context) $ Meta.solve meta term
+  (arity, unblocked) <- atomicModifyIORef' context.metas $ Meta.solve meta term
   if EnumSet.null unblocked
     then pure ()
     else do
-      let emptyContext =
-            emptyFrom context
+      let emptyContext = emptyFrom context
       value <- Evaluation.evaluate (toEnvironment emptyContext) term
       maybeNewBlockingMeta <- stillBlocked emptyContext arity value
       case maybeNewBlockingMeta of
@@ -542,13 +534,13 @@ solveMeta context meta term = do
         Just newBlockingMeta ->
           addPostponementsBlockedOnMeta context unblocked newBlockingMeta
 
-lazilySolveMeta ::
-  Context v ->
-  Meta.Index ->
-  Lazy (Syntax.Term Void) ->
-  M ()
+lazilySolveMeta
+  :: Context v
+  -> Meta.Index
+  -> Lazy (Syntax.Term Void)
+  -> M ()
 lazilySolveMeta context meta lazyTerm = do
-  (arity, unblocked) <- atomicModifyIORef' (metas context) $ Meta.lazilySolve meta $ force lazyTerm
+  (arity, unblocked) <- atomicModifyIORef' context.metas $ Meta.lazilySolve meta $ force lazyTerm
   if EnumSet.null unblocked
     then pure ()
     else do
@@ -565,25 +557,25 @@ lazilySolveMeta context meta lazyTerm = do
 
 metaSolutionMetas :: Context v -> Meta.Index -> M (EnumSet Meta.Index)
 metaSolutionMetas context index = do
-  m <- readIORef $ metas context
+  m <- readIORef context.metas
   (result, m') <- Meta.solutionMetas index m
-  writeIORef (metas context) m'
+  writeIORef context.metas m'
   pure $ foldMap (Meta.unsolved <> Meta.solved) result
 
 -------------------------------------------------------------------------------
 
 -- | Evaluate the head of a value further, if (now) possible due to meta
 -- solutions or new value bindings. Also evalutes through glued values.
-forceHead ::
-  Context v ->
-  Domain.Value ->
-  M Domain.Value
+forceHead
+  :: Context v
+  -> Domain.Value
+  -> M Domain.Value
 forceHead context value =
   case value of
     Domain.Neutral (Domain.Var var) spine
       | Just headValue <- lookupVarValue var context -> do
-        value' <- Evaluation.applySpine headValue spine
-        forceHead context value'
+          value' <- Evaluation.applySpine headValue spine
+          forceHead context value'
     Domain.Neutral (Domain.Meta metaIndex) spine -> do
       meta <- lookupEagerMeta context metaIndex
 
@@ -604,18 +596,18 @@ forceHead context value =
 
 -- | Evaluate the head of a value further, if (now) possible due to meta
 -- solutions or new value bindings, returning glued values.
-forceHeadGlue ::
-  Context v ->
-  Domain.Value ->
-  M Domain.Value
+forceHeadGlue
+  :: Context v
+  -> Domain.Value
+  -> M Domain.Value
 forceHeadGlue context value =
   case value of
     Domain.Neutral (Domain.Var var) spine
       | Just headValue <- lookupVarValue var context -> do
-        lazyValue <- lazy $ do
-          value' <- Evaluation.applySpine headValue spine
-          forceHeadGlue context value'
-        pure $ Domain.Glued (Domain.Var var) spine $ Domain.Lazy lazyValue
+          lazyValue <- lazy $ do
+            value' <- Evaluation.applySpine headValue spine
+            forceHeadGlue context value'
+          pure $ Domain.Glued (Domain.Var var) spine $ Domain.Lazy lazyValue
     Domain.Neutral (Domain.Meta metaIndex) spine -> do
       meta <- lookupEagerMeta context metaIndex
       case meta of
@@ -633,11 +625,11 @@ forceHeadGlue context value =
     _ ->
       pure value
 
-instantiateType ::
-  Context v ->
-  Domain.Type ->
-  [(Plicity, Domain.Value)] ->
-  M Domain.Type
+instantiateType
+  :: Context v
+  -> Domain.Type
+  -> [(Plicity, Domain.Value)]
+  -> M Domain.Type
 instantiateType context type_ spine = do
   type' <- forceHead context type_
   case (type', spine) of
@@ -645,11 +637,11 @@ instantiateType context type_ spine = do
       pure type'
     (Domain.Fun _ plicity1 target, (plicity2, _) : spine')
       | plicity1 == plicity2 ->
-        instantiateType context target spine'
+          instantiateType context target spine'
     (Domain.Pi _ _ plicity1 targetClosure, (plicity2, arg) : spine')
       | plicity1 == plicity2 -> do
-        target <- Evaluation.evaluateClosure targetClosure arg
-        instantiateType context target spine'
+          target <- Evaluation.evaluateClosure targetClosure arg
+          instantiateType context target spine'
     _ ->
       panic "instantiateType"
 
@@ -659,9 +651,9 @@ instantiateType context type_ spine = do
 report :: Context v -> Error.Elaboration -> M ()
 report context err =
   let err' =
-        Error.Elaboration (definitionKind context) (definitionName context) $
-          Error.Spanned (span context) err
-   in atomicModifyIORef' (errors context) $ \errs ->
+        Error.Elaboration context.definitionKind context.definitionName $
+          Error.Spanned context.span err
+   in atomicModifyIORef' context.errors $ \errs ->
         (errs Tsil.:> err', ())
 
 reportParseError :: Context v -> Error.Parsing -> M ()
@@ -670,7 +662,7 @@ reportParseError context err = do
   forM_ maybeFilePath $ \filePath -> do
     let err' =
           Error.Parse filePath err
-    atomicModifyIORef' (errors context) $ \errs ->
+    atomicModifyIORef' context.errors $ \errs ->
       (errs Tsil.:> err', ())
 
 try :: Context v -> M a -> M (Maybe a)
@@ -688,10 +680,10 @@ try_ context m =
 -------------------------------------------------------------------------------
 -- Zonking
 
-zonk ::
-  Context v ->
-  Syntax.Term v ->
-  M (Syntax.Term v)
+zonk
+  :: Context v
+  -> Syntax.Term v
+  -> M (Syntax.Term v)
 zonk context term = do
   metasRef <- newIORef mempty
   postponedRef <- newIORef (mempty :: EnumMap Postponement.Index (Maybe (Syntax.Term Void)))
@@ -748,38 +740,38 @@ stillBlocked context !arity value = do
       pure $ Just blockingMeta
     Domain.Lam bindings domain _ closure
       | arity > 0 -> do
-        (context', var) <- extend context (Bindings.toName bindings) domain
-        target <- Evaluation.evaluateClosure closure $ Domain.var var
-        stillBlocked context' (arity - 1) target
+          (context', var) <- extend context (Bindings.toName bindings) domain
+          target <- Evaluation.evaluateClosure closure $ Domain.var var
+          stillBlocked context' (arity - 1) target
     _ ->
       pure Nothing
 
 newPostponedCheck :: Context v -> Meta.Index -> (Postponement.CanPostpone -> M (Syntax.Term v)) -> M Postponement.Index
 newPostponedCheck context blockingMeta check = do
-  postponementIndex <- atomicModifyIORef' (postponed context) $ Postponed.insert check
+  postponementIndex <- atomicModifyIORef' context.postponed $ Postponed.insert check
   addPostponementBlockedOnMeta context postponementIndex blockingMeta
   pure postponementIndex
 
 addPostponementBlockedOnMeta :: Context v -> Postponement.Index -> Meta.Index -> M ()
 addPostponementBlockedOnMeta context postponementIndex blockingMeta =
-  atomicModifyIORef' (metas context) $ \m -> (Meta.addPostponedIndex blockingMeta postponementIndex m, ())
+  atomicModifyIORef' context.metas $ \m -> (Meta.addPostponedIndex blockingMeta postponementIndex m, ())
 
 addPostponementsBlockedOnMeta :: Context v -> EnumSet Postponement.Index -> Meta.Index -> M ()
 addPostponementsBlockedOnMeta context postponementIndices blockingMeta =
-  atomicModifyIORef' (metas context) $ \m -> (Meta.addPostponedIndices blockingMeta postponementIndices m, ())
+  atomicModifyIORef' context.metas $ \m -> (Meta.addPostponedIndices blockingMeta postponementIndices m, ())
 
-lookupPostponedCheck ::
-  Postponement.Index ->
-  Context v ->
-  M Postponed.Check
+lookupPostponedCheck
+  :: Postponement.Index
+  -> Context v
+  -> M Postponed.Check
 lookupPostponedCheck i context =
-  Postponed.lookup i <$> readIORef (postponed context)
+  Postponed.lookup i <$> readIORef context.postponed
 
 checkUnblockedPostponedChecks :: Context v -> EnumSet Postponement.Index -> M ()
 checkUnblockedPostponedChecks context indices_ =
   forM_ (EnumSet.toList indices_) $ \index ->
     join $
-      atomicModifyIORef' (postponed context) $ \postponed' -> do
+      atomicModifyIORef' context.postponed $ \postponed' -> do
         let (doIt, postponed'') =
               Postponed.adjustF adjust index postponed'
 
@@ -788,7 +780,7 @@ checkUnblockedPostponedChecks context indices_ =
                 Postponed.Unchecked check' ->
                   ( do
                       result <- check' Postponement.CanPostpone
-                      atomicModifyIORef' (postponed context) $ \p' ->
+                      atomicModifyIORef' context.postponed $ \p' ->
                         (Postponed.update index (Postponed.Checked result) p', ())
                   , check
                   )
@@ -804,7 +796,7 @@ inferAllPostponedChecks context =
   where
     go index =
       join $
-        atomicModifyIORef' (postponed context) $ \postponed' ->
+        atomicModifyIORef' context.postponed $ \postponed' ->
           if index < Postponed.nextIndex postponed'
             then do
               let (doIt, postponed'') =
@@ -815,7 +807,7 @@ inferAllPostponedChecks context =
                       Postponed.Unchecked check ->
                         ( do
                             result <- check Postponement.Can'tPostpone
-                            atomicModifyIORef' (postponed context) $ \p' ->
+                            atomicModifyIORef' context.postponed $ \p' ->
                               (Postponed.update index (Postponed.Checked result) p', ())
                         , Postponed.Checking
                         )

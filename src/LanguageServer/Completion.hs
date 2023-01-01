@@ -1,5 +1,6 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -82,18 +83,18 @@ questionMark filePath (Position.LineColumn line column) =
         prettyTypeUnderCursor <- lift $ Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context typeUnderCursor'
         names <- lift $ getUsableNames itemContext context varPositions
 
-        metasBefore <- readIORef $ Context.metas context
+        metasBefore <- readIORef context.metas
         lift $
           fmap concat $
             forM names $ \(name, value, kind) -> do
-              writeIORef (Context.metas context) metasBefore
+              writeIORef context.metas metasBefore
               type_ <- TypeOf.typeOf context value
               (maxArgs, _) <- Elaboration.insertMetas context Elaboration.UntilTheEnd type_
-              metasBefore' <- readIORef $ Context.metas context
+              metasBefore' <- readIORef context.metas
               maybeArgs <- runMaybeT $
                 asum $
                   foreach (inits maxArgs) $ \args -> do
-                    writeIORef (Context.metas context) metasBefore'
+                    writeIORef context.metas metasBefore'
                     appliedValue <- lift $ foldM (\fun (plicity, arg) -> Evaluation.apply fun plicity arg) value args
                     appliedType <- lift $ TypeOf.typeOf context appliedValue
                     MaybeT $ do

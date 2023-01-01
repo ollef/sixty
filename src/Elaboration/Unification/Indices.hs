@@ -1,7 +1,9 @@
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE NoFieldSelectors #-}
 
 module Elaboration.Unification.Indices where
 
@@ -43,20 +45,20 @@ data UnificationState v = UnificationState
 type Unify v = StateT (UnificationState v) M
 
 unify :: Context v -> Flexibility -> Domain.Value -> Domain.Value -> M (Context v)
-unify context_ flexibility value1 value2 =
-  context
+unify context flexibility value1 value2 =
+  (.context)
     <$> execStateT
       (unifyM flexibility value1 value2)
       UnificationState
-        { context = context_
+        { context = context
         , touchableBefore = Index.Zero
         }
 
 isTouchable :: Var -> Unify v Bool
 isTouchable var = do
-  touchableIndex <- gets touchableBefore
-  context_ <- gets context
-  pure $ case Context.lookupVarIndex var context_ of
+  touchableIndex <- gets (.touchableBefore)
+  context <- gets (.context)
+  pure $ case Context.lookupVarIndex var context of
     Just varIndex -> Index.Succ varIndex > touchableIndex
     Nothing -> False
 
@@ -64,19 +66,19 @@ extend :: Name -> Domain.Type -> (Var -> Unify (Succ v) a) -> Unify v a
 extend name type_ k = do
   st <- get
   (result, st') <- lift $ do
-    (context', var) <- Context.extend (context st) name type_
-    runStateT (k var) st {context = context', touchableBefore = Index.Succ $ touchableBefore st}
-  put st' {context = unextend $ context st', touchableBefore = touchableBefore st}
+    (context', var) <- Context.extend st.context name type_
+    runStateT (k var) st {context = context', touchableBefore = Index.Succ st.touchableBefore}
+  put st' {context = unextend $ st'.context, touchableBefore = st.touchableBefore}
   pure result
 
 unextend :: Context (Succ v) -> Context v
-unextend context_ =
-  case (Context.indices context_, Context.boundVars context_) of
+unextend context =
+  case (context.indices, context.boundVars) of
     (indices Index.Map.:> var, boundVars IntSeq.:> _) ->
-      context_
-        { Context.varNames = EnumMap.delete var $ Context.varNames context_
+      context
+        { Context.varNames = EnumMap.delete var context.varNames
         , Context.indices = indices
-        , Context.types = EnumMap.delete var $ Context.types context_
+        , Context.types = EnumMap.delete var context.types
         , Context.boundVars = boundVars
         }
     _ ->
@@ -84,12 +86,12 @@ unextend context_ =
 
 contextual1 :: (Context v -> a -> M b) -> a -> Unify v b
 contextual1 f x = do
-  c <- gets context
+  c <- gets (.context)
   lift $ f c x
 
 contextual2 :: (Context v -> a -> b -> M c) -> a -> b -> Unify v c
 contextual2 f x y = do
-  c <- gets context
+  c <- gets (.context)
   lift $ f c x y
 
 unifyM :: Flexibility -> Domain.Value -> Domain.Value -> Unify v ()
@@ -100,49 +102,49 @@ unifyM flexibility value1 value2 = do
     -- Same heads
     (Domain.Neutral head1 spine1, Domain.Neutral head2 spine2)
       | head1 == head2 -> do
-        let flexibility' = max (Domain.headFlexibility head1) flexibility
-        unifySpines flexibility' spine1 spine2
+          let flexibility' = max (Domain.headFlexibility head1) flexibility
+          unifySpines flexibility' spine1 spine2
     (Domain.Con con1 args1, Domain.Con con2 args2)
       | con1 == con2
-        , map fst args1 == map fst args2 ->
-        Tsil.zipWithM_ (unifyM flexibility `on` snd) args1 args2
+      , map fst args1 == map fst args2 ->
+          Tsil.zipWithM_ (unifyM flexibility `on` snd) args1 args2
       | otherwise ->
-        throwIO Nope
+          throwIO Nope
     (Domain.Lit lit1, Domain.Lit lit2)
       | lit1 == lit2 ->
-        pure ()
+          pure ()
       | otherwise ->
-        throwIO Nope
+          throwIO Nope
     (Domain.Glued head1 spine1 value1'', Domain.Glued head2 spine2 value2'')
       | head1 == head2 ->
-        unifySpines Flexibility.Flexible spine1 spine2 `catch` \(_ :: Error) ->
-          unifyM flexibility value1'' value2''
+          unifySpines Flexibility.Flexible spine1 spine2 `catch` \(_ :: Error) ->
+            unifyM flexibility value1'' value2''
     (Domain.Glued _ _ value1'', _) ->
       unifyM flexibility value1'' value2'
     (_, Domain.Glued _ _ value2'') ->
       unifyM flexibility value1' value2''
     (Domain.Lam bindings1 type1 plicity1 closure1, Domain.Lam _ type2 plicity2 closure2)
       | plicity1 == plicity2 ->
-        unifyAbstraction (Bindings.toName bindings1) type1 closure1 type2 closure2
+          unifyAbstraction (Bindings.toName bindings1) type1 closure1 type2 closure2
     (Domain.Pi binding1 domain1 plicity1 targetClosure1, Domain.Pi _ domain2 plicity2 targetClosure2)
       | plicity1 == plicity2 ->
-        unifyAbstraction (Binding.toName binding1) domain1 targetClosure1 domain2 targetClosure2
+          unifyAbstraction (Binding.toName binding1) domain1 targetClosure1 domain2 targetClosure2
     (Domain.Pi binding1 domain1 plicity1 targetClosure1, Domain.Fun domain2 plicity2 target2)
       | plicity1 == plicity2 -> do
-        unifyM flexibility domain2 domain1
-        extend (Binding.toName binding1) domain1 $ \var -> do
-          target1 <- lift $ Evaluation.evaluateClosure targetClosure1 $ Domain.var var
-          unifyM flexibility target1 target2
+          unifyM flexibility domain2 domain1
+          extend (Binding.toName binding1) domain1 $ \var -> do
+            target1 <- lift $ Evaluation.evaluateClosure targetClosure1 $ Domain.var var
+            unifyM flexibility target1 target2
     (Domain.Fun domain1 plicity1 target1, Domain.Pi binding2 domain2 plicity2 targetClosure2)
       | plicity1 == plicity2 -> do
-        unifyM flexibility domain2 domain1
-        extend (Binding.toName binding2) domain2 $ \var -> do
-          target2 <- lift $ Evaluation.evaluateClosure targetClosure2 $ Domain.var var
-          unifyM flexibility target1 target2
+          unifyM flexibility domain2 domain1
+          extend (Binding.toName binding2) domain2 $ \var -> do
+            target2 <- lift $ Evaluation.evaluateClosure targetClosure2 $ Domain.var var
+            unifyM flexibility target1 target2
     (Domain.Fun domain1 plicity1 target1, Domain.Fun domain2 plicity2 target2)
       | plicity1 == plicity2 -> do
-        unifyM flexibility domain2 domain1
-        unifyM flexibility target1 target2
+          unifyM flexibility domain2 domain1
+          unifyM flexibility target1 target2
 
     -- Eta expand
     (Domain.Lam bindings1 type1 plicity1 closure1, v2) ->
@@ -161,10 +163,10 @@ unifyM flexibility value1 value2 = do
     -- Vars
     (Domain.Neutral (Domain.Var var1) Domain.Empty, _)
       | Flexibility.Rigid <- flexibility ->
-        solve var1 value2'
+          solve var1 value2'
     (_, Domain.Neutral (Domain.Var var2) Domain.Empty)
       | Flexibility.Rigid <- flexibility ->
-        solve var2 value1'
+          solve var2 value1'
     _ ->
       throwIO Dunno
   where
@@ -186,11 +188,11 @@ unifyM flexibility value1 value2 = do
           modify $ \st -> st {context = context'}
         else throwIO Dunno
 
-unifySpines ::
-  Flexibility ->
-  Domain.Spine ->
-  Domain.Spine ->
-  Unify v ()
+unifySpines
+  :: Flexibility
+  -> Domain.Spine
+  -> Domain.Spine
+  -> Unify v ()
 unifySpines flexibility spine1 spine2 =
   case (spine1, spine2) of
     (Domain.Empty, Domain.Empty) -> pure ()
@@ -214,7 +216,7 @@ unifyBranches
     case (branches1, branches2) of
       (Syntax.ConstructorBranches conTypeName1 conBranches1, Syntax.ConstructorBranches conTypeName2 conBranches2)
         | conTypeName1 == conTypeName2 ->
-          unifyMaps conBranches1 conBranches2
+            unifyMaps conBranches1 conBranches2
       (Syntax.LiteralBranches litBranches1, Syntax.LiteralBranches litBranches2) ->
         unifyMaps (second Telescope.Empty <$> litBranches1) (second Telescope.Empty <$> litBranches2)
       _ ->
@@ -253,25 +255,25 @@ unifyBranches
           _ ->
             pure ()
 
-      unifyTele ::
-        Domain.Environment v1 ->
-        Domain.Environment v2 ->
-        Telescope Bindings Syntax.Type Syntax.Term v1 ->
-        Telescope Bindings Syntax.Type Syntax.Term v2 ->
-        Unify v ()
+      unifyTele
+        :: Domain.Environment v1
+        -> Domain.Environment v2
+        -> Telescope Bindings Syntax.Type Syntax.Term v1
+        -> Telescope Bindings Syntax.Type Syntax.Term v2
+        -> Unify v ()
       unifyTele env1 env2 tele1 tele2 =
         case (tele1, tele2) of
           (Telescope.Extend bindings1 type1 plicity1 tele1', Telescope.Extend _bindings2 type2 plicity2 tele2')
             | plicity1 == plicity2 -> do
-              type1' <- lift $ Evaluation.evaluate env1 type1
-              type2' <- lift $ Evaluation.evaluate env2 type2
-              unifyM flexibility type1' type2'
-              extend (Bindings.toName bindings1) type1' $ \var ->
-                unifyTele
-                  (Environment.extendVar env1 var)
-                  (Environment.extendVar env2 var)
-                  tele1'
-                  tele2'
+                type1' <- lift $ Evaluation.evaluate env1 type1
+                type2' <- lift $ Evaluation.evaluate env2 type2
+                unifyM flexibility type1' type2'
+                extend (Bindings.toName bindings1) type1' $ \var ->
+                  unifyTele
+                    (Environment.extendVar env1 var)
+                    (Environment.extendVar env2 var)
+                    tele1'
+                    tele2'
           (Telescope.Empty body1, Telescope.Empty body2) -> do
             body1' <- lift $ Evaluation.evaluate env1 body1
             body2' <- lift $ Evaluation.evaluate env2 body2
@@ -279,11 +281,11 @@ unifyBranches
           _ ->
             panic "unifyTele"
 
-withInstantiatedTele ::
-  Domain.Environment v1 ->
-  Telescope Bindings Syntax.Type Syntax.Term v1 ->
-  (forall v'. Domain.Value -> Unify v' k) ->
-  Unify v k
+withInstantiatedTele
+  :: Domain.Environment v1
+  -> Telescope Bindings Syntax.Type Syntax.Term v1
+  -> (forall v'. Domain.Value -> Unify v' k)
+  -> Unify v k
 withInstantiatedTele env tele k =
   case tele of
     Telescope.Empty body -> do
@@ -333,35 +335,35 @@ occursHead occ flexibility hd =
   case hd of
     Domain.Var var
       | var == occ ->
-        throwIO $
-          case flexibility of
-            Flexibility.Rigid -> Nope
-            Flexibility.Flexible -> Dunno
-      | otherwise -> do
-        touchable <- isTouchable var
-        unless touchable $
           throwIO $
             case flexibility of
               Flexibility.Rigid -> Nope
               Flexibility.Flexible -> Dunno
+      | otherwise -> do
+          touchable <- isTouchable var
+          unless touchable $
+            throwIO $
+              case flexibility of
+                Flexibility.Rigid -> Nope
+                Flexibility.Flexible -> Dunno
     Domain.Global _ -> pure ()
     Domain.Meta _ -> pure ()
 
-occursElimination ::
-  Var ->
-  Flexibility ->
-  Domain.Elimination ->
-  Unify v ()
+occursElimination
+  :: Var
+  -> Flexibility
+  -> Domain.Elimination
+  -> Unify v ()
 occursElimination occ flexibility elimination =
   case elimination of
     Domain.App _plicity arg -> occurs occ flexibility arg
     Domain.Case branches -> occursBranches occ flexibility branches
 
-occursBranches ::
-  Var ->
-  Flexibility ->
-  Domain.Branches ->
-  Unify v ()
+occursBranches
+  :: Var
+  -> Flexibility
+  -> Domain.Branches
+  -> Unify v ()
 occursBranches occ flexibility (Domain.Branches outerEnv branches defaultBranch) = do
   case branches of
     Syntax.ConstructorBranches _ constructorBranches ->
@@ -373,10 +375,10 @@ occursBranches occ flexibility (Domain.Branches outerEnv branches defaultBranch)
   forM_ defaultBranch $ \branch ->
     occursTele outerEnv $ Telescope.Empty branch
   where
-    occursTele ::
-      Domain.Environment v1 ->
-      Telescope Bindings Syntax.Type Syntax.Term v1 ->
-      Unify v ()
+    occursTele
+      :: Domain.Environment v1
+      -> Telescope Bindings Syntax.Type Syntax.Term v1
+      -> Unify v ()
     occursTele env tele =
       case tele of
         Telescope.Extend bindings type_ _plicity tele' -> do
