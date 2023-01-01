@@ -26,7 +26,7 @@ import Name (Name (Name))
 import qualified Name
 import Plicity
 import qualified Position
-import Protolude hiding (Option, break, moduleName, try)
+import Protolude hiding (break, moduleName, try)
 import qualified Span
 import qualified Surface.Syntax as Surface
 import Text.Parser.Combinators (sepBy, sepBy1)
