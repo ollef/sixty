@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -36,14 +37,14 @@ instance (Persist k, Enum k) => Persist (EnumSet k) where
 
   get = EnumSet.fromList <$> get
 
-instance (Persist k, Eq k, Hashable k, Persist v) => Persist (HashMap k v) where
+instance (Persist k, Hashable k, Persist v) => Persist (HashMap k v) where
   put =
     put . HashMap.toList
 
   get =
     HashMap.fromList <$> get
 
-instance (Persist a, Eq a, Hashable a) => Persist (HashSet a) where
+instance (Persist a, Hashable a) => Persist (HashSet a) where
   put =
     put . HashSet.toList
 
