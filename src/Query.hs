@@ -96,6 +96,8 @@ fetchImportedName ::
 fetchImportedName module_ =
   fetch . ImportedNames module_ . Mapped.Query
 
+deriving instance Eq (Query a)
+
 deriving instance Show (Query a)
 
 deriveGEq ''Query
