@@ -106,7 +106,7 @@ pattern None = (# | (##) #)
 
 type Result a = (# Option a, Consumed, TokenList, ErrorReason #)
 
-type ResultRep = 'TupleRep '[ 'SumRep '[ 'LiftedRep, 'TupleRep '[]], 'SumRep '[ 'TupleRep '[], 'TupleRep '[]], 'LiftedRep, 'LiftedRep]
+type ResultRep = 'TupleRep '[ 'SumRep '[LiftedRep, 'TupleRep '[]], 'SumRep '[ 'TupleRep '[], 'TupleRep '[]], LiftedRep, LiftedRep]
 
 pattern OK :: a -> Consumed -> TokenList -> ErrorReason -> Result a
 pattern OK a con inp err = (# Some a, con, inp, err #)
