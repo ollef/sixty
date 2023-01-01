@@ -28,6 +28,8 @@ data Query key result a where
 
 deriving instance (Show key, Show result) => Show (Query key result a)
 
+deriving instance (Eq key, Eq result) => Eq (Query key result a)
+
 instance (Hashable key, Hashable result) => Hashable (Query key result a) where
   hashWithSalt salt query =
     case query of
@@ -36,12 +38,12 @@ instance (Hashable key, Hashable result) => Hashable (Query key result a) where
       Query key ->
         hashWithSalt salt (1 :: Int, key)
 
-rule ::
-  (Eq key, Hashable key) =>
-  (forall a'. Query key result a' -> query a') ->
-  Query key result a ->
-  Task query (HashMap key result) ->
-  Task query a
+rule
+  :: (Hashable key)
+  => (forall a'. Query key result a' -> query a')
+  -> Query key result a
+  -> Task query (HashMap key result)
+  -> Task query a
 rule inject query fetchMap =
   case query of
     Map ->
