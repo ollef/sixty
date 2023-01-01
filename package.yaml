@@ -62,9 +62,6 @@ library:
     - lsp
     - lifted-async
     - lifted-base
-    - llvm-hs-orphans
-    - llvm-hs-pretty
-    - llvm-hs-pure
     - monad-control
     - parsers
     - persist
