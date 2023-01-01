@@ -32,7 +32,7 @@ import Data.Text.Utf16.Rope (Rope)
 import qualified Elaboration.Meta
 import Extra
 import qualified FileSystem
-import qualified LLVM.AST as LLVM
+import qualified LLVM
 import qualified LambdaLifted.Syntax as LambdaLifted
 import qualified Module
 import Name (Name)
