@@ -11,7 +11,7 @@ import Protolude
 data Signature
   = ConstantSignature !Representation
   | FunctionSignature [Representation] !Representation
-  deriving (Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Persist, Hashable)
 
 data Representation
   = Empty
