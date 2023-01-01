@@ -148,7 +148,7 @@ instance Hashable (Query a) where
       LLVMModuleInitModule -> h 36 ()
     where
       {-# INLINE h #-}
-      h :: Hashable a => Int -> a -> Int
+      h :: Hashable b => Int -> b -> Int
       h tag payload =
         hash tag `hashWithSalt` payload
 
