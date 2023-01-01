@@ -88,11 +88,11 @@ data Query a where
   LLVMModule :: Name.Module -> Query LLVM.Module
   LLVMModuleInitModule :: Query LLVM.Module
 
-fetchImportedName ::
-  MonadFetch Query m =>
-  Name.Module ->
-  Name.Surface ->
-  m (Maybe Scope.Entry)
+fetchImportedName
+  :: MonadFetch Query m
+  => Name.Module
+  -> Name.Surface
+  -> m (Maybe Scope.Entry)
 fetchImportedName module_ =
   fetch . ImportedNames module_ . Mapped.Query
 
