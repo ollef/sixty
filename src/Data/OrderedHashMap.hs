@@ -85,7 +85,7 @@ elems =
 toList :: OrderedHashMap k v -> [(k, v)]
 toList (OrderedHashMap h) =
   map (\(k, Ordered _ v) -> (k, v)) $
-    sortBy (comparing $ \(_, Ordered n _) -> n) $
+    sortOn (\(_, Ordered n _) -> n) $
       HashMap.toList h
 
 fromList
