@@ -23,7 +23,6 @@ import qualified Data.IntervalMap.FingerTree as IntervalMap
 import Data.Persist
 import Data.Text.Utf16.Rope (Rope)
 import qualified Data.Text.Utf16.Rope as Rope
-import LLVM.Orphans ()
 import Protolude hiding (IntSet, get, put)
 import Rock.Traces
 
