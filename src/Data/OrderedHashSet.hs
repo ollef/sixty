@@ -29,7 +29,7 @@ size :: OrderedHashSet a -> Int
 size (OrderedHashSet s) =
   OrderedHashMap.size s
 
-member :: (Eq a, Hashable a) => a -> OrderedHashSet a -> Bool
+member :: (Hashable a) => a -> OrderedHashSet a -> Bool
 member a (OrderedHashSet s) =
   isJust $ OrderedHashMap.lookup a s
 
@@ -37,6 +37,6 @@ toList :: OrderedHashSet a -> [a]
 toList (OrderedHashSet s) =
   fst <$> OrderedHashMap.toList s
 
-fromList :: (Eq a, Hashable a) => [a] -> OrderedHashSet a
+fromList :: (Hashable a) => [a] -> OrderedHashSet a
 fromList as =
   OrderedHashSet $ OrderedHashMap.fromList $ (,()) <$> as

@@ -36,7 +36,7 @@ instance (Hashable k, Hashable v) => Hashable (OrderedHashMap k v) where
   hashWithSalt s =
     hashWithSalt s . toList
 
-instance (Eq k, Hashable k, Persist k, Persist v) => Persist (OrderedHashMap k v) where
+instance (Hashable k, Persist k, Persist v) => Persist (OrderedHashMap k v) where
   get =
     fromList <$> get
 
@@ -51,11 +51,11 @@ size :: OrderedHashMap k v -> Int
 size (OrderedHashMap h) =
   HashMap.size h
 
-lookup :: (Eq k, Hashable k) => k -> OrderedHashMap k v -> Maybe v
+lookup :: (Hashable k) => k -> OrderedHashMap k v -> Maybe v
 lookup k (OrderedHashMap h) =
   (\(Ordered _ v) -> v) <$> HashMap.lookup k h
 
-lookupDefault :: (Eq k, Hashable k) => v -> k -> OrderedHashMap k v -> v
+lookupDefault :: (Hashable k) => v -> k -> OrderedHashMap k v -> v
 lookupDefault def k (OrderedHashMap h) =
   (\(Ordered _ v) -> v) $ HashMap.lookupDefault (Ordered 0 def) k h
 
@@ -88,31 +88,31 @@ toList (OrderedHashMap h) =
     sortBy (comparing $ \(_, Ordered n _) -> n) $
       HashMap.toList h
 
-fromList ::
-  (Eq k, Hashable k) =>
-  [(k, v)] ->
-  OrderedHashMap k v
+fromList
+  :: (Hashable k)
+  => [(k, v)]
+  -> OrderedHashMap k v
 fromList =
   OrderedHashMap
     . HashMap.fromList
     . zipWith (\n (k, v) -> (k, Ordered n v)) [0 ..]
 
-fromListWith ::
-  (Eq k, Hashable k) =>
-  (v -> v -> v) ->
-  [(k, v)] ->
-  OrderedHashMap k v
+fromListWith
+  :: (Hashable k)
+  => (v -> v -> v)
+  -> [(k, v)]
+  -> OrderedHashMap k v
 fromListWith f =
   OrderedHashMap
     . HashMap.fromListWith (\(Ordered i v1) (Ordered _ v2) -> Ordered i $ f v1 v2)
     . zipWith (\n (k, v) -> (k, Ordered n v)) [0 ..]
 
-intersectionWith ::
-  (Eq k, Hashable k) =>
-  (v1 -> v2 -> v3) ->
-  OrderedHashMap k v1 ->
-  OrderedHashMap k v2 ->
-  OrderedHashMap k v3
+intersectionWith
+  :: (Hashable k)
+  => (v1 -> v2 -> v3)
+  -> OrderedHashMap k v1
+  -> OrderedHashMap k v2
+  -> OrderedHashMap k v3
 intersectionWith f (OrderedHashMap h1) (OrderedHashMap h2) =
   OrderedHashMap $
     HashMap.intersectionWith
@@ -120,12 +120,12 @@ intersectionWith f (OrderedHashMap h1) (OrderedHashMap h2) =
       h1
       h2
 
-difference :: (Eq k, Hashable k) => OrderedHashMap k v -> OrderedHashMap k w -> OrderedHashMap k v
+difference :: (Hashable k) => OrderedHashMap k v -> OrderedHashMap k w -> OrderedHashMap k v
 difference (OrderedHashMap h1) (OrderedHashMap h2) =
   OrderedHashMap $
     HashMap.difference h1 h2
 
-differenceFromMap :: (Eq k, Hashable k) => OrderedHashMap k v -> HashMap k w -> OrderedHashMap k v
+differenceFromMap :: (Hashable k) => OrderedHashMap k v -> HashMap k w -> OrderedHashMap k v
 differenceFromMap (OrderedHashMap h1) h2 =
   OrderedHashMap $
     HashMap.difference h1 h2
