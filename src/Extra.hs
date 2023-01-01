@@ -4,7 +4,7 @@ import Data.Graph
 import qualified Data.HashSet as HashSet
 import Protolude
 
-unique :: (Eq a, Hashable a, Foldable f) => f a -> Bool
+unique :: (Hashable a, Foldable f) => f a -> Bool
 unique = go mempty . toList
   where
     go seen as =
@@ -13,16 +13,16 @@ unique = go mempty . toList
           True
         a : as'
           | a `HashSet.member` seen ->
-            False
+              False
           | otherwise ->
-            go (HashSet.insert a seen) as'
+              go (HashSet.insert a seen) as'
 
-topoSortWith ::
-  (Foldable t, Ord name) =>
-  (a -> name) ->
-  (a -> [name]) ->
-  t a ->
-  [SCC a]
+topoSortWith
+  :: (Foldable t, Ord name)
+  => (a -> name)
+  -> (a -> [name])
+  -> t a
+  -> [SCC a]
 topoSortWith name deps as =
   stronglyConnComp [(a, name a, deps a) | a <- toList as]
 
