@@ -58,7 +58,7 @@ instance Eq key => GEq (Query key result) where
     | k1 == k2 = Just Refl
   geq _ _ = Nothing
 
-instance (Eq key, Ord key) => GCompare (Query key result) where
+instance (Ord key) => GCompare (Query key result) where
   gcompare Map Map = GEQ
   gcompare Map _ = GLT
   gcompare _ Map = GGT
