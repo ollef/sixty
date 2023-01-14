@@ -19,6 +19,7 @@ import qualified ClosureConverted.Syntax as ClosureConverted
 import Control.Monad.Fail
 import Core.Binding (Binding)
 import qualified Core.Syntax as Syntax
+import qualified Data.ByteString.Lazy as Lazy
 import Data.Constraint.Extras.TH
 import Data.EnumMap (EnumMap)
 import Data.GADT.Compare.TH
@@ -32,7 +33,6 @@ import Data.Text.Utf16.Rope (Rope)
 import qualified Elaboration.Meta
 import Extra
 import qualified FileSystem
-import qualified LLVM
 import qualified LambdaLifted.Syntax as LambdaLifted
 import qualified Module
 import Name (Name)
@@ -85,8 +85,8 @@ data Query a where
   Assembly :: Name.Lifted -> Query (Maybe Assembly.Definition)
   HeapAllocates :: Name.Lifted -> Query Bool
   AssemblyModule :: Name.Module -> Query [(Name.Lifted, Assembly.Definition)]
-  LLVMModule :: Name.Module -> Query LLVM.Module
-  LLVMModuleInitModule :: Query LLVM.Module
+  LLVMModule :: Name.Module -> Query Lazy.ByteString
+  LLVMModuleInitModule :: Query Lazy.ByteString
 
 fetchImportedName
   :: MonadFetch Query m
