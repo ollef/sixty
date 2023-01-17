@@ -11,6 +11,7 @@ import qualified ClosureConvertedToAssembly
 import Data.Bitraversable
 import Data.ByteString.Builder (Builder)
 import qualified Data.ByteString.Builder as Builder
+import qualified Data.ByteString.Lazy as Lazy
 import Data.ByteString.Short (ShortByteString)
 import qualified Data.ByteString.Short as ShortByteString
 import Data.HashMap.Lazy (HashMap)
@@ -23,7 +24,7 @@ import qualified Data.Tsil as Tsil
 import qualified Literal
 import qualified Name
 import Prettyprinter
-import Protolude hiding (IntMap, cast, local, moduleName)
+import Protolude hiding (IntMap, cast, local)
 
 data LLVMOperand = Local !Builder !LLVMName
 
@@ -147,7 +148,7 @@ memset0 destination size = do
 
 -------------------------------------------------------------------------------
 
-assembleModule :: Name.Module -> [(Name.Lifted, Assembly.Definition)] -> LLVM.Module
+assembleModule :: Name.Module -> [(Name.Lifted, Assembly.Definition)] -> Lazy.ByteString
 assembleModule (Name.Module moduleNameText) definitions = do
   let (assembledDefinitions, usedGlobals) =
         unzip $ foreach definitions $ uncurry assembleDefinition
@@ -156,17 +157,22 @@ assembleModule (Name.Module moduleNameText) definitions = do
         concat assembledDefinitions
 
       forwardDeclarations =
-        HashMap.difference (mconcat usedGlobals) (HashSet.toMap $ HashSet.fromList (LLVM.Global.name <$> assembledDefinitions'))
+        HashMap.difference (mconcat usedGlobals) (HashSet.toMap $ HashSet.fromList assembledDefinitions')
 
-  LLVM.Module
-    { moduleName = ShortByteString.toShort $ toUtf8 moduleNameText
-    , moduleSourceFileName = ""
-    , moduleDataLayout = Nothing
-    , moduleTargetTriple = Nothing
-    , moduleDefinitions = LLVM.GlobalDefinition <$> HashMap.elems forwardDeclarations <> assembledDefinitions'
-    }
+  Builder.toLazyByteString $
+    mconcat $
+      intersperse "\n" $
+        HashMap.elems forwardDeclarations <> assembledDefinitions'
 
-assembleDefinition :: Name.Lifted -> Assembly.Definition -> ([LLVM.Global], HashMap LLVMName LLVM.Global)
+-- LLVM.Module
+--   { moduleName = ShortByteString.toShort $ toUtf8 moduleNameText
+--   , moduleSourceFileName = ""
+--   , moduleDataLayout = Nothing
+--   , moduleTargetTriple = Nothing
+--   , moduleDefinitions = LLVM.GlobalDefinition <$> HashMap.elems forwardDeclarations <> assembledDefinitions'
+--   }
+
+assembleDefinition :: Name.Lifted -> Assembly.Definition -> ([(LLVMName, Builder)], HashMap LLVMName LLVMDeclaration)
 assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
   second (.usedGlobals)
     $ flip
@@ -183,42 +189,43 @@ assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
       Assembly.KnownConstantDefinition type_ (Literal.Integer value) isConstant -> do
         let type' = llvmType type_
         pure
-          [ LLVM.globalVariableDefaults
-              { LLVM.Global.name = assembleName name
-              , LLVM.Global.unnamedAddr = Just LLVM.GlobalAddr
-              , LLVM.Global.type' = type'
-              , LLVM.Global.initializer =
-                  Just
-                    LLVM.Constant.Int
-                      { integerBits = wordBits
-                      , integerValue = value
-                      }
-              , LLVM.Global.linkage = linkage
-              , LLVM.Global.isConstant = isConstant
-              }
+          [
+            ( name'
+            , name
+                <> " = unnamed_addr "
+                <> linkage
+                <> "constant "
+                <> type'
+                <> " "
+                <> Builder.intDec value
+            )
           ]
       Assembly.ConstantDefinition type_ functionReturnType parameters basicBlock -> do
+        let type' = llvmType type_
+            initName = assembleName $ ClosureConvertedToAssembly.initDefinitionName name
         parameters' <- mapM (uncurry activateLocal) parameters
         assembleBasicBlockReturningResult functionReturnType basicBlock
         basicBlocks <- gets _basicBlocks
-        let type' = llvmType type_
         pure
-          [ LLVM.globalVariableDefaults
-              { LLVM.Global.name = assembleName name
-              , LLVM.Global.unnamedAddr = Just LLVM.GlobalAddr
-              , LLVM.Global.type' = type'
-              , LLVM.Global.initializer = Just LLVM.Constant.Undef {constantType = type'}
-              , LLVM.Global.linkage = linkage
-              }
-          , LLVM.Global.functionDefaults
-              { LLVM.Global.callingConvention = LLVM.CallingConvention.Fast
-              , LLVM.Global.returnType = llvmReturnType functionReturnType
-              , LLVM.Global.name = assembleName $ ClosureConvertedToAssembly.initDefinitionName name
-              , LLVM.Global.parameters = ([LLVM.Parameter wordPointer parameter [] | parameter <- parameters'], False)
-              , LLVM.Global.alignment = alignment
-              , LLVM.Global.basicBlocks = toList basicBlocks
-              , LLVM.Global.linkage = LLVM.Private
-              }
+          [
+            ( name'
+            , name <> " = unnamed_addr " <> linkage <> "global " <> type' <> " undef"
+            )
+          ,
+            ( initName
+            , "define private fastcc "
+                <> llvmReturnType functionReturnType
+                <> " "
+                <> initName
+                <> "("
+                <> mconcat (intersperse ", " [wordPointer <> " " <> p | p <- parameters'])
+                <> ") align "
+                <> alignment
+                <> " {"
+                  mconcat
+                  (intersperse "\n" basicBlocks)
+                <> "}"
+            )
           ]
       Assembly.FunctionDefinition returnType parameters basicBlock -> do
         parameters' <- mapM (uncurry activateLocal) parameters
@@ -236,12 +243,13 @@ assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
               }
           ]
   where
+    name' = assembleName name
     linkage =
       case liftedNameNumber of
         0 ->
-          LLVM.External
+          ""
         _ ->
-          LLVM.Private
+          "private "
 
 assembleName :: Name.Lifted -> LLVMName
 assembleName =
