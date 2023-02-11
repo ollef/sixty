@@ -1,5 +1,6 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
@@ -25,7 +26,7 @@ import qualified Literal
 import qualified Name
 import Protolude hiding (IntMap, cast, local)
 
-newtype Name = Name ShortByteString
+newtype Name = Name {shortByteString :: ShortByteString}
   deriving (Eq, Show, Hashable, IsString)
 
 localName :: Name -> Builder
@@ -135,7 +136,7 @@ endBlock terminator =
       , basicBlockName = panic "AssemblyToLLVM: not in a basic block"
       , basicBlocks =
           s.basicBlocks
-            <> localName s.basicBlockName
+            <> Builder.shortByteString s.basicBlockName.shortByteString
             <> ":\n"
             <> s.instructions
             <> "\n  "
@@ -277,6 +278,7 @@ assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
                   [ llvmType type_
                     <> " "
                     <> separate " " (parameterAttributes type_)
+                    <> " "
                     <> localName parameter
                   | ((type_, _), parameter) <- zip parameters parameters'
                   ]
@@ -313,8 +315,8 @@ returnResult returnType_ result = do
     (Assembly.Void, Assembly.Void) -> do
       endBlock "ret void"
     (Assembly.Return type_, Assembly.Return res) -> do
-      operand <- assembleOperandAndCastTo type_ res
-      endBlock $ "ret " <> typedOperand operand
+      res' <- assembleOperandAndCastTo type_ res
+      endBlock $ "ret " <> typedOperand res'
     _ ->
       panic "AssemblyToLLVM.returnResult: return type mismatch"
 
@@ -345,11 +347,11 @@ assembleInstruction instruction =
       function' <- assembleOperandAndCastTo (Assembly.FunctionPointer (Assembly.Return returnType) $ fst <$> arguments) function
       arguments' <- mapM (uncurry assembleOperandAndCastTo) arguments
       destination' <- activateLocal returnType destination
-      emitInstruction $ localName destination' <> " = call fastcc " <> typedOperand function' <> parens (typedOperand <$> arguments')
+      emitInstruction $ localName destination' <> " = call fastcc " <> llvmType returnType <> " " <> operand function'.operand <> parens (typedOperand <$> arguments')
     Assembly.Call Assembly.Void function arguments -> do
       function' <- assembleOperandAndCastTo (Assembly.FunctionPointer Assembly.Void $ fst <$> arguments) function
       arguments' <- mapM (uncurry assembleOperandAndCastTo) arguments
-      emitInstruction $ "call fastcc " <> typedOperand function' <> parens (typedOperand <$> arguments')
+      emitInstruction $ "call fastcc void " <> operand function'.operand <> parens (typedOperand <$> arguments')
     Assembly.Load destination address -> do
       address' <- assembleOperandAndCastTo Assembly.WordPointer address
       destination' <- activateLocal Assembly.Word destination
@@ -373,7 +375,7 @@ assembleInstruction instruction =
         "store "
           <> commaSeparate
             [ typedOperand value'
-            , typedOperand TypedOperand {type_ = llvmType type_, operand = Global $ assembleName global}
+            , typedOperand TypedOperand {type_ = pointer, operand = Global $ assembleName global}
             , "align " <> Builder.intDec alignment
             ]
     Assembly.Add destination operand1 operand2 -> do
@@ -489,6 +491,7 @@ assembleInstruction instruction =
           <> typedOperand scrutinee'
           <> ", label "
           <> localName defaultBranchLabel
+          <> " "
           <> brackets [typedOperand TypedOperand {type_ = wordSizedInt, operand = Constant $ Builder.integerDec i} <> ", label " <> localName l | (i, l) <- branchLabels]
       branchResultOperands <- forM (zip branchLabels branches) $ \((_, branchLabel), (_, Assembly.BasicBlock instructions result)) -> do
         startBlock branchLabel
@@ -520,61 +523,60 @@ assembleInstruction instruction =
               <> commaSeparate [brackets [typedOperand v, localName l] | (v, l) <- incomingValues]
 
 assembleOperand :: Assembly.Operand -> Assembler (Assembly.NameSuggestion, Assembly.Type, TypedOperand)
-assembleOperand operand = do
-  case operand of
-    Assembly.LocalOperand local@(Assembly.Local _ nameSuggestion) -> do
-      locals <- gets (.locals)
-      let (type_, operand') = HashMap.lookupDefault (panic $ "assembleOperandWithOperandType: no such local " <> show local) local locals
-      pure (nameSuggestion, type_, operand')
-    Assembly.GlobalConstant global globalType -> do
-      let globalName_ = assembleName global
-          globalNameText = Assembly.nameText global
-          nameSuggestion = Assembly.NameSuggestion globalNameText
-      declare globalName_ $ globalName globalName_ <> " = external constant " <> llvmType globalType
-      case globalType of
-        Assembly.Word ->
-          pure (nameSuggestion, Assembly.WordPointer, TypedOperand {type_ = pointer, operand = Global globalName_})
-        Assembly.WordPointer -> do
-          destination <- freshName nameSuggestion
-          emitInstruction $
-            localName destination <> " = load " <> wordSizedInt <> ", ptr " <> globalName globalName_ <> ", align " <> Builder.intDec alignment
-          pure (nameSuggestion, Assembly.WordPointer, TypedOperand {type_ = pointer, operand = Local destination})
-        Assembly.FunctionPointer _ _ -> do
-          let llvmType_ = llvmType globalType
-          destination <- freshName nameSuggestion
-          emitInstruction $
-            localName destination <> " = load " <> llvmType_ <> ", ptr " <> globalName globalName_ <> ", align " <> Builder.intDec alignment
-          pure (nameSuggestion, Assembly.WordPointer, TypedOperand {type_ = llvmType_, operand = Local destination})
-        Assembly.Struct types ->
-          pure (nameSuggestion, Assembly.Struct types, TypedOperand {type_ = pointer, operand = Global globalName_})
-    Assembly.GlobalFunction global returnType parameterTypes -> do
-      let defType = Assembly.FunctionPointer returnType parameterTypes
-          globalNameText = Assembly.nameText global
-          nameSuggestion = Assembly.NameSuggestion globalNameText
-          globalName_ = assembleName global
-          globalType = llvmType defType
-      declare globalName_ $ "declare fastcc " <> llvmReturnType returnType <> globalName globalName_ <> parens (llvmType <$> parameterTypes)
-      pure (nameSuggestion, defType, TypedOperand {type_ = globalType, operand = Global globalName_})
-    Assembly.StructOperand operands -> do
-      typedOperands <- mapM assembleOperand operands
-      let types = (\(_, type', _) -> type') <$> typedOperands
-          operands' = (\(_, _, operand') -> operand') <$> typedOperands
-          type_ = Assembly.Struct types
-          llvmType_ = llvmType type_
-          go (index, struct) fieldOperand = do
-            struct' <- freshName "struct"
-            emitInstruction $ localName struct' <> " = insertvalue " <> typedOperand struct <> ", " <> typedOperand fieldOperand <> ", " <> Builder.intDec index
-            pure (index + 1, TypedOperand {type_ = llvmType_, operand = Local struct'})
-      result <- snd <$> foldM go (0, TypedOperand {type_ = llvmType_, operand = Constant "undef"}) operands'
-      pure ("struct", type_, result)
-    Assembly.Lit lit ->
-      case lit of
-        Literal.Integer int ->
-          pure
-            ( "literal"
-            , Assembly.Word
-            , TypedOperand {type_ = wordSizedInt, operand = Constant $ Builder.integerDec int}
-            )
+assembleOperand = \case
+  Assembly.LocalOperand local@(Assembly.Local _ nameSuggestion) -> do
+    locals <- gets (.locals)
+    let (type_, operand') = HashMap.lookupDefault (panic $ "assembleOperandWithOperandType: no such local " <> show local) local locals
+    pure (nameSuggestion, type_, operand')
+  Assembly.GlobalConstant global globalType -> do
+    let globalName_ = assembleName global
+        globalNameText = Assembly.nameText global
+        nameSuggestion = Assembly.NameSuggestion globalNameText
+    declare globalName_ $ globalName globalName_ <> " = external constant " <> llvmType globalType
+    case globalType of
+      Assembly.Word ->
+        pure (nameSuggestion, Assembly.WordPointer, TypedOperand {type_ = pointer, operand = Global globalName_})
+      Assembly.WordPointer -> do
+        destination <- freshName nameSuggestion
+        emitInstruction $
+          localName destination <> " = load " <> wordSizedInt <> ", ptr " <> globalName globalName_ <> ", align " <> Builder.intDec alignment
+        pure (nameSuggestion, Assembly.WordPointer, TypedOperand {type_ = pointer, operand = Local destination})
+      Assembly.FunctionPointer _ _ -> do
+        let llvmType_ = llvmType globalType
+        destination <- freshName nameSuggestion
+        emitInstruction $
+          localName destination <> " = load " <> llvmType_ <> ", ptr " <> globalName globalName_ <> ", align " <> Builder.intDec alignment
+        pure (nameSuggestion, Assembly.WordPointer, TypedOperand {type_ = llvmType_, operand = Local destination})
+      Assembly.Struct types ->
+        pure (nameSuggestion, Assembly.Struct types, TypedOperand {type_ = pointer, operand = Global globalName_})
+  Assembly.GlobalFunction global returnType parameterTypes -> do
+    let defType = Assembly.FunctionPointer returnType parameterTypes
+        globalNameText = Assembly.nameText global
+        nameSuggestion = Assembly.NameSuggestion globalNameText
+        globalName_ = assembleName global
+        globalType = llvmType defType
+    declare globalName_ $ "declare fastcc " <> llvmReturnType returnType <> " " <> globalName globalName_ <> parens (llvmType <$> parameterTypes)
+    pure (nameSuggestion, defType, TypedOperand {type_ = globalType, operand = Global globalName_})
+  Assembly.StructOperand operands -> do
+    typedOperands <- mapM assembleOperand operands
+    let types = (\(_, type', _) -> type') <$> typedOperands
+        operands' = (\(_, _, operand') -> operand') <$> typedOperands
+        type_ = Assembly.Struct types
+        llvmType_ = llvmType type_
+        go (index, struct) fieldOperand = do
+          struct' <- freshName "struct"
+          emitInstruction $ localName struct' <> " = insertvalue " <> typedOperand struct <> ", " <> typedOperand fieldOperand <> ", " <> Builder.intDec index
+          pure (index + 1, TypedOperand {type_ = llvmType_, operand = Local struct'})
+    result <- snd <$> foldM go (0, TypedOperand {type_ = llvmType_, operand = Constant "undef"}) operands'
+    pure ("struct", type_, result)
+  Assembly.Lit lit ->
+    case lit of
+      Literal.Integer int ->
+        pure
+          ( "literal"
+          , Assembly.Word
+          , TypedOperand {type_ = wordSizedInt, operand = Constant $ Builder.integerDec int}
+          )
 
 assembleOperandAndCastTo :: Assembly.Type -> Assembly.Operand -> Assembler TypedOperand
 assembleOperandAndCastTo desiredType op = do

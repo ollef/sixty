@@ -1,3 +1,5 @@
+{-# LANGUAGE KindSignatures #-}
+
 module Environment where
 
 import Data.EnumMap (EnumMap)

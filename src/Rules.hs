@@ -60,11 +60,11 @@ import System.FilePath
 import Telescope (Telescope)
 import qualified Telescope
 
-rules ::
-  HashSet FilePath ->
-  HashSet FilePath ->
-  (FilePath -> IO (Either Rope Text)) ->
-  GenRules (Writer [Error] (Writer TaskKind Query)) Query
+rules
+  :: HashSet FilePath
+  -> HashSet FilePath
+  -> (FilePath -> IO (Either Rope Text))
+  -> GenRules (Writer [Error] (Writer TaskKind Query)) Query
 rules sourceDirectories files readFile_ (Writer (Writer query)) =
   case query of
     SourceDirectories ->
@@ -140,8 +140,8 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                           , _module = Builtin.Module
                           , _alias = (Span.Absolute 0 0, "Sixten.Builtin")
                           , _importedNames = Module.AllExposed
-                          } :
-                        Module._imports header
+                          }
+                          : Module._imports header
                     }
 
             pure $
@@ -330,8 +330,8 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
               go (dep : todo) done
                 | dep `HashSet.member` done = go todo done
                 | otherwise = do
-                  depDeps <- fetch $ TransitiveDependencies dep Mapped.Map
-                  go todo $ HashSet.insert dep done <> HashSet.fromMap depDeps
+                    depDeps <- fetch $ TransitiveDependencies dep Mapped.Map
+                    go todo $ HashSet.insert dep done <> HashSet.fromMap depDeps
           deps <- fetch $ Dependencies qualifiedName Mapped.Map
           HashSet.toMap
             <$> go
@@ -421,9 +421,9 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                   constr
                   constrs
           ClosureConverted.Syntax.ParameterisedDataDefinition _ tele -> do
-            let go ::
-                  Telescope name ClosureConverted.Syntax.Type ClosureConverted.Syntax.ConstructorDefinitions v ->
-                  Telescope name ClosureConverted.Syntax.Type ClosureConverted.Syntax.Type v
+            let go
+                  :: Telescope name ClosureConverted.Syntax.Type ClosureConverted.Syntax.ConstructorDefinitions v
+                  -> Telescope name ClosureConverted.Syntax.Type ClosureConverted.Syntax.Type v
                 go tele' =
                   case tele' of
                     Telescope.Empty (ClosureConverted.Syntax.ConstructorDefinitions constrs) ->
@@ -473,7 +473,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
     LLVMModule module_ ->
       noError $ do
         assemblyDefinitions <- fetch $ AssemblyModule module_
-        pure $ AssemblyToLLVM.assembleModule module_ assemblyDefinitions
+        pure $ AssemblyToLLVM.assembleModule assemblyDefinitions
     LLVMModuleInitModule ->
       noError $ do
         inputFiles <- fetch Query.InputFiles
@@ -483,7 +483,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
 
         assemblyDefinition <- runM $ ClosureConvertedToAssembly.generateModuleInits moduleNames
 
-        pure $ AssemblyToLLVM.assembleModule "module_init" [(Name.Lifted "$module_init" 0, assemblyDefinition)]
+        pure $ AssemblyToLLVM.assembleModule [(Name.Lifted "$module_init" 0, assemblyDefinition)]
   where
     input :: Functor m => m a -> m ((a, TaskKind), [Error])
     input = fmap ((,mempty) . (,Input))
@@ -494,12 +494,12 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
     nonInput :: Functor m => m (a, [Error]) -> m ((a, TaskKind), [Error])
     nonInput = fmap (first (,NonInput))
 
-    runElaboratorWithDefault ::
-      a ->
-      Scope.DefinitionKind ->
-      Name.Qualified ->
-      M (a, [Error]) ->
-      Task Query (a, [Error])
+    runElaboratorWithDefault
+      :: a
+      -> Scope.DefinitionKind
+      -> Name.Qualified
+      -> M (a, [Error])
+      -> Task Query (a, [Error])
     runElaboratorWithDefault default_ definitionKind defName m = do
       eitherResult <- try $ runM m
       pure $

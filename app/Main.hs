@@ -13,7 +13,7 @@ import qualified Command.Watch as Command (watch)
 import qualified Data.Text as Text
 import qualified LanguageServer
 import Options.Applicative
-import Protolude hiding (check, force, option)
+import Protolude hiding (check, force)
 
 main :: IO ()
 main =

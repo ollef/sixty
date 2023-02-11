@@ -4,9 +4,8 @@
 
 module Compiler where
 
+import qualified Data.ByteString.Lazy as Lazy
 import Data.String (String)
-import qualified Data.Text.Lazy.IO as Lazy
-import LLVM.Pretty (ppllvm)
 import qualified Name
 import qualified Paths_sixty as Paths
 import Prettyprinter
@@ -27,16 +26,14 @@ compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel = d
   moduleLLVMFiles <- forM (toList filePaths) $ \filePath -> do
     (moduleName@(Name.Module moduleNameText), _, _) <- fetch $ Query.ParsedFile filePath
     llvmModule <- fetch $ Query.LLVMModule moduleName
-    let llvmFileName =
-          moduleAssemblyDir </> toS moduleNameText <.> "ll"
-    liftIO $ Lazy.writeFile llvmFileName $ ppllvm llvmModule
+    let llvmFileName = moduleAssemblyDir </> toS moduleNameText <.> "ll"
+    liftIO $ Lazy.writeFile llvmFileName llvmModule
     pure llvmFileName
 
   moduleInitLLVMFile <- do
     llvmModule <- fetch Query.LLVMModuleInitModule
-    let llvmFileName =
-          assemblyDir </> "module_init" <.> "ll"
-    liftIO $ Lazy.writeFile llvmFileName $ ppllvm llvmModule
+    let llvmFileName = assemblyDir </> "module_init" <.> "ll"
+    liftIO $ Lazy.writeFile llvmFileName llvmModule
     pure llvmFileName
 
   builtinLLVMFile <- liftIO $ Paths.getDataFileName "rts/Sixten.Builtin.ll"
