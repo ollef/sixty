@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -28,7 +29,7 @@ force (Lazy a) =
 {-# NOINLINE lazy #-}
 lazy :: M a -> M (Lazy a)
 lazy m =
-  liftBaseWith $ \runInIO ->
+  liftBaseWith \runInIO ->
     pure $ Lazy $ unsafeDupablePerformIO $ runInIO m
 
 freshVar :: M Var

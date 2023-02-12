@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedRecordDot #-}
@@ -37,14 +38,14 @@ import Var (Var)
 
 complete :: FilePath -> Position.LineColumn -> Task Query (Maybe [LSP.CompletionItem])
 complete filePath (Position.LineColumn line column) =
-  CursorAction.cursorAction filePath (Position.LineColumn line $ max 0 $ column - 1) $ \item _ ->
+  CursorAction.cursorAction filePath (Position.LineColumn line $ max 0 $ column - 1) \item _ ->
     case item of
       CursorAction.Import _ ->
         empty
       CursorAction.Term itemContext context varPositions _ -> do
         names <- lift $ getUsableNames itemContext context varPositions
         lift $
-          forM names $ \(name, value, kind) -> do
+          forM names \(name, value, kind) -> do
             type_ <- TypeOf.typeOf context value
             type' <- Elaboration.readback context type_
             prettyType <- Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context type'
@@ -71,7 +72,7 @@ complete filePath (Position.LineColumn line column) =
 
 questionMark :: FilePath -> Position.LineColumn -> Task Query (Maybe [LSP.CompletionItem])
 questionMark filePath (Position.LineColumn line column) =
-  CursorAction.cursorAction filePath (Position.LineColumn line $ max 0 $ column - 1) $ \item _ ->
+  CursorAction.cursorAction filePath (Position.LineColumn line $ max 0 $ column - 1) \item _ ->
     case item of
       CursorAction.Import _ ->
         empty
@@ -86,14 +87,14 @@ questionMark filePath (Position.LineColumn line column) =
         metasBefore <- readIORef context.metas
         lift $
           fmap concat $
-            forM names $ \(name, value, kind) -> do
+            forM names \(name, value, kind) -> do
               writeIORef context.metas metasBefore
               type_ <- TypeOf.typeOf context value
               (maxArgs, _) <- Elaboration.insertMetas context Elaboration.UntilTheEnd type_
               metasBefore' <- readIORef context.metas
               maybeArgs <- runMaybeT $
                 asum $
-                  foreach (inits maxArgs) $ \args -> do
+                  foreach (inits maxArgs) \args -> do
                     writeIORef context.metas metasBefore'
                     appliedValue <- lift $ foldM (\fun (plicity, arg) -> Evaluation.apply fun plicity arg) value args
                     appliedType <- lift $ TypeOf.typeOf context appliedValue
@@ -165,7 +166,7 @@ getUsableNames itemContext context varPositions = do
   hPutStrLn stderr $ "getUsableNames " ++ show itemContext
   locals <- case itemContext of
     CursorAction.ExpressionContext ->
-      forM (EnumMap.toList varPositions) $ \(var, _) -> do
+      forM (EnumMap.toList varPositions) \(var, _) -> do
         let Name text =
               Context.lookupVarName var context
         pure (text, Domain.var var, LSP.CiVariable)
@@ -180,7 +181,7 @@ getUsableNames itemContext context varPositions = do
   let scopeEntries =
         moduleScope <> importedScopeEntries
 
-  imports <- forM (HashMap.toList scopeEntries) $ \(Name.Surface name, entry) ->
+  imports <- forM (HashMap.toList scopeEntries) \(Name.Surface name, entry) ->
     case entry of
       Scope.Name global -> do
         let go = do

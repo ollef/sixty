@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -17,7 +18,7 @@ import qualified Span
 
 hover :: FilePath -> Position.LineColumn -> Task Query (Maybe (Span.LineColumn, Doc ann))
 hover filePath pos =
-  CursorAction.cursorAction filePath pos $ \item lineColumn ->
+  CursorAction.cursorAction filePath pos \item lineColumn ->
     case item of
       CursorAction.Term _ context _ term -> do
         value <- lift $ Elaboration.evaluate context term

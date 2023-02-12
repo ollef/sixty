@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -89,7 +90,7 @@ instance (Persist v, GEq k, Hashable (DHashMap.Some k), Persist (DHashMap.Some k
 instance (Persist (DHashMap.Some k), Has' Persist k f, GEq k, Hashable (DHashMap.Some k)) => Persist (DHashMap k f) where
   put m = do
     put @Int $ DHashMap.size m
-    forM_ (DHashMap.toList m) $ \(k DHashMap.:=> f) ->
+    forM_ (DHashMap.toList m) \(k DHashMap.:=> f) ->
       has' @Persist @f k (put f)
 
   get =

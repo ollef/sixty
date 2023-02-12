@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Main where
@@ -40,8 +41,8 @@ main = do
 listDirectoryRecursive :: (FilePath -> Bool) -> FilePath -> IO [FilePath]
 listDirectoryRecursive p dir = do
   files <- listDirectory dir
-  fmap concat $
-    forM files $ \file -> do
+  concat
+    <$> forM files \file -> do
       let path = dir </> file
       isDir <- doesDirectoryExist path
       if isDir
@@ -59,9 +60,10 @@ listDirectoriesWithFilesMatching p dir = do
     then do
       recursiveFiles <- listDirectoryRecursive p dir
       pure [(dir, recursiveFiles)]
-    else fmap concat $
-      forM paths $ \path -> do
-        isDir <- doesDirectoryExist path
-        if isDir
-          then listDirectoriesWithFilesMatching p path
-          else pure []
+    else
+      concat
+        <$> forM paths \path -> do
+          isDir <- doesDirectoryExist path
+          if isDir
+            then listDirectoriesWithFilesMatching p path
+            else pure []

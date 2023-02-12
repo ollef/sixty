@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 
@@ -30,14 +31,14 @@ references filePath (Position.LineColumn line column) = do
                 || any ((==) definingModule . (.module_)) header.imports
         inputFiles <- fetch Query.InputFiles
         fmap concat $
-          forM (HashSet.toList inputFiles) $ \inputFile -> do
+          forM (HashSet.toList inputFiles) \inputFile -> do
             (moduleName, header, _) <- fetch $ Query.ParsedFile inputFile
             if mightUseDefiningModule moduleName header
               then do
                 spans <- fetch $ Query.ModuleSpanMap moduleName
                 toLineColumns <- LineColumns.fromAbsolute moduleName
                 fmap concat $
-                  forM (HashMap.toList spans) $ \((definitionKind, name), Span.Absolute defPos _) -> do
+                  forM (HashMap.toList spans) \((definitionKind, name), Span.Absolute defPos _) -> do
                     occurrenceIntervals <-
                       fetch $
                         Query.Occurrences definitionKind $
@@ -56,7 +57,7 @@ references filePath (Position.LineColumn line column) = do
   toLineColumns <- LineColumns.fromAbsolute originalModuleName
   spans <- fetch $ Query.ModuleSpanMap originalModuleName
   fmap concat $
-    forM (HashMap.toList spans) $ \((definitionKind, name), span@(Span.Absolute defPos _)) ->
+    forM (HashMap.toList spans) \((definitionKind, name), span@(Span.Absolute defPos _)) ->
       if span `Span.contains` pos
         then do
           occurrenceIntervals <-
@@ -69,7 +70,7 @@ references filePath (Position.LineColumn line column) = do
               items =
                 Intervals.intersect relativePos occurrenceIntervals
 
-          forM items $ \item ->
+          forM items \item ->
             (,) item
               <$> case item of
                 Intervals.Var var ->

@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -39,7 +40,7 @@ inlineSolutions
   -> Syntax.Type Void
   -> M (Syntax.Definition, Syntax.Type Void)
 inlineSolutions solutions def type_ = do
-  solutionValues <- forM solutions $ \(metaTerm, metaType, metaOccurrences) -> do
+  solutionValues <- forM solutions \(metaTerm, metaType, metaOccurrences) -> do
     metaValue <- evaluate Environment.empty metaTerm
     metaType' <- evaluate Environment.empty metaType
     pure (metaValue, metaType', metaOccurrences)
@@ -601,7 +602,7 @@ substitute subst
                           <$> OrderedHashMap.forMUnordered
                             constructorBranches
                             ( \(span, (bindings, body)) -> do
-                                bindings' <- forM bindings $ \(name, var, type_, plicity) ->
+                                bindings' <- forM bindings \(name, var, type_, plicity) ->
                                   (name,var,,plicity) <$> go type_
 
                                 body' <- go body
@@ -728,7 +729,7 @@ inlineIndex index targetScope solution@(solutionVar, occurrenceCount, duplicable
       branches' <- case branches of
         ConstructorBranches constructorTypeName constructorBranches ->
           fmap (ConstructorBranches constructorTypeName) $
-            OrderedHashMap.forMUnordered constructorBranches $ \(span, (bindings, body)) -> do
+            OrderedHashMap.forMUnordered constructorBranches \(span, (bindings, body)) -> do
               let go targetScope' bindings' =
                     case bindings' of
                       [] -> do

@@ -1,5 +1,4 @@
-{-# LANGUAGE DeriveFoldable #-}
-{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DeriveTraversable #-}
 
 module Data.OrderedHashMap where
@@ -29,7 +28,7 @@ instance (Show k, Show v) => Show (OrderedHashMap k v) where
 instance Foldable (OrderedHashMap k) where
   foldMap f (OrderedHashMap h) =
     foldMap (\(Ordered _ v) -> f v) $
-      sortBy (comparing $ \(Ordered n _) -> n) $
+      sortOn (\(Ordered n _) -> n) $
         HashMap.elems h
 
 instance (Hashable k, Hashable v) => Hashable (OrderedHashMap k v) where

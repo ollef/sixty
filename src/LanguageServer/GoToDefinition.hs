@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedRecordDot #-}
@@ -61,7 +62,7 @@ goToDefinition filePath (Position.LineColumn line column) = do
                     Intervals.intersect relativePos occurrenceIntervals
 
               asum $
-                foreach items $ \case
+                foreach items \case
                   Intervals.Var var -> do
                     toLineColumns <- MaybeT $ LineColumns.fromDefinitionName definitionKind $ Name.Qualified moduleName name
                     MaybeT $
@@ -69,7 +70,7 @@ goToDefinition filePath (Position.LineColumn line column) = do
                         (,) filePath . toLineColumns <$> Intervals.bindingSpan var relativePos occurrenceIntervals
                   Intervals.Global qualifiedName@(Name.Qualified definingModule _) ->
                     asum $
-                      foreach [Scope.Type, Scope.Definition] $ \definingKey -> do
+                      foreach [Scope.Type, Scope.Definition] \definingKey -> do
                         relativeSpans <- Occurrences.definitionNameSpans definingKey qualifiedName
 
                         maybeDefiningFile <- fetch $ Query.ModuleFile definingModule

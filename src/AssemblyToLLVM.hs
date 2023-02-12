@@ -146,7 +146,7 @@ freshName (Assembly.NameSuggestion nameSuggestion) = do
   usedNames <- gets (.usedNames)
   let bsName = ShortByteString.toShort $ toUtf8 nameSuggestion
       i = HashMap.lookupDefault 0 bsName usedNames
-  modify $ \s ->
+  modify \s ->
     s
       { usedNames = HashMap.insert bsName (i + 1) usedNames
       }
@@ -155,7 +155,7 @@ freshName (Assembly.NameSuggestion nameSuggestion) = do
 activateLocal :: Assembly.Type -> Assembly.Local -> Assembler Name
 activateLocal type_ local@(Assembly.Local _ nameSuggestion) = do
   name <- freshName nameSuggestion
-  modify $ \s ->
+  modify \s ->
     s
       { locals = HashMap.insert local (type_, TypedOperand {type_ = llvmType type_, operand = Local name}) s.locals
       }
@@ -477,7 +477,7 @@ assembleInstruction instruction =
         _ -> panic "AssemblyToLLVM.assembleInstruction: ExtractValue of non-struct"
     Assembly.Switch destination scrutinee branches (Assembly.BasicBlock defaultBranchInstructions defaultBranchResult) -> do
       scrutinee' <- assembleOperandAndCastTo Assembly.Word scrutinee
-      branchLabels <- forM branches $ \(i, _) -> do
+      branchLabels <- forM branches \(i, _) -> do
         branchLabel <- freshName $ Assembly.NameSuggestion $ "branch_" <> show i
         pure (i, branchLabel)
       defaultBranchLabel <- freshName "default"
@@ -489,7 +489,7 @@ assembleInstruction instruction =
           <> localName defaultBranchLabel
           <> " "
           <> brackets [separate " " [typedOperand TypedOperand {type_ = wordSizedInt, operand = Constant $ Builder.integerDec i} <> ", label " <> localName l | (i, l) <- branchLabels]]
-      branchResultOperands <- forM (zip branchLabels branches) $ \((_, branchLabel), (_, Assembly.BasicBlock instructions result)) -> do
+      branchResultOperands <- forM (zip branchLabels branches) \((_, branchLabel), (_, Assembly.BasicBlock instructions result)) -> do
         startBlock branchLabel
         mapM_ assembleInstruction instructions
         resultOperand <- forM ((,) . fst <$> destination <*> result) $ uncurry assembleOperandAndCastTo

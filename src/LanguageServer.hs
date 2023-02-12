@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
@@ -63,11 +64,11 @@ run = do
               Nothing -> pure ()
               Just rootPath -> do
                 maybeProjectFile <- Project.findProjectFile rootPath
-                forM_ maybeProjectFile $ \projectFile -> do
+                forM_ maybeProjectFile \projectFile -> do
                   projectFile' <- Directory.canonicalizePath projectFile
-                  FSNotify.withManagerConf config $ \manager -> do
-                    stopListening <- FileSystem.runWatcher (FileSystem.projectWatcher projectFile') manager $ \(changedFiles, sourceDirectories, diskFiles) -> do
-                      modifyMVar_ diskFileStateVar $ \(changedFiles', _, _) ->
+                  FSNotify.withManagerConf config \manager -> do
+                    stopListening <- FileSystem.runWatcher (FileSystem.projectWatcher projectFile') manager \(changedFiles, sourceDirectories, diskFiles) -> do
+                      modifyMVar_ diskFileStateVar \(changedFiles', _, _) ->
                         pure (changedFiles <> changedFiles', sourceDirectories, diskFiles)
                       void $ atomically $ tryPutTMVar signalChangeVar ()
 
@@ -108,13 +109,13 @@ handlers onReceivedMessage =
     , LSP.notificationHandler LSP.STextDocumentDidChange $ onReceivedMessage . ReceivedNotification
     , LSP.notificationHandler LSP.STextDocumentDidSave $ onReceivedMessage . ReceivedNotification
     , LSP.notificationHandler LSP.STextDocumentDidClose $ onReceivedMessage . ReceivedNotification
-    , LSP.requestHandler LSP.STextDocumentHover $ \req -> onReceivedMessage . ReceivedRequest req
-    , LSP.requestHandler LSP.STextDocumentDefinition $ \req -> onReceivedMessage . ReceivedRequest req
-    , LSP.requestHandler LSP.STextDocumentCompletion $ \req -> onReceivedMessage . ReceivedRequest req
-    , LSP.requestHandler LSP.STextDocumentDocumentHighlight $ \req -> onReceivedMessage . ReceivedRequest req
-    , LSP.requestHandler LSP.STextDocumentReferences $ \req -> onReceivedMessage . ReceivedRequest req
-    , LSP.requestHandler LSP.STextDocumentRename $ \req -> onReceivedMessage . ReceivedRequest req
-    , LSP.requestHandler LSP.STextDocumentCodeLens $ \req -> onReceivedMessage . ReceivedRequest req
+    , LSP.requestHandler LSP.STextDocumentHover \req -> onReceivedMessage . ReceivedRequest req
+    , LSP.requestHandler LSP.STextDocumentDefinition \req -> onReceivedMessage . ReceivedRequest req
+    , LSP.requestHandler LSP.STextDocumentCompletion \req -> onReceivedMessage . ReceivedRequest req
+    , LSP.requestHandler LSP.STextDocumentDocumentHighlight \req -> onReceivedMessage . ReceivedRequest req
+    , LSP.requestHandler LSP.STextDocumentReferences \req -> onReceivedMessage . ReceivedRequest req
+    , LSP.requestHandler LSP.STextDocumentRename \req -> onReceivedMessage . ReceivedRequest req
+    , LSP.requestHandler LSP.STextDocumentCodeLens \req -> onReceivedMessage . ReceivedRequest req
     ]
 
 options :: LSP.Options
@@ -157,7 +158,7 @@ messagePump state = do
         <|> onOutOfDate <$ guard (not $ HashSet.null state.changedFiles)
   where
     onDiskChange = do
-      (changedFiles, sourceDirectories, diskFiles) <- modifyMVar state.diskFileStateVar $ \(changedFiles, sourceDirectories, diskFiles) ->
+      (changedFiles, sourceDirectories, diskFiles) <- modifyMVar state.diskFileStateVar \(changedFiles, sourceDirectories, diskFiles) ->
         pure ((mempty, sourceDirectories, diskFiles), (changedFiles, sourceDirectories, diskFiles))
       messagePump
         state
@@ -404,7 +405,7 @@ checkAllAndPublishDiagnostics state = do
           ]
           <> allFiles
 
-  forM_ (HashMap.toList errorsByFilePath) $ \(filePath, diagnostics) -> do
+  forM_ (HashMap.toList errorsByFilePath) \(filePath, diagnostics) -> do
     let uri = LSP.filePathToUri filePath
     versionedDoc <- LSP.runLspT state.env $ LSP.getVersionedTextDoc $ LSP.TextDocumentIdentifier uri
 

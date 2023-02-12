@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -235,7 +236,7 @@ evaluate baseName env term args =
       let liftedName =
             Name.Lifted baseName i
 
-      modify $ \s ->
+      modify \s ->
         s
           { nextIndex = i + 1
           , liftedDefinitions = EnumMap.insert i def s.liftedDefinitions
@@ -435,7 +436,7 @@ liftDataDefinition
 liftDataDefinition baseName env tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constrDefs) -> do
-      constrDefs' <- OrderedHashMap.forMUnordered constrDefs $ \type_ -> do
+      constrDefs' <- OrderedHashMap.forMUnordered constrDefs \type_ -> do
         type' <- evaluate baseName env type_ []
         pure $ readback env type'
       pure $ Telescope.Empty $ LambdaLifted.ConstructorDefinitions constrDefs'

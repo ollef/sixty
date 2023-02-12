@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedRecordDot #-}
@@ -30,14 +31,14 @@ newtype Watcher a = Watcher
 
 instance Monoid a => Semigroup (Watcher a) where
   Watcher watcher1 <> Watcher watcher2 =
-    Watcher $ \manager onChange -> do
+    Watcher \manager onChange -> do
       valuesVar <- newMVar mempty
-      stopListening1 <- watcher1 manager $ \value1 -> do
-        value <- modifyMVar valuesVar $ \(_, value2) ->
+      stopListening1 <- watcher1 manager \value1 -> do
+        value <- modifyMVar valuesVar \(_, value2) ->
           pure ((value1, value2), value1 <> value2)
         onChange value
-      stopListening2 <- watcher2 manager $ \value2 -> do
-        value <- modifyMVar valuesVar $ \(value1, _) ->
+      stopListening2 <- watcher2 manager \value2 -> do
+        value <- modifyMVar valuesVar \(value1, _) ->
           pure ((value1, value2), value1 <> value2)
         onChange value
       pure $ stopListening1 <> stopListening2
@@ -47,14 +48,14 @@ instance Monoid a => Monoid (Watcher a) where
     Watcher mempty
 
 instance MonadIO Watcher where
-  liftIO io = Watcher $ \_ onChange -> do
+  liftIO io = Watcher \_ onChange -> do
     res <- io
     onChange res
     pure mempty
 
 instance Applicative Watcher where
   pure x =
-    Watcher $ \_ onChange -> do
+    Watcher \_ onChange -> do
       onChange x
       pure mempty
 
@@ -63,15 +64,15 @@ instance Applicative Watcher where
 
 instance Monad Watcher where
   Watcher watcher1 >>= f =
-    Watcher $ \manager onChange -> do
+    Watcher \manager onChange -> do
       stopListening2Var <- newMVar mempty
-      stopListening1 <- watcher1 manager $ \value1 ->
-        modifyMVar_ stopListening2Var $ \stopListening2 -> do
+      stopListening1 <- watcher1 manager \value1 ->
+        modifyMVar_ stopListening2Var \stopListening2 -> do
           stopListening2
           runWatcher (f value1) manager onChange
       pure $ do
         stopListening1
-        modifyMVar_ stopListening2Var $ \stopListening2 -> do
+        modifyMVar_ stopListening2Var \stopListening2 -> do
           stopListening2
           mempty
 
@@ -81,11 +82,11 @@ bindForM
   -> (key -> Watcher value)
   -> Watcher value
 bindForM (Watcher watchKeys) watchKey =
-  Watcher $ \manager onChange -> do
+  Watcher \manager onChange -> do
     valuesVar <- newMVar mempty
     stopListeningVar <- newMVar mempty
     let onOuterChange keys' = do
-          stopKeys <- modifyMVar stopListeningVar $ \stopListenings -> do
+          stopKeys <- modifyMVar stopListeningVar \stopListenings -> do
             let keys'Map =
                   HashSet.toMap keys'
 
@@ -100,16 +101,16 @@ bindForM (Watcher watchKeys) watchKey =
 
             sequence_ stopKeys
 
-            startKeys' <- flip HashMap.traverseWithKey startKeys $ \key () ->
+            startKeys' <- flip HashMap.traverseWithKey startKeys \key () ->
               runWatcher (watchKey key) manager $ onInnerChange key
 
             pure (keepKeys <> startKeys', stopKeys)
 
-          modifyMVar_ valuesVar $ \values ->
+          modifyMVar_ valuesVar \values ->
             pure $ HashMap.difference values stopKeys
 
         onInnerChange key value = do
-          keys' <- modifyMVar valuesVar $ \values -> do
+          keys' <- modifyMVar valuesVar \values -> do
             let keys' =
                   HashMap.insert key value values
             pure (keys', keys')
@@ -133,7 +134,7 @@ watcherFromArguments files =
           pure $ projectWatcher projectFile'
     _ ->
       fmap mconcat $
-        forM files $ \file -> do
+        forM files \file -> do
           file' <- Directory.canonicalizePath file
           isDir <- Directory.doesDirectoryExist file'
           case () of
@@ -164,13 +165,13 @@ watcherFromArguments files =
 
 projectWatcher :: FilePath -> Watcher (HashSet FilePath, [Directory], HashMap FilePath Text)
 projectWatcher file =
-  bindForM (foldMap (HashSet.fromList . (.sourceDirectories)) <$> jsonFileWatcher @Project file) $ \sourceDirectory -> do
+  bindForM (foldMap (HashSet.fromList . (.sourceDirectories)) <$> jsonFileWatcher @Project file) \sourceDirectory -> do
     sourceDirectory' <- liftIO $ Directory.canonicalizePath sourceDirectory
     (changedFiles, files) <- directoryWatcher Project.isSourcePath sourceDirectory'
     pure (changedFiles, [sourceDirectory'], files)
 
 fileWatcher :: FilePath -> Watcher (Maybe Text)
-fileWatcher filePath = Watcher $ \manager onChange -> do
+fileWatcher filePath = Watcher \manager onChange -> do
   maybeOriginalText <- readFileText filePath
   onChange maybeOriginalText
   FSNotify.watchDir
@@ -183,7 +184,7 @@ fileWatcher filePath = Watcher $ \manager onChange -> do
     )
 
 jsonFileWatcher :: Aeson.FromJSON a => FilePath -> Watcher (Maybe a)
-jsonFileWatcher filePath = Watcher $ \manager onChange -> do
+jsonFileWatcher filePath = Watcher \manager onChange -> do
   maybeOriginalValue <- readFileJSON filePath
   onChange maybeOriginalValue
   FSNotify.watchDir
@@ -199,14 +200,14 @@ directoryWatcher
   :: (FilePath -> Bool)
   -> FilePath
   -> Watcher (HashSet FilePath, HashMap FilePath Text)
-directoryWatcher predicate directory = Watcher $ \manager onChange -> do
+directoryWatcher predicate directory = Watcher \manager onChange -> do
   filesVar <- newEmptyMVar
   stopListening <-
-    FSNotify.watchTree manager directory (predicate . FSNotify.eventPath) $ \event -> do
+    FSNotify.watchTree manager directory (predicate . FSNotify.eventPath) \event -> do
       let filePath =
             FSNotify.eventPath event
       maybeText <- readFileText filePath
-      files <- modifyMVar filesVar $ \files -> do
+      files <- modifyMVar filesVar \files -> do
         let files' =
               HashMap.alter (const maybeText) filePath files
         pure (files', files')
@@ -220,7 +221,7 @@ listDirectoryRecursive :: (FilePath -> Bool) -> FilePath -> IO (HashMap FilePath
 listDirectoryRecursive predicate directory = do
   files <- Directory.listDirectory directory
   fmap mconcat $
-    forM files $ \file -> do
+    forM files \file -> do
       path <- Directory.canonicalizePath $ directory FilePath.</> file
       isDir <- Directory.doesDirectoryExist path
       if isDir

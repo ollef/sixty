@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module LanguageServer.CodeLens where
@@ -28,7 +29,7 @@ codeLens filePath =
     let previousDefs =
           Nothing : fmap Just defs
     fmap concat $
-      forM (zip previousDefs defs) $ \(previousDef, (pos, (name@(Name nameText), def))) -> do
+      forM (zip previousDefs defs) \(previousDef, (pos, (name@(Name nameText), def))) -> do
         let qualifiedName =
               Name.Qualified moduleName name
 

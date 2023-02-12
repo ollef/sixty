@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE FlexibleContexts #-}
 
 module LanguageServer.DocumentHighlights where
@@ -34,7 +35,7 @@ highlights filePath (Position.LineColumn line column) = do
 
   let itemSpans item =
         fmap concat $
-          forM (HashMap.toList spans) $ \((definitionKind, name), Span.Absolute defPos _) -> do
+          forM (HashMap.toList spans) \((definitionKind, name), Span.Absolute defPos _) -> do
             occurrenceIntervals <-
               fetch $
                 Query.Occurrences definitionKind $
@@ -42,7 +43,7 @@ highlights filePath (Position.LineColumn line column) = do
             pure $ toLineColumns . Span.absoluteFrom defPos <$> Intervals.itemSpans item occurrenceIntervals
 
   fmap concat $
-    forM (HashMap.toList spans) $ \((definitionKind, name), span@(Span.Absolute defPos _)) ->
+    forM (HashMap.toList spans) \((definitionKind, name), span@(Span.Absolute defPos _)) ->
       if span `Span.contains` pos
         then do
           occurrenceIntervals <-
@@ -56,7 +57,7 @@ highlights filePath (Position.LineColumn line column) = do
                 Intervals.intersect relativePos occurrenceIntervals
 
           fmap concat $
-            forM items $ \item ->
+            forM items \item ->
               case item of
                 Intervals.Var var ->
                   pure $ toLineColumns . Span.absoluteFrom defPos <$> Intervals.varSpans var relativePos occurrenceIntervals

@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
@@ -44,7 +45,7 @@ evaluateConstructorDefinitions env tele =
     Telescope.Extend binding domain plicity target -> do
       domain' <- evaluate env domain
       pure $
-        Domain.Telescope.Extend binding domain' plicity $ \param -> do
+        Domain.Telescope.Extend binding domain' plicity \param -> do
           (env', _) <- Environment.extendValue env param
           evaluateConstructorDefinitions env' target
 
@@ -122,13 +123,13 @@ evaluateLets env boundTerms lets =
             Environment.lookupIndexVar index env
       evaluateLets env (boundTerms Tsil.:> (var, LetBoundTerm env term)) lets'
     Syntax.In term -> mdo
-      values <- forM boundTerms $ \(var, LetBoundTerm env' boundTerm) ->
+      values <- forM boundTerms \(var, LetBoundTerm env' boundTerm) ->
         (var,) <$> lazyEvaluate (defines env' values) boundTerm
       evaluate (defines env values) term
   where
     defines :: Domain.Environment v -> Tsil (Var, Domain.Value) -> Domain.Environment v
     defines =
-      foldr' $ \(var, value) env' ->
+      foldr' \(var, value) env' ->
         if isJust $ Environment.lookupVarIndex var env'
           then Environment.define env' var value
           else env'

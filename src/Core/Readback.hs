@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Core.Readback where
@@ -84,11 +85,11 @@ readbackElimination env eliminee elimination =
           Syntax.LiteralBranches
             <$> OrderedHashMap.forMUnordered
               literalBranches
-              ( mapM $ \branch -> do
+              ( mapM \branch -> do
                   branchValue <- Evaluation.evaluate env' branch
                   readback env branchValue
               )
-      defaultBranch' <- forM defaultBranch $ \branch -> do
+      defaultBranch' <- forM defaultBranch \branch -> do
         branch' <- Evaluation.evaluate env' branch
         readback env branch'
       pure $ Syntax.Case eliminee branches' defaultBranch'

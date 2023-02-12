@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -223,9 +224,9 @@ unify context flexibility value1 value2 = do
         Nothing -> pure ()
       case brs1 of
         Syntax.ConstructorBranches _ constructorBranches ->
-          forM_ constructorBranches $ \(_, tele1) -> withInstantiatedTele context env1 tele1 $ \context' v1 ->
+          forM_ constructorBranches \(_, tele1) -> withInstantiatedTele context env1 tele1 \context' v1 ->
             unify context' flexibility v1 v2
-        Syntax.LiteralBranches literalBranches -> forM_ literalBranches $ \(_, term1) -> do
+        Syntax.LiteralBranches literalBranches -> forM_ literalBranches \(_, term1) -> do
           v1 <- Evaluation.evaluate env1 term1
           unify context flexibility v1 v2
     (v1, Domain.Neutral _ (_ Domain.:> Domain.Case (Domain.Branches env2 brs2 defaultBranch2))) -> do
@@ -236,9 +237,9 @@ unify context flexibility value1 value2 = do
         Nothing -> pure ()
       case brs2 of
         Syntax.ConstructorBranches _ constructorBranches ->
-          forM_ constructorBranches $ \(_, tele2) -> withInstantiatedTele context env2 tele2 $ \context' v2 ->
+          forM_ constructorBranches \(_, tele2) -> withInstantiatedTele context env2 tele2 \context' v2 ->
             unify context' flexibility v1 v2
-        Syntax.LiteralBranches literalBranches -> forM_ literalBranches $ \(_, term2) -> do
+        Syntax.LiteralBranches literalBranches -> forM_ literalBranches \(_, term2) -> do
           v2 <- Evaluation.evaluate env2 term2
           unify context flexibility v1 v2
 
@@ -379,17 +380,17 @@ unifyBranches
         defaultBranch1' <- forM defaultBranch1 $ Evaluation.evaluate outerEnv1
         defaultBranch2' <- forM defaultBranch2 $ Evaluation.evaluate outerEnv2
 
-        forM_ defaultBranch2' $ \branch2 ->
-          forM_ extras1 $ \(_, tele1) ->
-            withInstantiatedTele outerContext outerEnv1 tele1 $ \context' branch1 -> do
+        forM_ defaultBranch2' \branch2 ->
+          forM_ extras1 \(_, tele1) ->
+            withInstantiatedTele outerContext outerEnv1 tele1 \context' branch1 -> do
               unify context' flexibility branch1 branch2
 
-        forM_ defaultBranch1' $ \branch1 ->
-          forM_ extras2 $ \(_, tele2) ->
-            withInstantiatedTele outerContext outerEnv2 tele2 $ \context' branch2 ->
+        forM_ defaultBranch1' \branch1 ->
+          forM_ extras2 \(_, tele2) ->
+            withInstantiatedTele outerContext outerEnv2 tele2 \context' branch2 ->
               unify context' flexibility branch1 branch2
 
-        forM_ branches $ \((_, tele1), (_, tele2)) ->
+        forM_ branches \((_, tele1), (_, tele2)) ->
           unifyTele outerContext outerEnv1 outerEnv2 tele1 tele2
 
         case (defaultBranch1', defaultBranch2') of
@@ -468,7 +469,7 @@ potentiallyMatchingBranches
 potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv branches defaultBranch) = do
   resultValue' <- Context.forceHead outerContext resultValue
   defaultBranch' <- fmap (catMaybes . toList) $
-    forM defaultBranch $ \branch -> do
+    forM defaultBranch \branch -> do
       isMatch <- branchMatches outerContext resultValue' outerEnv $ Telescope.Empty branch
       pure $
         if isMatch
@@ -478,14 +479,14 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
   branches' <- fmap catMaybes $
     case branches of
       Syntax.ConstructorBranches constructorTypeName constructorBranches ->
-        forM (OrderedHashMap.toList constructorBranches) $ \(constr, (_, tele)) -> do
+        forM (OrderedHashMap.toList constructorBranches) \(constr, (_, tele)) -> do
           isMatch <- branchMatches outerContext resultValue' outerEnv tele
           pure $
             if isMatch
               then Just $ Just $ Left $ Name.QualifiedConstructor constructorTypeName constr
               else Nothing
       Syntax.LiteralBranches literalBranches ->
-        forM (OrderedHashMap.toList literalBranches) $ \(int, (_, branch)) -> do
+        forM (OrderedHashMap.toList literalBranches) \(int, (_, branch)) -> do
           isMatch <- branchMatches outerContext resultValue' outerEnv $ Telescope.Empty branch
           pure $
             if isMatch
@@ -796,11 +797,11 @@ renameElimination outerContext renaming eliminee elimination =
         Syntax.LiteralBranches literalBranches ->
           fmap Syntax.LiteralBranches $
             OrderedHashMap.forMUnordered literalBranches $
-              mapM $ \branch -> do
+              mapM \branch -> do
                 branch' <- Evaluation.evaluate env' branch
                 renameValue outerContext renaming branch'
 
-      defaultBranch' <- forM defaultBranch $ \branch -> do
+      defaultBranch' <- forM defaultBranch \branch -> do
         branch' <- Evaluation.evaluate env' branch
         renameValue outerContext renaming branch'
       pure $ Syntax.Case eliminee branches' defaultBranch'

@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -38,7 +39,7 @@ signature :: Syntax.Definition -> M Representation.Signature
 signature def =
   case def of
     Syntax.TypeDeclaration (Syntax.Function tele) -> do
-      telescopeSignature context tele mempty $ \context' body parameterRepresentations -> do
+      telescopeSignature context tele mempty \context' body parameterRepresentations -> do
         let env' =
               Context.toEnvironment context'
         body' <- Evaluation.evaluate env' body
@@ -52,7 +53,7 @@ signature def =
       type_ <- TypeOf.typeOf context value
       Representation.ConstantSignature <$> typeRepresentation env type_
     Syntax.FunctionDefinition tele ->
-      telescopeSignature context tele mempty $ \context' body parameterRepresentations -> do
+      telescopeSignature context tele mempty \context' body parameterRepresentations -> do
         let env' =
               Context.toEnvironment context'
         body' <- Evaluation.evaluate env' body
@@ -62,7 +63,7 @@ signature def =
     Syntax.DataDefinition {} ->
       pure $ Representation.ConstantSignature $ Representation.Direct Representation.Doesn'tContainHeapPointers
     Syntax.ParameterisedDataDefinition _boxity tele ->
-      telescopeSignature context tele mempty $ \_ _ parameterRepresentations -> do
+      telescopeSignature context tele mempty \_ _ parameterRepresentations -> do
         pure $ Representation.FunctionSignature parameterRepresentations $ Representation.Direct Representation.Doesn'tContainHeapPointers
   where
     context =
@@ -201,7 +202,7 @@ compileData env dataTypeName (Syntax.ConstructorDefinitions constructors) = do
     Boxed ->
       pure $ Syntax.Global (Name.Lifted Builtin.WordRepresentationName 0)
     Unboxed -> do
-      compiledConstructorFields <- forM (OrderedHashMap.toList constructors) $ \(_, type_) -> do
+      compiledConstructorFields <- forM (OrderedHashMap.toList constructors) \(_, type_) -> do
         type' <- Evaluation.evaluate env type_
         compileUnboxedConstructorFields env type'
       let maxFieldSize =
@@ -314,7 +315,7 @@ constructorRepresentations name = do
   pure $ case definition of
     Core.Syntax.DataDefinition boxity tele ->
       ( boxity
-      , Telescope.under tele $ \(Core.Syntax.ConstructorDefinitions constructors) ->
+      , Telescope.under tele \(Core.Syntax.ConstructorDefinitions constructors) ->
           case OrderedHashMap.toList constructors of
             [] -> Nothing
             [_] -> Nothing

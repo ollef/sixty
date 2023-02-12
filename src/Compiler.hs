@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -23,7 +24,7 @@ compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel = d
         assemblyDir </> "module"
   liftIO $ createDirectoryIfMissing True moduleAssemblyDir
   filePaths <- fetch Query.InputFiles
-  moduleLLVMFiles <- forM (toList filePaths) $ \filePath -> do
+  moduleLLVMFiles <- forM (toList filePaths) \filePath -> do
     (moduleName@(Name.Module moduleNameText), _, _) <- fetch $ Query.ParsedFile filePath
     llvmModule <- fetch $ Query.LLVMModule moduleName
     let llvmFileName = moduleAssemblyDir </> toS moduleNameText <.> "ll"

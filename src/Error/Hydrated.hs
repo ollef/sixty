@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -122,7 +123,7 @@ headingAndBody error =
             , "The type of" <+> Doc.pretty name <+> "was declared here, but not its value."
             )
         Error.TypeMismatch mismatches -> do
-          mismatches' <- forM mismatches $ \(inferred, expected) -> do
+          mismatches' <- forM mismatches \(inferred, expected) -> do
             inferred' <- prettyPrettyableTerm 0 inferred
             expected' <- prettyPrettyableTerm 0 expected
             pure (inferred', expected')
@@ -139,7 +140,7 @@ headingAndBody error =
                 )
             )
         Error.OccursCheck mismatches -> do
-          mismatches' <- forM mismatches $ \(inferred, expected) -> do
+          mismatches' <- forM mismatches \(inferred, expected) -> do
             inferred' <- prettyPrettyableTerm 0 inferred
             expected' <- prettyPrettyableTerm 0 expected
             pure (inferred', expected')

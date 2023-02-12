@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Command.Watch where
@@ -22,9 +23,9 @@ watch argumentFiles = do
   watcher <- FileSystem.watcherFromArguments argumentFiles
   signalChangeVar <- newEmptyMVar
   fileStateVar <- newMVar mempty
-  FSNotify.withManagerConf config $ \manager -> do
-    stopListening <- FileSystem.runWatcher watcher manager $ \(changedFiles, sourceDirectories, files) -> do
-      modifyMVar_ fileStateVar $ \(changedFiles', _, _) ->
+  FSNotify.withManagerConf config \manager -> do
+    stopListening <- FileSystem.runWatcher watcher manager \(changedFiles, sourceDirectories, files) -> do
+      modifyMVar_ fileStateVar \(changedFiles', _, _) ->
         pure (changedFiles <> changedFiles', sourceDirectories, files)
       void $ tryPutMVar signalChangeVar ()
 
@@ -46,7 +47,7 @@ waitForChanges
   -> IO (HashSet FilePath, [FileSystem.Directory], HashMap FilePath Text)
 waitForChanges signalChangeVar fileStateVar driverState = do
   (changedFiles, sourceDirectories, files) <-
-    modifyMVar fileStateVar $ \(changedFiles, sourceDirectories, files) ->
+    modifyMVar fileStateVar \(changedFiles, sourceDirectories, files) ->
       pure ((mempty, sourceDirectories, files), (changedFiles, sourceDirectories, files))
 
   if HashSet.null changedFiles
@@ -75,7 +76,7 @@ checkAndPrintErrors driverState changedFiles sourceDirectories files = do
   endTime <- getCurrentTime
 
   System.Console.ANSI.clearScreen
-  forM_ errs $ \err ->
+  forM_ errs \err ->
     putDoc $ err <> Doc.line
   let errorCount =
         length errs

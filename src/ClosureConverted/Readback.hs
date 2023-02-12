@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module ClosureConverted.Readback where
@@ -78,7 +79,7 @@ readbackGroupedElimination env eliminee elimination =
                   branchValue <- Evaluation.evaluate env' branch
                   readback env branchValue
               )
-      defaultBranch' <- forM defaultBranch $ \branch -> do
+      defaultBranch' <- forM defaultBranch \branch -> do
         branch' <- Evaluation.evaluate env' branch
         readback env branch'
       pure $ Syntax.Case eliminee branches' defaultBranch'

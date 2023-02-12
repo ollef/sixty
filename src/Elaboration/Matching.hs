@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -337,7 +338,7 @@ checkWithCoverage context config = do
           | Clause span _ _ <- config.clauses
           ]
   usedClauseSpans <- readIORef config.usedClauses
-  forM_ (Set.difference allClauseSpans usedClauseSpans) $ \span ->
+  forM_ (Set.difference allClauseSpans usedClauseSpans) \span ->
     Context.report (Context.spanned span context) $ Error.RedundantMatch config.matchKind
   pure result
 
@@ -349,7 +350,7 @@ check context config canPostpone = do
     [] -> do
       exhaustive <- anyM (uninhabitedScrutinee context . snd) config.scrutinees
       unless exhaustive $ do
-        scrutinees <- forM config.scrutinees $ \(plicity, scrutinee) -> do
+        scrutinees <- forM config.scrutinees \(plicity, scrutinee) -> do
           patterns <- uncoveredScrutineePatterns context scrutinee
           pure $ (,) plicity <$> (Context.toPrettyablePattern context <$> patterns)
         Context.report context $ Error.NonExhaustivePatterns $ sequence scrutinees
@@ -385,8 +386,8 @@ findPatternResolutionBlocker :: Context v -> [Clause] -> M (Maybe Meta.Index)
 findPatternResolutionBlocker context clauses =
   fmap (either Just (\() -> Nothing)) $
     runExceptT $
-      forM_ clauses $ \clause ->
-        forM_ clause.matches $ \case
+      forM_ clauses \clause ->
+        forM_ clause.matches \case
           Match _ _ _ (UnresolvedPattern span unspannedSurfacePattern) type_ ->
             void $ resolvePattern (Context.spanned span context) unspannedSurfacePattern type_ Postponement.CanPostpone
           Match _ _ _ Pattern {} _ ->
@@ -430,7 +431,7 @@ uncoveredScrutineePatterns context value = do
           case definition of
             Syntax.DataDefinition _ tele ->
               pure $
-                Telescope.under tele $ \(Syntax.ConstructorDefinitions constrDefs) -> do
+                Telescope.under tele \(Syntax.ConstructorDefinitions constrDefs) -> do
                   let uncoveredConstrDefs =
                         OrderedHashMap.differenceFromMap
                           constrDefs
@@ -438,7 +439,7 @@ uncoveredScrutineePatterns context value = do
                               HashSet.map (\(Name.QualifiedConstructor _ constr) -> constr) covered
                           )
 
-                  foreach (OrderedHashMap.toList uncoveredConstrDefs) $ \(constr, type_) ->
+                  foreach (OrderedHashMap.toList uncoveredConstrDefs) \(constr, type_) ->
                     Domain.Pattern.Con
                       (Name.QualifiedConstructor typeName constr)
                       [ (plicity, Domain.Pattern.Wildcard)
@@ -459,7 +460,7 @@ uncoveredScrutineePatterns context value = do
       let spine' =
             dropTypeArgs constrTypeTele $ toList args
 
-      spine'' <- forM spine' $ \(plicity, arg) -> do
+      spine'' <- forM spine' \(plicity, arg) -> do
         patterns <- uncoveredScrutineePatterns context arg
         pure $ (,) plicity <$> patterns
       pure $ Domain.Pattern.Con constr <$> sequence spine''
@@ -784,7 +785,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
                     takeWhile (not . null) $
                       findVarConstructorMatches scrutineeVar . (.matches) <$> config.clauses
 
-          branches <- forM (OrderedHashMap.toList matchedConstructors) $ \(qualifiedConstr@(Name.QualifiedConstructor _ constr), patterns) -> do
+          branches <- forM (OrderedHashMap.toList matchedConstructors) \(qualifiedConstr@(Name.QualifiedConstructor _ constr), patterns) -> do
             let constrType =
                   OrderedHashMap.lookupDefault
                     (panic "Matching constrType")
@@ -904,7 +905,7 @@ splitLiteral context config scrutineeValue scrutineeVar span lit outerType = do
 
   f <- Unification.tryUnify (Context.spanned span context) (Elaboration.inferLiteral lit) outerType
 
-  branches <- forM (OrderedHashMap.toList matchedLiterals) $ \(int, spans) -> do
+  branches <- forM (OrderedHashMap.toList matchedLiterals) \(int, spans) -> do
     let context' =
           Context.defineWellOrdered context scrutineeVar $ Domain.Lit int
     result <- check context' config Postponement.CanPostpone

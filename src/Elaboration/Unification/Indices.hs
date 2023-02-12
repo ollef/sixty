@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -132,13 +133,13 @@ unifyM flexibility value1 value2 = do
     (Domain.Pi binding1 domain1 plicity1 targetClosure1, Domain.Fun domain2 plicity2 target2)
       | plicity1 == plicity2 -> do
           unifyM flexibility domain2 domain1
-          extend (Binding.toName binding1) domain1 $ \var -> do
+          extend (Binding.toName binding1) domain1 \var -> do
             target1 <- lift $ Evaluation.evaluateClosure targetClosure1 $ Domain.var var
             unifyM flexibility target1 target2
     (Domain.Fun domain1 plicity1 target1, Domain.Pi binding2 domain2 plicity2 targetClosure2)
       | plicity1 == plicity2 -> do
           unifyM flexibility domain2 domain1
-          extend (Binding.toName binding2) domain2 $ \var -> do
+          extend (Binding.toName binding2) domain2 \var -> do
             target2 <- lift $ Evaluation.evaluateClosure targetClosure2 $ Domain.var var
             unifyM flexibility target1 target2
     (Domain.Fun domain1 plicity1 target1, Domain.Fun domain2 plicity2 target2)
@@ -148,13 +149,13 @@ unifyM flexibility value1 value2 = do
 
     -- Eta expand
     (Domain.Lam bindings1 type1 plicity1 closure1, v2) ->
-      extend (Bindings.toName bindings1) type1 $ \var -> do
+      extend (Bindings.toName bindings1) type1 \var -> do
         let varValue = Domain.var var
         body1 <- lift $ Evaluation.evaluateClosure closure1 varValue
         body2 <- lift $ Evaluation.apply v2 plicity1 varValue
         unifyM flexibility body1 body2
     (v1, Domain.Lam bindings2 type2 plicity2 closure2) ->
-      extend (Bindings.toName bindings2) type2 $ \var -> do
+      extend (Bindings.toName bindings2) type2 \var -> do
         let varValue = Domain.var var
         body1 <- lift $ Evaluation.apply v1 plicity2 varValue
         body2 <- lift $ Evaluation.evaluateClosure closure2 varValue
@@ -173,7 +174,7 @@ unifyM flexibility value1 value2 = do
     unifyAbstraction name type1 closure1 type2 closure2 = do
       unifyM flexibility type1 type2
 
-      extend name type1 $ \var -> do
+      extend name type1 \var -> do
         let varValue = Domain.var var
         body1 <- lift $ Evaluation.evaluateClosure closure1 varValue
         body2 <- lift $ Evaluation.evaluateClosure closure2 varValue
@@ -185,7 +186,7 @@ unifyM flexibility value1 value2 = do
         then do
           occurs var Flexibility.Rigid value
           context' <- contextual2 Context.define var value
-          modify $ \st -> st {context = context'}
+          modify \st -> st {context = context'}
         else throwIO Dunno
 
 unifySpines
@@ -236,17 +237,17 @@ unifyBranches
         defaultBranch1' <- forM defaultBranch1 $ lift . Evaluation.evaluate outerEnv1
         defaultBranch2' <- forM defaultBranch2 $ lift . Evaluation.evaluate outerEnv2
 
-        forM_ defaultBranch2' $ \branch2 ->
-          forM_ extras1 $ \(_, tele1) ->
-            withInstantiatedTele outerEnv1 tele1 $ \branch1 -> do
+        forM_ defaultBranch2' \branch2 ->
+          forM_ extras1 \(_, tele1) ->
+            withInstantiatedTele outerEnv1 tele1 \branch1 -> do
               unifyM flexibility branch1 branch2
 
-        forM_ defaultBranch1' $ \branch1 ->
-          forM_ extras2 $ \(_, tele2) ->
-            withInstantiatedTele outerEnv2 tele2 $ \branch2 ->
+        forM_ defaultBranch1' \branch1 ->
+          forM_ extras2 \(_, tele2) ->
+            withInstantiatedTele outerEnv2 tele2 \branch2 ->
               unifyM flexibility branch1 branch2
 
-        forM_ branches $ \((_, tele1), (_, tele2)) ->
+        forM_ branches \((_, tele1), (_, tele2)) ->
           unifyTele outerEnv1 outerEnv2 tele1 tele2
 
         case (defaultBranch1', defaultBranch2') of
@@ -268,7 +269,7 @@ unifyBranches
                 type1' <- lift $ Evaluation.evaluate env1 type1
                 type2' <- lift $ Evaluation.evaluate env2 type2
                 unifyM flexibility type1' type2'
-                extend (Bindings.toName bindings1) type1' $ \var ->
+                extend (Bindings.toName bindings1) type1' \var ->
                   unifyTele
                     (Environment.extendVar env1 var)
                     (Environment.extendVar env2 var)
@@ -293,7 +294,7 @@ withInstantiatedTele env tele k =
       k body'
     Telescope.Extend bindings type_ _plicity tele' -> do
       type' <- lift $ Evaluation.evaluate env type_
-      extend (Bindings.toName bindings) type' $ \var ->
+      extend (Bindings.toName bindings) type' \var ->
         withInstantiatedTele (Environment.extendVar env var) tele' k
 
 occurs :: Var -> Flexibility -> Domain.Value -> Unify v ()
@@ -325,7 +326,7 @@ occurs occ flexibility value = do
   where
     occursAbstraction name type_ closure = do
       occurs occ flexibility type_
-      extend name type_ $ \var -> do
+      extend name type_ \var -> do
         let varValue = Domain.var var
         body <- lift $ Evaluation.evaluateClosure closure varValue
         occurs occ flexibility body
@@ -370,9 +371,9 @@ occursBranches occ flexibility (Domain.Branches outerEnv branches defaultBranch)
       forM_ constructorBranches $ mapM_ $ occursTele outerEnv
     Syntax.LiteralBranches literalBranches ->
       forM_ literalBranches $
-        mapM_ $ \branch ->
+        mapM_ \branch ->
           occursTele outerEnv $ Telescope.Empty branch
-  forM_ defaultBranch $ \branch ->
+  forM_ defaultBranch \branch ->
     occursTele outerEnv $ Telescope.Empty branch
   where
     occursTele
@@ -384,7 +385,7 @@ occursBranches occ flexibility (Domain.Branches outerEnv branches defaultBranch)
         Telescope.Extend bindings type_ _plicity tele' -> do
           type' <- lift $ Evaluation.evaluate env type_
           occurs occ flexibility type'
-          extend (Bindings.toName bindings) type' $ \var ->
+          extend (Bindings.toName bindings) type' \var ->
             occursTele
               (Environment.extendVar env var)
               tele'

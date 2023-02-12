@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -359,7 +360,7 @@ dependencies context value = do
           Syntax.ConstructorBranches _ constructorBranches ->
             mapM (telescopeVars context' env . snd) $ toList constructorBranches
           Syntax.LiteralBranches literalBranches ->
-            forM (toList literalBranches) $ \(_, branch) -> do
+            forM (toList literalBranches) \(_, branch) -> do
               branch' <- lift $ Evaluation.evaluate env branch
               dependencies context' branch'
 
@@ -654,16 +655,16 @@ report context err =
   let err' =
         Error.Elaboration context.definitionKind context.definitionName $
           Error.Spanned context.span err
-   in atomicModifyIORef' context.errors $ \errs ->
+   in atomicModifyIORef' context.errors \errs ->
         (errs Tsil.:> err', ())
 
 reportParseError :: Context v -> Error.Parsing -> M ()
 reportParseError context err = do
   maybeFilePath <- fetch $ Query.ModuleFile $ moduleName context
-  forM_ maybeFilePath $ \filePath -> do
+  forM_ maybeFilePath \filePath -> do
     let err' =
           Error.Parse filePath err
-    atomicModifyIORef' context.errors $ \errs ->
+    atomicModifyIORef' context.errors \errs ->
       (errs Tsil.:> err', ())
 
 try :: Context v -> M a -> M (Maybe a)
@@ -695,12 +696,12 @@ zonk context term = do
             meta <- lookupEagerMeta context index
             case meta of
               Meta.EagerUnsolved {} -> do
-                atomicModifyIORef' metasRef $ \indexMap' ->
+                atomicModifyIORef' metasRef \indexMap' ->
                   (EnumMap.insert index Nothing indexMap', ())
                 pure Nothing
               Meta.EagerSolved term' _ _ -> do
                 term'' <- Zonking.zonkTerm Environment.empty zonkMeta zonkPostponed term'
-                atomicModifyIORef' metasRef $ \indexMap' ->
+                atomicModifyIORef' metasRef \indexMap' ->
                   (EnumMap.insert index (Just term'') indexMap', ())
                 pure $ Just term''
           Just solution ->
@@ -714,16 +715,16 @@ zonk context term = do
             solution <- lookupPostponedCheck index context
             case solution of
               Postponed.Unchecked {} -> do
-                atomicModifyIORef' postponedRef $ \indexMap' ->
+                atomicModifyIORef' postponedRef \indexMap' ->
                   (EnumMap.insert index Nothing indexMap', ())
                 pure Nothing
               Postponed.Checking -> do
-                atomicModifyIORef' postponedRef $ \indexMap' ->
+                atomicModifyIORef' postponedRef \indexMap' ->
                   (EnumMap.insert index Nothing indexMap', ())
                 pure Nothing
               Postponed.Checked term' -> do
                 term'' <- Zonking.zonkTerm env zonkMeta zonkPostponed $ Syntax.coerce term'
-                atomicModifyIORef' postponedRef $ \indexMap' ->
+                atomicModifyIORef' postponedRef \indexMap' ->
                   (EnumMap.insert index (Just $ Syntax.coerce term'') indexMap', ())
                 pure $ Just term''
           Just solution ->
@@ -755,11 +756,11 @@ newPostponedCheck context blockingMeta check = do
 
 addPostponementBlockedOnMeta :: Context v -> Postponement.Index -> Meta.Index -> M ()
 addPostponementBlockedOnMeta context postponementIndex blockingMeta =
-  atomicModifyIORef' context.metas $ \m -> (Meta.addPostponedIndex blockingMeta postponementIndex m, ())
+  atomicModifyIORef' context.metas \m -> (Meta.addPostponedIndex blockingMeta postponementIndex m, ())
 
 addPostponementsBlockedOnMeta :: Context v -> EnumSet Postponement.Index -> Meta.Index -> M ()
 addPostponementsBlockedOnMeta context postponementIndices blockingMeta =
-  atomicModifyIORef' context.metas $ \m -> (Meta.addPostponedIndices blockingMeta postponementIndices m, ())
+  atomicModifyIORef' context.metas \m -> (Meta.addPostponedIndices blockingMeta postponementIndices m, ())
 
 lookupPostponedCheck
   :: Postponement.Index
@@ -770,9 +771,9 @@ lookupPostponedCheck i context =
 
 checkUnblockedPostponedChecks :: Context v -> EnumSet Postponement.Index -> M ()
 checkUnblockedPostponedChecks context indices_ =
-  forM_ (EnumSet.toList indices_) $ \index ->
+  forM_ (EnumSet.toList indices_) \index ->
     join $
-      atomicModifyIORef' context.postponed $ \postponed' -> do
+      atomicModifyIORef' context.postponed \postponed' -> do
         let (doIt, postponed'') =
               Postponed.adjustF adjust index postponed'
 
@@ -781,7 +782,7 @@ checkUnblockedPostponedChecks context indices_ =
                 Postponed.Unchecked check' ->
                   ( do
                       result <- check' Postponement.CanPostpone
-                      atomicModifyIORef' context.postponed $ \p' ->
+                      atomicModifyIORef' context.postponed \p' ->
                         (Postponed.update index (Postponed.Checked result) p', ())
                   , check
                   )
@@ -797,7 +798,7 @@ inferAllPostponedChecks context =
   where
     go index =
       join $
-        atomicModifyIORef' context.postponed $ \postponed' ->
+        atomicModifyIORef' context.postponed \postponed' ->
           if index < Postponed.nextIndex postponed'
             then do
               let (doIt, postponed'') =
@@ -808,7 +809,7 @@ inferAllPostponedChecks context =
                       Postponed.Unchecked check ->
                         ( do
                             result <- check Postponement.Can'tPostpone
-                            atomicModifyIORef' context.postponed $ \p' ->
+                            atomicModifyIORef' context.postponed \p' ->
                               (Postponed.update index (Postponed.Checked result) p', ())
                         , Postponed.Checking
                         )

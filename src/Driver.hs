@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
@@ -66,10 +67,10 @@ runTask sourceDirectories files prettyError task = do
       --       -> GenRules (Writer TaskKind Query) Query
       --     traceFetch_ =
       --       traceFetch
-      --         (\(Writer key) -> modifyMVar_ printVar $ \n -> do
+      --         (\(Writer key) -> modifyMVar_ printVar \n -> do
       --           putText $ fold (replicate n "| ") <> "fetching " <> show key
       --           return $ n + 1)
-      --         (\_ _ -> modifyMVar_ printVar $ \n -> do
+      --         (\_ _ -> modifyMVar_ printVar \n -> do
       --           putText $ fold (replicate (n - 1) "| ") <> "*"
       --           return $ n - 1)
 
@@ -79,7 +80,7 @@ runTask sourceDirectories files prettyError task = do
           writer ignoreTaskKind $
             -- traceFetch_ $
             writer writeErrors $
-              Rules.rules sourceDirectories files $ \file ->
+              Rules.rules sourceDirectories files \file ->
                 Right <$> readFile file `catch` \(_ :: IOException) -> pure mempty
 
   Rock.runTask rules $ do
@@ -87,7 +88,7 @@ runTask sourceDirectories files prettyError task = do
     result <- task
     errorsMap <- readIORef errorsVar
     let errors =
-          flip foldMap (DHashMap.toList errorsMap) $ \(_ :=> Const errs) ->
+          flip foldMap (DHashMap.toList errorsMap) \(_ :=> Const errs) ->
             errs
     prettyErrors <- forM errors (prettyError <=< Error.Hydrated.fromError)
     pure (result, prettyErrors)
@@ -166,7 +167,7 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
               atomicWriteIORef state.startedVar mempty
               atomicWriteIORef state.hashesVar mempty
             else do
-              changedFiles' <- flip filterM (toList changedFiles) $ \file ->
+              changedFiles' <- flip filterM (toList changedFiles) \file ->
                 pure $ case (HashMap.lookup file files, DHashMap.lookup (Query.FileRope file) started, DHashMap.lookup (Query.FileText file) started) of
                   (Just (Left rope), Just (Done rope'), _) -> rope /= rope'
                   (Just (Left rope), _, Just (Done text')) -> Rope.toText rope /= text'
@@ -213,10 +214,10 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
         traceFetch_ r = r
         -- traceFetch_ =
         --   traceFetch
-        --     (\(Writer key) -> modifyMVar_ printVar $ \n -> do
+        --     (\(Writer key) -> modifyMVar_ printVar \n -> do
         --       putText $ fold (replicate n "| ") <> "fetching " <> show key
         --       return $ n + 1)
-        --     (\_ _ -> modifyMVar_ printVar $ \n -> do
+        --     (\_ _ -> modifyMVar_ printVar \n -> do
         --       putText $ fold (replicate (n - 1) "| ") <> "*"
         --       return $ n - 1)
         writeErrors :: Writer TaskKind Query a -> [Error] -> Task Query ()
@@ -255,7 +256,7 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
       Prune -> do
         atomicModifyIORef' state.tracesVar $
           (,()) . DHashMap.intersectionWithKey (\_ _ t -> t) started
-        atomicModifyIORef' state.errorsVar $ \errors -> do
+        atomicModifyIORef' state.errorsVar \errors -> do
           let errors' = DHashMap.intersectionWithKey (\_ _ e -> e) started errors
           (errors', errors')
     let errors = do
@@ -273,12 +274,12 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
 checkAll :: Task Query ()
 checkAll = do
   filePaths <- fetch Query.InputFiles
-  forConcurrently_ filePaths $ \filePath -> do
+  forConcurrently_ filePaths \filePath -> do
     (module_, _, defs) <- fetch $ Query.ParsedFile filePath
     let names =
           HashSet.fromList $
             Name.Qualified module_ . fst . snd <$> defs
-    forM_ (HashSet.toList names) $ \name -> do
+    forM_ (HashSet.toList names) \name -> do
       void $ fetch $ Query.ElaboratedType name
       fetch $ Query.ElaboratedDefinition name
 
@@ -288,7 +289,7 @@ pooledForConcurrently_
   -> (a -> m b)
   -> m ()
 pooledForConcurrently_ as f =
-  liftBaseWith $ \runInIO ->
+  liftBaseWith \runInIO ->
     pooledForConcurrentlyIO_ as (runInIO . f)
 
 pooledForConcurrentlyIO_
@@ -301,7 +302,7 @@ pooledForConcurrentlyIO_ as f = do
   processCount <- getNumCapabilities
   let go =
         join $
-          atomicModifyIORef' todoRef $ \todo ->
+          atomicModifyIORef' todoRef \todo ->
             case todo of
               [] ->
                 (todo, pure ())
@@ -319,14 +320,14 @@ pooledForConcurrentlyIO
   -> (a -> IO b)
   -> IO (t b)
 pooledForConcurrentlyIO as f = do
-  jobs <- forM as $ \a -> do
+  jobs <- forM as \a -> do
     ref <- newIORef $ panic "pooledForConcurrently not done"
     pure (a, ref)
   todoRef <- newIORef $ toList jobs
   processCount <- getNumCapabilities
   let go =
         join $
-          atomicModifyIORef' todoRef $ \todo ->
+          atomicModifyIORef' todoRef \todo ->
             case todo of
               [] ->
                 (todo, pure ())
@@ -338,7 +339,7 @@ pooledForConcurrentlyIO as f = do
                     go
                 )
   replicateConcurrently_ (max 8 processCount) go
-  forM jobs $ \(_, ref) ->
+  forM jobs \(_, ref) ->
     readIORef ref
 
 pooledForConcurrently
@@ -347,5 +348,5 @@ pooledForConcurrently
   -> (a -> m b)
   -> m (t b)
 pooledForConcurrently as f =
-  liftBaseWith $ \runInIO ->
+  liftBaseWith \runInIO ->
     pooledForConcurrentlyIO as (runInIO . f)

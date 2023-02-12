@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE LambdaCase #-}
@@ -224,7 +225,7 @@ solutionMetas metaIndex state = do
           pure (Just metas, state)
       | otherwise ->
           flip runStateT state $ do
-            indirects <- forM (EnumSet.toList $ unsolved metas) $ \i ->
+            indirects <- forM (EnumSet.toList $ unsolved metas) \i ->
               (,) i <$> StateT (solutionMetas i)
 
             let (directUnsolvedMetas, directSolvedMetas) =
@@ -246,7 +247,7 @@ solutionMetas metaIndex state = do
                     , solved = solved'
                     }
 
-            modify $ \s -> s {entries = EnumMap.insert metaIndex (Solved solution metas' type_) $ entries s}
+            modify \s -> s {entries = EnumMap.insert metaIndex (Solved solution metas' type_) $ entries s}
 
             pure $ Just metas'
     LazilySolved msolution type_ -> do

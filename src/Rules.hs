@@ -1,4 +1,5 @@
 {-# LANGUAGE ApplicativeDo #-}
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
@@ -185,17 +186,17 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
       noError $ do
         maybeFile <- fetch $ ModuleFile module_
         fmap (OrderedHashSet.fromList . fold) $
-          forM maybeFile $ \file -> do
+          forM maybeFile \file -> do
             (_, _, defs) <- fetch $ ParsedFile file
             pure $ fst . snd <$> defs
     ModuleHeader module_ ->
       nonInput $ do
         maybeFilePath <- fetch $ Query.ModuleFile module_
         fmap fold $
-          forM maybeFilePath $ \filePath -> do
+          forM maybeFilePath \filePath -> do
             (_, header, _) <- fetch $ ParsedFile filePath
             errors <- fmap concat $
-              forM header.imports $ \import_ -> do
+              forM header.imports \import_ -> do
                 maybeModuleFile <- fetch $ Query.ModuleFile import_.module_
                 pure [Error.ImportNotFound module_ import_ | isNothing maybeModuleFile]
             pure (header, errors)
@@ -203,7 +204,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
       noError $
         Mapped.rule (ImportedNames module_) subQuery $ do
           header <- fetch $ ModuleHeader module_
-          scopes <- forM header.imports $ \import_ -> do
+          scopes <- forM header.imports \import_ -> do
             importedHeader <- fetch $ ModuleHeader import_.module_
             (_, publicScope) <- fetch $ ModuleScope import_.module_
             pure $
@@ -221,7 +222,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
         Mapped.rule (ParsedDefinition module_) subQuery $ do
           maybeFilePath <- fetch $ Query.ModuleFile module_
           fmap fold $
-            forM maybeFilePath $ \filePath -> do
+            forM maybeFilePath \filePath -> do
               (_, _, defs) <- fetch $ ParsedFile filePath
               pure $
                 HashMap.fromListWith
@@ -237,7 +238,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
       noError $ do
         maybeFilePath <- fetch $ Query.ModuleFile module_
         fmap fold $
-          forM maybeFilePath $ \filePath -> do
+          forM maybeFilePath \filePath -> do
             text <- fetch $ FileText filePath
             (_, _, defs) <- fetch $ ParsedFile filePath
             let go = \case
@@ -253,7 +254,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
       nonInput $ do
         maybeFilePath <- fetch $ Query.ModuleFile module_
         fmap fold $
-          forM maybeFilePath $ \filePath -> do
+          forM maybeFilePath \filePath -> do
             (_, _, defs) <- fetch $ ParsedFile filePath
             pure $ Resolution.moduleScopes module_ defs
     ResolvedName module_ surfaceName ->
@@ -274,7 +275,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                   pure $ Just Builtin.type_
                 Scope.Definition -> do
                   mtype <- fetch $ ParsedDefinition module_ $ Mapped.Query (Scope.Type, name)
-                  forM mtype $ \_ ->
+                  forM mtype \_ ->
                     fetch $ ElaboratedType qualifiedName
 
             runElaboratorWithDefault Nothing definitionKind qualifiedName $
@@ -397,7 +398,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
       noError $ do
         names <- fetch $ ModuleDefinitions module_
         fmap (OrderedHashSet.fromList . concat) $
-          forM (toList names) $ \name -> do
+          forM (toList names) \name -> do
             let qualifiedName =
                   Name.Qualified module_ name
             (_, extras) <- fetch $ LambdaLifted qualifiedName
@@ -464,7 +465,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
       noError $ do
         names <- fetch $ LambdaLiftedModuleDefinitions module_
         assemblyDefinitions <- fmap concat $
-          forM (toList names) $ \name -> do
+          forM (toList names) \name -> do
             maybeAssembly <- fetch $ Assembly name
             pure $ toList $ (name,) <$> maybeAssembly
         moduleInitDefs <-
@@ -478,7 +479,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
     LLVMModuleInitModule ->
       noError $ do
         inputFiles <- fetch Query.InputFiles
-        moduleNames <- forM (toList inputFiles) $ \filePath -> do
+        moduleNames <- forM (toList inputFiles) \filePath -> do
           (moduleName, _, _) <- fetch $ Query.ParsedFile filePath
           pure moduleName
 

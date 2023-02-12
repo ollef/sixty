@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -21,7 +22,7 @@ data Options = Options
 generate :: Options -> IO ()
 generate Options {..} = do
   createDirectoryIfMissing True $ outputDirectory </> "src"
-  forM_ [1 .. moduleCount] $ \moduleNumber -> do
+  forM_ [1 .. moduleCount] \moduleNumber -> do
     let moduleName num =
           "Module" <> show num
 
@@ -32,7 +33,7 @@ generate Options {..} = do
       replicateM (min (moduleNumber - 1) importCount) $
         randomRIO (1, moduleNumber - 1)
 
-    functions <- forM [1 .. functionCount] $ \functionNumber -> do
+    functions <- forM [1 .. functionCount] \functionNumber -> do
       def <-
         if not (null importedModules)
           then do

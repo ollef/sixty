@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -43,19 +44,19 @@ main = do
     Tasty.testGroup
       "tests"
       [ Tasty.testGroup "singles" $
-          foreach singleFiles $ \inputFile ->
+          foreach singleFiles \inputFile ->
             Tasty.testCase (drop (length singlesDirectory + 1) $ dropExtension inputFile) $
               checkFiles [takeDirectory inputFile] [inputFile]
       , Tasty.testGroup "multis" $
-          foreach multiFiles $ \(dir, inputFiles) ->
+          foreach multiFiles \(dir, inputFiles) ->
             Tasty.testCase (drop (length multisDirectory + 1) dir) $
               checkFiles [dir] inputFiles
       , Tasty.testGroup "compilation" $
-          foreach compilationFiles $ \inputFile ->
+          foreach compilationFiles \inputFile ->
             Tasty.testCase (drop (length compilationDirectory + 1) $ dropExtension inputFile) $
               compileFiles Nothing [takeDirectory inputFile] [inputFile]
       , Tasty.testGroup "optimised compilation" $
-          foreach compilationFiles $ \inputFile ->
+          foreach compilationFiles \inputFile ->
             Tasty.testCase (drop (length compilationDirectory + 1) $ dropExtension inputFile) $
               compileFiles (Just "2") [takeDirectory inputFile] [inputFile]
       ]
@@ -67,11 +68,11 @@ checkFiles sourceDirectories files = do
         pure (err, p)
   (moduleSources, errs) <- Driver.runTask (HashSet.fromList sourceDirectories) (HashSet.fromList files) prettyError $ do
     Driver.checkAll
-    forM files $ \filePath -> do
+    forM files \filePath -> do
       moduleSource <- fetch $ Query.FileText filePath
       pure (filePath, moduleSource)
 
-  forM_ moduleSources $ \(filePath, moduleSource) -> do
+  forM_ moduleSources \(filePath, moduleSource) -> do
     let expectedErrors =
           expectedErrorsFromSource moduleSource
 
@@ -84,17 +85,17 @@ compileFiles optimisationLevel sourceDirectories files = do
   let prettyError err = do
         p <- Error.Hydrated.pretty err
         pure (err, p)
-  Command.Compile.withOutputFile Nothing $ \outputExecutableFile ->
-    Command.Compile.withAssemblyDirectory Nothing $ \assemblyDir -> do
+  Command.Compile.withOutputFile Nothing \outputExecutableFile ->
+    Command.Compile.withAssemblyDirectory Nothing \assemblyDir -> do
       (moduleSources, errs) <- Driver.runTask (HashSet.fromList sourceDirectories) (HashSet.fromList files) prettyError $ do
         Driver.checkAll
         Compiler.compile assemblyDir False outputExecutableFile optimisationLevel
-        forM files $ \filePath -> do
+        forM files \filePath -> do
           moduleSource <- fetch $ Query.FileText filePath
           pure (filePath, moduleSource)
 
       executableOutput <- readProcess outputExecutableFile [] []
-      forM_ moduleSources $ \(filePath, moduleSource) -> do
+      forM_ moduleSources \(filePath, moduleSource) -> do
         let expectedErrors =
               expectedErrorsFromSource moduleSource
 
@@ -114,7 +115,7 @@ verifyErrors filePath errs expectedErrors = do
           | (err, _) <- errs
           ]
 
-  forM_ (HashMap.toList expectedErrors) $ \(lineNumber, expectedErrorsOnLine) ->
+  forM_ (HashMap.toList expectedErrors) \(lineNumber, expectedErrorsOnLine) ->
     case HashMap.lookup lineNumber errorsMap of
       Just errorsOnLine
         | sort errorsOnLine == sort expectedErrorsOnLine ->
@@ -130,7 +131,7 @@ verifyErrors filePath errs expectedErrors = do
             <> " errors, got "
             <> show (fold maybeErrorsOnLine)
 
-  forM_ errs $ \(err, doc) ->
+  forM_ errs \(err, doc) ->
     case HashMap.lookup (Error.Hydrated.lineNumber err) expectedErrors of
       Just expectedErrorsOnLine
         | errorToExpectedError err.error `elem` expectedErrorsOnLine ->
@@ -278,7 +279,7 @@ listDirectoryRecursive :: (FilePath -> Bool) -> FilePath -> IO [FilePath]
 listDirectoryRecursive p dir = do
   files <- listDirectory dir
   fmap concat $
-    forM files $ \file -> do
+    forM files \file -> do
       let path = dir </> file
       isDir <- doesDirectoryExist path
       if isDir
@@ -297,7 +298,7 @@ listDirectoriesWithFilesMatching p dir = do
       recursiveFiles <- listDirectoryRecursive p dir
       pure [(dir, recursiveFiles)]
     else fmap concat $
-      forM paths $ \path -> do
+      forM paths \path -> do
         isDir <- doesDirectoryExist path
         if isDir
           then listDirectoriesWithFilesMatching p path

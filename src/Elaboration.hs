@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
@@ -195,12 +196,12 @@ inferDataDefinition context surfaceParams constrs paramVars =
 
       thisType' <- evaluate context thisType
       let context' = context {Context.definitionType = Just thisType'}
-      constrs' <- forM constrs $ \case
+      constrs' <- forM constrs \case
         Surface.GADTConstructors cs type_ -> do
           type' <- check context' type_ Builtin.Type
           pure [(constr, type') | (_, constr) <- cs]
         Surface.ADTConstructor _ constr types -> do
-          types' <- forM types $ \type_ ->
+          types' <- forM types \type_ ->
             check context' type_ Builtin.Type
 
           returnType <-
@@ -250,7 +251,7 @@ postProcessDataDefinition outerContext boxity outerTele = do
       case tele of
         Telescope.Empty (Syntax.ConstructorDefinitions constructorDefinitions) -> do
           map (Telescope.Empty . Syntax.ConstructorDefinitions) $
-            OrderedHashMap.forMUnordered constructorDefinitions $ \constructorType -> do
+            OrderedHashMap.forMUnordered constructorDefinitions \constructorType -> do
               let zonkedConstructorType =
                     ZonkPostponedChecks.zonkTerm postponed constructorType
               maybeConstructorType <- Context.try context $ addConstructorIndexEqualities context paramVars zonkedConstructorType
@@ -776,7 +777,7 @@ elaborateLets context declaredNames undefinedVars definedVars lets body mode = d
                   definedVars' =
                     definedVars Tsil.:> (var, LetBoundTerm context boundTerm)
               redefinedContext <- mdo
-                values <- forM definedVars' $ \(var', LetBoundTerm context' boundTerm') ->
+                values <- forM definedVars' \(var', LetBoundTerm context' boundTerm') ->
                   (var',) <$> lazyEvaluate (defines context' values) boundTerm'
                 pure $ defines context values
               lets'' <- elaborateLets redefinedContext declaredNames undefinedVars' definedVars' lets' body mode
@@ -784,7 +785,7 @@ elaborateLets context declaredNames undefinedVars definedVars lets body mode = d
   where
     defines :: Context v -> Tsil (Var, Domain.Value) -> Context v
     defines =
-      foldr' $ \(var, value) context' ->
+      foldr' \(var, value) context' ->
         if isJust $ Context.lookupVarIndex var context'
           then Context.defineWellOrdered context' var value
           else context'
@@ -816,7 +817,7 @@ postponeCheck
   -> M (Checked (Syntax.Term v))
 postponeCheck context surfaceTerm expectedType blockingMeta =
   fmap Checked $
-    postpone context expectedType blockingMeta $ \canPostpone -> do
+    postpone context expectedType blockingMeta \canPostpone -> do
       Checked resultTerm <- elaborateWith context surfaceTerm (Check expectedType) canPostpone
       pure resultTerm
 
@@ -903,7 +904,7 @@ postponeImplicitApps
   -> M (Syntax.Term v, Domain.Value)
 postponeImplicitApps context function arguments functionType blockingMeta = do
   expectedType <- Context.newMetaType context
-  postponedTerm <- postpone context expectedType blockingMeta $ \canPostpone -> do
+  postponedTerm <- postpone context expectedType blockingMeta \canPostpone -> do
     (resultTerm, resultType) <- inferImplicitApps context function functionType arguments canPostpone
     f <- Unification.tryUnify context resultType expectedType
     pure $ f resultTerm
@@ -934,7 +935,7 @@ postpone
 postpone context expectedType blockingMeta check_ = do
   (resultMeta, resultMetaArgs, resultMetaValue) <- Context.newMetaReturningIndex context expectedType
   resultMetaTerm <- readback context resultMetaValue
-  postponementIndex <- Context.newPostponedCheck context blockingMeta $ \canPostpone -> do
+  postponementIndex <- Context.newPostponedCheck context blockingMeta \canPostpone -> do
     resultTerm <- check_ canPostpone
     metaValue <- Context.lookupEagerMeta context resultMeta
     let metaSolution = do
@@ -1154,7 +1155,7 @@ checkMetaSolutions
   -> Meta.EagerState
   -> M Syntax.MetaSolutions
 checkMetaSolutions context metaVars =
-  flip EnumMap.traverseWithKey (Meta.eagerEntries metaVars) $ \index entry ->
+  flip EnumMap.traverseWithKey (Meta.eagerEntries metaVars) \index entry ->
     case entry of
       Meta.EagerUnsolved type_ _ _ span -> do
         ptype <- Context.toPrettyableClosedTerm context type_

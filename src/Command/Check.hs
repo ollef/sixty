@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -26,16 +27,16 @@ check argumentFiles printElaborated = do
   ((), errs) <-
     Driver.runTask sourceDirectories filePaths Error.Hydrated.pretty $
       if printElaborated
-        then withAsync (void Driver.checkAll) $ \checkedAll -> do
+        then withAsync (void Driver.checkAll) \checkedAll -> do
           inputFiles <- fetch Query.InputFiles
-          forM_ inputFiles $ \filePath -> do
+          forM_ inputFiles \filePath -> do
             (module_, _, defs) <- fetch $ Query.ParsedFile filePath
             let names =
                   HashSet.fromList $
                     Name.Qualified module_ . fst . snd <$> defs
             emptyPrettyEnv <- Pretty.emptyM module_
             liftIO $ putDoc $ "module" <+> pretty module_ <> line <> line
-            forM_ names $ \name -> do
+            forM_ names \name -> do
               type_ <- fetch $ Query.ElaboratedType name
               liftIO $ putDoc $ Pretty.prettyDefinition emptyPrettyEnv name (Syntax.TypeDeclaration type_) <> line
               (definition, _) <- fetch $ Query.ElaboratedDefinition name
@@ -47,7 +48,7 @@ check argumentFiles printElaborated = do
           wait checkedAll
         else void Driver.checkAll
   endTime <- getCurrentTime
-  forM_ errs $ \err ->
+  forM_ errs \err ->
     putDoc $ err <> line
   let errorCount =
         length errs

@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -80,7 +81,7 @@ subBuilder (Builder s) = do
 
 emit :: Assembly.Instruction -> Builder ()
 emit instruction =
-  modify $ \s -> s {instructions = s.instructions Tsil.:> instruction}
+  modify \s -> s {instructions = s.instructions Tsil.:> instruction}
 
 tagBytes :: Num a => a
 tagBytes = wordBytes
@@ -157,14 +158,14 @@ getFreeShadowStackSlot :: Builder (Int, Builder ())
 getFreeShadowStackSlot = do
   slot <- gets (.nextShadowStackSlot)
   let newNextSlot = slot + 1
-  modify $ \s ->
+  modify \s ->
     s
       { nextShadowStackSlot = newNextSlot
       , shadowStackSlotCount = max newNextSlot s.shadowStackSlotCount
       }
   pure
     ( slot
-    , modify $ \s ->
+    , modify \s ->
         s
           { nextShadowStackSlot =
               if s.nextShadowStackSlot == newNextSlot
@@ -244,7 +245,7 @@ heapAllocate nameSuggestion constructorTag size = do
   result <- extractValue nameSuggestion destinationOperand 0
   heapPointer' <- extractValue "heap_pointer" destinationOperand 1
   heapLimit' <- extractValue "heap_limit" destinationOperand 2
-  modify $ \s -> s {heapPointer = heapPointer', heapLimit = heapLimit'}
+  modify \s -> s {heapPointer = heapPointer', heapLimit = heapLimit'}
   pure result
 
 extractHeapPointer :: Assembly.NameSuggestion -> Assembly.Operand -> Builder Assembly.Operand
@@ -286,7 +287,7 @@ switch returnType scrutinee branches defaultBranch = do
   initialHeapPointer <- gets (.heapPointer)
   initialHeapLimit <- gets (.heapLimit)
   let wrapBranch branch = subBuilder $ do
-        modify $ \s ->
+        modify \s ->
           s
             { nextShadowStackSlot = initialNextShadowStackSlot
             , heapPointer = initialHeapPointer
@@ -304,13 +305,13 @@ switch returnType scrutinee branches defaultBranch = do
           )
 
   ((defaultReturn, defaultNextShadowStackSlot), defaultInstructions) <- wrapBranch defaultBranch
-  branches' <- forM branches $ \(i, branch) -> do
+  branches' <- forM branches \(i, branch) -> do
     ((branchReturn, branchNextShadowStackSlot), branchInstructions) <- wrapBranch branch
     pure ((i, Assembly.BasicBlock branchInstructions branchReturn), branchNextShadowStackSlot)
   let branchNextShadowStackSlots = snd <$> branches'
   when (any (/= defaultNextShadowStackSlot) branchNextShadowStackSlots) $
     panic "ClosureConvertedToAssembly.switch: Shadow stack mismatch"
-  modify $ \s -> s {nextShadowStackSlot = defaultNextShadowStackSlot}
+  modify \s -> s {nextShadowStackSlot = defaultNextShadowStackSlot}
   case returnType of
     Assembly.Void -> do
       resultLocal <- freshLocal "heap_pointer_and_limit"
@@ -319,7 +320,7 @@ switch returnType scrutinee branches defaultBranch = do
       emit $ Assembly.Switch (Assembly.Return (resultType, resultLocal)) scrutinee (fst <$> branches') $ Assembly.BasicBlock defaultInstructions defaultReturn
       heapPointer <- extractValue "heap_pointer" resultOperand 0
       heapLimit <- extractValue "heap_limit" resultOperand 1
-      modify $ \s -> s {heapPointer, heapLimit}
+      modify \s -> s {heapPointer, heapLimit}
       pure Assembly.Void
     Assembly.Return (type_, nameSuggestion) -> do
       resultLocal <- freshLocal $ nameSuggestion <> "_with_heap_pointer_and_limit"
@@ -329,7 +330,7 @@ switch returnType scrutinee branches defaultBranch = do
       result <- extractValue nameSuggestion resultOperand 0
       heapPointer <- extractValue "heap_pointer" resultOperand 1
       heapLimit <- extractValue "heap_limit" resultOperand 2
-      modify $ \s -> s {heapPointer, heapLimit}
+      modify \s -> s {heapPointer, heapLimit}
       pure $ Assembly.Return result
 
 -------------------------------------------------------------------------------
@@ -337,7 +338,7 @@ switch returnType scrutinee branches defaultBranch = do
 freshLocal :: Assembly.NameSuggestion -> Builder Assembly.Local
 freshLocal nameSuggestion = do
   fresh <- gets (.fresh)
-  modify $ \s -> s {fresh = fresh + 1}
+  modify \s -> s {fresh = fresh + 1}
   pure $ Assembly.Local fresh nameSuggestion
 
 copy :: Assembly.Operand -> Operand -> Assembly.Operand -> Builder ()
@@ -366,7 +367,7 @@ callVoid global args = do
   let resultStructOperand = Assembly.LocalOperand resultStruct
   heapPointer' <- extractValue "heap_pointer" resultStructOperand 0
   heapLimit' <- extractValue "heap_limit" resultStructOperand 1
-  modify $ \s ->
+  modify \s ->
     s
       { heapPointer = heapPointer'
       , heapLimit = heapLimit'
@@ -394,7 +395,7 @@ callDirect nameSuggestion global args = do
   result <- extractValue nameSuggestion resultStructOperand 0
   heapPointer' <- extractValue "heap_pointer" resultStructOperand 1
   heapLimit' <- extractValue "heap_limit" resultStructOperand 2
-  modify $ \s ->
+  modify \s ->
     s
       { heapPointer = heapPointer'
       , heapLimit = heapLimit'
@@ -424,7 +425,7 @@ callInitFunction nameSuggestion global args = do
   result <- extractValue nameSuggestion resultStructOperand 0
   heapPointer' <- extractValue "heap_pointer" resultStructOperand 1
   heapLimit' <- extractValue "heap_limit" resultStructOperand 2
-  modify $ \s ->
+  modify \s ->
     s
       { heapPointer = heapPointer'
       , heapLimit = heapLimit'
@@ -630,7 +631,7 @@ withFunctionDefinitionParameters m = do
   heapPointer <- gets (.heapPointer)
   heapLimit <- gets (.heapLimit)
   pure $
-    mkDefinition $ \returnType parameters (Assembly.BasicBlock instructions returnOperand) ->
+    mkDefinition \returnType parameters (Assembly.BasicBlock instructions returnOperand) ->
       Assembly.FunctionDefinition
         ( case returnType of
             Assembly.Void -> Assembly.Return $ Assembly.Struct [Assembly.WordPointer, Assembly.WordPointer]
@@ -677,11 +678,11 @@ generateGlobal env name representation term = do
       pure $ Assembly.KnownConstantDefinition Assembly.Word knownConstant True
     Nothing ->
       case representation of
-        Representation.Empty -> makeConstantDefinition Assembly.WordPointer $ \globalPointer -> do
+        Representation.Empty -> makeConstantDefinition Assembly.WordPointer \globalPointer -> do
           (_, deallocateTerm) <- generateTypedTerm env term (Direct emptyTypeOperand) representation
           sequence_ deallocateTerm
           pure globalPointer
-        Representation.Direct Representation.Doesn'tContainHeapPointers -> makeConstantDefinition Assembly.Word $ \globalPointer -> do
+        Representation.Direct Representation.Doesn'tContainHeapPointers -> makeConstantDefinition Assembly.Word \globalPointer -> do
           (result, deallocateTerm) <- generateTypedTerm env term (Direct directTypeOperand) representation
           directResult <- forceDirect result
           sequence_ deallocateTerm
@@ -693,7 +694,7 @@ generateGlobal env name representation term = do
           indirectCase containsHeapPointers
   where
     indirectCase containsHeapPointers = do
-      makeConstantDefinition Assembly.WordPointer $ \globalPointer -> do
+      makeConstantDefinition Assembly.WordPointer \globalPointer -> do
         (type_, _representation) <- typeOf env term
         typeSize <- sizeOfType type_
         globalPointer' <- globalAllocate "globals" globalPointer typeSize
@@ -1227,7 +1228,7 @@ boxedConstructorSize env con params args = do
   tele <- fetch $ Query.ClosureConvertedConstructorType con
   params' <- mapM (Evaluation.evaluate env) params
   args' <- mapM (Evaluation.evaluate env) args
-  maybeResult <- Evaluation.applyTelescope env (Telescope.fromVoid tele) params' $ \env' type_ -> do
+  maybeResult <- Evaluation.applyTelescope env (Telescope.fromVoid tele) params' \env' type_ -> do
     type' <- Evaluation.evaluate env' type_
     size <- ClosureConverted.Representation.compileBoxedConstructorFields env' type' args'
     Evaluation.evaluate env' size

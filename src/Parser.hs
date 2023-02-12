@@ -152,7 +152,7 @@ instance Applicative Parser where
 
   {-# INLINE (<*>) #-}
   Parser p <*> Parser q =
-    Parser $ \inp err lineCol base ->
+    Parser \inp err lineCol base ->
       case p inp err lineCol base of
         OK f con inp' err' ->
           consumedAtLeast con (mapResult f (q inp' err' lineCol base))
@@ -161,7 +161,7 @@ instance Applicative Parser where
 
   {-# INLINE (*>) #-}
   Parser p *> Parser q =
-    Parser $ \inp err lineCol base ->
+    Parser \inp err lineCol base ->
       case p inp err lineCol base of
         OK _ con inp' err' ->
           consumedAtLeast con (q inp' err' lineCol base)
@@ -170,7 +170,7 @@ instance Applicative Parser where
 
   {-# INLINE (<*) #-}
   Parser p <* Parser q =
-    Parser $ \inp err lineCol base ->
+    Parser \inp err lineCol base ->
       case p inp err lineCol base of
         OK a con inp' err' ->
           consumedAtLeast con (setResult a (q inp' err' lineCol base))
@@ -404,7 +404,7 @@ blockOfMany p =
 {-# INLINE token #-}
 token :: UnspannedToken -> Parser Span.Relative
 token t =
-  withIndentedToken $ \continue break span t' ->
+  withIndentedToken \continue break span t' ->
     if t == t'
       then continue span
       else break $ expected $ "'" <> Lexer.displayToken t <> "'"
@@ -412,7 +412,7 @@ token t =
 {-# INLINE uncheckedToken #-}
 uncheckedToken :: UnspannedToken -> Parser Span.Relative
 uncheckedToken t =
-  withToken $ \continue break span t' ->
+  withToken \continue break span t' ->
     if t == t'
       then continue span
       else break $ expected $ "'" <> Lexer.displayToken t <> "'"
@@ -420,7 +420,7 @@ uncheckedToken t =
 {-# INLINE spannedIdentifier #-}
 spannedIdentifier :: Parser (Span.Relative, Text)
 spannedIdentifier =
-  withIndentedToken $ \continue break span token_ ->
+  withIndentedToken \continue break span token_ ->
     case token_ of
       Lexer.Identifier name_ ->
         continue (span, name_)
@@ -546,7 +546,7 @@ recoveringTerm =
 
 atomicTerm :: Parser Surface.Term
 atomicTerm =
-  withIndentedTokenM $ \continue break span token_ ->
+  withIndentedTokenM \continue break span token_ ->
     case token_ of
       Lexer.LeftParen ->
         continue $ term <* token Lexer.RightParen

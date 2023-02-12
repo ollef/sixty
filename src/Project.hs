@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE NoFieldSelectors #-}
@@ -30,7 +31,7 @@ filesFromArguments files = do
       filesFromProjectInDirectory workingDirectory
     _ ->
       fmap mconcat $
-        forM files' $ \file -> do
+        forM files' \file -> do
           isDir <- Directory.doesDirectoryExist file
           isFile <- Directory.doesFileExist file
           case () of
@@ -70,7 +71,7 @@ findProjectFile directory = do
                 FilePath.splitDirectories directory
   runMaybeT $
     asum $
-      foreach candidateDirectories $ \candidateDirectory -> do
+      foreach candidateDirectories \candidateDirectory -> do
         let file =
               candidateDirectory FilePath.</> "sixten.json"
         fileExists <- liftIO $ Directory.doesFileExist file
@@ -98,7 +99,7 @@ listDirectoryRecursive :: (FilePath -> Bool) -> FilePath -> IO (HashSet FilePath
 listDirectoryRecursive p dir = do
   files <- Directory.listDirectory dir
   fmap mconcat $
-    forM files $ \file -> do
+    forM files \file -> do
       let path = dir FilePath.</> file
       isDir <- Directory.doesDirectoryExist path
       if isDir

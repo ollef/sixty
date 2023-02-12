@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -32,8 +33,8 @@ withCompiledExecutable :: (FilePath -> IO ()) -> Options -> IO ()
 withCompiledExecutable k Options {..} = do
   startTime <- getCurrentTime
   (sourceDirectories, filePaths) <- Project.filesFromArguments argumentFiles
-  withAssemblyDirectory maybeAssemblyDir $ \assemblyDir ->
-    withOutputFile maybeOutputFile $ \outputFile -> do
+  withAssemblyDirectory maybeAssemblyDir \assemblyDir ->
+    withOutputFile maybeOutputFile \outputFile -> do
       ((), errs) <-
         Driver.runTask sourceDirectories filePaths Error.Hydrated.pretty $
           Compiler.compile assemblyDir (isJust maybeAssemblyDir) outputFile maybeOptimisationLevel
@@ -59,7 +60,7 @@ withOutputFile :: Maybe FilePath -> (FilePath -> IO a) -> IO a
 withOutputFile maybeOutputFile_ k' =
   case maybeOutputFile_ of
     Nothing ->
-      withTempFile "." "temp.exe" $ \outputFile outputFileHandle -> do
+      withTempFile "." "temp.exe" \outputFile outputFileHandle -> do
         hClose outputFileHandle
         k' outputFile
     Just o -> do

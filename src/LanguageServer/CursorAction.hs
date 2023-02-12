@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedRecordDot #-}
@@ -297,7 +298,7 @@ constructorBranchAction
   -> MaybeT M a
 constructorBranchAction k env typeName scrutinee (constr, (spans, tele)) =
   asum
-    ( foreach spans $ \span -> do
+    ( foreach spans \span -> do
         guard $ any (`Span.relativeContains` env.actionPosition) spans
         scrutinee' <- lift $ Elaboration.evaluate env.context scrutinee
         scrutineeType <- lift $ TypeOf.typeOf env.context scrutinee'
@@ -380,7 +381,7 @@ definingBindingsAction k env binding var =
           empty
         Just index ->
           asum $
-            foreach spannedNames $ \(span, _) -> do
+            foreach spannedNames \(span, _) -> do
               guard $ span `Span.relativeContains` env.actionPosition
               k PatternContext env (Syntax.Var index) span
     Bindings.Unspanned _ ->
