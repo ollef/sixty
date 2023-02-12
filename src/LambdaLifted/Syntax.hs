@@ -39,22 +39,14 @@ type Type = Term
 pisView :: (forall v'. Term v' -> term v') -> Term v -> Telescope Name term term v
 pisView f type_ =
   case type_ of
-    Var {} ->
-      Telescope.Empty $ f type_
-    Global {} ->
-      Telescope.Empty $ f type_
-    Con {} ->
-      Telescope.Empty $ f type_
-    Lit {} ->
-      Telescope.Empty $ f type_
-    Let {} ->
-      Telescope.Empty $ f type_
-    Pi name type' scope ->
-      Telescope.Extend name (f type') Explicit $ pisView f scope
-    App {} ->
-      Telescope.Empty $ f type_
-    Case {} ->
-      Telescope.Empty $ f type_
+    Var {} -> Telescope.Empty $ f type_
+    Global {} -> Telescope.Empty $ f type_
+    Con {} -> Telescope.Empty $ f type_
+    Lit {} -> Telescope.Empty $ f type_
+    Let {} -> Telescope.Empty $ f type_
+    Pi name type' scope -> Telescope.Extend name (f type') Explicit $ pisView f scope
+    App {} -> Telescope.Empty $ f type_
+    Case {} -> Telescope.Empty $ f type_
 
 data Branches v
   = ConstructorBranches !Name.Qualified (OrderedHashMap Name.Constructor (Telescope Name Type Term v))
