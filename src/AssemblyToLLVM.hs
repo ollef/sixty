@@ -122,22 +122,23 @@ pointer = "ptr"
 
 emitInstruction :: Builder -> Assembler ()
 emitInstruction instruction =
-  modify $ \s -> s {instructions = s.instructions <> "\n  " <> instruction}
+  modify \s -> s {instructions = s.instructions <> "\n  " <> instruction}
 
 startBlock :: Name -> Assembler ()
 startBlock basicBlockName =
-  modify $ \s -> s {basicBlockName}
+  modify \s -> s {basicBlockName}
 
 endBlock :: Builder -> Assembler ()
 endBlock terminator =
-  modify $ \s ->
+  modify \s ->
     s
       { instructions = mempty
       , basicBlockName = panic "AssemblyToLLVM: not in a basic block"
       , basicBlocks =
           s.basicBlocks
+            <> "\n\n"
             <> Builder.shortByteString s.basicBlockName.shortByteString
-            <> ":\n"
+            <> ":"
             <> s.instructions
             <> "\n  "
             <> terminator
@@ -256,7 +257,7 @@ assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
                 <> parens [typedOperand TypedOperand {type_ = pointer, operand = Local p} | p <- parameters']
                 <> " align "
                 <> Builder.intDec alignment
-                <> " {\n"
+                <> " {"
                 <> basicBlocks
                 <> "\n}"
             )
@@ -284,7 +285,7 @@ assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
                   ]
                 <> " align "
                 <> Builder.intDec alignment
-                <> " {\n"
+                <> " {"
                 <> basicBlocks
                 <> "\n}"
             )
@@ -520,6 +521,7 @@ assembleInstruction instruction =
             localName destination'
               <> " = phi "
               <> llvmType destinationType
+              <> " "
               <> commaSeparate [brackets [typedOperand v, localName l] | (v, l) <- incomingValues]
 
 assembleOperand :: Assembly.Operand -> Assembler (Assembly.NameSuggestion, Assembly.Type, TypedOperand)
