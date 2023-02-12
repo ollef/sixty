@@ -1177,7 +1177,7 @@ storeBoxedBranch env constructorBasePointerBuilder constructorFieldOffsetBuilder
 
 generateArguments :: Environment v -> [(Syntax.Term v, Representation)] -> Builder ([(Assembly.Type, Assembly.Operand)], Builder ())
 generateArguments env arguments = do
-  (argumentGenerators, outerDeallocators) <- unzip <$> mapM (uncurry $ generateArgument env) arguments
+  (argumentGenerators, outerDeallocators) <- mapAndUnzipM (uncurry $ generateArgument env) arguments
   (arguments', innerDeallocators) <- unzip <$> sequence argumentGenerators
   pure
     ( concat arguments'
