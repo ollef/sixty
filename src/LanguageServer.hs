@@ -399,7 +399,7 @@ checkAllAndPublishDiagnostics state = do
   let errorsByFilePath =
         HashMap.fromListWith
           (<>)
-          [ (Error.Hydrated._filePath error, [errorToDiagnostic error errorDoc])
+          [ (error.filePath, [errorToDiagnostic error errorDoc])
           | (error, errorDoc) <- errors
           ]
           <> allFiles
@@ -419,7 +419,7 @@ runTask state prune task = do
   vfs <- LSP.runLspT state.env LSP.getVirtualFiles
   let prettyError :: Error.Hydrated -> Task Query (Error.Hydrated, Doc ann)
       prettyError err = do
-        (heading, body) <- Error.Hydrated.headingAndBody $ Error.Hydrated._error err
+        (heading, body) <- Error.Hydrated.headingAndBody err.error
         pure (err, heading <> Doc.line <> body)
 
       files =
@@ -457,7 +457,7 @@ diagnosticSource = "sixten"
 errorToDiagnostic :: Error.Hydrated -> Doc ann -> LSP.Diagnostic
 errorToDiagnostic err doc =
   LSP.Diagnostic
-    { _range = spanToRange $ Error.Hydrated._lineColumn err
+    { _range = spanToRange err.lineColumn
     , _severity = Just LSP.DsError
     , _code = Nothing
     , _source = Just diagnosticSource

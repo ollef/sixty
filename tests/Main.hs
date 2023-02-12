@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Main where
@@ -75,7 +76,7 @@ checkFiles sourceDirectories files = do
           expectedErrorsFromSource moduleSource
 
         moduleErrs =
-          filter ((filePath ==) . Error.Hydrated._filePath . fst) errs
+          filter ((filePath ==) . (.filePath) . fst) errs
     verifyErrors filePath moduleErrs expectedErrors
 
 compileFiles :: Maybe String -> [FileSystem.Directory] -> [FilePath] -> IO ()
@@ -98,7 +99,7 @@ compileFiles optimisationLevel sourceDirectories files = do
               expectedErrorsFromSource moduleSource
 
             moduleErrs =
-              filter ((filePath ==) . Error.Hydrated._filePath . fst) errs
+              filter ((filePath ==) . (.filePath) . fst) errs
         verifyErrors filePath moduleErrs expectedErrors
         let expectedOutput = expectedOutputFromSource moduleSource
         unless (null expectedOutput) $ do
@@ -109,7 +110,7 @@ verifyErrors filePath errs expectedErrors = do
   let errorsMap =
         HashMap.fromListWith
           (<>)
-          [ (Error.Hydrated.lineNumber err, pure $ errorToExpectedError $ Error.Hydrated._error err)
+          [ (Error.Hydrated.lineNumber err, pure $ errorToExpectedError err.error)
           | (err, _) <- errs
           ]
 
@@ -132,7 +133,7 @@ verifyErrors filePath errs expectedErrors = do
   forM_ errs $ \(err, doc) ->
     case HashMap.lookup (Error.Hydrated.lineNumber err) expectedErrors of
       Just expectedErrorsOnLine
-        | errorToExpectedError (Error.Hydrated._error err) `elem` expectedErrorsOnLine ->
+        | errorToExpectedError err.error `elem` expectedErrorsOnLine ->
             pure ()
       _ ->
         Tasty.assertFailure $

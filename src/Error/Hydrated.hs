@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE NoFieldSelectors #-}
 
 module Error.Hydrated where
 
@@ -28,10 +29,10 @@ import qualified Span
 import qualified System.Directory as Directory
 
 data Hydrated = Hydrated
-  { _filePath :: FilePath
-  , _lineColumn :: !Span.LineColumn
-  , _lineText :: !Text
-  , _error :: !Error
+  { filePath :: FilePath
+  , lineColumn :: !Span.LineColumn
+  , lineText :: !Text
+  , error :: !Error
   }
   deriving (Show, Generic, Persist)
 
@@ -235,10 +236,10 @@ headingAndBody error =
 
 pretty :: (MonadFetch Query m, MonadIO m) => Hydrated -> m (Doc ann)
 pretty h = do
-  filePath <- liftIO $ Directory.makeRelativeToCurrentDirectory $ _filePath h
-  (heading, body) <- headingAndBody $ _error h
+  filePath <- liftIO $ Directory.makeRelativeToCurrentDirectory h.filePath
+  (heading, body) <- headingAndBody h.error
   pure $
-    Doc.pretty filePath <> ":" <> Doc.pretty (_lineColumn h) <> ":"
+    Doc.pretty filePath <> ":" <> Doc.pretty h.lineColumn <> ":"
       <+> heading
         <> line
         <> line
@@ -250,8 +251,7 @@ pretty h = do
     spannedLine =
       let Span.LineColumns
             (Position.LineColumn startLineNumber startColumnNumber)
-            (Position.LineColumn endLineNumber endColumnNumber) =
-              _lineColumn h
+            (Position.LineColumn endLineNumber endColumnNumber) = h.lineColumn
 
           lineNumberText =
             show (startLineNumber + 1)
@@ -263,13 +263,13 @@ pretty h = do
             | startLineNumber == endLineNumber =
                 (endColumnNumber - startColumnNumber, mempty)
             | otherwise =
-                (Text.lengthWord16 (_lineText h) - startColumnNumber, "...")
+                (Text.lengthWord16 h.lineText - startColumnNumber, "...")
        in Doc.pretty (Text.replicate (lineNumberTextLength + 1) " ")
             <> "| "
             <> line
             <> Doc.pretty lineNumberText
             <> " | "
-            <> Doc.pretty (_lineText h)
+            <> Doc.pretty h.lineText
             <> line
             <> Doc.pretty (Text.replicate (lineNumberTextLength + 1) " ")
             <> "| "
@@ -308,20 +308,18 @@ fromError err = do
             Span.lineColumn span text
   pure
     Hydrated
-      { _filePath = filePath
-      , _lineColumn = lineColumn
-      , _lineText = lineText
-      , _error = err
+      { filePath = filePath
+      , lineColumn = lineColumn
+      , lineText = lineText
+      , error = err
       }
 
 -------------------------------------------------------------------------------
 
 lineNumber :: Hydrated -> Int
-lineNumber err =
-  l
+lineNumber err = l
   where
-    Span.LineColumns (Position.LineColumn l _) _ =
-      _lineColumn err
+    Span.LineColumns (Position.LineColumn l _) _ = err.lineColumn
 
 prettyPrettyableTerm :: MonadFetch Query m => Int -> Error.PrettyableTerm -> m (Doc ann)
 prettyPrettyableTerm prec (Error.PrettyableTerm moduleName_ names term) = do
