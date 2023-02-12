@@ -48,13 +48,13 @@ instance MonadFail Builder where
   fail = panic . toS
 
 data BuilderState = BuilderState
-  { _fresh :: !Int
-  , _instructions :: Tsil Assembly.Instruction
-  , _shadowStack :: !Assembly.Local
-  , _heapPointer :: !Assembly.Operand
-  , _heapLimit :: !Assembly.Operand
-  , _nextShadowStackSlot :: !Int
-  , _shadowStackSlotCount :: !Int
+  { fresh :: !Int
+  , instructions :: Tsil Assembly.Instruction
+  , shadowStack :: !Assembly.Local
+  , heapPointer :: !Assembly.Operand
+  , heapLimit :: !Assembly.Operand
+  , nextShadowStackSlot :: !Int
+  , shadowStackSlotCount :: !Int
   }
 
 runBuilder :: Builder a -> M a
@@ -62,25 +62,25 @@ runBuilder (Builder s) =
   evalStateT
     s
     BuilderState
-      { _fresh = 3
-      , _instructions = mempty
-      , _shadowStack = Assembly.Local 0 "shadow_stack_frame"
-      , _heapPointer = Assembly.LocalOperand $ Assembly.Local 1 "heap_pointer"
-      , _heapLimit = Assembly.LocalOperand $ Assembly.Local 2 "heap_limit"
-      , _nextShadowStackSlot = 0
-      , _shadowStackSlotCount = 0
+      { fresh = 3
+      , instructions = mempty
+      , shadowStack = Assembly.Local 0 "shadow_stack_frame"
+      , heapPointer = Assembly.LocalOperand $ Assembly.Local 1 "heap_pointer"
+      , heapLimit = Assembly.LocalOperand $ Assembly.Local 2 "heap_limit"
+      , nextShadowStackSlot = 0
+      , shadowStackSlotCount = 0
       }
 
 subBuilder :: Builder a -> Builder (a, [Assembly.Instruction])
 subBuilder (Builder s) = do
   state <- get
-  (a, state') <- Builder $ lift $ runStateT s state {_instructions = mempty}
-  put state' {_instructions = _instructions state}
-  pure (a, toList $ _instructions state')
+  (a, state') <- Builder $ lift $ runStateT s state {instructions = mempty}
+  put state' {instructions = state.instructions}
+  pure (a, toList state'.instructions)
 
 emit :: Assembly.Instruction -> Builder ()
 emit instruction =
-  modify $ \s -> s {_instructions = _instructions s Tsil.:> instruction}
+  modify $ \s -> s {instructions = s.instructions Tsil.:> instruction}
 
 tagBytes :: Num a => a
 tagBytes = wordBytes
@@ -91,27 +91,27 @@ wordBytes = 8
 -------------------------------------------------------------------------------
 
 data Environment v = Environment
-  { _context :: Context v
-  , _varLocations :: EnumMap Var Operand
+  { context :: Context v
+  , varLocations :: EnumMap Var Operand
   }
 
 emptyEnvironment :: Environment Void
 emptyEnvironment =
   Environment
-    { _context = Context.empty
-    , _varLocations = mempty
+    { context = Context.empty
+    , varLocations = mempty
     }
 
 extend :: Environment v -> Syntax.Type v -> Operand -> Builder (Environment (Succ v))
 extend env type_ location =
   Builder $
     lift $ do
-      type' <- Evaluation.evaluate (Context.toEnvironment $ _context env) type_
-      (context', var) <- Context.extend (_context env) type'
+      type' <- Evaluation.evaluate (Context.toEnvironment env.context) type_
+      (context', var) <- Context.extend env.context type'
       pure
         Environment
-          { _context = context'
-          , _varLocations = EnumMap.insert var location $ _varLocations env
+          { context = context'
+          , varLocations = EnumMap.insert var location env.varLocations
           }
 
 operandNameSuggestion :: Assembly.Operand -> Assembly.NameSuggestion
@@ -138,7 +138,7 @@ data Operand
 registerShadowStackSlot :: Assembly.Operand -> Assembly.Operand -> Builder (Builder ())
 registerShadowStackSlot size location = do
   (slot, freeSlot) <- getFreeShadowStackSlot
-  shadowStack <- gets _shadowStack
+  shadowStack <- gets (.shadowStack)
   sizeSlot <-
     addPointer
       "size_slot"
@@ -155,19 +155,19 @@ registerShadowStackSlot size location = do
 
 getFreeShadowStackSlot :: Builder (Int, Builder ())
 getFreeShadowStackSlot = do
-  slot <- gets _nextShadowStackSlot
+  slot <- gets (.nextShadowStackSlot)
   let newNextSlot = slot + 1
   modify $ \s ->
     s
-      { _nextShadowStackSlot = newNextSlot
-      , _shadowStackSlotCount = max newNextSlot $ _shadowStackSlotCount s
+      { nextShadowStackSlot = newNextSlot
+      , shadowStackSlotCount = max newNextSlot s.shadowStackSlotCount
       }
   pure
     ( slot
     , modify $ \s ->
         s
-          { _nextShadowStackSlot =
-              if _nextShadowStackSlot s == newNextSlot
+          { nextShadowStackSlot =
+              if s.nextShadowStackSlot == newNextSlot
                 then slot
                 else panic "ClosureConvertedToAssembly.getFreeShadowStackSlot: shadow stack not used FIFO"
           }
@@ -176,12 +176,12 @@ getFreeShadowStackSlot = do
 shadowStackInit :: Assembly.Operand -> Builder (Bool, [Assembly.Instruction])
 shadowStackInit shadowStackParameterOperand =
   subBuilder $ do
-    slotCount <- gets _shadowStackSlotCount
+    slotCount <- gets (.shadowStackSlotCount)
     case slotCount of
       0 ->
         pure False
       _ -> do
-        shadowStack <- gets _shadowStack
+        shadowStack <- gets (.shadowStack)
         let shadowStackSize = Assembly.Lit $ Literal.Integer $ fromIntegral $ (2 + 2 * slotCount) * wordBytes
             shadowStackOperand = Assembly.LocalOperand shadowStack
         emit $ Assembly.StackAllocate shadowStack shadowStackSize
@@ -195,10 +195,9 @@ shadowStackInit shadowStackParameterOperand =
 indexOperand :: Index v -> Environment v -> Operand
 indexOperand index env = do
   let var =
-        Context.lookupIndexVar index $ _context env
+        Context.lookupIndexVar index env.context
   fromMaybe (panic "ClosureConvertedToAssembly.indexOperand") $
-    EnumMap.lookup var $
-      _varLocations env
+    EnumMap.lookup var env.varLocations
 
 globalConstantOperand :: Name.Lifted -> Builder Operand
 globalConstantOperand name = do
@@ -237,15 +236,15 @@ globalAllocate =
 heapAllocate :: Assembly.NameSuggestion -> Word8 -> Assembly.Operand -> Builder Assembly.Operand
 heapAllocate nameSuggestion constructorTag size = do
   destination <- freshLocal $ nameSuggestion <> "_with_heap_pointer_and_limit"
-  shadowStack <- Assembly.LocalOperand <$> gets _shadowStack
-  heapPointer <- gets _heapPointer
-  heapLimit <- gets _heapLimit
-  emit $ Assembly.HeapAllocate {destination, shadowStack, heapPointer, heapLimit, constructorTag, size}
+  shadowStack <- Assembly.LocalOperand <$> gets (.shadowStack)
+  heapPointer <- gets (.heapPointer)
+  heapLimit <- gets (.heapLimit)
+  emit Assembly.HeapAllocate {destination, shadowStack, heapPointer, heapLimit, constructorTag, size}
   let destinationOperand = Assembly.LocalOperand destination
   result <- extractValue nameSuggestion destinationOperand 0
   heapPointer' <- extractValue "heap_pointer" destinationOperand 1
   heapLimit' <- extractValue "heap_limit" destinationOperand 2
-  modify $ \s -> s {_heapPointer = heapPointer', _heapLimit = heapLimit'}
+  modify $ \s -> s {heapPointer = heapPointer', heapLimit = heapLimit'}
   pure result
 
 extractHeapPointer :: Assembly.NameSuggestion -> Assembly.Operand -> Builder Assembly.Operand
@@ -264,10 +263,10 @@ typeOf :: Environment v -> Syntax.Term v -> Builder (Operand, Representation)
 typeOf env term = do
   (type_, typeRepresentation) <- Builder $
     lift $ do
-      value <- Evaluation.evaluate (Context.toEnvironment $ _context env) term
-      typeValue <- TypeOf.typeOf (_context env) value
-      typeRepresentation <- ClosureConverted.Representation.typeRepresentation (Context.toEnvironment $ _context env) typeValue
-      type_ <- Readback.readback (Context.toEnvironment $ _context env) typeValue
+      value <- Evaluation.evaluate (Context.toEnvironment env.context) term
+      typeValue <- TypeOf.typeOf env.context value
+      typeRepresentation <- ClosureConverted.Representation.typeRepresentation (Context.toEnvironment env.context) typeValue
+      type_ <- Readback.readback (Context.toEnvironment env.context) typeValue
       pure (type_, typeRepresentation)
   typeOperand <- generateType env type_
   pure (typeOperand, typeRepresentation)
@@ -283,20 +282,20 @@ switch
   -> Builder (Assembly.Return Assembly.Operand)
   -> Builder (Assembly.Return Assembly.Operand)
 switch returnType scrutinee branches defaultBranch = do
-  initialNextShadowStackSlot <- gets _nextShadowStackSlot
-  initialHeapPointer <- gets _heapPointer
-  initialHeapLimit <- gets _heapLimit
+  initialNextShadowStackSlot <- gets (.nextShadowStackSlot)
+  initialHeapPointer <- gets (.heapPointer)
+  initialHeapLimit <- gets (.heapLimit)
   let wrapBranch branch = subBuilder $ do
         modify $ \s ->
           s
-            { _nextShadowStackSlot = initialNextShadowStackSlot
-            , _heapPointer = initialHeapPointer
-            , _heapLimit = initialHeapLimit
+            { nextShadowStackSlot = initialNextShadowStackSlot
+            , heapPointer = initialHeapPointer
+            , heapLimit = initialHeapLimit
             }
         result <- branch
-        nextShadowStackSlot <- gets _nextShadowStackSlot
-        heapPointer <- gets _heapPointer
-        heapLimit <- gets _heapLimit
+        nextShadowStackSlot <- gets (.nextShadowStackSlot)
+        heapPointer <- gets (.heapPointer)
+        heapLimit <- gets (.heapLimit)
         pure
           ( case result of
               Assembly.Void -> Assembly.Return $ Assembly.StructOperand [heapPointer, heapLimit]
@@ -311,7 +310,7 @@ switch returnType scrutinee branches defaultBranch = do
   let branchNextShadowStackSlots = snd <$> branches'
   when (any (/= defaultNextShadowStackSlot) branchNextShadowStackSlots) $
     panic "ClosureConvertedToAssembly.switch: Shadow stack mismatch"
-  modify $ \s -> s {_nextShadowStackSlot = defaultNextShadowStackSlot}
+  modify $ \s -> s {nextShadowStackSlot = defaultNextShadowStackSlot}
   case returnType of
     Assembly.Void -> do
       resultLocal <- freshLocal "heap_pointer_and_limit"
@@ -320,7 +319,7 @@ switch returnType scrutinee branches defaultBranch = do
       emit $ Assembly.Switch (Assembly.Return (resultType, resultLocal)) scrutinee (fst <$> branches') $ Assembly.BasicBlock defaultInstructions defaultReturn
       heapPointer <- extractValue "heap_pointer" resultOperand 0
       heapLimit <- extractValue "heap_limit" resultOperand 1
-      modify $ \s -> s {_heapPointer = heapPointer, _heapLimit = heapLimit}
+      modify $ \s -> s {heapPointer, heapLimit}
       pure Assembly.Void
     Assembly.Return (type_, nameSuggestion) -> do
       resultLocal <- freshLocal $ nameSuggestion <> "_with_heap_pointer_and_limit"
@@ -330,15 +329,15 @@ switch returnType scrutinee branches defaultBranch = do
       result <- extractValue nameSuggestion resultOperand 0
       heapPointer <- extractValue "heap_pointer" resultOperand 1
       heapLimit <- extractValue "heap_limit" resultOperand 2
-      modify $ \s -> s {_heapPointer = heapPointer, _heapLimit = heapLimit}
+      modify $ \s -> s {heapPointer, heapLimit}
       pure $ Assembly.Return result
 
 -------------------------------------------------------------------------------
 
 freshLocal :: Assembly.NameSuggestion -> Builder Assembly.Local
 freshLocal nameSuggestion = do
-  fresh <- gets _fresh
-  modify $ \s -> s {_fresh = fresh + 1}
+  fresh <- gets (.fresh)
+  modify $ \s -> s {fresh = fresh + 1}
   pure $ Assembly.Local fresh nameSuggestion
 
 copy :: Assembly.Operand -> Operand -> Assembly.Operand -> Builder ()
@@ -354,9 +353,9 @@ copy destination source size =
 callVoid :: Name.Lifted -> [(Assembly.Type, Assembly.Operand)] -> Builder ()
 callVoid global args = do
   resultStruct <- freshLocal "call_result_struct"
-  shadowStack <- gets _shadowStack
-  heapPointer <- gets _heapPointer
-  heapLimit <- gets _heapLimit
+  shadowStack <- gets (.shadowStack)
+  heapPointer <- gets (.heapPointer)
+  heapLimit <- gets (.heapLimit)
   let returnType = Assembly.Struct [Assembly.WordPointer, Assembly.WordPointer]
       args' =
         (Assembly.WordPointer, Assembly.LocalOperand shadowStack)
@@ -369,17 +368,17 @@ callVoid global args = do
   heapLimit' <- extractValue "heap_limit" resultStructOperand 1
   modify $ \s ->
     s
-      { _heapPointer = heapPointer'
-      , _heapLimit = heapLimit'
+      { heapPointer = heapPointer'
+      , heapLimit = heapLimit'
       }
   pure ()
 
 callDirect :: Assembly.NameSuggestion -> Name.Lifted -> [(Assembly.Type, Assembly.Operand)] -> Builder Assembly.Operand
 callDirect nameSuggestion global args = do
   resultStruct <- freshLocal $ nameSuggestion <> "_struct"
-  shadowStack <- gets _shadowStack
-  heapPointer <- gets _heapPointer
-  heapLimit <- gets _heapLimit
+  shadowStack <- gets (.shadowStack)
+  heapPointer <- gets (.heapPointer)
+  heapLimit <- gets (.heapLimit)
   let returnType = Assembly.Struct [Assembly.Word, Assembly.WordPointer, Assembly.WordPointer]
       args' =
         (Assembly.WordPointer, Assembly.LocalOperand shadowStack)
@@ -397,8 +396,8 @@ callDirect nameSuggestion global args = do
   heapLimit' <- extractValue "heap_limit" resultStructOperand 2
   modify $ \s ->
     s
-      { _heapPointer = heapPointer'
-      , _heapLimit = heapLimit'
+      { heapPointer = heapPointer'
+      , heapLimit = heapLimit'
       }
   pure result
 
@@ -409,8 +408,8 @@ callIndirect global args returnLocation =
 callInitFunction :: Assembly.NameSuggestion -> Name.Lifted -> [(Assembly.Type, Assembly.Operand)] -> Builder Assembly.Operand
 callInitFunction nameSuggestion global args = do
   resultStruct <- freshLocal $ nameSuggestion <> "_struct"
-  heapPointer <- gets _heapPointer
-  heapLimit <- gets _heapLimit
+  heapPointer <- gets (.heapPointer)
+  heapLimit <- gets (.heapLimit)
   let returnType = Assembly.Struct [Assembly.WordPointer, Assembly.WordPointer, Assembly.WordPointer]
       args' =
         (Assembly.WordPointer, heapPointer)
@@ -427,8 +426,8 @@ callInitFunction nameSuggestion global args = do
   heapLimit' <- extractValue "heap_limit" resultStructOperand 2
   modify $ \s ->
     s
-      { _heapPointer = heapPointer'
-      , _heapLimit = heapLimit'
+      { heapPointer = heapPointer'
+      , heapLimit = heapLimit'
       }
   pure result
 
@@ -536,12 +535,12 @@ initDefinitionName (Name.Lifted (Name.Qualified moduleName (Name.Name name)) m) 
 generateModuleInits :: [Name.Module] -> M Assembly.Definition
 generateModuleInits moduleNames =
   runBuilder $ do
-    Assembly.LocalOperand heapPointerParameter <- gets _heapPointer
-    Assembly.LocalOperand heapLimitParameter <- gets _heapLimit
+    Assembly.LocalOperand heapPointerParameter <- gets (.heapPointer)
+    Assembly.LocalOperand heapLimitParameter <- gets (.heapLimit)
     globalPointer <- freshLocal "globals"
     let globalPointerOperand = Assembly.LocalOperand globalPointer
     foldM_ (go globalPointerOperand) globalPointerOperand moduleNames
-    instructions <- gets _instructions
+    instructions <- gets (.instructions)
     pure
       $ Assembly.FunctionDefinition
         Assembly.Void
@@ -557,8 +556,8 @@ generateModuleInit
   -> M [(Name.Lifted, Assembly.Definition)]
 generateModuleInit moduleName definitions =
   runBuilder $ do
-    Assembly.LocalOperand heapPointerParameter <- gets _heapPointer
-    Assembly.LocalOperand heapLimitParameter <- gets _heapLimit
+    Assembly.LocalOperand heapPointerParameter <- gets (.heapPointer)
+    Assembly.LocalOperand heapLimitParameter <- gets (.heapLimit)
     globalBasePointer <- freshLocal "globals_base"
     let globalBasePointerOperand = Assembly.LocalOperand globalBasePointer
     globalPointer <- freshLocal "globals"
@@ -580,9 +579,9 @@ generateModuleInit moduleName definitions =
         $ pure
         $ Assembly.Return
         $ Assembly.LocalOperand globalPointer
-    heapPointer <- gets _heapPointer
-    heapLimit <- gets _heapLimit
-    instructions <- gets _instructions
+    heapPointer <- gets (.heapPointer)
+    heapLimit <- gets (.heapLimit)
+    instructions <- gets (.instructions)
     pure
       [
         ( moduleInitName moduleName
@@ -625,11 +624,11 @@ withFunctionDefinitionParameters
   :: Builder ((Assembly.Return Assembly.Type -> [(Assembly.Type, Assembly.Local)] -> Assembly.BasicBlock -> Assembly.Definition) -> a)
   -> Builder a
 withFunctionDefinitionParameters m = do
-  Assembly.LocalOperand heapPointerParameter <- gets _heapPointer
-  Assembly.LocalOperand heapLimitParameter <- gets _heapLimit
+  Assembly.LocalOperand heapPointerParameter <- gets (.heapPointer)
+  Assembly.LocalOperand heapLimitParameter <- gets (.heapLimit)
   mkDefinition <- m
-  heapPointer <- gets _heapPointer
-  heapLimit <- gets _heapLimit
+  heapPointer <- gets (.heapPointer)
+  heapLimit <- gets (.heapLimit)
   pure $
     mkDefinition $ \returnType parameters (Assembly.BasicBlock instructions returnOperand) ->
       Assembly.FunctionDefinition
@@ -661,12 +660,12 @@ generateDefinition name@(Name.Lifted qualifiedName _) definition = do
       (Syntax.FunctionDefinition {}, _) ->
         panic "ClosureConvertedToAssembly: FunctionDefinition without FunctionSignature"
       (Syntax.DataDefinition _ constructors, Representation.ConstantSignature representation) -> do
-        term <- Builder $ lift $ ClosureConverted.Representation.compileData (Context.toEnvironment $ _context env) qualifiedName constructors
+        term <- Builder $ lift $ ClosureConverted.Representation.compileData (Context.toEnvironment env.context) qualifiedName constructors
         Just <$> generateGlobal env name representation term
       (Syntax.DataDefinition {}, _) ->
         panic "ClosureConvertedToAssembly: DataDefinition without ConstantSignature"
       (Syntax.ParameterisedDataDefinition _ tele, Representation.FunctionSignature parameterRepresentations returnRepresentation) -> do
-        tele' <- Builder $ lift $ ClosureConverted.Representation.compileParameterisedData (Context.toEnvironment $ _context env) qualifiedName tele
+        tele' <- Builder $ lift $ ClosureConverted.Representation.compileParameterisedData (Context.toEnvironment env.context) qualifiedName tele
         Just <$> generateFunction env returnRepresentation tele' parameterRepresentations mempty
       (Syntax.ParameterisedDataDefinition {}, _) -> do
         panic "ClosureConvertedToAssembly: DataDefinition without ConstantSignature"
@@ -710,8 +709,8 @@ makeConstantDefinition
   -> (Assembly.Operand -> Builder Assembly.Operand)
   -> Builder Assembly.Definition
 makeConstantDefinition type_ m = do
-  Assembly.LocalOperand heapPointerParameter <- gets _heapPointer
-  Assembly.LocalOperand heapLimitParameter <- gets _heapLimit
+  Assembly.LocalOperand heapPointerParameter <- gets (.heapPointer)
+  Assembly.LocalOperand heapLimitParameter <- gets (.heapLimit)
   globalPointer <- freshLocal "globals"
   globalBasePointer <- freshLocal "globals_base"
   let globalPointerOperand = Assembly.LocalOperand globalPointer
@@ -719,10 +718,10 @@ makeConstantDefinition type_ m = do
   globalsSize <- sub "globals_size" globalPointerOperand globalBasePointerOperand
   _unregisterGlobalsSlot <- registerShadowStackSlot globalsSize globalBasePointerOperand
   globalPointer' <- m globalPointerOperand
-  instructions <- gets _instructions
+  instructions <- gets (.instructions)
   (_, shadowStackInitInstructions) <- shadowStackInit $ Assembly.Lit $ Literal.Integer 0
-  heapPointer <- gets _heapPointer
-  heapLimit <- gets _heapLimit
+  heapPointer <- gets (.heapPointer)
+  heapLimit <- gets (.heapLimit)
   pure $
     Assembly.ConstantDefinition
       type_
@@ -825,13 +824,13 @@ makeFunctionDefinition
   -> Builder (Assembly.Return Assembly.Operand)
   -> Builder Assembly.Definition
 makeFunctionDefinition returnType parameters m = do
-  Assembly.LocalOperand heapPointerParameter <- gets _heapPointer
-  Assembly.LocalOperand heapLimitParameter <- gets _heapLimit
+  Assembly.LocalOperand heapPointerParameter <- gets (.heapPointer)
+  Assembly.LocalOperand heapLimitParameter <- gets (.heapLimit)
   returnOperand <- m
-  heapPointer <- gets _heapPointer
-  heapLimit <- gets _heapLimit
-  instructions <- gets _instructions
-  shadowStack <- gets _shadowStack
+  heapPointer <- gets (.heapPointer)
+  heapLimit <- gets (.heapLimit)
+  instructions <- gets (.instructions)
+  shadowStack <- gets (.shadowStack)
   shadowStackParameter <- freshLocal "caller_shadow_stack_frame"
   (hasShadowStackFrame, shadowStackInitInstructions) <- shadowStackInit $ Assembly.LocalOperand shadowStackParameter
   pure $
@@ -892,8 +891,8 @@ generateTypedTerm env term type_ representation = do
     (Syntax.Lit (Literal.Integer integer), _) ->
       pure (Direct $ Assembly.Lit $ Literal.Integer $ shiftL integer 1, Nothing)
     (Syntax.Let _name term' termType body, _) -> do
-      typeValue <- Builder $ lift $ Evaluation.evaluate (Context.toEnvironment $ _context env) termType
-      typeRepresentation <- Builder $ lift $ ClosureConverted.Representation.typeRepresentation (Context.toEnvironment $ _context env) typeValue
+      typeValue <- Builder $ lift $ Evaluation.evaluate (Context.toEnvironment env.context) termType
+      typeRepresentation <- Builder $ lift $ ClosureConverted.Representation.typeRepresentation (Context.toEnvironment env.context) typeValue
       termType' <- generateType env termType
       (term'', deallocateTerm) <- generateTypedTerm env term' termType' typeRepresentation
       env' <- extend env termType term''
@@ -981,8 +980,8 @@ storeTerm env term returnLocation returnType =
                 copy argPointer arg' argTypeSize
                 sequence_ deallocateArg
                 pure $ add "constructor_argument_offset" offset argTypeSize
-          typeValue <- Builder $ lift $ boxedConstructorSize (Context.toEnvironment $ _context env) con params args
-          type_ <- Builder $ lift $ Readback.readback (Context.toEnvironment $ _context env) typeValue
+          typeValue <- Builder $ lift $ boxedConstructorSize (Context.toEnvironment env.context) con params args
+          type_ <- Builder $ lift $ Readback.readback (Context.toEnvironment env.context) typeValue
           type' <- generateType env type_
           size <- sizeOfType type'
           case maybeTag of
@@ -1003,8 +1002,8 @@ storeTerm env term returnLocation returnType =
     Syntax.Lit (Literal.Integer integer) ->
       store returnLocation $ Assembly.Lit $ Literal.Integer $ shiftL integer 1
     Syntax.Let _name term' type_ body -> do
-      typeValue <- Builder $ lift $ Evaluation.evaluate (Context.toEnvironment $ _context env) type_
-      typeRepresentation <- Builder $ lift $ ClosureConverted.Representation.typeRepresentation (Context.toEnvironment $ _context env) typeValue
+      typeValue <- Builder $ lift $ Evaluation.evaluate (Context.toEnvironment env.context) type_
+      typeRepresentation <- Builder $ lift $ ClosureConverted.Representation.typeRepresentation (Context.toEnvironment env.context) typeValue
       type' <- generateType env type_
       (term'', deallocateTerm) <- generateTypedTerm env term' type' typeRepresentation
       env' <- extend env type_ term''
@@ -1158,8 +1157,8 @@ storeBoxedBranch env constructorBasePointerBuilder constructorFieldOffsetBuilder
       stackConstructorField <- stackAllocate (Assembly.NameSuggestion $ name <> "_stack") typeSize
       typeRepresentation <- Builder $
         lift $ do
-          typeValue <- Evaluation.evaluate (Context.toEnvironment $ _context env) type_
-          ClosureConverted.Representation.typeRepresentation (Context.toEnvironment $ _context env) typeValue
+          typeValue <- Evaluation.evaluate (Context.toEnvironment env.context) type_
+          ClosureConverted.Representation.typeRepresentation (Context.toEnvironment env.context) typeValue
       unregisterShadowStackSlot <- case Representation.containsHeapPointers typeRepresentation of
         Representation.Doesn'tContainHeapPointers -> pure (pure ())
         Representation.MightContainHeapPointers -> registerShadowStackSlot typeSize stackConstructorField
