@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module LambdaLifting where
@@ -51,16 +52,16 @@ liftDefinition name def = do
           )
           emptyState
 
-      pure (LambdaLifted.TypeDeclaration type', _liftedDefinitions state)
+      pure (LambdaLifted.TypeDeclaration type', state.liftedDefinitions)
     Syntax.ConstantDefinition term -> do
       ((vars, def'), state) <- runStateT (liftLambda name env term) emptyState
       unless (null vars) $
         panic "lift definition: non-closed constant definition"
 
-      pure (LambdaLifted.ConstantDefinition def', _liftedDefinitions state)
+      pure (LambdaLifted.ConstantDefinition def', state.liftedDefinitions)
     Syntax.DataDefinition boxity tele -> do
       (tele', state) <- runStateT (liftDataDefinition name env tele) emptyState
-      pure (LambdaLifted.DataDefinition boxity tele', _liftedDefinitions state)
+      pure (LambdaLifted.DataDefinition boxity tele', state.liftedDefinitions)
 
 -------------------------------------------------------------------------------
 
@@ -161,16 +162,16 @@ telescopeOccurrences tele body =
 -------------------------------------------------------------------------------
 
 data LiftState = LiftState
-  { _nextIndex :: !Int
-  , _liftedDefinitions :: EnumMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void)
+  { nextIndex :: !Int
+  , liftedDefinitions :: EnumMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void)
   }
   deriving (Show)
 
 emptyState :: LiftState
 emptyState =
   LiftState
-    { _nextIndex = 1
-    , _liftedDefinitions = mempty
+    { nextIndex = 1
+    , liftedDefinitions = mempty
     }
 
 type Lift = StateT LiftState M
@@ -229,15 +230,15 @@ evaluate baseName env term args =
         <*> evaluate baseName env target []
     Syntax.Lam {} -> do
       (argVars, def) <- liftLambda baseName env term
-      i <- gets _nextIndex
+      i <- gets (.nextIndex)
 
       let liftedName =
             Name.Lifted baseName i
 
       modify $ \s ->
         s
-          { _nextIndex = i + 1
-          , _liftedDefinitions = EnumMap.insert i def $ _liftedDefinitions s
+          { nextIndex = i + 1
+          , liftedDefinitions = EnumMap.insert i def s.liftedDefinitions
           }
       pure $ makeApps (makeGlobal liftedName) $ makeVar env <$> argVars
     Syntax.App function plicity argument ->
