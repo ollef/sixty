@@ -473,7 +473,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
     LLVMModule module_ ->
       noError $ do
         assemblyDefinitions <- fetch $ AssemblyModule module_
-        pure $ AssemblyToLLVM.assembleModule module_ assemblyDefinitions
+        pure $ AssemblyToLLVM.assembleModule assemblyDefinitions
     LLVMModuleInitModule ->
       noError $ do
         inputFiles <- fetch Query.InputFiles
@@ -483,7 +483,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
 
         assemblyDefinition <- runM $ ClosureConvertedToAssembly.generateModuleInits moduleNames
 
-        pure $ AssemblyToLLVM.assembleModule "module_init" [(Name.Lifted "$module_init" 0, assemblyDefinition)]
+        pure $ AssemblyToLLVM.assembleModule [(Name.Lifted "$module_init" 0, assemblyDefinition)]
   where
     input :: Functor m => m a -> m ((a, TaskKind), [Error])
     input = fmap ((,mempty) . (,Input))
