@@ -4,6 +4,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE NoFieldSelectors #-}
 
 module LanguageServer.CursorAction where
 
@@ -97,15 +98,15 @@ cursorAction filePath (Position.LineColumn line column) k =
                   k' :: RelativeCallback a
                   k' itemContext env term actionSpan =
                     k
-                      (Term itemContext (_context env) (_varSpans env) term)
+                      (Term itemContext env.context env.varSpans term)
                       (toLineColumns $ Span.absoluteFrom defPos actionSpan)
               context <- Context.empty definitionKind qualifiedName
               definitionAction
                 k'
                 Environment
-                  { _actionPosition = Position.relativeTo defPos pos
-                  , _context = context
-                  , _varSpans = mempty
+                  { actionPosition = Position.relativeTo defPos pos
+                  , context = context
+                  , varSpans = mempty
                   }
                 definitionKind
                 qualifiedName
@@ -119,9 +120,9 @@ cursorAction filePath (Position.LineColumn line column) k =
             )
 
 data Environment v = Environment
-  { _actionPosition :: !Position.Relative
-  , _context :: Context v
-  , _varSpans :: EnumMap Var (NonEmpty Span.Relative)
+  { actionPosition :: !Position.Relative
+  , context :: Context v
+  , varSpans :: EnumMap Var (NonEmpty Span.Relative)
   }
 
 extendBinding :: Environment v -> Binding -> Syntax.Type v -> MaybeT M (Environment (Index.Succ v), Var)
@@ -134,25 +135,25 @@ extendBindings env bindings =
 
 extend :: Environment v -> Name -> [Span.Relative] -> Syntax.Type v -> MaybeT M (Environment (Index.Succ v), Var)
 extend env name spans type_ = do
-  type' <- lift $ Elaboration.evaluate (_context env) type_
-  (context', var) <- lift $ Context.extend (_context env) name type'
+  type' <- lift $ Elaboration.evaluate env.context type_
+  (context', var) <- lift $ Context.extend env.context name type'
   pure
     ( env
-        { _context = context'
-        , _varSpans = maybe identity (EnumMap.insert var) (NonEmpty.nonEmpty spans) (_varSpans env)
+        { context = context'
+        , varSpans = maybe identity (EnumMap.insert var) (NonEmpty.nonEmpty spans) env.varSpans
         }
     , var
     )
 
 extendDef :: Environment v -> Bindings -> Syntax.Term v -> Syntax.Type v -> MaybeT M (Environment (Index.Succ v), Var)
 extendDef env bindings term type_ = do
-  value <- lift $ Elaboration.evaluate (_context env) term
-  type' <- lift $ Elaboration.evaluate (_context env) type_
-  (context', var) <- lift $ Context.extendDef (_context env) (Bindings.toName bindings) value type'
+  value <- lift $ Elaboration.evaluate env.context term
+  type' <- lift $ Elaboration.evaluate env.context type_
+  (context', var) <- lift $ Context.extendDef env.context (Bindings.toName bindings) value type'
   pure
     ( env
-        { _context = context'
-        , _varSpans = maybe identity (EnumMap.insert var) (NonEmpty.nonEmpty $ Bindings.spans bindings) (_varSpans env)
+        { context = context'
+        , varSpans = maybe identity (EnumMap.insert var) (NonEmpty.nonEmpty $ Bindings.spans bindings) env.varSpans
         }
     , var
     )
@@ -171,8 +172,7 @@ definitionAction k env definitionKind qualifiedName =
   definitionNameActions <|> do
     (def, _, metaVars) <- MaybeT $ fetch $ Query.ElaboratingDefinition definitionKind qualifiedName
     metaVarsVar <- newIORef $ Meta.fromEagerState metaVars
-    let env' =
-          env {_context = (_context env) {Context.metas = metaVarsVar}}
+    let env' = env {context = env.context {Context.metas = metaVarsVar}}
     case def of
       Syntax.TypeDeclaration type_ ->
         termAction k env' type_
@@ -189,13 +189,13 @@ definitionAction k env definitionKind qualifiedName =
         foreach
           constructorSpans
           ( \(span, constr) -> do
-              guard $ span `Span.relativeContains` _actionPosition env
+              guard $ span `Span.relativeContains` env.actionPosition
               k DefinitionContext env (Syntax.Con constr) span
           )
           <> foreach
             spans
             ( \span -> do
-                guard $ span `Span.relativeContains` _actionPosition env
+                guard $ span `Span.relativeContains` env.actionPosition
                 k DefinitionContext env (Syntax.Global qualifiedName) span
             )
 
@@ -242,7 +242,7 @@ termAction k env term =
         <|> asum (termAction k env <$> defaultBranch)
     Syntax.Spanned span term' ->
       termAction k env term' <|> do
-        guard $ span `Span.relativeContains` _actionPosition env
+        guard $ span `Span.relativeContains` env.actionPosition
         k ExpressionContext env term' span
 
 letsAction :: RelativeCallback a -> Environment v -> Syntax.Lets v -> MaybeT M a
@@ -254,7 +254,7 @@ letsAction k env lets =
         <|> termAction k env type_
         <|> letsAction k env' lets'
     Syntax.Let bindings index term lets' ->
-      definingBindingsAction k env bindings (Context.lookupIndexVar index $ _context env)
+      definingBindingsAction k env bindings (Context.lookupIndexVar index env.context)
         <|> termAction k env term
         <|> letsAction k env lets'
     Syntax.In term ->
@@ -298,14 +298,14 @@ constructorBranchAction
 constructorBranchAction k env typeName scrutinee (constr, (spans, tele)) =
   asum
     ( foreach spans $ \span -> do
-        guard $ any (`Span.relativeContains` _actionPosition env) spans
-        scrutinee' <- lift $ Elaboration.evaluate (_context env) scrutinee
-        scrutineeType <- lift $ TypeOf.typeOf (_context env) scrutinee'
-        scrutineeType' <- lift $ Context.forceHead (_context env) scrutineeType
+        guard $ any (`Span.relativeContains` env.actionPosition) spans
+        scrutinee' <- lift $ Elaboration.evaluate env.context scrutinee
+        scrutineeType <- lift $ TypeOf.typeOf env.context scrutinee'
+        scrutineeType' <- lift $ Context.forceHead env.context scrutineeType
         case scrutineeType' of
           Domain.Neutral (Domain.Global headName) (Domain.appsView -> Just args)
             | headName == typeName -> do
-                args' <- lift $ mapM (mapM $ Elaboration.readback $ _context env) args
+                args' <- lift $ mapM (mapM $ Elaboration.readback env.context) args
                 k PatternContext env (Syntax.Con qualifiedConstr `Syntax.apps` fmap (first implicitise) args') span
           _ ->
             k PatternContext env (Syntax.Con qualifiedConstr) span
@@ -348,11 +348,11 @@ bindingAction
 bindingAction k env binding var =
   case binding of
     Binding.Spanned span _ ->
-      case Context.lookupVarIndex var $ _context env of
+      case Context.lookupVarIndex var env.context of
         Nothing ->
           empty
         Just index -> do
-          guard $ span `Span.relativeContains` _actionPosition env
+          guard $ span `Span.relativeContains` env.actionPosition
           k PatternContext env (Syntax.Var index) span
     Binding.Unspanned _ ->
       empty
@@ -375,13 +375,13 @@ definingBindingsAction
 definingBindingsAction k env binding var =
   case binding of
     Bindings.Spanned spannedNames ->
-      case Context.lookupVarIndex var $ _context env of
+      case Context.lookupVarIndex var env.context of
         Nothing ->
           empty
         Just index ->
           asum $
             foreach spannedNames $ \(span, _) -> do
-              guard $ span `Span.relativeContains` _actionPosition env
+              guard $ span `Span.relativeContains` env.actionPosition
               k PatternContext env (Syntax.Var index) span
     Bindings.Unspanned _ ->
       empty
