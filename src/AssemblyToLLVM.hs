@@ -59,9 +59,6 @@ separate separator = mconcat . intersperse separator
 commaSeparate :: [Builder] -> Builder
 commaSeparate = separate ", "
 
-newlineSeparate :: [Builder] -> Builder
-newlineSeparate = separate "\n"
-
 parens :: [Builder] -> Builder
 parens bs = "(" <> commaSeparate bs <> ")"
 
@@ -186,7 +183,7 @@ memset0 destination size = do
     "call ccc void "
       <> globalName memsetName
       <> parens
-        [ typedOperand destination <> " align " <> Builder.intDec alignment
+        [ destination.type_ <> " align " <> Builder.intDec alignment <> " " <> operand destination.operand
         , "i8 0"
         , typedOperand size
         , "i1 0"
@@ -206,7 +203,7 @@ assembleModule definitions = do
         HashMap.difference (mconcat usedGlobals) (HashSet.toMap $ HashSet.fromList $ fst <$> assembledDefinitions')
 
   Builder.toLazyByteString $
-    newlineSeparate $
+    separate "\n\n" $
       HashMap.elems forwardDeclarations <> map snd assembledDefinitions'
 
 assembleDefinition :: Name.Lifted -> Assembly.Definition -> ([(Name, Builder)], HashMap Name Builder)
@@ -276,11 +273,14 @@ assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
                 <> " "
                 <> globalName (assembleName name)
                 <> parens
-                  [ llvmType type_
-                    <> " "
-                    <> separate " " (parameterAttributes type_)
-                    <> " "
-                    <> localName parameter
+                  [ separate
+                    " "
+                    ( concat
+                        [ [llvmType type_]
+                        , parameterAttributes type_
+                        , [localName parameter]
+                        ]
+                    )
                   | ((type_, _), parameter) <- zip parameters parameters'
                   ]
                 <> " align "
@@ -335,13 +335,13 @@ assembleInstruction instruction =
           <> parens [pointer, pointer, wordSizedInt, "i32", "i1"]
       let isVolatile = "i1 0"
       emitInstruction $
-        "call ccc "
+        "call ccc void "
           <> globalName memcpyName
           <> parens
             [ typedOperand destination'
             , typedOperand source'
             , typedOperand size'
-            , typedOperand TypedOperand {type_ = "i32 ", operand = Constant $ Builder.intDec alignment}
+            , typedOperand TypedOperand {type_ = "i32", operand = Constant $ Builder.intDec alignment}
             , isVolatile
             ]
     Assembly.Call (Assembly.Return (returnType, destination)) function arguments -> do
@@ -427,8 +427,8 @@ assembleInstruction instruction =
       emitInstruction $ localName destination' <> " = call ptr @llvm.stacksave()"
     Assembly.RestoreStack argument -> do
       argument' <- assembleOperandAndCastTo Assembly.WordPointer argument
-      declare "llvm.stackrestore" $ "declare ccc ptr @llvm.stackrestore" <> parens [pointer]
-      emitInstruction $ " = call ptr @llvm.stackrestore" <> parens [typedOperand argument']
+      declare "llvm.stackrestore" $ "declare ccc void @llvm.stackrestore" <> parens [pointer]
+      emitInstruction $ "call void @llvm.stackrestore" <> parens [typedOperand argument']
     Assembly.HeapAllocate {destination, shadowStack, heapPointer, heapLimit, constructorTag, size} -> do
       destination' <- activateLocal (Assembly.Struct [Assembly.Word, Assembly.WordPointer, Assembly.WordPointer]) destination
       shadowStack' <- assembleOperandAndCastTo Assembly.WordPointer shadowStack
@@ -493,7 +493,7 @@ assembleInstruction instruction =
           <> ", label "
           <> localName defaultBranchLabel
           <> " "
-          <> brackets [typedOperand TypedOperand {type_ = wordSizedInt, operand = Constant $ Builder.integerDec i} <> ", label " <> localName l | (i, l) <- branchLabels]
+          <> brackets [separate " " [typedOperand TypedOperand {type_ = wordSizedInt, operand = Constant $ Builder.integerDec i} <> ", label " <> localName l | (i, l) <- branchLabels]]
       branchResultOperands <- forM (zip branchLabels branches) $ \((_, branchLabel), (_, Assembly.BasicBlock instructions result)) -> do
         startBlock branchLabel
         mapM_ assembleInstruction instructions
@@ -522,7 +522,7 @@ assembleInstruction instruction =
               <> " = phi "
               <> llvmType destinationType
               <> " "
-              <> commaSeparate [brackets [typedOperand v, localName l] | (v, l) <- incomingValues]
+              <> commaSeparate [brackets [operand v.operand, localName l] | (v, l) <- incomingValues]
 
 assembleOperand :: Assembly.Operand -> Assembler (Assembly.NameSuggestion, Assembly.Type, TypedOperand)
 assembleOperand = \case
@@ -542,7 +542,7 @@ assembleOperand = \case
         destination <- freshName nameSuggestion
         emitInstruction $
           localName destination <> " = load " <> wordSizedInt <> ", ptr " <> globalName globalName_ <> ", align " <> Builder.intDec alignment
-        pure (nameSuggestion, Assembly.WordPointer, TypedOperand {type_ = pointer, operand = Local destination})
+        pure (nameSuggestion, Assembly.WordPointer, TypedOperand {type_ = wordSizedInt, operand = Local destination})
       Assembly.FunctionPointer _ _ -> do
         let llvmType_ = llvmType globalType
         destination <- freshName nameSuggestion
@@ -599,7 +599,7 @@ cast nameSuggestion newType type_ operand_
         (_, Assembly.Word) -> do
           newOperand <- freshName $ nameSuggestion <> "_integer"
           emitInstruction $
-            localName newOperand <> " = ptrtoint ptr " <> typedOperand operand_ <> " to " <> llvmNewType
+            localName newOperand <> " = ptrtoint " <> typedOperand operand_ <> " to " <> llvmNewType
           pure TypedOperand {type_ = llvmNewType, operand = Local newOperand}
         (Assembly.Struct types, Assembly.Struct newTypes) -> do
           let llvmType_ = llvmType type_
