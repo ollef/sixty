@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NoFieldSelectors #-}
 
 module Surface.Syntax where
 
@@ -152,9 +153,9 @@ data Definition
   deriving (Eq, Show, Generic, Persist, Hashable)
 
 data Clause = Clause
-  { _span :: !Span.Relative
-  , _patterns :: [PlicitPattern]
-  , _rhs :: !Term
+  { span :: !Span.Relative
+  , patterns :: [PlicitPattern]
+  , rhs :: !Term
   }
   deriving (Eq, Show, Generic, Persist, Hashable)
 
@@ -176,10 +177,8 @@ spans def =
 constructorSpans :: Definition -> [(Span.Relative, Name.Constructor)]
 constructorSpans def =
   case def of
-    TypeDeclaration _ _ ->
-      []
-    ConstantDefinition _ ->
-      []
+    TypeDeclaration _ _ -> []
+    ConstantDefinition _ -> []
     DataDefinition _ _ _ constrDefs ->
       constrDefs >>= \case
         GADTConstructors cs _ ->

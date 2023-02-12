@@ -614,7 +614,7 @@ matchSurfacePatterns context values patterns type_ =
                   values'
                   (Surface.ImplicitPattern patSpan (HashMap.delete name namedPats) : patterns')
                   target
-              pure (Match value value Implicit (unresolvedPattern $ Surface.pattern_ patBinding) domain : matches, type'')
+              pure (Match value value Implicit (unresolvedPattern patBinding.pattern_) domain : matches, type'')
           | otherwise -> do
               target <- Evaluation.evaluateClosure targetClosure value
               matchSurfacePatterns context values' patterns target

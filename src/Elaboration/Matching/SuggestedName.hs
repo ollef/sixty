@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Elaboration.Matching.SuggestedName where
@@ -67,7 +68,7 @@ implicitNames context piName pattern_ =
   case pattern_ of
     Surface.ImplicitPattern _ namedPats
       | Just p <- HashMap.lookup piName namedPats ->
-          patternNames context $ Surface.pattern_ p
+          patternNames context p.pattern_
     _ ->
       pure []
 

@@ -1,5 +1,6 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Elaboration.Clauses where
@@ -163,10 +164,8 @@ removeEmptyImplicits clause@(Clause (Surface.Clause span patterns term) matches)
 clauseImplicits :: Clause -> HashMap Name Surface.Pattern
 clauseImplicits clause =
   case clausePatterns clause of
-    Surface.ImplicitPattern _ namedPats : _ ->
-      Surface.pattern_ <$> namedPats
-    _ ->
-      mempty
+    Surface.ImplicitPattern _ namedPats : _ -> (.pattern_) <$> namedPats
+    _ -> mempty
 
 shiftImplicit :: Binding -> Domain.Value -> Domain.Type -> Clause -> Clause
 shiftImplicit binding value type_ (Clause (Surface.Clause span patterns term) matches) =
@@ -180,7 +179,7 @@ shiftImplicit binding value type_ (Clause (Surface.Clause span patterns term) ma
                 (Surface.ImplicitPattern patSpan (HashMap.delete name namedPats) : patterns')
                 term
             )
-            (matches Tsil.:> Matching.Match value value Implicit (Matching.unresolvedPattern $ Surface.pattern_ patBinding) type_)
+            (matches Tsil.:> Matching.Match value value Implicit (Matching.unresolvedPattern patBinding.pattern_) type_)
     _ ->
       Clause
         (Surface.Clause span patterns term)

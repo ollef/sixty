@@ -470,11 +470,11 @@ elaborateWith context spannedTerm@(Surface.Term span term) mode canPostpone = do
           (context', var) <- Context.extend context name domain
           domain' <- readback context domain
           target <- Evaluation.evaluateClosure targetClosure (Domain.var var)
-          body'' <- Matching.checkSingle context' var Implicit (Surface.pattern_ patBinding) body' target
-          binding <- SuggestedName.patternBinding context (Surface.pattern_ patBinding) name
+          body'' <- Matching.checkSingle context' var Implicit patBinding.pattern_ body' target
+          binding <- SuggestedName.patternBinding context patBinding.pattern_ name
           let lamSpan
-                | Surface.isTextuallyFirst patBinding = span
-                | otherwise = Span.add (Surface.spanIncludingName patBinding) span
+                | patBinding.isTextuallyFirst = span
+                | otherwise = Span.add patBinding.spanIncludingName span
           pure $ Checked $ Syntax.Spanned lamSpan $ Syntax.Lam binding domain' Implicit body''
     (_, Check expectedType@(Domain.Pi binding domain plicity targetClosure))
       | isImplicitish plicity ->
@@ -531,7 +531,7 @@ elaborateWith context spannedTerm@(Surface.Term span term) mode canPostpone = do
         (_, Surface.ExplicitPattern pat, _) ->
           elaborateLambda Explicit "x" pat result
         (_, Surface.ImplicitPattern _ (HashMap.toList -> [(name, patBinding)]), _) -> do
-          elaborateLambda Implicit name (Surface.pattern_ patBinding) implicitLambdaResult
+          elaborateLambda Implicit name patBinding.pattern_ implicitLambdaResult
         (_, Surface.ImplicitPattern _ _, _) -> do
           Context.report (Context.spanned patternSpan context) Error.UnableToInferImplicitLambda
           elaborationFailed context mode
