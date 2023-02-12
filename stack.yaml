@@ -1,17 +1,9 @@
-resolver: lts-19.28
+resolver: lts-20.11
 packages:
 - .
 extra-deps:
 - dependent-hashmap-0.1.0.1
-- ./llvm-hs-orphans
-- git: https://github.com/zuqq/llvm-hs-pretty
-  commit: 89776bb1fb9d933e962f24b752e69537bc662031
 - rock-0.3.1.1
 - git: https://github.com/fpco/ghc-prof-flamegraph.git
   commit: 8edd3b4806adeb25a4d55bed51c3afcc8e7a8e14
-- text-rope-0.2
-- lsp-1.6.0.0
-- lsp-types-1.6.0.0
-- co-log-core-0.3.1.0
-- git: https://github.com/Mikolaj/enummapset
-  commit: e2f9abd83045964ad137f95805b997da560524cb
+- enummapset-0.7.1.0
