@@ -3,6 +3,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE NoFieldSelectors #-}
 
 module Name where
 
@@ -29,10 +30,16 @@ newtype Module = Module Text
   deriving stock (Eq, Ord, Show)
   deriving newtype (IsString, Hashable, Persist)
 
-data Qualified = Qualified !Module !Name
+data Qualified = Qualified
+  { moduleName :: !Module
+  , name :: !Name
+  }
   deriving (Eq, Ord, Show, Generic, Persist)
 
-data QualifiedConstructor = QualifiedConstructor !Qualified !Constructor
+data QualifiedConstructor = QualifiedConstructor
+  { typeName :: !Qualified
+  , constructorName :: !Constructor
+  }
   deriving (Eq, Ord, Show, Generic, Persist)
 
 data Lifted = Lifted !Qualified !Int
@@ -75,9 +82,9 @@ instance Pretty Module where
 instance Pretty Qualified where
   pretty (Qualified (Module module_) name)
     | Text.null module_ =
-      pretty name
+        pretty name
     | otherwise =
-      pretty module_ <> "." <> pretty name
+        pretty module_ <> "." <> pretty name
 
 instance Hashable Qualified where
   hashWithSalt =
