@@ -3,6 +3,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PolyKinds #-}
 
@@ -75,14 +76,14 @@ run = do
             driverState <- Driver.initialState
             let state =
                   State
-                    { _env = env
-                    , _driverState = driverState
-                    , _receiveMessage = readTQueue messageQueue
-                    , _diskChangeSignalled = takeTMVar signalChangeVar
-                    , _diskFileStateVar = diskFileStateVar
-                    , _sourceDirectories = mempty
-                    , _diskFiles = mempty
-                    , _changedFiles = mempty
+                    { env
+                    , driverState
+                    , receiveMessage = readTQueue messageQueue
+                    , diskChangeSignalled = takeTMVar signalChangeVar
+                    , diskFileStateVar
+                    , sourceDirectories = mempty
+                    , diskFiles = mempty
+                    , changedFiles = mempty
                     }
             _ <- forkIO $ messagePump state
             pure $ Right ()
@@ -136,40 +137,40 @@ data ReceivedMessage where
   ReceivedNotification :: LSP.NotificationMessage m -> ReceivedMessage
 
 data State = State
-  { _env :: !(LSP.LanguageContextEnv ())
-  , _driverState :: !(Driver.State (Error.Hydrated, Doc Void))
-  , _receiveMessage :: !(STM ReceivedMessage)
-  , _diskChangeSignalled :: !(STM ())
-  , _diskFileStateVar :: !(MVar (HashSet FilePath, [FileSystem.Directory], HashMap FilePath Text))
-  , _sourceDirectories :: [FileSystem.Directory]
-  , _diskFiles :: HashMap FilePath Text
-  , _changedFiles :: HashSet FilePath
+  { env :: !(LSP.LanguageContextEnv ())
+  , driverState :: !(Driver.State (Error.Hydrated, Doc Void))
+  , receiveMessage :: !(STM ReceivedMessage)
+  , diskChangeSignalled :: !(STM ())
+  , diskFileStateVar :: !(MVar (HashSet FilePath, [FileSystem.Directory], HashMap FilePath Text))
+  , sourceDirectories :: [FileSystem.Directory]
+  , diskFiles :: HashMap FilePath Text
+  , changedFiles :: HashSet FilePath
   }
 
 messagePump :: State -> IO ()
 messagePump state = do
-  sendNotification state $ "messagePump changed files: " <> show (_changedFiles state)
+  sendNotification state $ "messagePump changed files: " <> show state.changedFiles
   join $
     atomically $
-      onMessage messagePump <$> _receiveMessage state
-        <|> onDiskChange <$ _diskChangeSignalled state
-        <|> onOutOfDate <$ guard (not $ HashSet.null $ _changedFiles state)
+      onMessage messagePump <$> state.receiveMessage
+        <|> onDiskChange <$ state.diskChangeSignalled
+        <|> onOutOfDate <$ guard (not $ HashSet.null state.changedFiles)
   where
     onDiskChange = do
-      (changedFiles, sourceDirectories, diskFiles) <- modifyMVar (_diskFileStateVar state) $ \(changedFiles, sourceDirectories, diskFiles) ->
+      (changedFiles, sourceDirectories, diskFiles) <- modifyMVar state.diskFileStateVar $ \(changedFiles, sourceDirectories, diskFiles) ->
         pure ((mempty, sourceDirectories, diskFiles), (changedFiles, sourceDirectories, diskFiles))
       messagePump
         state
-          { _sourceDirectories = sourceDirectories
-          , _diskFiles = diskFiles
-          , _changedFiles = changedFiles <> _changedFiles state
+          { sourceDirectories = sourceDirectories
+          , diskFiles = diskFiles
+          , changedFiles = changedFiles <> state.changedFiles
           }
 
     onOutOfDate = do
       checkAllAndPublishDiagnostics state
       messagePump
         state
-          { _changedFiles = mempty
+          { changedFiles = mempty
           }
 
     onMessage :: (State -> IO k) -> ReceivedMessage -> IO k
@@ -181,7 +182,7 @@ messagePump state = do
           filePath <- Directory.canonicalizePath $ uriToFilePath uri
           k
             state
-              { _changedFiles = HashSet.insert filePath (_changedFiles state)
+              { changedFiles = HashSet.insert filePath state.changedFiles
               }
         LSP.STextDocumentDidChange -> do
           let document = message ^. LSP.params . LSP.textDocument
@@ -189,7 +190,7 @@ messagePump state = do
           filePath <- Directory.canonicalizePath $ uriToFilePath uri
           k
             state
-              { _changedFiles = HashSet.insert filePath (_changedFiles state)
+              { changedFiles = HashSet.insert filePath state.changedFiles
               }
         LSP.STextDocumentDidSave -> do
           let document = message ^. LSP.params . LSP.textDocument
@@ -197,7 +198,7 @@ messagePump state = do
           filePath <- Directory.canonicalizePath $ uriToFilePath uri
           k
             state
-              { _changedFiles = HashSet.insert filePath (_changedFiles state)
+              { changedFiles = HashSet.insert filePath state.changedFiles
               }
         LSP.STextDocumentDidClose -> do
           let document = message ^. LSP.params . LSP.textDocument
@@ -205,7 +206,7 @@ messagePump state = do
           filePath <- Directory.canonicalizePath $ uriToFilePath uri
           k
             state
-              { _changedFiles = HashSet.insert filePath $ _changedFiles state
+              { changedFiles = HashSet.insert filePath state.changedFiles
               }
         _ ->
           k state
@@ -391,9 +392,9 @@ messagePump state = do
 
 checkAllAndPublishDiagnostics :: State -> IO ()
 checkAllAndPublishDiagnostics state = do
-  vfs <- LSP.runLspT (_env state) LSP.getVirtualFiles
+  vfs <- LSP.runLspT state.env LSP.getVirtualFiles
   let allFiles =
-        fmap mempty (HashMap.fromList $ fmap (bimap (uriToFilePath . LSP.fromNormalizedUri) (view LSP.file_text)) $ Map.toList $ vfs ^. LSP.vfsMap) <> fmap mempty (_diskFiles state)
+        fmap mempty (HashMap.fromList $ fmap (bimap (uriToFilePath . LSP.fromNormalizedUri) (view LSP.file_text)) $ Map.toList $ vfs ^. LSP.vfsMap) <> fmap mempty state.diskFiles
   (_, errors) <- runTask state Driver.Prune Driver.checkAll
   let errorsByFilePath =
         HashMap.fromListWith
@@ -405,7 +406,7 @@ checkAllAndPublishDiagnostics state = do
 
   forM_ (HashMap.toList errorsByFilePath) $ \(filePath, diagnostics) -> do
     let uri = LSP.filePathToUri filePath
-    versionedDoc <- LSP.runLspT (_env state) $ LSP.getVersionedTextDoc $ LSP.TextDocumentIdentifier uri
+    versionedDoc <- LSP.runLspT state.env $ LSP.getVersionedTextDoc $ LSP.TextDocumentIdentifier uri
 
     publishDiagnostics state (LSP.toNormalizedUri uri) (versionedDoc ^. LSP.version) diagnostics
 
@@ -415,19 +416,19 @@ runTask
   -> Task Query a
   -> IO (a, [(Error.Hydrated, Doc Void)])
 runTask state prune task = do
-  vfs <- LSP.runLspT (_env state) LSP.getVirtualFiles
+  vfs <- LSP.runLspT state.env LSP.getVirtualFiles
   let prettyError :: Error.Hydrated -> Task Query (Error.Hydrated, Doc ann)
       prettyError err = do
         (heading, body) <- Error.Hydrated.headingAndBody $ Error.Hydrated._error err
         pure (err, heading <> Doc.line <> body)
 
       files =
-        HashMap.fromList (fmap (bimap (uriToFilePath . LSP.fromNormalizedUri) (Left . view LSP.file_text)) $ Map.toList $ vfs ^. LSP.vfsMap) <> fmap Right (_diskFiles state)
+        HashMap.fromList (fmap (bimap (uriToFilePath . LSP.fromNormalizedUri) (Left . view LSP.file_text)) $ Map.toList $ vfs ^. LSP.vfsMap) <> fmap Right state.diskFiles
 
   Driver.runIncrementalTask
-    (_driverState state)
-    (_changedFiles state)
-    (HashSet.fromList $ _sourceDirectories state)
+    state.driverState
+    state.changedFiles
+    (HashSet.fromList state.sourceDirectories)
     files
     prettyError
     prune
@@ -438,14 +439,14 @@ runTask state prune task = do
 sendNotification :: State -> Text -> IO ()
 sendNotification state s =
   LSP.runLspT
-    (_env state)
+    state.env
     $ LSP.sendNotification
       LSP.SWindowLogMessage
       LSP.LogMessageParams {_xtype = LSP.MtInfo, _message = s}
 
 publishDiagnostics :: State -> LSP.NormalizedUri -> LSP.TextDocumentVersion -> [LSP.Diagnostic] -> IO ()
 publishDiagnostics state uri version diagnostics =
-  LSP.runLspT (_env state) $
+  LSP.runLspT state.env $
     LSP.Server.publishDiagnostics maxDiagnostics uri version (LSP.partitionBySource diagnostics)
   where
     maxDiagnostics = 100
