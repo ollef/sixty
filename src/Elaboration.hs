@@ -816,8 +816,8 @@ postponeCheck
   -> Meta.Index
   -> M (Checked (Syntax.Term v))
 postponeCheck context surfaceTerm expectedType blockingMeta =
-  fmap Checked $
-    postpone context expectedType blockingMeta \canPostpone -> do
+  Checked
+    <$> postpone context expectedType blockingMeta \canPostpone -> do
       Checked resultTerm <- elaborateWith context surfaceTerm (Check expectedType) canPostpone
       pure resultTerm
 
