@@ -48,15 +48,15 @@ import Var (Var)
 type Callback a = ItemUnderCursor -> Span.LineColumn -> MaybeT M a
 
 data ItemUnderCursor where
-  Term ::
-    ItemContext ->
-    Context v ->
-    EnumMap Var (NonEmpty Span.Relative) ->
-    Syntax.Term v ->
-    ItemUnderCursor
-  Import ::
-    Name.Module ->
-    ItemUnderCursor
+  Term
+    :: ItemContext
+    -> Context v
+    -> EnumMap Var (NonEmpty Span.Relative)
+    -> Syntax.Term v
+    -> ItemUnderCursor
+  Import
+    :: Name.Module
+    -> ItemUnderCursor
 
 data ItemContext
   = ExpressionContext
@@ -64,24 +64,25 @@ data ItemContext
   | DefinitionContext
   deriving (Show)
 
-cursorAction ::
-  forall a.
-  FilePath ->
-  Position.LineColumn ->
-  Callback a ->
-  Task Query (Maybe a)
+cursorAction
+  :: forall a
+   . FilePath
+  -> Position.LineColumn
+  -> Callback a
+  -> Task Query (Maybe a)
 cursorAction filePath (Position.LineColumn line column) k =
   runM $
     runMaybeT $ do
       (moduleName, moduleHeader, _) <- fetch $ Query.ParsedFile filePath
       spans <- fetch $ Query.ModuleSpanMap moduleName
       contents <- fetch $ Query.FileText filePath
-      let -- TODO use the rope that we get from the LSP library instead
-          pos =
-            Position.Absolute $
-              case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral column)) $ Rope.fromText contents of
-                Nothing -> 0
-                Just (rope, _) -> fromIntegral $ Rope.length rope
+      let
+        -- TODO use the rope that we get from the LSP library instead
+        pos =
+          Position.Absolute $
+            case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral column)) $ Rope.fromText contents of
+              Nothing -> 0
+              Just (rope, _) -> fromIntegral $ Rope.length rope
 
       toLineColumns <- LineColumns.fromAbsolute moduleName
       asum $
@@ -159,13 +160,13 @@ extendDef env bindings term type_ = do
 type RelativeCallback a =
   forall v. ItemContext -> Environment v -> Syntax.Term v -> Span.Relative -> MaybeT M a
 
-definitionAction ::
-  forall a.
-  RelativeCallback a ->
-  Environment Void ->
-  Scope.DefinitionKind ->
-  Name.Qualified ->
-  MaybeT M a
+definitionAction
+  :: forall a
+   . RelativeCallback a
+  -> Environment Void
+  -> Scope.DefinitionKind
+  -> Name.Qualified
+  -> MaybeT M a
 definitionAction k env definitionKind qualifiedName =
   definitionNameActions <|> do
     (def, _, metaVars) <- MaybeT $ fetch $ Query.ElaboratingDefinition definitionKind qualifiedName
@@ -198,11 +199,11 @@ definitionAction k env definitionKind qualifiedName =
                 k DefinitionContext env (Syntax.Global qualifiedName) span
             )
 
-termAction ::
-  RelativeCallback a ->
-  Environment v ->
-  Syntax.Term v ->
-  MaybeT M a
+termAction
+  :: RelativeCallback a
+  -> Environment v
+  -> Syntax.Term v
+  -> MaybeT M a
 termAction k env term =
   case term of
     Syntax.Var _ ->
@@ -259,11 +260,11 @@ letsAction k env lets =
     Syntax.In term ->
       termAction k env term
 
-dataDefinitionAction ::
-  RelativeCallback a ->
-  Environment v ->
-  Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v ->
-  MaybeT M a
+dataDefinitionAction
+  :: RelativeCallback a
+  -> Environment v
+  -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v
+  -> MaybeT M a
 dataDefinitionAction k env tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constrDefs) ->
@@ -274,12 +275,12 @@ dataDefinitionAction k env tele =
         <|> termAction k env type_
         <|> dataDefinitionAction k env' tele'
 
-branchesAction ::
-  RelativeCallback a ->
-  Environment v ->
-  Syntax.Term v ->
-  Syntax.Branches v ->
-  MaybeT M a
+branchesAction
+  :: RelativeCallback a
+  -> Environment v
+  -> Syntax.Term v
+  -> Syntax.Branches v
+  -> MaybeT M a
 branchesAction k env scrutinee branches =
   case branches of
     Syntax.ConstructorBranches constructorTypeName constructorBranches ->
@@ -287,13 +288,13 @@ branchesAction k env scrutinee branches =
     Syntax.LiteralBranches literalBranches ->
       asum (literalBranchAction k env <$> OrderedHashMap.toList literalBranches)
 
-constructorBranchAction ::
-  RelativeCallback a ->
-  Environment v ->
-  Name.Qualified ->
-  Syntax.Term v ->
-  (Name.Constructor, ([Span.Relative], Telescope Bindings Syntax.Type Syntax.Term v)) ->
-  MaybeT M a
+constructorBranchAction
+  :: RelativeCallback a
+  -> Environment v
+  -> Name.Qualified
+  -> Syntax.Term v
+  -> (Name.Constructor, ([Span.Relative], Telescope Bindings Syntax.Type Syntax.Term v))
+  -> MaybeT M a
 constructorBranchAction k env typeName scrutinee (constr, (spans, tele)) =
   asum
     ( foreach spans $ \span -> do
@@ -304,8 +305,8 @@ constructorBranchAction k env typeName scrutinee (constr, (spans, tele)) =
         case scrutineeType' of
           Domain.Neutral (Domain.Global headName) (Domain.appsView -> Just args)
             | headName == typeName -> do
-              args' <- lift $ mapM (mapM $ Elaboration.readback $ _context env) args
-              k PatternContext env (Syntax.Con qualifiedConstr `Syntax.apps` fmap (first implicitise) args') span
+                args' <- lift $ mapM (mapM $ Elaboration.readback $ _context env) args
+                k PatternContext env (Syntax.Con qualifiedConstr `Syntax.apps` fmap (first implicitise) args') span
           _ ->
             k PatternContext env (Syntax.Con qualifiedConstr) span
     )
@@ -314,20 +315,20 @@ constructorBranchAction k env typeName scrutinee (constr, (spans, tele)) =
     qualifiedConstr =
       Name.QualifiedConstructor typeName constr
 
-literalBranchAction ::
-  RelativeCallback a ->
-  Environment v ->
-  (Literal, ([Span.Relative], Syntax.Term v)) ->
-  MaybeT M a
+literalBranchAction
+  :: RelativeCallback a
+  -> Environment v
+  -> (Literal, ([Span.Relative], Syntax.Term v))
+  -> MaybeT M a
 literalBranchAction k env (_, (_, body)) =
   -- TODO use literal
   termAction k env body
 
-teleAction ::
-  RelativeCallback a ->
-  Environment v ->
-  Telescope Bindings Syntax.Type Syntax.Term v ->
-  MaybeT M a
+teleAction
+  :: RelativeCallback a
+  -> Environment v
+  -> Telescope Bindings Syntax.Type Syntax.Term v
+  -> MaybeT M a
 teleAction k env tele =
   case tele of
     Telescope.Empty branch ->
@@ -338,12 +339,12 @@ teleAction k env tele =
         <|> termAction k env type_
         <|> teleAction k env' tele'
 
-bindingAction ::
-  RelativeCallback a ->
-  Environment (Index.Succ v) ->
-  Binding ->
-  Var ->
-  MaybeT M a
+bindingAction
+  :: RelativeCallback a
+  -> Environment (Index.Succ v)
+  -> Binding
+  -> Var
+  -> MaybeT M a
 bindingAction k env binding var =
   case binding of
     Binding.Spanned span _ ->
@@ -356,21 +357,21 @@ bindingAction k env binding var =
     Binding.Unspanned _ ->
       empty
 
-bindingsAction ::
-  RelativeCallback a ->
-  Environment (Index.Succ v) ->
-  Bindings ->
-  Var ->
-  MaybeT M a
+bindingsAction
+  :: RelativeCallback a
+  -> Environment (Index.Succ v)
+  -> Bindings
+  -> Var
+  -> MaybeT M a
 bindingsAction =
   definingBindingsAction
 
-definingBindingsAction ::
-  RelativeCallback a ->
-  Environment v ->
-  Bindings ->
-  Var ->
-  MaybeT M a
+definingBindingsAction
+  :: RelativeCallback a
+  -> Environment v
+  -> Bindings
+  -> Var
+  -> MaybeT M a
 definingBindingsAction k env binding var =
   case binding of
     Bindings.Spanned spannedNames ->

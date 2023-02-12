@@ -514,7 +514,7 @@ plicitPattern =
     <*> sepBy patName (token $ Lexer.Operator ",")
     <*> token Lexer.RightImplicitBrace
     <|> Surface.ExplicitPattern
-      <$> atomicPattern
+    <$> atomicPattern
     <?> "explicit or implicit pattern"
   where
     mkImplicitPattern span1 pats span2 =
@@ -604,8 +604,13 @@ plicitAtomicTerm =
 
 term :: Parser Surface.Term
 term =
-  Surface.pis Explicit <$> some typedBindings <* token Lexer.RightArrow <*> term
-    <|> atomicTerm <**> (foldl' (flip (.)) identity <$> many plicitAtomicTerm) <**> fun
+  Surface.pis Explicit
+    <$> some typedBindings
+    <* token Lexer.RightArrow
+    <*> term
+    <|> atomicTerm
+    <**> (foldl' (flip (.)) identity <$> many plicitAtomicTerm)
+    <**> fun
     <?> "term"
   where
     typedBindings =
@@ -623,19 +628,19 @@ term =
 
 definition :: Parser (Either Error.Parsing (Position.Absolute, (Name, Surface.Definition)))
 definition =
-  withRecovery (recover Left)
-    $ fmap Right
-    $ sameLevel
-    $ withIndentationBlock
-    $ relativeTo
-    $ dataDefinition
-      <|> do
-        (span, nameText) <- spannedIdentifier
-        (,) (Name nameText)
-          <$> ( Surface.TypeDeclaration span <$ token Lexer.Colon <*> recoveringTerm
-                  <|> Surface.ConstantDefinition <$> clauses span nameText
-              )
-    <?> "definition"
+  withRecovery (recover Left) $
+    fmap Right $
+      sameLevel $
+        withIndentationBlock $
+          relativeTo $
+            dataDefinition
+              <|> do
+                (span, nameText) <- spannedIdentifier
+                (,) (Name nameText)
+                  <$> ( Surface.TypeDeclaration span <$ token Lexer.Colon <*> recoveringTerm
+                          <|> Surface.ConstantDefinition <$> clauses span nameText
+                      )
+              <?> "definition"
 
 clauses :: Span.Relative -> Text -> Parser [(Span.Relative, Surface.Clause)]
 clauses firstSpan nameText =

@@ -19,10 +19,10 @@ import qualified Scope
 import qualified Span
 import qualified Surface.Syntax as Surface
 
-nextExplicit ::
-  Context v ->
-  [[Surface.PlicitPattern]] ->
-  M (Bindings, [[Surface.PlicitPattern]])
+nextExplicit
+  :: Context v
+  -> [[Surface.PlicitPattern]]
+  -> M (Bindings, [[Surface.PlicitPattern]])
 nextExplicit context clauses = do
   spannedNames <-
     concatMapM (concatMapM $ explicitNames context) $ maybeToList . headMay <$> clauses
@@ -49,11 +49,11 @@ shiftExplicit patterns =
     [] ->
       []
 
-nextImplicit ::
-  Context v ->
-  Name ->
-  [[Surface.PlicitPattern]] ->
-  M (Bindings, [[Surface.PlicitPattern]])
+nextImplicit
+  :: Context v
+  -> Name
+  -> [[Surface.PlicitPattern]]
+  -> M (Bindings, [[Surface.PlicitPattern]])
 nextImplicit context piName clauses = do
   spannedNames <-
     concatMapM (concatMapM $ implicitNames context piName) $ maybeToList . headMay <$> clauses
@@ -67,7 +67,7 @@ implicitNames context piName pattern_ =
   case pattern_ of
     Surface.ImplicitPattern _ namedPats
       | Just p <- HashMap.lookup piName namedPats ->
-        patternNames context $ Surface.pattern_ p
+          patternNames context $ Surface.pattern_ p
     _ ->
       pure []
 

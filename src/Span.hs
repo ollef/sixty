@@ -57,8 +57,8 @@ instance Pretty LineColumn where
         end@(Position.LineColumn ((+ 1) -> endLine) ((+ 1) -> endColumn))
       )
       | start == end =
-        pretty startLine <> ":" <> pretty startColumn
+          pretty startLine <> ":" <> pretty startColumn
       | startLine == endLine =
-        pretty startLine <> ":" <> pretty startColumn <> "-" <> pretty endColumn
+          pretty startLine <> ":" <> pretty startColumn <> "-" <> pretty endColumn
       | otherwise =
-        pretty startLine <> ":" <> pretty startColumn <> "-" <> pretty endLine <> ":" <> pretty endColumn
+          pretty startLine <> ":" <> pretty startColumn <> "-" <> pretty endLine <> ":" <> pretty endColumn

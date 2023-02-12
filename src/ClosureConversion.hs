@@ -14,10 +14,10 @@ import Rock
 import Telescope (Telescope)
 import qualified Telescope
 
-convertDefinition ::
-  MonadFetch Query m =>
-  LambdaLifted.Definition ->
-  m ClosureConverted.Definition
+convertDefinition
+  :: MonadFetch Query m
+  => LambdaLifted.Definition
+  -> m ClosureConverted.Definition
 convertDefinition def =
   case def of
     LambdaLifted.TypeDeclaration type_ ->
@@ -32,10 +32,10 @@ convertDefinition def =
     LambdaLifted.DataDefinition boxity tele ->
       ClosureConverted.ParameterisedDataDefinition boxity <$> convertParameterisedDataDefinition tele
 
-convertParameterisedDataDefinition ::
-  MonadFetch Query m =>
-  Telescope Name LambdaLifted.Type LambdaLifted.ConstructorDefinitions v ->
-  m (Telescope Name ClosureConverted.Type ClosureConverted.ConstructorDefinitions v)
+convertParameterisedDataDefinition
+  :: MonadFetch Query m
+  => Telescope Name LambdaLifted.Type LambdaLifted.ConstructorDefinitions v
+  -> m (Telescope Name ClosureConverted.Type ClosureConverted.ConstructorDefinitions v)
 convertParameterisedDataDefinition tele =
   case tele of
     Telescope.Empty (LambdaLifted.ConstructorDefinitions constrDefs) ->
@@ -46,23 +46,24 @@ convertParameterisedDataDefinition tele =
         <*> pure plicity
         <*> convertParameterisedDataDefinition tele'
 
-convertTerm ::
-  MonadFetch Query m =>
-  LambdaLifted.Term v ->
-  m (ClosureConverted.Term v)
+convertTerm
+  :: MonadFetch Query m
+  => LambdaLifted.Term v
+  -> m (ClosureConverted.Term v)
 convertTerm term =
   convertAppliedTerm term []
 
-convertAppliedTerm ::
-  MonadFetch Query m =>
-  LambdaLifted.Term v ->
-  [ClosureConverted.Term v] ->
-  m (ClosureConverted.Term v)
+convertAppliedTerm
+  :: MonadFetch Query m
+  => LambdaLifted.Term v
+  -> [ClosureConverted.Term v]
+  -> m (ClosureConverted.Term v)
 convertAppliedTerm term args =
   case term of
     LambdaLifted.Var var ->
       applyArgs args $
-        pure $ ClosureConverted.Var var
+        pure $
+          ClosureConverted.Var var
     LambdaLifted.Global global ->
       convertGlobal global args
     LambdaLifted.Con con conParams conArgs ->
@@ -89,11 +90,11 @@ convertAppliedTerm term args =
           <*> convertBranches branches
           <*> mapM convertTerm defaultBranch
 
-convertGlobal ::
-  MonadFetch Query m =>
-  Name.Lifted ->
-  [ClosureConverted.Term v] ->
-  m (ClosureConverted.Term v)
+convertGlobal
+  :: MonadFetch Query m
+  => Name.Lifted
+  -> [ClosureConverted.Term v]
+  -> m (ClosureConverted.Term v)
 convertGlobal global args = do
   definition <- fetch $ Query.LambdaLiftedDefinition global
   let nonFunctionCase =
@@ -104,16 +105,16 @@ convertGlobal global args = do
           case (Telescope.length tele, length args) of
             (arity, numArgs)
               | arity == numArgs ->
-                ClosureConverted.Apply global args
+                  ClosureConverted.Apply global args
               | arity < numArgs -> do
-                let (preArgs, postArgs) =
-                      splitAt arity args
+                  let (preArgs, postArgs) =
+                        splitAt arity args
 
-                ClosureConverted.ApplyClosure
-                  (ClosureConverted.Apply global preArgs)
-                  postArgs
+                  ClosureConverted.ApplyClosure
+                    (ClosureConverted.Apply global preArgs)
+                    postArgs
               | otherwise ->
-                ClosureConverted.Closure global args
+                  ClosureConverted.Closure global args
 
   case definition of
     LambdaLifted.TypeDeclaration type_ ->
@@ -139,10 +140,10 @@ convertTypeDeclaration type_ =
     tele@Telescope.Extend {} ->
       ClosureConverted.Function <$> Telescope.hoistA convertTerm convertTerm tele
 
-convertBranches ::
-  MonadFetch Query m =>
-  LambdaLifted.Branches v ->
-  m (ClosureConverted.Branches v)
+convertBranches
+  :: MonadFetch Query m
+  => LambdaLifted.Branches v
+  -> m (ClosureConverted.Branches v)
 convertBranches branches =
   case branches of
     LambdaLifted.ConstructorBranches constructorTypeName constructorBranches ->
@@ -152,10 +153,10 @@ convertBranches branches =
       ClosureConverted.LiteralBranches
         <$> OrderedHashMap.mapMUnordered convertTerm literalBranches
 
-convertTelescope ::
-  MonadFetch Query m =>
-  Telescope Name LambdaLifted.Type LambdaLifted.Term v ->
-  m (Telescope Name ClosureConverted.Type ClosureConverted.Term v)
+convertTelescope
+  :: MonadFetch Query m
+  => Telescope Name LambdaLifted.Type LambdaLifted.Term v
+  -> m (Telescope Name ClosureConverted.Type ClosureConverted.Term v)
 convertTelescope tele =
   case tele of
     Telescope.Empty term ->
@@ -166,11 +167,11 @@ convertTelescope tele =
         <*> pure plicity
         <*> convertTelescope tele'
 
-applyArgs ::
-  Monad m =>
-  [ClosureConverted.Term v] ->
-  m (ClosureConverted.Term v) ->
-  m (ClosureConverted.Term v)
+applyArgs
+  :: Monad m
+  => [ClosureConverted.Term v]
+  -> m (ClosureConverted.Term v)
+  -> m (ClosureConverted.Term v)
 applyArgs args mresult =
   case args of
     [] ->

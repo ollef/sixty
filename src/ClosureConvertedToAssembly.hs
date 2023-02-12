@@ -275,12 +275,12 @@ sizeOfType :: Operand -> Builder Assembly.Operand
 sizeOfType =
   forceDirect
 
-switch ::
-  Assembly.Return (Assembly.Type, Assembly.NameSuggestion) ->
-  Assembly.Operand ->
-  [(Integer, Builder (Assembly.Return Assembly.Operand))] ->
-  Builder (Assembly.Return Assembly.Operand) ->
-  Builder (Assembly.Return Assembly.Operand)
+switch
+  :: Assembly.Return (Assembly.Type, Assembly.NameSuggestion)
+  -> Assembly.Operand
+  -> [(Integer, Builder (Assembly.Return Assembly.Operand))]
+  -> Builder (Assembly.Return Assembly.Operand)
+  -> Builder (Assembly.Return Assembly.Operand)
 switch returnType scrutinee branches defaultBranch = do
   initialNextShadowStackSlot <- gets _nextShadowStackSlot
   initialHeapPointer <- gets _heapPointer
@@ -358,10 +358,10 @@ callVoid global args = do
   heapLimit <- gets _heapLimit
   let returnType = Assembly.Struct [Assembly.WordPointer, Assembly.WordPointer]
       args' =
-        (Assembly.WordPointer, Assembly.LocalOperand shadowStack) :
-        (Assembly.WordPointer, heapPointer) :
-        (Assembly.WordPointer, heapLimit) :
-        args
+        (Assembly.WordPointer, Assembly.LocalOperand shadowStack)
+          : (Assembly.WordPointer, heapPointer)
+          : (Assembly.WordPointer, heapLimit)
+          : args
   emit $ Assembly.Call (Assembly.Return (returnType, resultStruct)) (Assembly.GlobalFunction global (Assembly.Return returnType) $ fst <$> args') args'
   let resultStructOperand = Assembly.LocalOperand resultStruct
   heapPointer' <- extractValue "heap_pointer" resultStructOperand 0
@@ -381,10 +381,10 @@ callDirect nameSuggestion global args = do
   heapLimit <- gets _heapLimit
   let returnType = Assembly.Struct [Assembly.Word, Assembly.WordPointer, Assembly.WordPointer]
       args' =
-        (Assembly.WordPointer, Assembly.LocalOperand shadowStack) :
-        (Assembly.WordPointer, heapPointer) :
-        (Assembly.WordPointer, heapLimit) :
-        args
+        (Assembly.WordPointer, Assembly.LocalOperand shadowStack)
+          : (Assembly.WordPointer, heapPointer)
+          : (Assembly.WordPointer, heapLimit)
+          : args
   emit $
     Assembly.Call
       (Assembly.Return (returnType, resultStruct))
@@ -412,9 +412,9 @@ callInitFunction nameSuggestion global args = do
   heapLimit <- gets _heapLimit
   let returnType = Assembly.Struct [Assembly.WordPointer, Assembly.WordPointer, Assembly.WordPointer]
       args' =
-        (Assembly.WordPointer, heapPointer) :
-        (Assembly.WordPointer, heapLimit) :
-        args
+        (Assembly.WordPointer, heapPointer)
+          : (Assembly.WordPointer, heapLimit)
+          : args
   emit $
     Assembly.Call
       (Assembly.Return (returnType, resultStruct))
@@ -541,19 +541,19 @@ generateModuleInits moduleNames =
     let globalPointerOperand = Assembly.LocalOperand globalPointer
     foldM_ (go globalPointerOperand) globalPointerOperand moduleNames
     instructions <- gets _instructions
-    pure $
-      Assembly.FunctionDefinition
+    pure
+      $ Assembly.FunctionDefinition
         Assembly.Void
         [(Assembly.WordPointer, heapPointerParameter), (Assembly.WordPointer, heapLimitParameter), (Assembly.WordPointer, globalPointer)]
-        $ Assembly.BasicBlock (toList instructions) Assembly.Void
+      $ Assembly.BasicBlock (toList instructions) Assembly.Void
   where
     go globalBasePointer globalPointer moduleName =
       callInitFunction "globals" (moduleInitName moduleName) [(Assembly.WordPointer, globalBasePointer), (Assembly.WordPointer, globalPointer)]
 
-generateModuleInit ::
-  Name.Module ->
-  [(Name.Lifted, Assembly.Definition)] ->
-  M [(Name.Lifted, Assembly.Definition)]
+generateModuleInit
+  :: Name.Module
+  -> [(Name.Lifted, Assembly.Definition)]
+  -> M [(Name.Lifted, Assembly.Definition)]
 generateModuleInit moduleName definitions =
   runBuilder $ do
     Assembly.LocalOperand heapPointerParameter <- gets _heapPointer
@@ -576,9 +576,9 @@ generateModuleInit moduleName definitions =
               pure $ Assembly.Return globalPointer''
           )
         ]
-        $ pure $
-          Assembly.Return $
-            Assembly.LocalOperand globalPointer
+        $ pure
+        $ Assembly.Return
+        $ Assembly.LocalOperand globalPointer
     heapPointer <- gets _heapPointer
     heapLimit <- gets _heapLimit
     instructions <- gets _instructions
@@ -620,9 +620,9 @@ generateModuleInit moduleName definitions =
         Assembly.FunctionDefinition {} ->
           pure globalPointer
 
-withFunctionDefinitionParameters ::
-  Builder ((Assembly.Return Assembly.Type -> [(Assembly.Type, Assembly.Local)] -> Assembly.BasicBlock -> Assembly.Definition) -> a) ->
-  Builder a
+withFunctionDefinitionParameters
+  :: Builder ((Assembly.Return Assembly.Type -> [(Assembly.Type, Assembly.Local)] -> Assembly.BasicBlock -> Assembly.Definition) -> a)
+  -> Builder a
 withFunctionDefinitionParameters m = do
   Assembly.LocalOperand heapPointerParameter <- gets _heapPointer
   Assembly.LocalOperand heapLimitParameter <- gets _heapLimit
@@ -704,10 +704,10 @@ generateGlobal env name representation term = do
         initGlobal name Assembly.WordPointer globalPointer
         pure globalPointer'
 
-makeConstantDefinition ::
-  Assembly.Type ->
-  (Assembly.Operand -> Builder Assembly.Operand) ->
-  Builder Assembly.Definition
+makeConstantDefinition
+  :: Assembly.Type
+  -> (Assembly.Operand -> Builder Assembly.Operand)
+  -> Builder Assembly.Definition
 makeConstantDefinition type_ m = do
   Assembly.LocalOperand heapPointerParameter <- gets _heapPointer
   Assembly.LocalOperand heapLimitParameter <- gets _heapLimit
@@ -770,13 +770,13 @@ generateKnownConstant term =
     _ ->
       Nothing
 
-generateFunction ::
-  Environment v ->
-  Representation ->
-  Telescope Name Syntax.Type Syntax.Term v ->
-  [Representation] ->
-  Tsil (Assembly.Type, Assembly.Local) ->
-  Builder Assembly.Definition
+generateFunction
+  :: Environment v
+  -> Representation
+  -> Telescope Name Syntax.Type Syntax.Term v
+  -> [Representation]
+  -> Tsil (Assembly.Type, Assembly.Local)
+  -> Builder Assembly.Definition
 generateFunction env returnRepresentation tele parameterRepresentations params =
   case (tele, parameterRepresentations) of
     (Telescope.Empty term, []) ->
@@ -818,11 +818,11 @@ generateFunction env returnRepresentation tele parameterRepresentations params =
     _ ->
       panic "ClosureConvertedToAssembly.generateFunction: mismatched function telescope and signature"
 
-makeFunctionDefinition ::
-  Assembly.Return Assembly.Type ->
-  [(Assembly.Type, Assembly.Local)] ->
-  Builder (Assembly.Return Assembly.Operand) ->
-  Builder Assembly.Definition
+makeFunctionDefinition
+  :: Assembly.Return Assembly.Type
+  -> [(Assembly.Type, Assembly.Local)]
+  -> Builder (Assembly.Return Assembly.Operand)
+  -> Builder Assembly.Definition
 makeFunctionDefinition returnType parameters m = do
   Assembly.LocalOperand heapPointerParameter <- gets _heapPointer
   Assembly.LocalOperand heapLimitParameter <- gets _heapLimit
@@ -839,10 +839,10 @@ makeFunctionDefinition returnType parameters m = do
           Assembly.Void -> Assembly.Return $ Assembly.Struct [Assembly.WordPointer, Assembly.WordPointer]
           Assembly.Return type_ -> Assembly.Return $ Assembly.Struct [type_, Assembly.WordPointer, Assembly.WordPointer]
       )
-      ( (Assembly.WordPointer, if hasShadowStackFrame then shadowStackParameter else shadowStack) :
-        (Assembly.WordPointer, heapPointerParameter) :
-        (Assembly.WordPointer, heapLimitParameter) :
-        parameters
+      ( (Assembly.WordPointer, if hasShadowStackFrame then shadowStackParameter else shadowStack)
+          : (Assembly.WordPointer, heapPointerParameter)
+          : (Assembly.WordPointer, heapLimitParameter)
+          : parameters
       )
       ( Assembly.BasicBlock (shadowStackInitInstructions <> toList instructions) $
           case returnOperand of
@@ -932,12 +932,12 @@ generateTypedTerm env term type_ representation = do
     (_, Representation.MightContainHeapPointers) ->
       stackAllocateIt
 
-storeTerm ::
-  Environment v ->
-  Syntax.Term v ->
-  Assembly.Operand ->
-  Operand ->
-  Builder ()
+storeTerm
+  :: Environment v
+  -> Syntax.Term v
+  -> Assembly.Operand
+  -> Operand
+  -> Builder ()
 storeTerm env term returnLocation returnType =
   case term of
     Syntax.Var index -> do
@@ -991,14 +991,14 @@ storeTerm env term returnLocation returnType =
               foldM_ go (pure $ Assembly.Lit $ Literal.Integer 0) args
             Just tag
               | tag < 0xFF -> do
-                heapLocation <- heapAllocate "constructor_heap_object" (fromIntegral tag) size
-                store returnLocation heapLocation
-                foldM_ go (pure $ Assembly.Lit $ Literal.Integer 0) args
+                  heapLocation <- heapAllocate "constructor_heap_object" (fromIntegral tag) size
+                  store returnLocation heapLocation
+                  foldM_ go (pure $ Assembly.Lit $ Literal.Integer 0) args
               | otherwise -> do
-                sizeWithTag <- add "size_with_tag" size $ Assembly.Lit $ Literal.Integer tagBytes
-                heapLocation <- heapAllocate "constructor_heap_object" 0xFF sizeWithTag
-                store returnLocation heapLocation
-                foldM_ go (pure $ Assembly.Lit $ Literal.Integer 0) tagArgs
+                  sizeWithTag <- add "size_with_tag" size $ Assembly.Lit $ Literal.Integer tagBytes
+                  heapLocation <- heapAllocate "constructor_heap_object" 0xFF sizeWithTag
+                  store returnLocation heapLocation
+                  foldM_ go (pure $ Assembly.Lit $ Literal.Integer 0) tagArgs
     Syntax.Lit (Literal.Integer integer) ->
       store returnLocation $ Assembly.Lit $ Literal.Integer $ shiftL integer 1
     Syntax.Let _name term' type_ body -> do
@@ -1119,13 +1119,13 @@ storeTerm env term returnLocation returnType =
                   pure Assembly.Void
               )
 
-storeUnboxedBranch ::
-  Environment v ->
-  (Assembly.NameSuggestion -> Builder Assembly.Operand) ->
-  Telescope Name Syntax.Type Syntax.Term v ->
-  Assembly.Operand ->
-  Operand ->
-  Builder ()
+storeUnboxedBranch
+  :: Environment v
+  -> (Assembly.NameSuggestion -> Builder Assembly.Operand)
+  -> Telescope Name Syntax.Type Syntax.Term v
+  -> Assembly.Operand
+  -> Operand
+  -> Builder ()
 storeUnboxedBranch env constructorFieldBuilder tele returnLocation returnType =
   case tele of
     Telescope.Extend (Name name) type_ _plicity tele' -> do
@@ -1139,14 +1139,14 @@ storeUnboxedBranch env constructorFieldBuilder tele returnLocation returnType =
     Telescope.Empty branch ->
       storeTerm env branch returnLocation returnType
 
-storeBoxedBranch ::
-  Environment v ->
-  Builder Assembly.Operand ->
-  (Assembly.NameSuggestion -> Builder Assembly.Operand) ->
-  Telescope Name Syntax.Type Syntax.Term v ->
-  Assembly.Operand ->
-  Operand ->
-  Builder ()
+storeBoxedBranch
+  :: Environment v
+  -> Builder Assembly.Operand
+  -> (Assembly.NameSuggestion -> Builder Assembly.Operand)
+  -> Telescope Name Syntax.Type Syntax.Term v
+  -> Assembly.Operand
+  -> Operand
+  -> Builder ()
 storeBoxedBranch env constructorBasePointerBuilder constructorFieldOffsetBuilder tele returnLocation returnType =
   case tele of
     Telescope.Extend (Name name) type_ _plicity tele' -> do
@@ -1217,12 +1217,12 @@ generateArgument env term representation =
 
 -------------------------------------------------------------------------------
 
-boxedConstructorSize ::
-  Domain.Environment v ->
-  Name.QualifiedConstructor ->
-  [Syntax.Term v] ->
-  [Syntax.Term v] ->
-  M Domain.Value
+boxedConstructorSize
+  :: Domain.Environment v
+  -> Name.QualifiedConstructor
+  -> [Syntax.Term v]
+  -> [Syntax.Term v]
+  -> M Domain.Value
 boxedConstructorSize env con params args = do
   tele <- fetch $ Query.ClosureConvertedConstructorType con
   params' <- mapM (Evaluation.evaluate env) params

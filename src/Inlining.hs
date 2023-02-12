@@ -33,10 +33,10 @@ inlineDefinition def = do
     Syntax.DataDefinition boxity tele ->
       Syntax.DataDefinition boxity <$> inlineDataDefinition env tele
 
-inlineDataDefinition ::
-  Environment v ->
-  Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v ->
-  M (Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v)
+inlineDataDefinition
+  :: Environment v
+  -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v
+  -> M (Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v)
 inlineDataDefinition env tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constrDefs) -> do
@@ -149,18 +149,18 @@ evaluate dup env term =
     Syntax.Spanned span term' ->
       Spanned span <$> evaluate dup env term'
 
-evaluateLets ::
-  Duplicable ->
-  Environment v ->
-  Syntax.Lets v ->
-  M Lets
+evaluateLets
+  :: Duplicable
+  -> Environment v
+  -> Syntax.Lets v
+  -> M Lets
 evaluateLets dup env lets =
   case lets of
     Syntax.LetType _ _ (Syntax.Let _ Index.Zero term lets')
       | Just term' <- dup term -> do
-        value <- evaluate dup env term'
-        (env', _) <- Environment.extendValue env value
-        evaluateLets dup env' lets'
+          value <- evaluate dup env term'
+          (env', _) <- Environment.extendValue env value
+          evaluateLets dup env' lets'
     Syntax.LetType name type_ lets' -> do
       (env', var) <- Environment.extend env
       LetType name var <$> evaluate dup env type_ <*> evaluateLets dup env' lets'
@@ -173,11 +173,11 @@ evaluateLets dup env lets =
     Syntax.In term ->
       In <$> evaluate dup env term
 
-evaluateBranches ::
-  Duplicable ->
-  Environment v ->
-  Syntax.Branches v ->
-  M Branches
+evaluateBranches
+  :: Duplicable
+  -> Environment v
+  -> Syntax.Branches v
+  -> M Branches
 evaluateBranches dup env branches =
   case branches of
     Syntax.ConstructorBranches constructorTypeName constructorBranches ->
@@ -185,11 +185,11 @@ evaluateBranches dup env branches =
     Syntax.LiteralBranches literalBranches ->
       LiteralBranches <$> OrderedHashMap.mapMUnordered (mapM $ evaluate dup env) literalBranches
 
-evaluateTelescope ::
-  Duplicable ->
-  Environment v ->
-  Telescope Bindings Syntax.Type Syntax.Term v ->
-  M ([(Bindings, Var, Type, Plicity)], Value)
+evaluateTelescope
+  :: Duplicable
+  -> Environment v
+  -> Telescope Bindings Syntax.Type Syntax.Term v
+  -> M ([(Bindings, Var, Type, Plicity)], Value)
 evaluateTelescope dup env tele =
   case tele of
     Telescope.Empty body -> do
@@ -256,10 +256,10 @@ readbackLets env lets =
     In term ->
       Syntax.In $ readback env term
 
-readbackBranches ::
-  Environment v ->
-  Branches ->
-  Syntax.Branches v
+readbackBranches
+  :: Environment v
+  -> Branches
+  -> Syntax.Branches v
 readbackBranches env branches =
   case branches of
     ConstructorBranches constructorTypeName constructorBranches ->
@@ -269,11 +269,11 @@ readbackBranches env branches =
       Syntax.LiteralBranches $
         map (readback env) <$> literalBranches
 
-readbackTelescope ::
-  Environment v ->
-  [(Bindings, Var, Type, Plicity)] ->
-  Value ->
-  Telescope Bindings Syntax.Type Syntax.Term v
+readbackTelescope
+  :: Environment v
+  -> [(Bindings, Var, Type, Plicity)]
+  -> Value
+  -> Telescope Bindings Syntax.Type Syntax.Term v
 readbackTelescope env bindings body =
   case bindings of
     [] ->

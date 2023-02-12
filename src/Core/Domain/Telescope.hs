@@ -19,7 +19,7 @@ apply tele args =
       pure tele
     (Extend _ _ plicity1 teleFun, (plicity2, arg) : args')
       | plicity1 == plicity2 -> do
-        tele' <- teleFun arg
-        apply tele' args'
+          tele' <- teleFun arg
+          apply tele' args'
     _ ->
       panic "Core.Domain.Telescope.apply"

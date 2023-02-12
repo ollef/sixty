@@ -17,10 +17,10 @@ import qualified Query
 import Rock
 import qualified Span
 
-references ::
-  FilePath ->
-  Position.LineColumn ->
-  Task Query [(Intervals.Item, [(FilePath, Span.LineColumn)])]
+references
+  :: FilePath
+  -> Position.LineColumn
+  -> Task Query [(Intervals.Item, [(FilePath, Span.LineColumn)])]
 references filePath (Position.LineColumn line column) = do
   (originalModuleName, _, _) <- fetch $ Query.ParsedFile filePath
   let itemSpans definingModule item = do
@@ -45,12 +45,13 @@ references filePath (Position.LineColumn line column) = do
               else pure mempty
 
   contents <- fetch $ Query.FileText filePath
-  let -- TODO use the rope that we get from the LSP library instead
-      pos =
-        Position.Absolute $
-          case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral column)) $ Rope.fromText contents of
-            Nothing -> 0
-            Just (rope, _) -> fromIntegral $ Rope.length rope
+  let
+    -- TODO use the rope that we get from the LSP library instead
+    pos =
+      Position.Absolute $
+        case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral column)) $ Rope.fromText contents of
+          Nothing -> 0
+          Just (rope, _) -> fromIntegral $ Rope.length rope
   toLineColumns <- LineColumns.fromAbsolute originalModuleName
   spans <- fetch $ Query.ModuleSpanMap originalModuleName
   fmap concat $

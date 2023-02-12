@@ -41,7 +41,10 @@ generate Options {..} = do
             function1 <- randomRIO (1, functionCount)
             function2 <- randomRIO (1, functionCount)
             pure $
-              moduleName module1 <> "." <> functionName function1 <> " -> "
+              moduleName module1
+                <> "."
+                <> functionName function1
+                <> " -> "
                 <> moduleName module2
                 <> "."
                 <> functionName function2

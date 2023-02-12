@@ -87,11 +87,11 @@ readbackGroupedSpine :: Foldable f => Domain.Environment v -> Syntax.Term v -> f
 readbackGroupedSpine =
   foldlM . readbackGroupedElimination
 
-readbackConstructorBranch ::
-  Domain.Environment v ->
-  Domain.Environment v' ->
-  Telescope name Syntax.Type Syntax.Term v' ->
-  M (Telescope name Syntax.Type Syntax.Term v)
+readbackConstructorBranch
+  :: Domain.Environment v
+  -> Domain.Environment v'
+  -> Telescope name Syntax.Type Syntax.Term v'
+  -> M (Telescope name Syntax.Type Syntax.Term v)
 readbackConstructorBranch outerEnv innerEnv tele =
   case tele of
     Telescope.Empty term -> do

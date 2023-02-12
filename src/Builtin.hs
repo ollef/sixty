@@ -45,21 +45,21 @@ pattern EqualsName :: Name.Qualified
 pattern EqualsName =
   "Sixten.Builtin.Equals"
 
-pattern Equals ::
-  Domain.Type ->
-  Domain.Value ->
-  Domain.Value ->
-  Domain.Value
+pattern Equals
+  :: Domain.Type
+  -> Domain.Value
+  -> Domain.Value
+  -> Domain.Value
 pattern Equals k a b =
   Domain.Neutral
     (Domain.Global EqualsName)
     (Domain.Apps (Tsil.Empty Tsil.:> (Implicit, k) Tsil.:> (Explicit, a) Tsil.:> (Explicit, b)))
 
-equals ::
-  Syntax.Type v ->
-  Syntax.Term v ->
-  Syntax.Term v ->
-  Syntax.Term v
+equals
+  :: Syntax.Type v
+  -> Syntax.Term v
+  -> Syntax.Term v
+  -> Syntax.Term v
 equals k a b =
   Syntax.apps
     (Syntax.Global EqualsName)
@@ -69,11 +69,11 @@ pattern ReflName :: Name.QualifiedConstructor
 pattern ReflName =
   Name.QualifiedConstructor EqualsName "Refl"
 
-pattern Refl ::
-  Domain.Type ->
-  Domain.Value ->
-  Domain.Value ->
-  Domain.Value
+pattern Refl
+  :: Domain.Type
+  -> Domain.Value
+  -> Domain.Value
+  -> Domain.Value
 pattern Refl k a b =
   Domain.Con
     ReflName

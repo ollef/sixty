@@ -46,7 +46,7 @@ codeLens filePath =
         case (previousDef, def) of
           (Just (_, (previousName, Surface.TypeDeclaration {})), _)
             | previousName == name ->
-              pure []
+                pure []
           (_, Surface.TypeDeclaration {}) ->
             pure []
           (_, Surface.ConstantDefinition {}) ->

@@ -18,10 +18,10 @@ zonkDefinition postponed def =
     Syntax.DataDefinition boxity tele ->
       Syntax.DataDefinition boxity $ zonkDataDefinition postponed tele
 
-zonkDataDefinition ::
-  Postponed.Checks ->
-  Telescope binding Syntax.Type Syntax.ConstructorDefinitions v ->
-  Telescope binding Syntax.Type Syntax.ConstructorDefinitions v
+zonkDataDefinition
+  :: Postponed.Checks
+  -> Telescope binding Syntax.Type Syntax.ConstructorDefinitions v
+  -> Telescope binding Syntax.Type Syntax.ConstructorDefinitions v
 zonkDataDefinition postponed tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constructorDefinitions) ->
@@ -83,10 +83,10 @@ zonkBranches postponed branches =
     Syntax.LiteralBranches literalBranches ->
       Syntax.LiteralBranches $ map (zonkTerm postponed) <$> literalBranches
 
-zonkTelescope ::
-  Postponed.Checks ->
-  Telescope bindings Syntax.Type Syntax.Term v ->
-  Telescope bindings Syntax.Type Syntax.Term v
+zonkTelescope
+  :: Postponed.Checks
+  -> Telescope bindings Syntax.Type Syntax.Term v
+  -> Telescope bindings Syntax.Type Syntax.Term v
 zonkTelescope postponed tele =
   case tele of
     Telescope.Empty branch ->

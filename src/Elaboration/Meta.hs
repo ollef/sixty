@@ -193,21 +193,21 @@ toEagerState state definition maybeType = do
   where
     go todo done
       | EnumMap.null todo' =
-        pure done
+          pure done
       | otherwise = do
-        newlyDone <- traverse toEagerEntry todo'
+          newlyDone <- traverse toEagerEntry todo'
 
-        let newTodo =
-              foldMap
-                ( \case
-                    EagerUnsolved type_ _arity _postponements _span ->
-                      termMetas type_
-                    EagerSolved _solution metas _type ->
-                      direct metas
-                )
-                newlyDone
+          let newTodo =
+                foldMap
+                  ( \case
+                      EagerUnsolved type_ _arity _postponements _span ->
+                        termMetas type_
+                      EagerSolved _solution metas _type ->
+                        direct metas
+                  )
+                  newlyDone
 
-        go newTodo (done <> newlyDone)
+          go newTodo (done <> newlyDone)
       where
         todo' =
           EnumMap.difference (EnumMap.fromSet (entries state EnumMap.!) todo) done
@@ -221,34 +221,34 @@ solutionMetas metaIndex state = do
       pure (Nothing, state)
     Solved solution metas type_
       | EnumSet.null $ unsolved metas ->
-        pure (Just metas, state)
+          pure (Just metas, state)
       | otherwise ->
-        flip runStateT state $ do
-          indirects <- forM (EnumSet.toList $ unsolved metas) $ \i ->
-            (,) i <$> StateT (solutionMetas i)
+          flip runStateT state $ do
+            indirects <- forM (EnumSet.toList $ unsolved metas) $ \i ->
+              (,) i <$> StateT (solutionMetas i)
 
-          let (directUnsolvedMetas, directSolvedMetas) =
-                bimap (EnumSet.fromList . map fst) (EnumSet.fromList . map fst) $
-                  partition (isNothing . snd) indirects
+            let (directUnsolvedMetas, directSolvedMetas) =
+                  bimap (EnumSet.fromList . map fst) (EnumSet.fromList . map fst) $
+                    partition (isNothing . snd) indirects
 
-              indirectMetas =
-                foldMap (fold . snd) indirects
+                indirectMetas =
+                  foldMap (fold . snd) indirects
 
-              solved' =
-                solved metas <> directSolvedMetas <> solved indirectMetas
+                solved' =
+                  solved metas <> directSolvedMetas <> solved indirectMetas
 
-              unsolved' =
-                directUnsolvedMetas <> unsolved indirectMetas
+                unsolved' =
+                  directUnsolvedMetas <> unsolved indirectMetas
 
-              metas' =
-                metas
-                  { unsolved = unsolved'
-                  , solved = solved'
-                  }
+                metas' =
+                  metas
+                    { unsolved = unsolved'
+                    , solved = solved'
+                    }
 
-          modify $ \s -> s {entries = EnumMap.insert metaIndex (Solved solution metas' type_) $ entries s}
+            modify $ \s -> s {entries = EnumMap.insert metaIndex (Solved solution metas' type_) $ entries s}
 
-          pure $ Just metas'
+            pure $ Just metas'
     LazilySolved msolution type_ -> do
       solution <- msolution
       let metas =

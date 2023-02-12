@@ -33,11 +33,11 @@ import qualified Telescope
 import Var (Var)
 import Prelude (Show (showsPrec))
 
-inlineSolutions ::
-  Syntax.MetaSolutions ->
-  Syntax.Definition ->
-  Syntax.Type Void ->
-  M (Syntax.Definition, Syntax.Type Void)
+inlineSolutions
+  :: Syntax.MetaSolutions
+  -> Syntax.Definition
+  -> Syntax.Type Void
+  -> M (Syntax.Definition, Syntax.Type Void)
 inlineSolutions solutions def type_ = do
   solutionValues <- forM solutions $ \(metaTerm, metaType, metaOccurrences) -> do
     metaValue <- evaluate Environment.empty metaTerm
@@ -105,10 +105,10 @@ inlineSolutions solutions def type_ = do
             tele' <- inlineTeleSolutions env tele
             pure $ Syntax.DataDefinition boxity tele'
 
-      inlineTeleSolutions ::
-        Domain.Environment v ->
-        Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v ->
-        M (Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v)
+      inlineTeleSolutions
+        :: Domain.Environment v
+        -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v
+        -> M (Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v)
       inlineTeleSolutions env tele =
         case tele of
           Telescope.Empty (Syntax.ConstructorDefinitions constrs) -> do
@@ -392,10 +392,10 @@ evaluateLets env lets =
     Syntax.In term ->
       makeIn <$> evaluate env term
 
-evaluateBranches ::
-  Domain.Environment v ->
-  Syntax.Branches v ->
-  M Branches
+evaluateBranches
+  :: Domain.Environment v
+  -> Syntax.Branches v
+  -> M Branches
 evaluateBranches env branches =
   case branches of
     Syntax.ConstructorBranches constructorTypeName constructorBranches ->
@@ -403,10 +403,10 @@ evaluateBranches env branches =
     Syntax.LiteralBranches literalBranches ->
       LiteralBranches <$> OrderedHashMap.mapMUnordered (mapM $ evaluate env) literalBranches
 
-evaluateTelescope ::
-  Domain.Environment v ->
-  Telescope Bindings Syntax.Type Syntax.Term v ->
-  M ([(Bindings, Var, Type, Plicity)], Value)
+evaluateTelescope
+  :: Domain.Environment v
+  -> Telescope Bindings Syntax.Type Syntax.Term v
+  -> M ([(Bindings, Var, Type, Plicity)], Value)
 evaluateTelescope env tele =
   case tele of
     Telescope.Empty body -> do
@@ -471,11 +471,11 @@ readback env metas (Value value occs) =
     Spanned span value' ->
       Syntax.Spanned span (readback env metas (Value value' occs))
 
-readbackLets ::
-  Domain.Environment v ->
-  (Meta.Index -> (Var, [Maybe var])) ->
-  Lets ->
-  Syntax.Lets v
+readbackLets
+  :: Domain.Environment v
+  -> (Meta.Index -> (Var, [Maybe var]))
+  -> Lets
+  -> Syntax.Lets v
 readbackLets env metas (Lets lets occs) =
   case lets of
     LetType name var type_ lets' ->
@@ -492,11 +492,11 @@ readbackLets env metas (Lets lets occs) =
     In term ->
       Syntax.In $ readback env metas $ Value term occs
 
-readbackBranches ::
-  Domain.Environment v ->
-  (Meta.Index -> (Var, [Maybe var])) ->
-  Branches ->
-  Syntax.Branches v
+readbackBranches
+  :: Domain.Environment v
+  -> (Meta.Index -> (Var, [Maybe var]))
+  -> Branches
+  -> Syntax.Branches v
 readbackBranches env metas branches =
   case branches of
     ConstructorBranches constructorTypeName constructorBranches ->
@@ -506,12 +506,12 @@ readbackBranches env metas branches =
       Syntax.LiteralBranches $
         fmap (readback env metas) <$> literalBranches
 
-readbackTelescope ::
-  Domain.Environment v ->
-  (Meta.Index -> (Var, [Maybe var])) ->
-  [(Bindings, Var, Type, Plicity)] ->
-  Value ->
-  Telescope Bindings Syntax.Type Syntax.Term v
+readbackTelescope
+  :: Domain.Environment v
+  -> (Meta.Index -> (Var, [Maybe var]))
+  -> [(Bindings, Var, Type, Plicity)]
+  -> Value
+  -> Telescope Bindings Syntax.Type Syntax.Term v
 readbackTelescope env metas bindings body =
   case bindings of
     [] ->
@@ -521,12 +521,12 @@ readbackTelescope env metas bindings body =
             Environment.extendVar env var
       Telescope.Extend name (readback env metas type_) plicity (readbackTelescope env' metas bindings' body)
 
-inlineArguments ::
-  Value ->
-  Value ->
-  [Maybe DuplicableValue] ->
-  EnumMap Var Value ->
-  Shared (Value, Value)
+inlineArguments
+  :: Value
+  -> Value
+  -> [Maybe DuplicableValue]
+  -> EnumMap Var Value
+  -> Shared (Value, Value)
 inlineArguments value@(Value innerValue _) type_@(Value innerType _) args subst =
   case args of
     [] ->
@@ -544,23 +544,23 @@ inlineArguments value@(Value innerValue _) type_@(Value innerType _) args subst 
       case (innerValue, innerType) of
         (Lam name var argType plicity1 body, Pi name' var' domain plicity2 target)
           | plicity1 == plicity2 ->
-            sharing (value, type_) $ do
-              argType' <- substitute subst argType
-              domain' <- substitute subst domain
-              (body', target') <- inlineArguments body target args' subst
-              pure
-                ( makeLam name var argType' plicity1 body'
-                , makePi name' var' domain' plicity1 target'
-                )
+              sharing (value, type_) $ do
+                argType' <- substitute subst argType
+                domain' <- substitute subst domain
+                (body', target') <- inlineArguments body target args' subst
+                pure
+                  ( makeLam name var argType' plicity1 body'
+                  , makePi name' var' domain' plicity1 target'
+                  )
         _ ->
           (,) <$> substitute subst value <*> substitute subst type_
 
 substitute :: EnumMap Var Value -> Value -> Shared Value
 substitute subst
   | EnumMap.null subst =
-    pure
+      pure
   | otherwise =
-    go
+      go
   where
     go value@(Value innerValue occs) =
       sharing value $
@@ -657,12 +657,12 @@ unShared :: Shared a -> a
 unShared (Shared _ a) =
   a
 
-inlineIndex ::
-  Meta.Index ->
-  EnumSet Var ->
-  (Var, Int, [Maybe DuplicableValue], Value, Value) ->
-  Value ->
-  Shared Value
+inlineIndex
+  :: Meta.Index
+  -> EnumSet Var
+  -> (Var, Int, [Maybe DuplicableValue], Value, Value)
+  -> Value
+  -> Shared Value
 inlineIndex index targetScope solution@(solutionVar, occurrenceCount, duplicableArgs, solutionValue, solutionType) value@(Value innerValue occs) = do
   let recurse value' =
         sharing value' $
@@ -674,24 +674,24 @@ inlineIndex index targetScope solution@(solutionVar, occurrenceCount, duplicable
   case innerValue of
     Meta index' args
       | index == index' -> do
-        modified
-        let remainingArgs =
-              snd
-                <$> filter
-                  (isNothing . fst)
-                  (zip (duplicableArgs <> repeat Nothing) (toList args))
-        pure $ foldl' (\v1 v2 -> makeApp v1 Explicit v2) solutionValue remainingArgs
+          modified
+          let remainingArgs =
+                snd
+                  <$> filter
+                    (isNothing . fst)
+                    (zip (duplicableArgs <> repeat Nothing) (toList args))
+          pure $ foldl' (\v1 v2 -> makeApp v1 Explicit v2) solutionValue remainingArgs
     _
       | EnumSet.null targetScope && occurrenceCount > 1 ->
-        if index `EnumMap.member` occurrencesMap value
-          then do
-            modified
-            pure $
-              makeLets $
-                makeLetType "meta" solutionVar solutionType $
-                  makeLet "meta" solutionVar solutionValue $
-                    makeIn value
-          else pure value
+          if index `EnumMap.member` occurrencesMap value
+            then do
+              modified
+              pure $
+                makeLets $
+                  makeLetType "meta" solutionVar solutionType $
+                    makeLet "meta" solutionVar solutionValue $
+                      makeIn value
+            else pure value
     Var _ ->
       pure value
     Global _ ->

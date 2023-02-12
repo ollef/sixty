@@ -37,9 +37,9 @@ evaluate env term =
             Domain.var var
           Just value
             | Index.Succ index > Environment.glueableBefore env ->
-              Domain.Glued (Domain.Var var) mempty value
+                Domain.Glued (Domain.Var var) mempty value
             | otherwise ->
-              value
+                value
     Syntax.Global name -> do
       maybeDefinition <- fetchVisibleDefinition name
       case maybeDefinition of
@@ -75,13 +75,13 @@ evaluate env term =
       scrutineeValue <- evaluate env scrutinee
       case_ scrutineeValue $ Domain.Branches env branches defaultBranch
 
-chooseConstructorBranch ::
-  Domain.Environment v ->
-  Name.QualifiedConstructor ->
-  [Domain.Value] ->
-  Syntax.ConstructorBranches v ->
-  Maybe (Syntax.Term v) ->
-  M Domain.Value
+chooseConstructorBranch
+  :: Domain.Environment v
+  -> Name.QualifiedConstructor
+  -> [Domain.Value]
+  -> Syntax.ConstructorBranches v
+  -> Maybe (Syntax.Term v)
+  -> M Domain.Value
 chooseConstructorBranch outerEnv (Name.QualifiedConstructor _ constr) outerArgs branches defaultBranch =
   case (OrderedHashMap.lookup constr branches, defaultBranch) of
     (Nothing, Nothing) ->
@@ -91,11 +91,11 @@ chooseConstructorBranch outerEnv (Name.QualifiedConstructor _ constr) outerArgs 
     (Just tele, _) ->
       go outerEnv outerArgs tele
   where
-    go ::
-      Domain.Environment v ->
-      [Domain.Value] ->
-      Telescope name Syntax.Type Syntax.Term v ->
-      M Domain.Value
+    go
+      :: Domain.Environment v
+      -> [Domain.Value]
+      -> Telescope name Syntax.Type Syntax.Term v
+      -> M Domain.Value
     go env args tele =
       case (args, tele) of
         ([], Telescope.Empty branch) ->
@@ -106,12 +106,12 @@ chooseConstructorBranch outerEnv (Name.QualifiedConstructor _ constr) outerArgs 
         _ ->
           panic "chooseConstructorBranch mismatch"
 
-chooseLiteralBranch ::
-  Domain.Environment v ->
-  Literal ->
-  Syntax.LiteralBranches v ->
-  Maybe (Syntax.Term v) ->
-  M Domain.Value
+chooseLiteralBranch
+  :: Domain.Environment v
+  -> Literal
+  -> Syntax.LiteralBranches v
+  -> Maybe (Syntax.Term v)
+  -> M Domain.Value
 chooseLiteralBranch outerEnv lit branches defaultBranch =
   case (OrderedHashMap.lookup lit branches, defaultBranch) of
     (Nothing, Nothing) ->
@@ -121,11 +121,11 @@ chooseLiteralBranch outerEnv lit branches defaultBranch =
     (Just branch, _) ->
       evaluate outerEnv branch
 
-apply ::
-  Domain.Environment v ->
-  Domain.Value ->
-  [Domain.Value] ->
-  M Domain.Value
+apply
+  :: Domain.Environment v
+  -> Domain.Value
+  -> [Domain.Value]
+  -> M Domain.Value
 apply env fun args =
   case fun of
     Domain.Neutral hd@(Domain.Global global) spine@(Domain.groupSpine -> [Domain.GroupedApps funArgs]) -> do
@@ -152,11 +152,11 @@ apply env fun args =
     _ ->
       panic "applying non-function"
 
-applyFunction ::
-  Domain.Environment v ->
-  Telescope name type_ Syntax.Term v ->
-  [Domain.Value] ->
-  M (Maybe Domain.Value)
+applyFunction
+  :: Domain.Environment v
+  -> Telescope name type_ Syntax.Term v
+  -> [Domain.Value]
+  -> M (Maybe Domain.Value)
 applyFunction env tele args =
   case (tele, args) of
     (Telescope.Empty body, _) -> do
@@ -173,12 +173,12 @@ applyFunction env tele args =
     _ ->
       pure Nothing
 
-applyTelescope ::
-  Domain.Environment v ->
-  Telescope name type_ term v ->
-  [Domain.Value] ->
-  (forall v'. Domain.Environment v' -> term v' -> M a) ->
-  M (Maybe a)
+applyTelescope
+  :: Domain.Environment v
+  -> Telescope name type_ term v
+  -> [Domain.Value]
+  -> (forall v'. Domain.Environment v' -> term v' -> M a)
+  -> M (Maybe a)
 applyTelescope env tele args k =
   case (tele, args) of
     (Telescope.Empty body, []) -> do
@@ -223,9 +223,9 @@ fetchVisibleDefinition name = do
       Nothing
 
 -- | Evaluate the head of a value through glued values.
-forceHead ::
-  Domain.Value ->
-  M Domain.Value
+forceHead
+  :: Domain.Value
+  -> M Domain.Value
 forceHead value =
   case value of
     Domain.Glued _ _ value' ->

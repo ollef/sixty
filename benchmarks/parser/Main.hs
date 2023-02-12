@@ -48,10 +48,10 @@ listDirectoryRecursive p dir = do
         then listDirectoryRecursive p path
         else pure [path | p path]
 
-listDirectoriesWithFilesMatching ::
-  (FilePath -> Bool) ->
-  FilePath ->
-  IO [(FilePath, [FilePath])]
+listDirectoriesWithFilesMatching
+  :: (FilePath -> Bool)
+  -> FilePath
+  -> IO [(FilePath, [FilePath])]
 listDirectoriesWithFilesMatching p dir = do
   files <- listDirectory dir
   let paths = (dir </>) <$> files

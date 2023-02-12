@@ -34,19 +34,19 @@ filesFromArguments files = do
           case () of
             _
               | isDir -> do
-                projectFiles <- filesFromProjectInDirectory file
-                if projectFiles == mempty
-                  then (,) (HashSet.singleton file) <$> listDirectoryRecursive isSourcePath file
-                  else pure projectFiles
+                  projectFiles <- filesFromProjectInDirectory file
+                  if projectFiles == mempty
+                    then (,) (HashSet.singleton file) <$> listDirectoryRecursive isSourcePath file
+                    else pure projectFiles
               | isFile
-                , isProjectPath file ->
-                listProjectFile file
+              , isProjectPath file ->
+                  listProjectFile file
               | isFile
-                , isSourcePath file ->
-                pure (HashSet.singleton $ FilePath.takeDirectory file, HashSet.singleton file)
+              , isSourcePath file ->
+                  pure (HashSet.singleton $ FilePath.takeDirectory file, HashSet.singleton file)
               | otherwise ->
-                -- TODO report error
-                pure mempty
+                  -- TODO report error
+                  pure mempty
 
 filesFromProjectInDirectory :: FilePath -> IO (HashSet FilePath, HashSet FilePath)
 filesFromProjectInDirectory directory = do

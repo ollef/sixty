@@ -409,11 +409,11 @@ checkAllAndPublishDiagnostics state = do
 
     publishDiagnostics state (LSP.toNormalizedUri uri) (versionedDoc ^. LSP.version) diagnostics
 
-runTask ::
-  State ->
-  Driver.Prune ->
-  Task Query a ->
-  IO (a, [(Error.Hydrated, Doc Void)])
+runTask
+  :: State
+  -> Driver.Prune
+  -> Task Query a
+  -> IO (a, [(Error.Hydrated, Doc Void)])
 runTask state prune task = do
   vfs <- LSP.runLspT (_env state) LSP.getVirtualFiles
   let prettyError :: Error.Hydrated -> Task Query (Error.Hydrated, Doc ann)

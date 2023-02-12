@@ -37,12 +37,12 @@ import qualified Query
 import Rock
 import qualified Rules
 
-runTask ::
-  HashSet FileSystem.Directory ->
-  HashSet FilePath ->
-  (Error.Hydrated -> Task Query err) ->
-  Task Query a ->
-  IO (a, [err])
+runTask
+  :: HashSet FileSystem.Directory
+  -> HashSet FilePath
+  -> (Error.Hydrated -> Task Query err)
+  -> Task Query a
+  -> IO (a, [err])
 runTask sourceDirectories files prettyError task = do
   startedVar <- newIORef mempty
   errorsVar <- newIORef (mempty :: DHashMap Query (Const [Error]))
@@ -137,15 +137,15 @@ data Prune
   = Don'tPrune
   | Prune
 
-runIncrementalTask ::
-  State err ->
-  HashSet FilePath ->
-  HashSet FilePath ->
-  HashMap FilePath (Either Rope Text) ->
-  (Error.Hydrated -> Task Query err) ->
-  Prune ->
-  Task Query a ->
-  IO (a, [err])
+runIncrementalTask
+  :: State err
+  -> HashSet FilePath
+  -> HashSet FilePath
+  -> HashMap FilePath (Either Rope Text)
+  -> (Error.Hydrated -> Task Query err)
+  -> Prune
+  -> Task Query a
+  -> IO (a, [err])
 runIncrementalTask state changedFiles sourceDirectories files prettyError prune task =
   handleEx $ do
     do
@@ -200,13 +200,13 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
     threadDepsVar <- newIORef mempty
     let readSourceFile_ file
           | Just contents <- HashMap.lookup file files =
-            return contents
+              return contents
           | otherwise =
-            Right <$> readFile file `catch` \(_ :: IOException) -> pure mempty
+              Right <$> readFile file `catch` \(_ :: IOException) -> pure mempty
 
-        traceFetch_ ::
-          GenRules (Writer TaskKind Query) Query ->
-          GenRules (Writer TaskKind Query) Query
+        traceFetch_
+          :: GenRules (Writer TaskKind Query) Query
+          -> GenRules (Writer TaskKind Query) Query
         traceFetch_ r = r
         -- traceFetch_ =
         --   traceFetch
@@ -224,25 +224,25 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
 
         rules :: Rules Query
         rules =
-          memoiseWithCycleDetection (_startedVar state) threadDepsVar $
-            trackReverseDependencies (_reverseDependenciesVar state) $
-              verifyTraces
-                (_tracesVar state)
-                ( \query value -> do
-                    hashed <- readIORef $ _hashesVar state
-                    case DHashMap.lookup query hashed of
-                      Just h ->
-                        pure h
-                      Nothing -> do
-                        let h =
-                              Const $ has' @Hashable @Identity query $ hash $ Identity value
-                        atomicModifyIORef' (_hashesVar state) $
-                          (,()) . DHashMap.insert query h
-                        pure h
-                )
-                $ traceFetch_ $
-                  writer writeErrors $
-                    Rules.rules sourceDirectories (HashSet.fromMap $ void files) readSourceFile_
+          memoiseWithCycleDetection (_startedVar state) threadDepsVar
+            $ trackReverseDependencies (_reverseDependenciesVar state)
+            $ verifyTraces
+              (_tracesVar state)
+              ( \query value -> do
+                  hashed <- readIORef $ _hashesVar state
+                  case DHashMap.lookup query hashed of
+                    Just h ->
+                      pure h
+                    Nothing -> do
+                      let h =
+                            Const $ has' @Hashable @Identity query $ hash $ Identity value
+                      atomicModifyIORef' (_hashesVar state) $
+                        (,()) . DHashMap.insert query h
+                      pure h
+              )
+            $ traceFetch_
+            $ writer writeErrors
+            $ Rules.rules sourceDirectories (HashSet.fromMap $ void files) readSourceFile_
     -- result <- Rock.runMemoisedTask (_startedVar state) rules task
     result <- Rock.runTask rules task
     started <- readIORef $ _startedVar state
@@ -279,20 +279,20 @@ checkAll = do
       void $ fetch $ Query.ElaboratedType name
       fetch $ Query.ElaboratedDefinition name
 
-pooledForConcurrently_ ::
-  (Foldable t, MonadBaseControl IO m) =>
-  t a ->
-  (a -> m b) ->
-  m ()
+pooledForConcurrently_
+  :: (Foldable t, MonadBaseControl IO m)
+  => t a
+  -> (a -> m b)
+  -> m ()
 pooledForConcurrently_ as f =
   liftBaseWith $ \runInIO ->
     pooledForConcurrentlyIO_ as (runInIO . f)
 
-pooledForConcurrentlyIO_ ::
-  Foldable t =>
-  t a ->
-  (a -> IO b) ->
-  IO ()
+pooledForConcurrentlyIO_
+  :: Foldable t
+  => t a
+  -> (a -> IO b)
+  -> IO ()
 pooledForConcurrentlyIO_ as f = do
   todoRef <- newIORef $ toList as
   processCount <- getNumCapabilities
@@ -310,11 +310,11 @@ pooledForConcurrentlyIO_ as f = do
                 )
   replicateConcurrently_ (max 8 processCount) go
 
-pooledForConcurrentlyIO ::
-  Traversable t =>
-  t a ->
-  (a -> IO b) ->
-  IO (t b)
+pooledForConcurrentlyIO
+  :: Traversable t
+  => t a
+  -> (a -> IO b)
+  -> IO (t b)
 pooledForConcurrentlyIO as f = do
   jobs <- forM as $ \a -> do
     ref <- newIORef $ panic "pooledForConcurrently not done"
@@ -338,11 +338,11 @@ pooledForConcurrentlyIO as f = do
   forM jobs $ \(_, ref) ->
     readIORef ref
 
-pooledForConcurrently ::
-  (Traversable t, MonadBaseControl IO m, StM m b ~ b) =>
-  t a ->
-  (a -> m b) ->
-  m (t b)
+pooledForConcurrently
+  :: (Traversable t, MonadBaseControl IO m, StM m b ~ b)
+  => t a
+  -> (a -> m b)
+  -> m (t b)
 pooledForConcurrently as f =
   liftBaseWith $ \runInIO ->
     pooledForConcurrentlyIO as (runInIO . f)

@@ -18,20 +18,20 @@ data Telescope name type_ base v
   deriving (Generic)
 
 deriving instance
-  (Eq n, forall v'. Eq (t v'), forall v'. Eq (k v')) =>
-  Eq (Telescope n t k v)
+  (Eq n, forall v'. Eq (t v'), forall v'. Eq (k v'))
+  => Eq (Telescope n t k v)
 
 deriving instance
-  (Show n, (forall v'. Show (t v')), (forall v'. Show (k v'))) =>
-  Show (Telescope n t k v)
+  (Show n, (forall v'. Show (t v')), (forall v'. Show (k v')))
+  => Show (Telescope n t k v)
 
 deriving instance
-  (Persist n, (forall v'. Persist (t v')), (forall v'. Persist (k v'))) =>
-  Persist (Telescope n t k v)
+  (Persist n, (forall v'. Persist (t v')), (forall v'. Persist (k v')))
+  => Persist (Telescope n t k v)
 
 deriving instance
-  (Hashable n, (forall v'. Hashable (t v')), (forall v'. Hashable (k v'))) =>
-  Hashable (Telescope n t k v)
+  (Hashable n, (forall v'. Hashable (t v')), (forall v'. Hashable (k v')))
+  => Hashable (Telescope n t k v)
 
 under :: Telescope n t k v -> (forall v'. k v' -> result) -> result
 under tele f =
@@ -55,18 +55,18 @@ hoistA f g tele =
     Extend name t plicity scope ->
       Extend name <$> f t <*> pure plicity <*> hoistA f g scope
 
-fold ::
-  (forall v'. n -> t v' -> Plicity -> Scope k v' -> k v') ->
-  Telescope n t k v ->
-  k v
+fold
+  :: (forall v'. n -> t v' -> Plicity -> Scope k v' -> k v')
+  -> Telescope n t k v
+  -> k v
 fold f =
   Telescope.foldr f identity
 
-foldr ::
-  (forall v'. n -> t v' -> Plicity -> Scope result v' -> result v') ->
-  (forall v'. k v' -> result v') ->
-  Telescope n t k v ->
-  result v
+foldr
+  :: (forall v'. n -> t v' -> Plicity -> Scope result v' -> result v')
+  -> (forall v'. k v' -> result v')
+  -> Telescope n t k v
+  -> result v
 foldr f g tele =
   case tele of
     Empty k ->
@@ -74,12 +74,12 @@ foldr f g tele =
     Extend name t plicity scope ->
       f name t plicity $ Telescope.foldr f g scope
 
-foldMap ::
-  Monoid result =>
-  (forall v'. type_ v' -> result) ->
-  (forall v'. base v' -> result) ->
-  Telescope name type_ base v ->
-  result
+foldMap
+  :: Monoid result
+  => (forall v'. type_ v' -> result)
+  -> (forall v'. base v' -> result)
+  -> Telescope name type_ base v
+  -> result
 foldMap f g tele =
   case tele of
     Empty k ->

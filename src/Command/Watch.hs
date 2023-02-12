@@ -39,11 +39,11 @@ watch argumentFiles = do
         { FSNotify.confDebounce = FSNotify.Debounce 0.010
         }
 
-waitForChanges ::
-  MVar () ->
-  MVar (HashSet FilePath, [FileSystem.Directory], HashMap FilePath Text) ->
-  Driver.State (Doc ann) ->
-  IO (HashSet FilePath, [FileSystem.Directory], HashMap FilePath Text)
+waitForChanges
+  :: MVar ()
+  -> MVar (HashSet FilePath, [FileSystem.Directory], HashMap FilePath Text)
+  -> Driver.State (Doc ann)
+  -> IO (HashSet FilePath, [FileSystem.Directory], HashMap FilePath Text)
 waitForChanges signalChangeVar fileStateVar driverState = do
   (changedFiles, sourceDirectories, files) <-
     modifyMVar fileStateVar $ \(changedFiles, sourceDirectories, files) ->
@@ -55,12 +55,12 @@ waitForChanges signalChangeVar fileStateVar driverState = do
       waitForChanges signalChangeVar fileStateVar driverState
     else pure (changedFiles, sourceDirectories, files)
 
-checkAndPrintErrors ::
-  Driver.State (Doc ann) ->
-  HashSet FilePath ->
-  [FileSystem.Directory] ->
-  HashMap FilePath Text ->
-  IO ()
+checkAndPrintErrors
+  :: Driver.State (Doc ann)
+  -> HashSet FilePath
+  -> [FileSystem.Directory]
+  -> HashMap FilePath Text
+  -> IO ()
 checkAndPrintErrors driverState changedFiles sourceDirectories files = do
   startTime <- getCurrentTime
   (_, errs) <-

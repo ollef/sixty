@@ -40,17 +40,17 @@ instance Monoid a => Monoid (M a) where
   mempty =
     pure mempty
 
-extend ::
-  Environment value v ->
-  M (Environment value (Index.Succ v), Var)
+extend
+  :: Environment value v
+  -> M (Environment value (Index.Succ v), Var)
 extend =
   M . Environment.extend
 
-definitionOccurrences ::
-  Domain.Environment Void ->
-  Scope.DefinitionKind ->
-  Name.Qualified ->
-  M Intervals
+definitionOccurrences
+  :: Domain.Environment Void
+  -> Scope.DefinitionKind
+  -> Name.Qualified
+  -> M Intervals
 definitionOccurrences env definitionKind qualifiedName =
   definitionNameOccurrences <> do
     mdef <- fetch $ Query.ElaboratingDefinition definitionKind qualifiedName
@@ -78,11 +78,11 @@ definitionNameSpans definitionKind (Name.Qualified moduleName name) = do
   maybeParsedDefinition <- fetch $ Query.ParsedDefinition moduleName $ Mapped.Query (definitionKind, name)
   pure $ foldMap Surface.spans maybeParsedDefinition
 
-definitionConstructorSpans ::
-  MonadFetch Query m =>
-  Scope.DefinitionKind ->
-  Name.Qualified ->
-  m [(Span.Relative, Name.QualifiedConstructor)]
+definitionConstructorSpans
+  :: MonadFetch Query m
+  => Scope.DefinitionKind
+  -> Name.Qualified
+  -> m [(Span.Relative, Name.QualifiedConstructor)]
 definitionConstructorSpans definitionKind qualifiedName@(Name.Qualified moduleName name) = do
   maybeParsedDefinition <- fetch $ Query.ParsedDefinition moduleName $ Mapped.Query (definitionKind, name)
   pure $
@@ -92,11 +92,11 @@ definitionConstructorSpans definitionKind qualifiedName@(Name.Qualified moduleNa
       Just parsedDefinition ->
         second (Name.QualifiedConstructor qualifiedName) <$> Surface.constructorSpans parsedDefinition
 
-termOccurrences ::
-  Domain.Environment v ->
-  Maybe Span.Relative ->
-  Syntax.Term v ->
-  M Intervals
+termOccurrences
+  :: Domain.Environment v
+  -> Maybe Span.Relative
+  -> Syntax.Term v
+  -> M Intervals
 termOccurrences env maybeSpan term =
   case term of
     Syntax.Var index ->
@@ -155,10 +155,10 @@ letsOccurrences env lets =
     Syntax.In term ->
       termOccurrences env Nothing term
 
-dataDefinitionOccurrences ::
-  Domain.Environment v ->
-  Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v ->
-  M Intervals
+dataDefinitionOccurrences
+  :: Domain.Environment v
+  -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v
+  -> M Intervals
 dataDefinitionOccurrences env tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constrDefs) ->
@@ -169,10 +169,10 @@ dataDefinitionOccurrences env tele =
         <> termOccurrences env Nothing type_
         <> dataDefinitionOccurrences env' tele'
 
-branchesOccurrences ::
-  Domain.Environment v ->
-  Syntax.Branches v ->
-  M Intervals
+branchesOccurrences
+  :: Domain.Environment v
+  -> Syntax.Branches v
+  -> M Intervals
 branchesOccurrences env branches =
   case branches of
     Syntax.ConstructorBranches constructorTypeName constructorBranches ->
@@ -180,27 +180,27 @@ branchesOccurrences env branches =
     Syntax.LiteralBranches literalBranches ->
       foldMap (literalBranchOccurrences env) $ OrderedHashMap.toList literalBranches
 
-constructorBranchOccurrences ::
-  Domain.Environment v ->
-  Name.Qualified ->
-  (Name.Constructor, ([Span.Relative], Telescope Bindings Syntax.Type Syntax.Term v)) ->
-  M Intervals
+constructorBranchOccurrences
+  :: Domain.Environment v
+  -> Name.Qualified
+  -> (Name.Constructor, ([Span.Relative], Telescope Bindings Syntax.Type Syntax.Term v))
+  -> M Intervals
 constructorBranchOccurrences env constructorTypeName (constr, (spans, tele)) =
   pure (mconcat [Intervals.singleton span $ Intervals.Con (Name.QualifiedConstructor constructorTypeName constr) | span <- spans])
     <> telescopeOccurrences env tele
 
-literalBranchOccurrences ::
-  Domain.Environment v ->
-  (Literal, ([Span.Relative], Syntax.Term v)) ->
-  M Intervals
+literalBranchOccurrences
+  :: Domain.Environment v
+  -> (Literal, ([Span.Relative], Syntax.Term v))
+  -> M Intervals
 literalBranchOccurrences env (lit, (spans, body)) =
   pure (mconcat [Intervals.singleton span $ Intervals.Lit lit | span <- spans])
     <> termOccurrences env Nothing body
 
-telescopeOccurrences ::
-  Domain.Environment v ->
-  Telescope Bindings Syntax.Type Syntax.Term v ->
-  M Intervals
+telescopeOccurrences
+  :: Domain.Environment v
+  -> Telescope Bindings Syntax.Type Syntax.Term v
+  -> M Intervals
 telescopeOccurrences env tele =
   case tele of
     Telescope.Empty branch ->
@@ -211,16 +211,16 @@ telescopeOccurrences env tele =
         <> termOccurrences env Nothing type_
         <> telescopeOccurrences env' tele'
 
-bindingOccurrences ::
-  Binding ->
-  Var ->
-  M Intervals
+bindingOccurrences
+  :: Binding
+  -> Var
+  -> M Intervals
 bindingOccurrences binding var =
   pure $ Intervals.binding binding var
 
-bindingsOccurrences ::
-  Bindings ->
-  Var ->
-  M Intervals
+bindingsOccurrences
+  :: Bindings
+  -> Var
+  -> M Intervals
 bindingsOccurrences bindings var =
   pure $ Intervals.bindings bindings var

@@ -71,12 +71,12 @@ signature def =
     env =
       Context.toEnvironment context
 
-telescopeSignature ::
-  Context v ->
-  Telescope Name Syntax.Type body v ->
-  Tsil Representation ->
-  (forall v'. Context v' -> body v' -> [Representation] -> M result) ->
-  M result
+telescopeSignature
+  :: Context v
+  -> Telescope Name Syntax.Type body v
+  -> Tsil Representation
+  -> (forall v'. Context v' -> body v' -> [Representation] -> M result)
+  -> M result
 telescopeSignature context tele representations k =
   case tele of
     Telescope.Empty body ->
@@ -218,11 +218,11 @@ compileData env dataTypeName (Syntax.ConstructorDefinitions constructors) = do
             , maxFieldSize
             ]
 
-compileParameterisedData ::
-  Environment v ->
-  Name.Qualified ->
-  Telescope Name Syntax.Type Syntax.ConstructorDefinitions v ->
-  M (Telescope Name Syntax.Type Syntax.Term v)
+compileParameterisedData
+  :: Environment v
+  -> Name.Qualified
+  -> Telescope Name Syntax.Type Syntax.ConstructorDefinitions v
+  -> M (Telescope Name Syntax.Type Syntax.Term v)
 compileParameterisedData env dataTypeName tele =
   case tele of
     Telescope.Empty constructors ->

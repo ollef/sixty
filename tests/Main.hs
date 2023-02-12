@@ -117,10 +117,13 @@ verifyErrors filePath errs expectedErrors = do
     case HashMap.lookup lineNumber errorsMap of
       Just errorsOnLine
         | sort errorsOnLine == sort expectedErrorsOnLine ->
-          pure ()
+            pure ()
       maybeErrorsOnLine ->
         Tasty.assertFailure $
-          toS filePath <> ":" <> show (lineNumber + 1) <> ": "
+          toS filePath
+            <> ":"
+            <> show (lineNumber + 1)
+            <> ": "
             <> "Expected "
             <> show expectedErrorsOnLine
             <> " errors, got "
@@ -130,7 +133,7 @@ verifyErrors filePath errs expectedErrors = do
     case HashMap.lookup (Error.Hydrated.lineNumber err) expectedErrors of
       Just expectedErrorsOnLine
         | errorToExpectedError (Error.Hydrated._error err) `elem` expectedErrorsOnLine ->
-          pure ()
+            pure ()
       _ ->
         Tasty.assertFailure $
           "Unexpected error:\n" <> show (doc <> line)
@@ -252,7 +255,8 @@ verifyExecutableOutput :: FilePath -> Text -> Text -> IO ()
 verifyExecutableOutput filePath output expectedOutput =
   when (output /= expectedOutput) $
     Tasty.assertFailure $
-      toS filePath <> ":\n"
+      toS filePath
+        <> ":\n"
         <> "Expected output:\n\n"
         <> toS expectedOutput
         <> "\nbut got:\n\n"
@@ -280,10 +284,10 @@ listDirectoryRecursive p dir = do
         then listDirectoryRecursive p path
         else pure [path | p path]
 
-listDirectoriesWithFilesMatching ::
-  (FilePath -> Bool) ->
-  FilePath ->
-  IO [(FilePath, [FilePath])]
+listDirectoriesWithFilesMatching
+  :: (FilePath -> Bool)
+  -> FilePath
+  -> IO [(FilePath, [FilePath])]
 listDirectoriesWithFilesMatching p dir = do
   files <- listDirectory dir
   let paths = (dir </>) <$> files

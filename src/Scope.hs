@@ -38,17 +38,17 @@ type Scope =
 instance Semigroup Entry where
   Name name1 <> Name name2
     | name1 == name2 =
-      Name name1
+        Name name1
     | otherwise =
-      Ambiguous mempty $ HashSet.fromList [name1, name2]
+        Ambiguous mempty $ HashSet.fromList [name1, name2]
   Constructors constrs1 data1 <> Constructors constrs2 data2 =
     Constructors (constrs1 <> constrs2) (data1 <> data2)
   entry@(Constructors _ data_) <> Name name
     | name `HashSet.member` data_ =
-      entry
+        entry
   Name name <> entry@(Constructors _ data_)
     | name `HashSet.member` data_ =
-      entry
+        entry
   Name name <> entry =
     Ambiguous mempty (HashSet.singleton name) <> entry
   entry <> Name name =
@@ -60,9 +60,9 @@ instance Semigroup Entry where
   Ambiguous constrs1 names1 <> Ambiguous constrs2 names2 =
     Ambiguous (constrs1 <> constrs2) (names1 <> names2)
 
-aliases ::
-  Scope ->
-  (HashMap Name.QualifiedConstructor (HashSet Name.Surface), HashMap Name.Qualified (HashSet Name.Surface))
+aliases
+  :: Scope
+  -> (HashMap Name.QualifiedConstructor (HashSet Name.Surface), HashMap Name.Qualified (HashSet Name.Surface))
 aliases scope =
   bimap (HashMap.fromListWith (<>)) (HashMap.fromListWith (<>)) $
     partitionEithers $

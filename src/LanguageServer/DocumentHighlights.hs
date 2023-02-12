@@ -14,20 +14,21 @@ import qualified Query
 import Rock
 import qualified Span
 
-highlights ::
-  FilePath ->
-  Position.LineColumn ->
-  Task Query [Span.LineColumn]
+highlights
+  :: FilePath
+  -> Position.LineColumn
+  -> Task Query [Span.LineColumn]
 highlights filePath (Position.LineColumn line column) = do
   (moduleName, _, _) <- fetch $ Query.ParsedFile filePath
   spans <- fetch $ Query.ModuleSpanMap moduleName
   contents <- fetch $ Query.FileText filePath
-  let -- TODO use the rope that we get from the LSP library instead
-      pos =
-        Position.Absolute $
-          case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral column)) $ Rope.fromText contents of
-            Nothing -> 0
-            Just (rope, _) -> fromIntegral $ Rope.length rope
+  let
+    -- TODO use the rope that we get from the LSP library instead
+    pos =
+      Position.Absolute $
+        case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral column)) $ Rope.fromText contents of
+          Nothing -> 0
+          Just (rope, _) -> fromIntegral $ Rope.length rope
 
   toLineColumns <- LineColumns.fromAbsolute moduleName
 

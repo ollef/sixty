@@ -44,10 +44,10 @@ typeOfDefinition context definition = do
 
   Readback.readback (Context.toEnvironment context) typeValue
 
-typeOfFunction ::
-  Context v ->
-  Telescope name Syntax.Type Syntax.Term v ->
-  M (Telescope name Syntax.Type Syntax.Type v)
+typeOfFunction
+  :: Context v
+  -> Telescope name Syntax.Type Syntax.Term v
+  -> M (Telescope name Syntax.Type Syntax.Type v)
 typeOfFunction context tele =
   case tele of
     Telescope.Empty body -> do
@@ -91,10 +91,10 @@ typeOf context value =
     Domain.Function {} ->
       pure $ Domain.global $ Name.Lifted Builtin.TypeName 0
 
-typeOfHead ::
-  Context v ->
-  Domain.Head ->
-  M Domain.Type
+typeOfHead
+  :: Context v
+  -> Domain.Head
+  -> M Domain.Type
 typeOfHead context head =
   case head of
     Domain.Var var ->
@@ -111,12 +111,12 @@ typeOfHead context head =
         _ ->
           pure type'
 
-typeOfSpineApplication ::
-  Foldable f =>
-  Context v ->
-  Domain.Type ->
-  f Domain.Elimination ->
-  M Domain.Type
+typeOfSpineApplication
+  :: Foldable f
+  => Context v
+  -> Domain.Type
+  -> f Domain.Elimination
+  -> M Domain.Type
 typeOfSpineApplication =
   foldlM . typeOfElimination
 
@@ -146,10 +146,10 @@ typeOfElimination context type_ elimination =
                 [] ->
                   panic "TODO closure converted type of branchless case"
 
-typeOfApplication ::
-  Domain.Type ->
-  Domain.Value ->
-  M Domain.Type
+typeOfApplication
+  :: Domain.Type
+  -> Domain.Value
+  -> M Domain.Type
 typeOfApplication type_ arg = do
   type' <- Evaluation.forceHead type_
   case type' of
@@ -158,18 +158,18 @@ typeOfApplication type_ arg = do
     _ ->
       panic "ClosureConverted.TypeOf.typeOfApplication: non-function"
 
-typeOfApplications ::
-  Domain.Type ->
-  [Domain.Value] ->
-  M Domain.Type
+typeOfApplications
+  :: Domain.Type
+  -> [Domain.Value]
+  -> M Domain.Type
 typeOfApplications =
   foldlM typeOfApplication
 
-typeOfTelescope ::
-  Context v' ->
-  Domain.Environment v ->
-  Telescope name Syntax.Type Syntax.Term v ->
-  M Domain.Type
+typeOfTelescope
+  :: Context v'
+  -> Domain.Environment v
+  -> Telescope name Syntax.Type Syntax.Term v
+  -> M Domain.Type
 typeOfTelescope context env tele =
   case tele of
     Telescope.Empty branch -> do

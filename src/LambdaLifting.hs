@@ -35,10 +35,10 @@ import Telescope (Telescope)
 import qualified Telescope
 import Var (Var)
 
-liftDefinition ::
-  Name.Qualified ->
-  Syntax.Definition ->
-  M (LambdaLifted.Definition, EnumMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void))
+liftDefinition
+  :: Name.Qualified
+  -> Syntax.Definition
+  -> M (LambdaLifted.Definition, EnumMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void))
 liftDefinition name def = do
   let env = Environment.empty
   case def of
@@ -187,12 +187,12 @@ extendValue env value type_ =
 
 -------------------------------------------------------------------------------
 
-evaluate ::
-  Name.Qualified ->
-  Environment v ->
-  Syntax.Term v ->
-  [(Plicity, Syntax.Term v)] ->
-  Lift Value
+evaluate
+  :: Name.Qualified
+  -> Environment v
+  -> Syntax.Term v
+  -> [(Plicity, Syntax.Term v)]
+  -> Lift Value
 evaluate baseName env term args =
   case term of
     Syntax.Var index -> do
@@ -275,12 +275,12 @@ evaluateLets baseName env lets =
 -- - Make values in recursive groups functions from unit
 -- - Lambda lift
 
-saturatedConstructorApp ::
-  Name.Qualified ->
-  Environment v ->
-  Name.QualifiedConstructor ->
-  [(Plicity, Syntax.Term v)] ->
-  Lift Value
+saturatedConstructorApp
+  :: Name.Qualified
+  -> Environment v
+  -> Name.QualifiedConstructor
+  -> [(Plicity, Syntax.Term v)]
+  -> Lift Value
 saturatedConstructorApp baseName env con args = do
   constructorTele <- fetch $ Query.ConstructorType con
   let constructorType =
@@ -306,12 +306,12 @@ saturatedConstructorApp baseName env con args = do
             splitAt paramCount args'
       pure $ makeCon con params args''
 
-makeConstructorFunction ::
-  Name.QualifiedConstructor ->
-  Domain.Environment v ->
-  Domain.Type ->
-  Tsil (Plicity, Domain.Value) ->
-  M (Syntax.Term v)
+makeConstructorFunction
+  :: Name.QualifiedConstructor
+  -> Domain.Environment v
+  -> Domain.Type
+  -> Tsil (Plicity, Domain.Value)
+  -> M (Syntax.Term v)
 makeConstructorFunction con env type_ spine = do
   type' <- Evaluation.forceHead env type_
   case type' of
@@ -331,10 +331,10 @@ makeConstructorFunction con env type_ spine = do
     _ ->
       Readback.readback env $ Domain.Con con spine
 
-typeArity ::
-  Domain.Environment v ->
-  Domain.Type ->
-  M Int
+typeArity
+  :: Domain.Environment v
+  -> Domain.Type
+  -> M Int
 typeArity env type_ = do
   type' <- Evaluation.forceHead env type_
   case type' of
@@ -349,11 +349,11 @@ typeArity env type_ = do
     _ ->
       pure 0
 
-evaluateBranches ::
-  Name.Qualified ->
-  Environment v ->
-  Syntax.Branches v ->
-  Lift Branches
+evaluateBranches
+  :: Name.Qualified
+  -> Environment v
+  -> Syntax.Branches v
+  -> Lift Branches
 evaluateBranches baseName env branches =
   case branches of
     Syntax.ConstructorBranches constructorTypeName constructorBranches ->
@@ -361,11 +361,11 @@ evaluateBranches baseName env branches =
     Syntax.LiteralBranches literalBranches ->
       LiteralBranches <$> OrderedHashMap.mapMUnordered (\(_, branch) -> evaluate baseName env branch []) literalBranches
 
-evaluateTelescope ::
-  Name.Qualified ->
-  Environment v ->
-  Telescope Bindings Syntax.Type Syntax.Term v ->
-  Lift ([(Name, Var, Type)], Value)
+evaluateTelescope
+  :: Name.Qualified
+  -> Environment v
+  -> Telescope Bindings Syntax.Type Syntax.Term v
+  -> Lift ([(Name, Var, Type)], Value)
 evaluateTelescope baseName env tele =
   case tele of
     Telescope.Empty body -> do
@@ -377,8 +377,8 @@ evaluateTelescope baseName env tele =
       (bindings, body) <- evaluateTelescope baseName env' tele'
       pure ((Bindings.toName binding, var, type') : bindings, body)
 
-evaluateLambdaTelescope ::
-  Name.Qualified -> Environment v -> Syntax.Term v -> Lift ([(Name, Var, Type)], Value)
+evaluateLambdaTelescope
+  :: Name.Qualified -> Environment v -> Syntax.Term v -> Lift ([(Name, Var, Type)], Value)
 evaluateLambdaTelescope baseName env term =
   case term of
     Syntax.Lam binding type_ _plicity body -> do
@@ -392,11 +392,11 @@ evaluateLambdaTelescope baseName env term =
       term' <- evaluate baseName env term []
       pure ([], term')
 
-liftLambda ::
-  Name.Qualified ->
-  Environment v ->
-  Syntax.Term v ->
-  Lift ([Var], Telescope Name LambdaLifted.Type LambdaLifted.Term Void)
+liftLambda
+  :: Name.Qualified
+  -> Environment v
+  -> Syntax.Term v
+  -> Lift ([Var], Telescope Name LambdaLifted.Type LambdaLifted.Term Void)
 liftLambda baseName env term = do
   (tele, body) <- evaluateLambdaTelescope baseName env term
 
@@ -426,11 +426,11 @@ liftLambda baseName env term = do
     acyclic (AcyclicSCC a) = a
     acyclic _ = panic "liftLambda cyclic"
 
-liftDataDefinition ::
-  Name.Qualified ->
-  Environment v ->
-  Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v ->
-  Lift (Telescope Name LambdaLifted.Type LambdaLifted.ConstructorDefinitions v)
+liftDataDefinition
+  :: Name.Qualified
+  -> Environment v
+  -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v
+  -> Lift (Telescope Name LambdaLifted.Type LambdaLifted.ConstructorDefinitions v)
 liftDataDefinition baseName env tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constrDefs) -> do
@@ -478,10 +478,10 @@ readback env (Value value _) =
         (readbackBranches env branches)
         (readback env <$> defaultBranch)
 
-readbackBranches ::
-  Environment v ->
-  Branches ->
-  LambdaLifted.Branches v
+readbackBranches
+  :: Environment v
+  -> Branches
+  -> LambdaLifted.Branches v
 readbackBranches env branches =
   case branches of
     ConstructorBranches constructorTypeName constructorBranches ->
@@ -489,11 +489,11 @@ readbackBranches env branches =
     LiteralBranches literalBranches ->
       LambdaLifted.LiteralBranches $ map (readback env) literalBranches
 
-readbackTelescope ::
-  Environment v ->
-  [(Name, Var, Type)] ->
-  Value ->
-  Telescope Name LambdaLifted.Type LambdaLifted.Term v
+readbackTelescope
+  :: Environment v
+  -> [(Name, Var, Type)]
+  -> Value
+  -> Telescope Name LambdaLifted.Type LambdaLifted.Term v
 readbackTelescope env bindings body =
   case bindings of
     [] ->

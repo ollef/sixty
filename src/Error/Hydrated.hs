@@ -261,9 +261,9 @@ pretty h = do
 
           (spanLength, spanEnding)
             | startLineNumber == endLineNumber =
-              (endColumnNumber - startColumnNumber, mempty)
+                (endColumnNumber - startColumnNumber, mempty)
             | otherwise =
-              (Text.lengthWord16 (_lineText h) - startColumnNumber, "...")
+                (Text.lengthWord16 (_lineText h) - startColumnNumber, "...")
        in Doc.pretty (Text.replicate (lineNumberTextLength + 1) " ")
             <> "| "
             <> line

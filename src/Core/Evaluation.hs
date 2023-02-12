@@ -32,10 +32,10 @@ import Telescope (Telescope)
 import qualified Telescope
 import Var (Var)
 
-evaluateConstructorDefinitions ::
-  Domain.Environment v ->
-  Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v ->
-  M (Domain.Telescope (OrderedHashMap Name.Constructor Domain.Type))
+evaluateConstructorDefinitions
+  :: Domain.Environment v
+  -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v
+  -> M (Domain.Telescope (OrderedHashMap Name.Constructor Domain.Type))
 evaluateConstructorDefinitions env tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constrs) -> do
@@ -61,9 +61,9 @@ evaluate env term =
             Domain.var var
           Just value
             | Index.Succ index > Environment.glueableBefore env ->
-              Domain.Glued (Domain.Var var) mempty value
+                Domain.Glued (Domain.Var var) mempty value
             | otherwise ->
-              value
+                value
     Syntax.Global name -> do
       result <- try $ fetch $ Query.ElaboratedDefinition name
       case result of
@@ -133,13 +133,13 @@ evaluateLets env boundTerms lets =
           then Environment.define env' var value
           else env'
 
-chooseConstructorBranch ::
-  Domain.Environment v ->
-  Name.QualifiedConstructor ->
-  [(Plicity, Domain.Value)] ->
-  Syntax.ConstructorBranches v ->
-  Maybe (Syntax.Term v) ->
-  M Domain.Value
+chooseConstructorBranch
+  :: Domain.Environment v
+  -> Name.QualifiedConstructor
+  -> [(Plicity, Domain.Value)]
+  -> Syntax.ConstructorBranches v
+  -> Maybe (Syntax.Term v)
+  -> M Domain.Value
 chooseConstructorBranch outerEnv qualifiedConstr@(Name.QualifiedConstructor _ constr) outerArgs branches defaultBranch =
   case (OrderedHashMap.lookup constr branches, defaultBranch) of
     (Nothing, Nothing) ->
@@ -150,44 +150,44 @@ chooseConstructorBranch outerEnv qualifiedConstr@(Name.QualifiedConstructor _ co
       constrTypeTele <- fetch $ Query.ConstructorType qualifiedConstr
       go outerEnv (dropTypeArgs constrTypeTele outerArgs) tele
   where
-    dropTypeArgs ::
-      Telescope n t t' v ->
-      [(Plicity, value)] ->
-      [(Plicity, value)]
+    dropTypeArgs
+      :: Telescope n t t' v
+      -> [(Plicity, value)]
+      -> [(Plicity, value)]
     dropTypeArgs tele args =
       case (tele, args) of
         (Telescope.Empty _, _) ->
           args
         (Telescope.Extend _ _ plicity1 tele', (plicity2, _) : args')
           | plicity1 == plicity2 ->
-            dropTypeArgs tele' args'
+              dropTypeArgs tele' args'
         _ ->
           panic "chooseBranch arg mismatch"
 
-    go ::
-      Domain.Environment v ->
-      [(Plicity, Domain.Value)] ->
-      Telescope Bindings Syntax.Type Syntax.Term v ->
-      M Domain.Value
+    go
+      :: Domain.Environment v
+      -> [(Plicity, Domain.Value)]
+      -> Telescope Bindings Syntax.Type Syntax.Term v
+      -> M Domain.Value
     go env args tele =
       case (args, tele) of
         ([], Telescope.Empty branch) ->
           evaluate env branch
         ((plicity1, arg) : args', Telescope.Extend _ _ plicity2 target)
           | plicity1 == plicity2 -> do
-            (env', _) <- Environment.extendValue env arg
-            go env' args' target
+              (env', _) <- Environment.extendValue env arg
+              go env' args' target
           | otherwise ->
-            panic $ "chooseConstructorBranch mismatch " <> show (plicity1, plicity2)
+              panic $ "chooseConstructorBranch mismatch " <> show (plicity1, plicity2)
         _ ->
           panic "chooseConstructorBranch mismatch"
 
-chooseLiteralBranch ::
-  Domain.Environment v ->
-  Literal ->
-  Syntax.LiteralBranches v ->
-  Maybe (Syntax.Term v) ->
-  M Domain.Value
+chooseLiteralBranch
+  :: Domain.Environment v
+  -> Literal
+  -> Syntax.LiteralBranches v
+  -> Maybe (Syntax.Term v)
+  -> M Domain.Value
 chooseLiteralBranch outerEnv lit branches defaultBranch =
   case (OrderedHashMap.lookup lit branches, defaultBranch) of
     (Nothing, Nothing) ->
@@ -202,9 +202,9 @@ apply fun plicity arg =
   case fun of
     Domain.Lam _ _ plicity' closure
       | plicity == plicity' ->
-        evaluateClosure closure arg
+          evaluateClosure closure arg
       | otherwise ->
-        panic "Core.Evaluation: plicity mismatch"
+          panic "Core.Evaluation: plicity mismatch"
     Domain.Neutral hd spine ->
       pure $ Domain.Neutral hd $ spine Domain.:> Domain.App plicity arg
     Domain.Glued hd spine value -> do
@@ -259,16 +259,16 @@ evaluateClosure (Domain.Closure env body) argument = do
 
 -- | Evaluate the head of a value further, if possible
 -- due to new value bindings. Also evalutes through glued values.
-forceHead ::
-  Domain.Environment v ->
-  Domain.Value ->
-  M Domain.Value
+forceHead
+  :: Domain.Environment v
+  -> Domain.Value
+  -> M Domain.Value
 forceHead env value =
   case value of
     Domain.Neutral (Domain.Var var) spine
       | Just headValue <- Environment.lookupVarValue var env -> do
-        value' <- applySpine headValue spine
-        forceHead env value'
+          value' <- applySpine headValue spine
+          forceHead env value'
     Domain.Glued _ _ value' -> do
       forceHead env value'
     Domain.Lazy lazyValue -> do

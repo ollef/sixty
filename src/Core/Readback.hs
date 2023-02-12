@@ -103,11 +103,11 @@ readbackClosure env closure = do
   closure' <- Evaluation.evaluateClosure closure $ Domain.var v
   readback env' closure'
 
-readbackConstructorBranch ::
-  Domain.Environment v ->
-  Domain.Environment v' ->
-  Telescope Bindings Syntax.Type Syntax.Term v' ->
-  M (Telescope Bindings Syntax.Type Syntax.Term v)
+readbackConstructorBranch
+  :: Domain.Environment v
+  -> Domain.Environment v'
+  -> Telescope Bindings Syntax.Type Syntax.Term v'
+  -> M (Telescope Bindings Syntax.Type Syntax.Term v)
 readbackConstructorBranch outerEnv innerEnv tele =
   case tele of
     Telescope.Empty term -> do

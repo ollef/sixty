@@ -27,52 +27,52 @@ import Plicity
 import Protolude hiding (check, force)
 import qualified Surface.Syntax as Surface
 
-check ::
-  Context v ->
-  [Clause] ->
-  Domain.Type ->
-  M (Syntax.Term v)
+check
+  :: Context v
+  -> [Clause]
+  -> Domain.Type
+  -> M (Syntax.Term v)
 check context (fmap removeEmptyImplicits -> clauses) expectedType
   | all isEmpty clauses = do
-    let matchingClauses =
-          [ Matching.Clause
-            { _span = span
-            , _matches = toList matches
-            , _rhs = rhs
-            }
-          | Clause (Surface.Clause span _ rhs) matches <- clauses
-          ]
-    Matching.checkClauses context matchingClauses expectedType
+      let matchingClauses =
+            [ Matching.Clause
+              { _span = span
+              , _matches = toList matches
+              , _rhs = rhs
+              }
+            | Clause (Surface.Clause span _ rhs) matches <- clauses
+            ]
+      Matching.checkClauses context matchingClauses expectedType
   | otherwise = do
-    expectedType' <- Context.forceHead context expectedType
-    case expectedType' of
-      Domain.Pi _piBinding domain Explicit targetClosure
-        | HashMap.null implicits -> do
-          bindings <- nextExplicitBindings context clauses
+      expectedType' <- Context.forceHead context expectedType
+      case expectedType' of
+        Domain.Pi _piBinding domain Explicit targetClosure
+          | HashMap.null implicits -> do
+              bindings <- nextExplicitBindings context clauses
+              (context', var) <- Context.extend context (Bindings.toName bindings) domain
+              target <-
+                Evaluation.evaluateClosure
+                  targetClosure
+                  (Domain.var var)
+              explicitFunCase context' bindings var domain target
+        Domain.Fun domain Explicit target
+          | HashMap.null implicits -> do
+              bindings <- nextExplicitBindings context clauses
+              (context', var) <- Context.extend context (Bindings.toName bindings) domain
+              explicitFunCase context' bindings var domain target
+        Domain.Pi piBinding domain Implicit targetClosure -> do
+          bindings <- nextImplicitBindings context piBinding clauses
           (context', var) <- Context.extend context (Bindings.toName bindings) domain
-          target <-
-            Evaluation.evaluateClosure
-              targetClosure
-              (Domain.var var)
-          explicitFunCase context' bindings var domain target
-      Domain.Fun domain Explicit target
-        | HashMap.null implicits -> do
-          bindings <- nextExplicitBindings context clauses
-          (context', var) <- Context.extend context (Bindings.toName bindings) domain
-          explicitFunCase context' bindings var domain target
-      Domain.Pi piBinding domain Implicit targetClosure -> do
-        bindings <- nextImplicitBindings context piBinding clauses
-        (context', var) <- Context.extend context (Bindings.toName bindings) domain
-        let value =
-              Domain.var var
-        target <- Evaluation.evaluateClosure targetClosure value
-        domain'' <- Elaboration.readback context domain
-        body <- check context' (shiftImplicit piBinding value domain <$> clauses) target
-        pure $ Syntax.Lam bindings domain'' Implicit body
-      _ -> do
-        (term', type_) <- infer context clauses
-        f <- Unification.tryUnify context type_ expectedType
-        pure $ f term'
+          let value =
+                Domain.var var
+          target <- Evaluation.evaluateClosure targetClosure value
+          domain'' <- Elaboration.readback context domain
+          body <- check context' (shiftImplicit piBinding value domain <$> clauses) target
+          pure $ Syntax.Lam bindings domain'' Implicit body
+        _ -> do
+          (term', type_) <- infer context clauses
+          f <- Unification.tryUnify context type_ expectedType
+          pure $ f term'
   where
     implicits =
       foldMap clauseImplicits clauses
@@ -83,61 +83,61 @@ check context (fmap removeEmptyImplicits -> clauses) expectedType
       body <- check context' clauses' target
       pure $ Syntax.Lam bindings domain'' Explicit body
 
-infer ::
-  Context v ->
-  [Clause] ->
-  M (Syntax.Term v, Domain.Type)
+infer
+  :: Context v
+  -> [Clause]
+  -> M (Syntax.Term v, Domain.Type)
 infer context (fmap removeEmptyImplicits -> clauses)
   | all isEmpty clauses = do
-    let matchingClauses =
-          [ Matching.Clause
-            { _span = span
-            , _matches = toList matches
-            , _rhs = rhs
-            }
-          | Clause (Surface.Clause span _ rhs) matches <- clauses
-          ]
-    expectedType <- Context.newMetaType context
-    result <- Matching.checkClauses context matchingClauses expectedType
-    pure (result, expectedType)
+      let matchingClauses =
+            [ Matching.Clause
+              { _span = span
+              , _matches = toList matches
+              , _rhs = rhs
+              }
+            | Clause (Surface.Clause span _ rhs) matches <- clauses
+            ]
+      expectedType <- Context.newMetaType context
+      result <- Matching.checkClauses context matchingClauses expectedType
+      pure (result, expectedType)
   | otherwise =
-    case HashMap.toList implicits of
-      [] -> do
-        domain <- Context.newMetaType context
-        domain' <- Elaboration.readback context domain
-        bindings <- nextExplicitBindings context clauses
-        let name =
-              Bindings.toName bindings
-        (context', var) <- Context.extend context name domain
-        clauses' <- mapM (shiftExplicit context (Domain.var var) domain) clauses
-        (body, target) <- infer context' clauses'
-        target' <- Elaboration.readback context' target
+      case HashMap.toList implicits of
+        [] -> do
+          domain <- Context.newMetaType context
+          domain' <- Elaboration.readback context domain
+          bindings <- nextExplicitBindings context clauses
+          let name =
+                Bindings.toName bindings
+          (context', var) <- Context.extend context name domain
+          clauses' <- mapM (shiftExplicit context (Domain.var var) domain) clauses
+          (body, target) <- infer context' clauses'
+          target' <- Elaboration.readback context' target
 
-        pure
-          ( Syntax.Lam bindings domain' Explicit body
-          , Domain.Pi (Binding.Unspanned name) domain Explicit $
-              Domain.Closure (Context.toEnvironment context) target'
-          )
-      [(piName, _)] -> do
-        let piBinding =
-              Binding.Unspanned piName
-        bindings <- nextImplicitBindings context piBinding clauses
-        domain <- Context.newMetaType context
-        domain' <- Elaboration.readback context domain
-        (context', var) <- Context.extend context piName domain
-        let value =
-              Domain.var var
-        (body, target) <- infer context' (shiftImplicit (Binding.Unspanned piName) value domain <$> clauses)
-        target' <- Elaboration.readback context' target
+          pure
+            ( Syntax.Lam bindings domain' Explicit body
+            , Domain.Pi (Binding.Unspanned name) domain Explicit $
+                Domain.Closure (Context.toEnvironment context) target'
+            )
+        [(piName, _)] -> do
+          let piBinding =
+                Binding.Unspanned piName
+          bindings <- nextImplicitBindings context piBinding clauses
+          domain <- Context.newMetaType context
+          domain' <- Elaboration.readback context domain
+          (context', var) <- Context.extend context piName domain
+          let value =
+                Domain.var var
+          (body, target) <- infer context' (shiftImplicit (Binding.Unspanned piName) value domain <$> clauses)
+          target' <- Elaboration.readback context' target
 
-        pure
-          ( Syntax.Lam bindings domain' Implicit body
-          , Domain.Pi piBinding domain Implicit $
-              Domain.Closure (Context.toEnvironment context) target'
-          )
-      _ -> do
-        Context.report context Error.UnableToInferImplicitLambda
-        Elaboration.inferenceFailed context
+          pure
+            ( Syntax.Lam bindings domain' Implicit body
+            , Domain.Pi piBinding domain Implicit $
+                Domain.Closure (Context.toEnvironment context) target'
+            )
+        _ -> do
+          Context.report context Error.UnableToInferImplicitLambda
+          Elaboration.inferenceFailed context
   where
     implicits =
       foldMap clauseImplicits clauses
@@ -163,7 +163,7 @@ removeEmptyImplicits clause@(Clause (Surface.Clause span patterns term) matches)
   case patterns of
     Surface.ImplicitPattern _ namedPats : patterns'
       | HashMap.null namedPats ->
-        removeEmptyImplicits $ Clause (Surface.Clause span patterns' term) matches
+          removeEmptyImplicits $ Clause (Surface.Clause span patterns' term) matches
     _ ->
       clause
 
@@ -180,14 +180,14 @@ shiftImplicit binding value type_ (Clause (Surface.Clause span patterns term) ma
   case patterns of
     Surface.ImplicitPattern patSpan namedPats : patterns'
       | let name = Binding.toName binding
-        , Just patBinding <- HashMap.lookup name namedPats ->
-        Clause
-          ( Surface.Clause
-              span
-              (Surface.ImplicitPattern patSpan (HashMap.delete name namedPats) : patterns')
-              term
-          )
-          (matches Tsil.:> Matching.Match value value Implicit (Matching.unresolvedPattern $ Surface.pattern_ patBinding) type_)
+      , Just patBinding <- HashMap.lookup name namedPats ->
+          Clause
+            ( Surface.Clause
+                span
+                (Surface.ImplicitPattern patSpan (HashMap.delete name namedPats) : patterns')
+                term
+            )
+            (matches Tsil.:> Matching.Match value value Implicit (Matching.unresolvedPattern $ Surface.pattern_ patBinding) type_)
     _ ->
       Clause
         (Surface.Clause span patterns term)

@@ -106,10 +106,10 @@ typeOfApplication context type_ plicity arg = do
   case type' of
     Domain.Fun _ plicity' target
       | plicity == plicity' ->
-        pure target
+          pure target
     Domain.Pi _ _ plicity' targetClosure
       | plicity == plicity' ->
-        Evaluation.evaluateClosure targetClosure arg
+          Evaluation.evaluateClosure targetClosure arg
     _ ->
       panic "typeOfApplication: type or plicity mismatch"
 
@@ -117,11 +117,11 @@ typeOfApplications :: Context v -> Domain.Type -> Tsil (Plicity, Domain.Value) -
 typeOfApplications context =
   foldlM $ uncurry . typeOfApplication context
 
-typeOfTelescope ::
-  Context v' ->
-  Domain.Environment v ->
-  Telescope Bindings Syntax.Type Syntax.Term v ->
-  M Domain.Type
+typeOfTelescope
+  :: Context v'
+  -> Domain.Environment v
+  -> Telescope Bindings Syntax.Type Syntax.Term v
+  -> M Domain.Type
 typeOfTelescope context env tele =
   case tele of
     Telescope.Empty branch -> do

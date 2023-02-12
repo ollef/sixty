@@ -17,12 +17,12 @@ import Protolude
 import Telescope (Telescope)
 import qualified Telescope
 
-zonkDefinition ::
-  Domain.Environment Void ->
-  (Meta.Index -> M (Maybe (Syntax.Term Void))) ->
-  (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v'))) ->
-  Syntax.Definition ->
-  M Syntax.Definition
+zonkDefinition
+  :: Domain.Environment Void
+  -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
+  -> Syntax.Definition
+  -> M Syntax.Definition
 zonkDefinition env metas postponed definition = case definition of
   Syntax.TypeDeclaration type_ ->
     Syntax.TypeDeclaration <$> zonkTerm env metas postponed type_
@@ -31,12 +31,12 @@ zonkDefinition env metas postponed definition = case definition of
   Syntax.DataDefinition boxity tele ->
     Syntax.DataDefinition boxity <$> zonkDataDefinition env metas postponed tele
 
-zonkDataDefinition ::
-  Domain.Environment v ->
-  (Meta.Index -> M (Maybe (Syntax.Term Void))) ->
-  (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v'))) ->
-  Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v ->
-  M (Telescope Core.Binding.Binding Syntax.Type Syntax.ConstructorDefinitions v)
+zonkDataDefinition
+  :: Domain.Environment v
+  -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
+  -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v
+  -> M (Telescope Core.Binding.Binding Syntax.Type Syntax.ConstructorDefinitions v)
 zonkDataDefinition env metas postponed tele =
   case tele of
     Telescope.Empty (Syntax.ConstructorDefinitions constructorDefinitions) ->
@@ -49,12 +49,12 @@ zonkDataDefinition env metas postponed tele =
         <*> pure plicity
         <*> zonkDataDefinition env' metas postponed tele'
 
-zonkTerm ::
-  Domain.Environment v ->
-  (Meta.Index -> M (Maybe (Syntax.Term Void))) ->
-  (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v'))) ->
-  Syntax.Term v ->
-  M (Syntax.Term v)
+zonkTerm
+  :: Domain.Environment v
+  -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
+  -> Syntax.Term v
+  -> M (Syntax.Term v)
 zonkTerm env metas postponed term = do
   eitherValueOrTerm <- zonk env metas postponed term
   case eitherValueOrTerm of
@@ -64,12 +64,12 @@ zonkTerm env metas postponed term = do
     Right term' ->
       pure term'
 
-zonkValue ::
-  Domain.Environment v ->
-  (Meta.Index -> M (Maybe (Syntax.Term Void))) ->
-  (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v'))) ->
-  Syntax.Term v ->
-  M Domain.Value
+zonkValue
+  :: Domain.Environment v
+  -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
+  -> Syntax.Term v
+  -> M Domain.Value
 zonkValue env metas postponed term = do
   eitherValueOrTerm <- zonk env metas postponed term
   case eitherValueOrTerm of
@@ -78,12 +78,12 @@ zonkValue env metas postponed term = do
     Right term' ->
       Evaluation.evaluate env term'
 
-zonk ::
-  Domain.Environment v ->
-  (Meta.Index -> M (Maybe (Syntax.Term Void))) ->
-  (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v'))) ->
-  Syntax.Term v ->
-  M (Either Domain.Value (Syntax.Term v))
+zonk
+  :: Domain.Environment v
+  -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
+  -> Syntax.Term v
+  -> M (Either Domain.Value (Syntax.Term v))
 zonk env metas postponed term =
   case term of
     Syntax.Var _ ->
@@ -155,12 +155,12 @@ zonk env metas postponed term =
       result <- zonk env metas postponed term'
       pure $ Syntax.Spanned span <$> result
 
-zonkLets ::
-  Domain.Environment v ->
-  (Meta.Index -> M (Maybe (Syntax.Term Void))) ->
-  (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v'))) ->
-  Syntax.Lets v ->
-  M (Syntax.Lets v)
+zonkLets
+  :: Domain.Environment v
+  -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
+  -> Syntax.Lets v
+  -> M (Syntax.Lets v)
 zonkLets env metas postponed lets =
   case lets of
     Syntax.LetType binding type_ lets' -> do
@@ -175,12 +175,12 @@ zonkLets env metas postponed lets =
     Syntax.In term ->
       Syntax.In <$> zonkTerm env metas postponed term
 
-zonkBranches ::
-  Domain.Environment v ->
-  (Meta.Index -> M (Maybe (Syntax.Term Void))) ->
-  (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v'))) ->
-  Syntax.Branches v ->
-  M (Syntax.Branches v)
+zonkBranches
+  :: Domain.Environment v
+  -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
+  -> Syntax.Branches v
+  -> M (Syntax.Branches v)
 zonkBranches env metas postponed branches =
   case branches of
     Syntax.ConstructorBranches constructorTypeName constructorBranches ->
@@ -188,12 +188,12 @@ zonkBranches env metas postponed branches =
     Syntax.LiteralBranches literalBranches ->
       Syntax.LiteralBranches <$> OrderedHashMap.mapMUnordered (mapM $ zonkTerm env metas postponed) literalBranches
 
-zonkTelescope ::
-  Domain.Environment v ->
-  (Meta.Index -> M (Maybe (Syntax.Term Void))) ->
-  (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v'))) ->
-  Telescope Bindings Syntax.Type Syntax.Term v ->
-  M (Telescope Bindings Syntax.Type Syntax.Term v)
+zonkTelescope
+  :: Domain.Environment v
+  -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
+  -> Telescope Bindings Syntax.Type Syntax.Term v
+  -> M (Telescope Bindings Syntax.Type Syntax.Term v)
 zonkTelescope env metas postponed tele =
   case tele of
     Telescope.Empty branch ->
