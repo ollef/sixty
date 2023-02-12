@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 
 module LanguageServer.References where
 
@@ -26,7 +27,7 @@ references filePath (Position.LineColumn line column) = do
   let itemSpans definingModule item = do
         let mightUseDefiningModule moduleName header =
               moduleName == definingModule
-                || any ((==) definingModule . Module._module) (Module._imports header)
+                || any ((==) definingModule . (.module_)) header.imports
         inputFiles <- fetch Query.InputFiles
         fmap concat $
           forM (HashSet.toList inputFiles) $ \inputFile -> do

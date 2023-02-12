@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module ClosureConvertedToAssembly where
@@ -571,7 +572,7 @@ generateModuleInit moduleName definitions =
           , do
               initGlobal initedName Assembly.Word $ Assembly.Lit $ Literal.Integer 1
               moduleHeader <- fetch $ Query.ModuleHeader moduleName
-              globalPointer' <- foldM (initImport globalBasePointerOperand) (Assembly.LocalOperand globalPointer) $ Module._imports moduleHeader
+              globalPointer' <- foldM (initImport globalBasePointerOperand) (Assembly.LocalOperand globalPointer) moduleHeader.imports
               globalPointer'' <- foldM (initDefinition globalBasePointerOperand) globalPointer' definitions
               pure $ Assembly.Return globalPointer''
           )
@@ -608,7 +609,7 @@ generateModuleInit moduleName definitions =
     initImport globalBasePointer globalPointer import_ =
       callInitFunction
         "globals"
-        (moduleInitName $ Module._module import_)
+        (moduleInitName $ import_.module_)
         [(Assembly.WordPointer, globalBasePointer), (Assembly.WordPointer, globalPointer)]
 
     initDefinition globalBasePointer globalPointer (name, definition) =

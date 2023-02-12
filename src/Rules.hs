@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TupleSections #-}
@@ -134,14 +135,14 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
 
                 headerImportingBuiltins =
                   header
-                    { Module._imports =
+                    { Module.imports =
                         Module.Import
-                          { _span = Span.Absolute 0 0
-                          , _module = Builtin.Module
-                          , _alias = (Span.Absolute 0 0, "Sixten.Builtin")
-                          , _importedNames = Module.AllExposed
+                          { span = Span.Absolute 0 0
+                          , module_ = Builtin.Module
+                          , alias = (Span.Absolute 0 0, "Sixten.Builtin")
+                          , importedNames = Module.AllExposed
                           }
-                          : Module._imports header
+                          : header.imports
                     }
 
             pure $
@@ -194,20 +195,20 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
           forM maybeFilePath $ \filePath -> do
             (_, header, _) <- fetch $ ParsedFile filePath
             errors <- fmap concat $
-              forM (Module._imports header) $ \import_ -> do
-                maybeModuleFile <- fetch $ Query.ModuleFile $ Module._module import_
+              forM header.imports $ \import_ -> do
+                maybeModuleFile <- fetch $ Query.ModuleFile import_.module_
                 pure [Error.ImportNotFound module_ import_ | isNothing maybeModuleFile]
             pure (header, errors)
     ImportedNames module_ subQuery ->
       noError $
         Mapped.rule (ImportedNames module_) subQuery $ do
           header <- fetch $ ModuleHeader module_
-          scopes <- forM (Module._imports header) $ \import_ -> do
-            importedHeader <- fetch $ ModuleHeader $ Module._module import_
-            (_, publicScope) <- fetch $ ModuleScope $ Module._module import_
+          scopes <- forM header.imports $ \import_ -> do
+            importedHeader <- fetch $ ModuleHeader import_.module_
+            (_, publicScope) <- fetch $ ModuleScope import_.module_
             pure $
               Resolution.importedNames import_ $
-                Resolution.exposedNames (Module._exposedNames importedHeader) publicScope
+                Resolution.exposedNames importedHeader.exposedNames publicScope
 
           pure $ foldl' (HashMap.unionWith (<>)) mempty scopes
     NameAliases module_ ->

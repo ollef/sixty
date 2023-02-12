@@ -728,14 +728,14 @@ import_ =
   where
     mkImport (span, n@(Name.Module text)) malias exposed =
       Module.Import
-        { _span = absoluteSpan
-        , _module = n
-        , _alias =
+        { span = absoluteSpan
+        , module_ = n
+        , alias =
             maybe
               (absoluteSpan, Name.Surface text)
               (\(Surface.SpannedName span' name) -> (Span.absoluteFrom 0 span', name))
               malias
-        , _importedNames = exposed
+        , importedNames = exposed
         }
       where
         absoluteSpan =

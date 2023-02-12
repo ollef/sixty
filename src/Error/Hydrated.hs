@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Error.Hydrated where
@@ -57,8 +58,7 @@ headingAndBody error =
         , Doc.pretty name <+> "has already been defined at" <+> Doc.pretty (Span.LineColumns lineColumn lineColumn) <> "."
         )
     Error.ImportNotFound _ import_ ->
-      let prettyModule =
-            Doc.pretty (Module._module import_)
+      let prettyModule = Doc.pretty import_.module_
        in pure
             ( "Module not found:" <+> prettyModule
             , "The imported module" <+> prettyModule <+> "wasn't found in the current project."
@@ -289,7 +289,7 @@ fromError err = do
         pure (fromMaybe "<no file>" maybeModuleFile, Right span)
       Error.ImportNotFound module_ import_ -> do
         maybeModuleFile <- fetch $ Query.ModuleFile module_
-        pure (fromMaybe "<no file>" maybeModuleFile, Right $ Module._span import_)
+        pure (fromMaybe "<no file>" maybeModuleFile, Right $ import_.span)
       Error.MultipleFilesWithModuleName _ _ file2 ->
         pure (file2, Right $ Span.Absolute 0 0)
       Error.ModuleFileNameMismatch _ _ span file ->

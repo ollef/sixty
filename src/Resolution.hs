@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Resolution where
@@ -127,10 +128,10 @@ importedNames import_ m =
   HashMap.unionWith (<>) unqualifiedNames qualifiedNames
   where
     unqualifiedNames =
-      exposedNames (Module._importedNames import_) m
+      exposedNames import_.importedNames m
 
     qualifiedNames =
       HashMap.fromList
-        [ (snd (Module._alias import_) <> "." <> surfaceName, a)
+        [ (snd import_.alias <> "." <> surfaceName, a)
         | (surfaceName, a) <- HashMap.toList m
         ]

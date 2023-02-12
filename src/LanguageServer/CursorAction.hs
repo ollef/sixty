@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -110,12 +111,11 @@ cursorAction filePath (Position.LineColumn line column) k =
                 qualifiedName
           )
           <> foreach
-            (Module._imports moduleHeader)
+            moduleHeader.imports
             ( \import_ -> do
-                let span =
-                      Module._span import_
+                let span = import_.span
                 guard $ span `Span.contains` pos
-                k (Import (Module._module import_)) $ toLineColumns span
+                k (Import import_.module_) $ toLineColumns span
             )
 
 data Environment v = Environment

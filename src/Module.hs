@@ -12,8 +12,8 @@ import Protolude
 import qualified Span
 
 data Header = Header
-  { _exposedNames :: !ExposedNames
-  , _imports :: [Import]
+  { exposedNames :: !ExposedNames
+  , imports :: [Import]
   }
   deriving (Eq, Show, Generic, Persist, Hashable)
 
@@ -24,8 +24,8 @@ instance Semigroup Header where
 instance Monoid Header where
   mempty =
     Header
-      { _exposedNames = mempty
-      , _imports = mempty
+      { exposedNames = mempty
+      , imports = mempty
       }
 
 data ExposedNames
@@ -46,9 +46,9 @@ instance Monoid ExposedNames where
     Exposed mempty
 
 data Import = Import
-  { _span :: !Span.Absolute
-  , _module :: !Name.Module
-  , _alias :: !(Span.Absolute, Name.Surface)
-  , _importedNames :: !ExposedNames
+  { span :: !Span.Absolute
+  , module_ :: !Name.Module
+  , alias :: !(Span.Absolute, Name.Surface)
+  , importedNames :: !ExposedNames
   }
   deriving (Eq, Show, Generic, Persist, Hashable)

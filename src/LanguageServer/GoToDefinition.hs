@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 
 module LanguageServer.GoToDefinition where
 
@@ -33,12 +34,11 @@ goToDefinition filePath (Position.LineColumn line column) = do
   runMaybeT $
     asum $
       foreach
-        (Module._imports moduleHeader)
+        moduleHeader.imports
         ( \import_ -> do
-            let span =
-                  Module._span import_
+            let span = import_.span
             guard $ span `Span.contains` pos
-            maybeDefiningFile <- fetch $ Query.ModuleFile $ Module._module import_
+            maybeDefiningFile <- fetch $ Query.ModuleFile import_.module_
             case maybeDefiningFile of
               Nothing ->
                 empty
