@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 
 module Occurrences.Intervals where
 
@@ -35,9 +36,9 @@ data Item
   deriving (Show, Eq, Generic, Hashable, Persist)
 
 data Intervals = Intervals
-  { _intervals :: IntervalMap Position.Relative Item
-  , _items :: HashMap Item (HashSet Span.Relative)
-  , _varBindingSpans :: EnumMap Var (NonEmpty Span.Relative)
+  { intervals :: IntervalMap Position.Relative Item
+  , items :: HashMap Item (HashSet Span.Relative)
+  , varBindingSpans :: EnumMap Var (NonEmpty Span.Relative)
   }
   deriving (Eq, Show, Generic, Persist, Hashable)
 
@@ -52,9 +53,9 @@ instance Monoid Intervals where
 singleton :: Span.Relative -> Item -> Intervals
 singleton span@(Span.Relative start end) item =
   Intervals
-    { _intervals = IntervalMap.singleton (IntervalMap.Interval start (end - 1)) item
-    , _items = HashMap.singleton item $ HashSet.singleton span
-    , _varBindingSpans = mempty
+    { intervals = IntervalMap.singleton (IntervalMap.Interval start (end - 1)) item
+    , items = HashMap.singleton item $ HashSet.singleton span
+    , varBindingSpans = mempty
     }
 
 binding :: Binding -> Var -> Intervals
@@ -80,7 +81,7 @@ bindings b var =
 
 null :: Intervals -> Bool
 null =
-  HashMap.null . _items
+  HashMap.null . (.items)
 
 intersect :: Position.Relative -> Intervals -> [Item]
 intersect pos (Intervals intervalMap _ _) = do
@@ -93,7 +94,7 @@ itemSpans item (Intervals _ items _) =
 
 bindingSpan :: Var -> Position.Relative -> Intervals -> Maybe Span.Relative
 bindingSpan var position intervals =
-  case EnumMap.lookup var (_varBindingSpans intervals) of
+  case EnumMap.lookup var intervals.varBindingSpans of
     Nothing ->
       Nothing
     Just bindingSpans -> do
@@ -109,7 +110,7 @@ varSpans :: Var -> Position.Relative -> Intervals -> [Span.Relative]
 varSpans var position intervals = do
   let candidates =
         itemSpans (Var var) intervals
-  case EnumMap.lookup var (_varBindingSpans intervals) of
+  case EnumMap.lookup var intervals.varBindingSpans of
     Nothing ->
       candidates
     Just bindingSpans -> do
@@ -133,8 +134,7 @@ varSpans var position intervals = do
               filter ((< spanStart after) . spanStart) candidates'
 
 spanStart :: Span.Relative -> Position.Relative
-spanStart (Span.Relative s _) =
-  s
+spanStart (Span.Relative s _) = s
 
 nameSpan :: Item -> Span.LineColumn -> Span.LineColumn
 nameSpan
