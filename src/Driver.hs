@@ -1,10 +1,13 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE NoFieldSelectors #-}
 
 module Driver where
 
@@ -92,11 +95,11 @@ runTask sourceDirectories files prettyError task = do
 -------------------------------------------------------------------------------
 -- Incremental execution
 data State err = State
-  { _startedVar :: !(IORef (DHashMap Query MemoEntry))
-  , _hashesVar :: !(IORef (DHashMap Query (Const Int)))
-  , _reverseDependenciesVar :: !(IORef (ReverseDependencies Query))
-  , _tracesVar :: !(IORef (Traces Query (Const Int)))
-  , _errorsVar :: !(IORef (DHashMap Query (Const [err])))
+  { startedVar :: !(IORef (DHashMap Query MemoEntry))
+  , hashesVar :: !(IORef (DHashMap Query (Const Int)))
+  , reverseDependenciesVar :: !(IORef (ReverseDependencies Query))
+  , tracesVar :: !(IORef (Traces Query (Const Int)))
+  , errorsVar :: !(IORef (DHashMap Query (Const [err])))
   }
 
 initialState :: IO (State err)
@@ -106,19 +109,19 @@ initialState = do
   reverseDependenciesVar <- newIORef mempty
   tracesVar <- newIORef mempty
   errorsVar <- newIORef mempty
-  return
+  pure
     State
-      { _startedVar = startedVar
-      , _hashesVar = hashesVar
-      , _reverseDependenciesVar = reverseDependenciesVar
-      , _tracesVar = tracesVar
-      , _errorsVar = errorsVar
+      { startedVar
+      , hashesVar
+      , reverseDependenciesVar
+      , tracesVar
+      , errorsVar
       }
 
 encodeState :: Persist err => State (err, doc) -> IO ByteString
 encodeState state = do
-  traces <- readIORef $ _tracesVar state
-  errors <- readIORef $ _errorsVar state
+  traces <- readIORef state.tracesVar
+  errors <- readIORef state.errorsVar
   pure $
     Persist.encode (traces, DHashMap.map (\(Const errDocs) -> Const $ fst <$> errDocs) errors)
 
@@ -127,8 +130,8 @@ decodeState bs = do
   s <- initialState
   case Persist.decode bs of
     Right (traces, errors) -> do
-      void $ atomicWriteIORef (_tracesVar s) traces
-      void $ atomicWriteIORef (_errorsVar s) errors
+      void $ atomicWriteIORef s.tracesVar traces
+      void $ atomicWriteIORef s.errorsVar errors
     Left _ ->
       pure ()
   pure s
@@ -149,9 +152,9 @@ runIncrementalTask
 runIncrementalTask state changedFiles sourceDirectories files prettyError prune task =
   handleEx $ do
     do
-      reverseDependencies <- readIORef $ _reverseDependenciesVar state
-      started <- readIORef $ _startedVar state
-      hashes <- readIORef $ _hashesVar state
+      reverseDependencies <- readIORef state.reverseDependenciesVar
+      started <- readIORef state.startedVar
+      hashes <- readIORef state.hashesVar
 
       case DHashMap.lookup Query.InputFiles started of
         Just (Done inputFiles) -> do
@@ -159,9 +162,9 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
           builtinFile <- Paths.getDataFileName "builtin/Builtin.vix"
           if inputFiles /= HashSet.insert builtinFile (HashSet.fromMap $ void files)
             then do
-              atomicWriteIORef (_reverseDependenciesVar state) mempty
-              atomicWriteIORef (_startedVar state) mempty
-              atomicWriteIORef (_hashesVar state) mempty
+              atomicWriteIORef state.reverseDependenciesVar mempty
+              atomicWriteIORef state.startedVar mempty
+              atomicWriteIORef state.hashesVar mempty
             else do
               changedFiles' <- flip filterM (toList changedFiles) $ \file ->
                 pure $ case (HashMap.lookup file files, DHashMap.lookup (Query.FileRope file) started, DHashMap.lookup (Query.FileText file) started) of
@@ -187,15 +190,15 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
               -- Text.hPutStrLn stderr $ "Hashes " <> show (DHashMap.size hashes) <> " -> " <> show (DHashMap.size hashes')
               -- Text.hPutStrLn stderr $ "ReverseDependencies " <> show (Map.size reverseDependencies) <> " -> " <> show (Map.size reverseDependencies')
 
-              atomicWriteIORef (_startedVar state) started'
-              atomicWriteIORef (_hashesVar state) hashes'
-              atomicWriteIORef (_reverseDependenciesVar state) reverseDependencies'
+              atomicWriteIORef state.startedVar started'
+              atomicWriteIORef state.hashesVar hashes'
+              atomicWriteIORef state.reverseDependenciesVar reverseDependencies'
 
         -- printVar <- newMVar 0
         _ -> do
-          atomicWriteIORef (_reverseDependenciesVar state) mempty
-          atomicWriteIORef (_startedVar state) mempty
-          atomicWriteIORef (_hashesVar state) mempty
+          atomicWriteIORef state.reverseDependenciesVar mempty
+          atomicWriteIORef state.startedVar mempty
+          atomicWriteIORef state.hashesVar mempty
 
     threadDepsVar <- newIORef mempty
     let readSourceFile_ file
@@ -219,24 +222,24 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
         writeErrors :: Writer TaskKind Query a -> [Error] -> Task Query ()
         writeErrors (Writer key) errs = do
           errs' <- mapM (prettyError <=< Error.Hydrated.fromError) errs
-          atomicModifyIORef' (_errorsVar state) $
+          atomicModifyIORef' state.errorsVar $
             (,()) . if null errs' then DHashMap.delete key else DHashMap.insert key (Const errs')
 
         rules :: Rules Query
         rules =
-          memoiseWithCycleDetection (_startedVar state) threadDepsVar
-            $ trackReverseDependencies (_reverseDependenciesVar state)
+          memoiseWithCycleDetection state.startedVar threadDepsVar
+            $ trackReverseDependencies state.reverseDependenciesVar
             $ verifyTraces
-              (_tracesVar state)
+              state.tracesVar
               ( \query value -> do
-                  hashed <- readIORef $ _hashesVar state
+                  hashed <- readIORef state.hashesVar
                   case DHashMap.lookup query hashed of
                     Just h ->
                       pure h
                     Nothing -> do
                       let h =
                             Const $ has' @Hashable @Identity query $ hash $ Identity value
-                      atomicModifyIORef' (_hashesVar state) $
+                      atomicModifyIORef' state.hashesVar $
                         (,()) . DHashMap.insert query h
                       pure h
               )
@@ -245,14 +248,14 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
             $ Rules.rules sourceDirectories (HashSet.fromMap $ void files) readSourceFile_
     -- result <- Rock.runMemoisedTask (_startedVar state) rules task
     result <- Rock.runTask rules task
-    started <- readIORef $ _startedVar state
+    started <- readIORef state.startedVar
     errorsMap <- case prune of
       Don'tPrune ->
-        readIORef $ _errorsVar state
+        readIORef state.errorsVar
       Prune -> do
-        atomicModifyIORef' (_tracesVar state) $
+        atomicModifyIORef' state.tracesVar $
           (,()) . DHashMap.intersectionWithKey (\_ _ t -> t) started
-        atomicModifyIORef' (_errorsVar state) $ \errors -> do
+        atomicModifyIORef' state.errorsVar $ \errors -> do
           let errors' = DHashMap.intersectionWithKey (\_ _ e -> e) started errors
           (errors', errors')
     let errors = do
