@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Project where
@@ -13,11 +14,11 @@ import qualified System.Directory as Directory
 import qualified System.FilePath as FilePath
 
 newtype Project = Project
-  { _sourceDirectories :: [FilePath]
+  { sourceDirectories :: [FilePath]
   }
   deriving (Show)
 
-Aeson.deriveJSON (Aeson.aesonDrop 1 Aeson.trainCase) ''Project
+Aeson.deriveJSON Aeson.defaultOptions {Aeson.fieldLabelModifier = Aeson.trainCase} ''Project
 
 filesFromArguments :: [FilePath] -> IO (HashSet FilePath, HashSet FilePath)
 filesFromArguments files = do
@@ -87,7 +88,7 @@ listProjectFile file = do
 
 listProject :: FilePath -> Project -> IO (HashSet FilePath, HashSet FilePath)
 listProject file project = do
-  sourceDirectories <- mapM (Directory.canonicalizePath . (FilePath.takeDirectory file FilePath.</>)) $ _sourceDirectories project
+  sourceDirectories <- mapM (Directory.canonicalizePath . (FilePath.takeDirectory file FilePath.</>)) project.sourceDirectories
   fmap ((,) (HashSet.fromList sourceDirectories) . mconcat) $
     forM sourceDirectories $
       listDirectoryRecursive isSourcePath

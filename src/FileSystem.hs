@@ -1,7 +1,8 @@
-{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 
 module FileSystem where
 
@@ -10,6 +11,7 @@ import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
+import Project (Project)
 import qualified Project
 import Protolude
 import qualified System.Directory as Directory
@@ -162,7 +164,7 @@ watcherFromArguments files =
 
 projectWatcher :: FilePath -> Watcher (HashSet FilePath, [Directory], HashMap FilePath Text)
 projectWatcher file =
-  bindForM (foldMap (HashSet.fromList . Project._sourceDirectories) <$> jsonFileWatcher file) $ \sourceDirectory -> do
+  bindForM (foldMap (HashSet.fromList . (.sourceDirectories)) <$> jsonFileWatcher @Project file) $ \sourceDirectory -> do
     sourceDirectory' <- liftIO $ Directory.canonicalizePath sourceDirectory
     (changedFiles, files) <- directoryWatcher Project.isSourcePath sourceDirectory'
     pure (changedFiles, [sourceDirectory'], files)
