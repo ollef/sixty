@@ -1155,7 +1155,7 @@ checkMetaSolutions
   -> Meta.EagerState
   -> M Syntax.MetaSolutions
 checkMetaSolutions context metaVars =
-  flip EnumMap.traverseWithKey (Meta.eagerEntries metaVars) \index entry ->
+  flip EnumMap.traverseWithKey metaVars.eagerEntries \index entry ->
     case entry of
       Meta.EagerUnsolved type_ _ _ span -> do
         ptype <- Context.toPrettyableClosedTerm context type_
@@ -1165,7 +1165,7 @@ checkMetaSolutions context metaVars =
         failTerm <- addLambdas (Context.emptyFrom context) type'
         pure (failTerm, type_, Meta.termMetas failTerm)
       Meta.EagerSolved solution metas type_ ->
-        pure (solution, type_, Meta.direct metas)
+        pure (solution, type_, metas.direct)
   where
     addLambdas :: Context v -> Domain.Type -> M (Syntax.Term v)
     addLambdas context' type_ = do

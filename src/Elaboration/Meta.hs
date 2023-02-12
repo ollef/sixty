@@ -2,7 +2,9 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE NoFieldSelectors #-}
 
 module Elaboration.Meta where
 
@@ -64,15 +66,14 @@ empty =
 
 lookup :: Meta.Index -> State m -> Entry m
 lookup index state =
-  entries state EnumMap.! index
+  state.entries EnumMap.! index
 
 new :: Syntax.Term Void -> Int -> Span.Relative -> State m -> (State m, Meta.Index)
 new type_ arity span state =
-  let index =
-        nextIndex state
+  let index = state.nextIndex
    in ( State
-          { entries = EnumMap.insert index (Unsolved type_ arity mempty span) $ entries state
-          , nextIndex = nextIndex state + 1
+          { entries = EnumMap.insert index (Unsolved type_ arity mempty span) state.entries
+          , nextIndex = index + 1
           }
       , index
       )
@@ -82,7 +83,7 @@ solve index term state =
   (state {entries = entries'}, data_)
   where
     (data_, entries') =
-      EnumMap.alterF alter index $ entries state
+      EnumMap.alterF alter index state.entries
 
     alter maybeVar =
       case maybeVar of
@@ -102,7 +103,7 @@ lazilySolve index mterm state =
   (state {entries = entries'}, data_)
   where
     (data_, entries') =
-      EnumMap.alterF alter index $ entries state
+      EnumMap.alterF alter index state.entries
 
     alter maybeVar =
       case maybeVar of
@@ -117,7 +118,7 @@ lazilySolve index mterm state =
 
 addPostponedIndex :: Meta.Index -> Postponement.Index -> State m -> State m
 addPostponedIndex index postponementIndex state =
-  state {entries = EnumMap.adjust adjust index $ entries state}
+  state {entries = EnumMap.adjust adjust index state.entries}
   where
     adjust entry =
       case entry of
@@ -130,7 +131,7 @@ addPostponedIndex index postponementIndex state =
 
 addPostponedIndices :: Meta.Index -> EnumSet Postponement.Index -> State m -> State m
 addPostponedIndices index postponementIndices state =
-  state {entries = EnumMap.adjust adjust index $ entries state}
+  state {entries = EnumMap.adjust adjust index state.entries}
   where
     adjust entry =
       case entry of
@@ -158,8 +159,8 @@ data EagerState = EagerState
 fromEagerState :: EagerState -> State m
 fromEagerState state =
   State
-    { entries = fromEagerEntry <$> eagerEntries state
-    , nextIndex = eagerNextIndex state
+    { entries = fromEagerEntry <$> state.eagerEntries
+    , nextIndex = state.eagerNextIndex
     }
 
 fromEagerEntry :: EagerEntry -> Entry m
@@ -189,7 +190,7 @@ toEagerState state definition maybeType = do
   pure
     EagerState
       { eagerEntries = entries_
-      , eagerNextIndex = nextIndex state
+      , eagerNextIndex = state.nextIndex
       }
   where
     go todo done
@@ -204,14 +205,14 @@ toEagerState state definition maybeType = do
                       EagerUnsolved type_ _arity _postponements _span ->
                         termMetas type_
                       EagerSolved _solution metas _type ->
-                        direct metas
+                        metas.direct
                   )
                   newlyDone
 
           go newTodo (done <> newlyDone)
       where
         todo' =
-          EnumMap.difference (EnumMap.fromSet (entries state EnumMap.!) todo) done
+          EnumMap.difference (EnumMap.fromSet (state.entries EnumMap.!) todo) done
 
 -------------------------------------------------------------------------------
 
@@ -221,11 +222,11 @@ solutionMetas metaIndex state = do
     Unsolved {} ->
       pure (Nothing, state)
     Solved solution metas type_
-      | EnumSet.null $ unsolved metas ->
+      | EnumSet.null metas.unsolved ->
           pure (Just metas, state)
       | otherwise ->
           flip runStateT state $ do
-            indirects <- forM (EnumSet.toList $ unsolved metas) \i ->
+            indirects <- forM (EnumSet.toList metas.unsolved) \i ->
               (,) i <$> StateT (solutionMetas i)
 
             let (directUnsolvedMetas, directSolvedMetas) =
@@ -236,10 +237,10 @@ solutionMetas metaIndex state = do
                   foldMap (fold . snd) indirects
 
                 solved' =
-                  solved metas <> directSolvedMetas <> solved indirectMetas
+                  metas.solved <> directSolvedMetas <> indirectMetas.solved
 
                 unsolved' =
-                  directUnsolvedMetas <> unsolved indirectMetas
+                  directUnsolvedMetas <> indirectMetas.unsolved
 
                 metas' =
                   metas
@@ -247,7 +248,7 @@ solutionMetas metaIndex state = do
                     , solved = solved'
                     }
 
-            modify \s -> s {entries = EnumMap.insert metaIndex (Solved solution metas' type_) $ entries s}
+            modify \s -> s {entries = EnumMap.insert metaIndex (Solved solution metas' type_) s.entries}
 
             pure $ Just metas'
     LazilySolved msolution type_ -> do
@@ -258,7 +259,7 @@ solutionMetas metaIndex state = do
         metaIndex
         state
           { entries =
-              EnumMap.insert metaIndex (Solved solution CachedMetas {direct = metas, unsolved = metas, solved = mempty} type_) $ entries state
+              EnumMap.insert metaIndex (Solved solution CachedMetas {direct = metas, unsolved = metas, solved = mempty} type_) state.entries
           }
 
 definitionMetas :: Syntax.Definition -> EnumSet Meta.Index

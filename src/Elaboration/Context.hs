@@ -562,7 +562,7 @@ metaSolutionMetas context index = do
   m <- readIORef context.metas
   (result, m') <- Meta.solutionMetas index m
   writeIORef context.metas m'
-  pure $ foldMap (Meta.unsolved <> Meta.solved) result
+  pure $ foldMap ((.unsolved) <> (.solved)) result
 
 -------------------------------------------------------------------------------
 
