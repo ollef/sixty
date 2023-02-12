@@ -1,4 +1,5 @@
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module ClosureConverted.Context where
