@@ -1,4 +1,5 @@
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Elaboration.Clauses where
@@ -35,11 +36,7 @@ check
 check context (fmap removeEmptyImplicits -> clauses) expectedType
   | all isEmpty clauses = do
       let matchingClauses =
-            [ Matching.Clause
-              { _span = span
-              , _matches = toList matches
-              , _rhs = rhs
-              }
+            [ Matching.Clause {span, matches = toList matches, rhs}
             | Clause (Surface.Clause span _ rhs) matches <- clauses
             ]
       Matching.checkClauses context matchingClauses expectedType
@@ -90,11 +87,7 @@ infer
 infer context (fmap removeEmptyImplicits -> clauses)
   | all isEmpty clauses = do
       let matchingClauses =
-            [ Matching.Clause
-              { _span = span
-              , _matches = toList matches
-              , _rhs = rhs
-              }
+            [ Matching.Clause {span, matches = toList matches, rhs}
             | Clause (Surface.Clause span _ rhs) matches <- clauses
             ]
       expectedType <- Context.newMetaType context

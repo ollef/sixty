@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
@@ -66,17 +67,17 @@ import qualified Telescope
 import Var (Var)
 
 data Config = Config
-  { _expectedType :: !Domain.Value
-  , _scrutinees :: ![(Plicity, Domain.Value)]
-  , _clauses :: [Clause]
-  , _usedClauses :: !(IORef (Set Span.Relative))
-  , _matchKind :: !Error.MatchKind
+  { expectedType :: !Domain.Value
+  , scrutinees :: ![(Plicity, Domain.Value)]
+  , clauses :: [Clause]
+  , usedClauses :: !(IORef (Set Span.Relative))
+  , matchKind :: !Error.MatchKind
   }
 
 data Clause = Clause
-  { _span :: !Span.Relative
-  , _matches :: [Match]
-  , _rhs :: !Surface.Term
+  { span :: !Span.Relative
+  , matches :: [Match]
+  , rhs :: !Surface.Term
   }
 
 data Match = Match !Domain.Value !Domain.Value !Plicity !Pattern !Domain.Type
@@ -191,18 +192,18 @@ checkCase context scrutinee scrutineeType branches expectedType canPostpone = do
         checkWithCoverage
           context'
           Config
-            { _expectedType = expectedType
-            , _scrutinees = pure (Explicit, scrutineeVarValue)
-            , _clauses =
+            { expectedType = expectedType
+            , scrutinees = pure (Explicit, scrutineeVarValue)
+            , clauses =
                 [ Clause
-                  { _span = Span.add patSpan rhsSpan
-                  , _matches = [Match scrutineeVarValue scrutineeVarValue Explicit (unresolvedPattern pat) scrutineeType]
-                  , _rhs = rhs'
+                  { span = Span.add patSpan rhsSpan
+                  , matches = [Match scrutineeVarValue scrutineeVarValue Explicit (unresolvedPattern pat) scrutineeType]
+                  , rhs = rhs'
                   }
                 | (pat@(Surface.Pattern patSpan _), rhs'@(Surface.Term rhsSpan _)) <- branches
                 ]
-            , _usedClauses = usedClauses
-            , _matchKind = Error.Branch
+            , usedClauses = usedClauses
+            , matchKind = Error.Branch
             }
       scrutineeType' <- Readback.readback (Context.toEnvironment context) scrutineeType
       pure $
@@ -280,16 +281,16 @@ checkClauses context clauses expectedType = do
   checkWithCoverage
     context
     Config
-      { _expectedType = expectedType
-      , _scrutinees =
+      { expectedType = expectedType
+      , scrutinees =
           case clauses of
             firstClause : _ ->
-              [(plicity, value) | Match value _ plicity _ _ <- _matches firstClause]
+              [(plicity, value) | Match value _ plicity _ _ <- firstClause.matches]
             _ ->
               mempty
-      , _clauses = clauses
-      , _usedClauses = usedClauses
-      , _matchKind = Error.Clause
+      , clauses = clauses
+      , usedClauses = usedClauses
+      , matchKind = Error.Clause
       }
 
 checkSingle
@@ -312,17 +313,17 @@ checkSingle context scrutinee plicity pat@(Surface.Pattern patSpan _) rhs@(Surfa
   checkWithCoverage
     context
     Config
-      { _expectedType = expectedType
-      , _scrutinees = pure (plicity, scrutineeValue)
-      , _clauses =
+      { expectedType = expectedType
+      , scrutinees = pure (plicity, scrutineeValue)
+      , clauses =
           [ Clause
-              { _span = Span.add patSpan rhsSpan
-              , _matches = [Match scrutineeValue scrutineeValue plicity (unresolvedPattern pat) scrutineeType]
-              , _rhs = rhs
+              { span = Span.add patSpan rhsSpan
+              , matches = [Match scrutineeValue scrutineeValue plicity (unresolvedPattern pat) scrutineeType]
+              , rhs
               }
           ]
-      , _usedClauses = usedClauses
-      , _matchKind = Error.Lambda
+      , usedClauses = usedClauses
+      , matchKind = Error.Lambda
       }
 
 -------------------------------------------------------------------------------
@@ -333,34 +334,33 @@ checkWithCoverage context config = do
   let allClauseSpans =
         Set.fromList
           [ span
-          | Clause span _ _ <- _clauses config
+          | Clause span _ _ <- config.clauses
           ]
-  usedClauseSpans <- readIORef (_usedClauses config)
+  usedClauseSpans <- readIORef config.usedClauses
   forM_ (Set.difference allClauseSpans usedClauseSpans) $ \span ->
-    Context.report (Context.spanned span context) $ Error.RedundantMatch $ _matchKind config
+    Context.report (Context.spanned span context) $ Error.RedundantMatch config.matchKind
   pure result
 
 check :: Context v -> Config -> Postponement.CanPostpone -> M (Syntax.Term v)
 check context config canPostpone = do
-  clauses <- catMaybes <$> mapM (simplifyClause context canPostpone) (_clauses config)
-  let config' = config {_clauses = clauses}
+  clauses <- catMaybes <$> mapM (simplifyClause context canPostpone) config.clauses
+  let config' = config {clauses}
   case clauses of
     [] -> do
-      exhaustive <- anyM (uninhabitedScrutinee context . snd) $ _scrutinees config
+      exhaustive <- anyM (uninhabitedScrutinee context . snd) config.scrutinees
       unless exhaustive $ do
-        scrutinees <- forM (_scrutinees config) $ \(plicity, scrutinee) -> do
+        scrutinees <- forM config.scrutinees $ \(plicity, scrutinee) -> do
           patterns <- uncoveredScrutineePatterns context scrutinee
           pure $ (,) plicity <$> (Context.toPrettyablePattern context <$> patterns)
         Context.report context $ Error.NonExhaustivePatterns $ sequence scrutinees
-      Elaboration.readback context $ Builtin.Unknown $ _expectedType config
+      Elaboration.readback context $ Builtin.Unknown config.expectedType
     firstClause : _ -> do
-      let matches = _matches firstClause
-
+      let matches = firstClause.matches
       splitEqualityOr context config' matches $
         splitConstructorOr context config' matches $ do
           let indeterminateIndexUnification = do
-                Context.report context $ Error.IndeterminateIndexUnification $ _matchKind config
-                Elaboration.readback context $ Builtin.Unknown $ _expectedType config
+                Context.report context $ Error.IndeterminateIndexUnification $ config.matchKind
+                Elaboration.readback context $ Builtin.Unknown config.expectedType
           case solved matches of
             Nothing ->
               case canPostpone of
@@ -377,8 +377,8 @@ check context config canPostpone = do
               let context' =
                     withPatternInstantiation inst context
               mapM_ (checkForcedPattern context') matches
-              result <- Elaboration.check context' (_rhs firstClause) (_expectedType config)
-              modifyIORef (_usedClauses config) $ Set.insert $ _span firstClause
+              result <- Elaboration.check context' firstClause.rhs config.expectedType
+              modifyIORef config.usedClauses $ Set.insert firstClause.span
               pure result
 
 findPatternResolutionBlocker :: Context v -> [Clause] -> M (Maybe Meta.Index)
@@ -386,7 +386,7 @@ findPatternResolutionBlocker context clauses =
   fmap (either Just (\() -> Nothing)) $
     runExceptT $
       forM_ clauses $ \clause ->
-        forM_ (_matches clause) $ \case
+        forM_ clause.matches $ \case
           Match _ _ _ (UnresolvedPattern span unspannedSurfacePattern) type_ ->
             void $ resolvePattern (Context.spanned span context) unspannedSurfacePattern type_ Postponement.CanPostpone
           Match _ _ _ Pattern {} _ ->
@@ -394,7 +394,7 @@ findPatternResolutionBlocker context clauses =
 
 postponeElaboration :: Context v -> Config -> Meta.Index -> M (Syntax.Term v)
 postponeElaboration context config blockingMeta =
-  Elaboration.postpone context (_expectedType config) blockingMeta $
+  Elaboration.postpone context config.expectedType blockingMeta $
     check context config
 
 checkForcedPattern :: Context v -> Match -> M ()
@@ -495,7 +495,7 @@ simplifyClause :: Context v -> Postponement.CanPostpone -> Clause -> M (Maybe Cl
 simplifyClause context canPostpone clause = do
   maybeMatches <-
     runMaybeT $
-      concat <$> mapM (simplifyMatch context canPostpone) (_matches clause)
+      concat <$> mapM (simplifyMatch context canPostpone) clause.matches
   case maybeMatches of
     Nothing ->
       pure Nothing
@@ -503,9 +503,9 @@ simplifyClause context canPostpone clause = do
       maybeExpanded <- runMaybeT $ expandAnnotations context matches'
       case maybeExpanded of
         Nothing ->
-          pure $ Just clause {_matches = matches'}
+          pure $ Just clause {matches = matches'}
         Just expandedMatches ->
-          simplifyClause context canPostpone clause {_matches = expandedMatches}
+          simplifyClause context canPostpone clause {matches = expandedMatches}
 
 simplifyMatch
   :: Context v
@@ -782,7 +782,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
                 OrderedHashMap.fromListWith (<>) $
                   concat $
                     takeWhile (not . null) $
-                      findVarConstructorMatches scrutineeVar . _matches <$> _clauses config
+                      findVarConstructorMatches scrutineeVar . (.matches) <$> config.clauses
 
           branches <- forM (OrderedHashMap.toList matchedConstructors) $ \(qualifiedConstr@(Name.QualifiedConstructor _ constr), patterns) -> do
             let constrType =
@@ -834,8 +834,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
     goConstrFields context constr conArgs type_ patterns =
       case type_ of
         Domain.Pi piBinding domain plicity targetClosure -> do
-          let piName =
-                Binding.toName piBinding
+          let piName = Binding.toName piBinding
           domain'' <- Elaboration.readback context domain
           (bindings, patterns') <-
             case plicity of
@@ -847,12 +846,8 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
                 pure (Bindings.Unspanned piName, patterns)
 
           (context', fieldVar) <- Context.extendBefore context scrutineeVar bindings domain
-          let fieldValue =
-                Domain.var fieldVar
-
-              conArgs' =
-                conArgs Tsil.:> (plicity, fieldValue)
-
+          let fieldValue = Domain.var fieldVar
+              conArgs' = conArgs Tsil.:> (plicity, fieldValue)
           target <- Evaluation.evaluateClosure targetClosure fieldValue
           tele <- goConstrFields context' constr conArgs' target patterns'
           pure $ Telescope.Extend bindings domain'' plicity tele
@@ -867,12 +862,8 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
               Constraint ->
                 pure (Bindings.Unspanned "x", patterns)
           (context', fieldVar) <- Context.extendBefore context scrutineeVar bindings domain
-          let fieldValue =
-                Domain.var fieldVar
-
-              conArgs' =
-                conArgs Tsil.:> (plicity, fieldValue)
-
+          let fieldValue = Domain.var fieldVar
+              conArgs' = conArgs Tsil.:> (plicity, fieldValue)
           tele <- goConstrFields context' constr conArgs' target patterns'
           pure $ Telescope.Extend bindings domain'' plicity tele
         _ -> do
@@ -909,7 +900,7 @@ splitLiteral context config scrutineeValue scrutineeVar span lit outerType = do
         OrderedHashMap.fromListWith (<>) $
           concat $
             takeWhile (not . null) $
-              findVarLiteralMatches scrutineeVar . _matches <$> _clauses config
+              findVarLiteralMatches scrutineeVar . (.matches) <$> config.clauses
 
   f <- Unification.tryUnify (Context.spanned span context) (Elaboration.inferLiteral lit) outerType
 
@@ -976,9 +967,7 @@ splitEqualityOr context config matches k =
               Left Indices.Nope ->
                 check
                   context
-                  config
-                    { _clauses = drop 1 $ _clauses config
-                    }
+                  config {clauses = drop 1 config.clauses}
                   Postponement.CanPostpone
               Left Indices.Dunno ->
                 splitEqualityOr context config matches' k
@@ -1004,8 +993,7 @@ uninhabitedScrutinee context value = do
   value' <- Context.forceHead context value
   case value' of
     Domain.Neutral (Domain.Var var) (Domain.Apps args) -> do
-      let varType =
-            Context.lookupVarType var context
+      let varType = Context.lookupVarType var context
       type_ <- Context.instantiateType context varType $ toList args
       uninhabitedType context 1 (EnumMap.findWithDefault mempty var context.coveredConstructors) type_
     Domain.Con constr constructorArgs -> do
