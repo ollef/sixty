@@ -1,6 +1,7 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE PolyKinds #-}
@@ -8,6 +9,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UnboxedTuples #-}
+{-# LANGUAGE NoFieldSelectors #-}
 
 module Parser where
 
@@ -33,15 +35,15 @@ import Text.Parser.Combinators (sepBy, sepBy1)
 
 parseTokens :: Parser a -> TokenList -> Either Error.Parsing a
 parseTokens p tokens =
-  case unParser p tokens mempty (Position.LineColumn 0 0) (Position.Absolute 0) of
+  case p.unParser tokens mempty (Position.LineColumn 0 0) (Position.Absolute 0) of
     OK a _ _ _ ->
       Right a
     Fail _ tokens' err ->
       Left
         Error.Parsing
-          { Error.reason = _reason err
-          , Error.expected = toList $ _expected err
-          , Error.position =
+          { reason = err.reason
+          , expected = toList err.expected
+          , position =
               case tokens' of
                 Empty ->
                   Left Error.EOF
@@ -52,8 +54,8 @@ parseTokens p tokens =
 -------------------------------------------------------------------------------
 
 data ErrorReason = ErrorReason
-  { _reason :: Maybe Text
-  , _expected :: HashSet Text
+  { reason :: Maybe Text
+  , expected :: HashSet Text
   }
   deriving (Show)
 
@@ -197,7 +199,7 @@ instance Monad Parser where
     Parser \inp err lineCol base ->
       case p inp err lineCol base of
         OK a con inp' err' ->
-          consumedAtLeast con (unParser (f a) inp' err' lineCol base)
+          consumedAtLeast con ((f a).unParser inp' err' lineCol base)
         Fail con inp' err' ->
           Fail con inp' err'
 
@@ -230,7 +232,7 @@ Parser p <?> expect =
   Parser \inp err lineCol base ->
     case p inp err lineCol base of
       (# oa, con, inp', err' #) ->
-        (# oa, con, inp', err' {_expected = HashSet.insert expect $ _expected err'} #)
+        (# oa, con, inp', err' {expected = HashSet.insert expect err'.expected} #)
 
 notFollowedBy :: Parser Text -> Parser ()
 notFollowedBy (Parser p) =
@@ -253,7 +255,7 @@ withRecovery recover_ (Parser p) =
       ok@OK {} ->
         ok
       f@(Fail _con inp' err') ->
-        case unParser (recover_ err' base inp') inp err lineCol base of
+        case (recover_ err' base inp').unParser inp err lineCol base of
           ok@OK {} ->
             ok
           Fail {} ->
@@ -324,7 +326,7 @@ withIndentedTokenM f =
       Token (Position.LineColumn tokenLine tokenCol) tokenSpan token_ inp'
         | line == tokenLine || col < tokenCol ->
             f
-              (\pa -> consumedSome (unParser pa inp' mempty lineCol base))
+              (\pa -> consumedSome (pa.unParser inp' mempty lineCol base))
               (\err' -> Fail ConsumedNone inp $ err <> err')
               (Span.relativeTo base tokenSpan)
               token_
@@ -449,8 +451,8 @@ recover k errorReason _base inp = do
   pure $
     k $
       Error.Parsing
-        (_reason errorReason)
-        (HashSet.toList $ _expected errorReason)
+        errorReason.reason
+        (HashSet.toList errorReason.expected)
         pos
   where
     pos =
