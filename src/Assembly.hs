@@ -26,7 +26,6 @@ data Operand
   = LocalOperand !Local
   | GlobalConstant !Name.Lifted !Type
   | GlobalFunction !Name.Lifted !(Return Type) [Type]
-  | StructOperand [Operand]
   | Lit !Literal
   deriving (Eq, Show, Generic, Hashable)
 
@@ -34,7 +33,6 @@ data Type
   = Word
   | WordPointer
   | FunctionPointer !(Return Type) [Type]
-  | Struct [Type]
   deriving (Eq, Show, Generic, Hashable)
 
 data Return a = Void | Return a
@@ -58,9 +56,14 @@ data Instruction
       , constructorTag :: !Word8
       , size :: !Operand
       }
+  | Retains !Operand !Operand
+  | Releases !Operand !Operand
+  | AllocateGlobal
+      { destination :: !Local
+      , size :: !Operand
+      }
   | ExtractHeapPointer !Local !Operand
   | ExtractHeapPointerConstructorTag !Local !Operand
-  | ExtractValue !Local !Operand !Int
   | Switch !(Return (Type, Local)) !Operand [(Integer, BasicBlock)] BasicBlock
   deriving (Eq, Show, Generic, Hashable)
 
@@ -108,8 +111,6 @@ instance Pretty Operand where
         "(" <> pretty type_ <+> "constant" <+> pretty global <> ")"
       GlobalFunction global return_ arity ->
         "(function " <> pretty return_ <> " (" <> pretty arity <> ")" <+> pretty global <> ")"
-      StructOperand operands ->
-        "{" <> hsep (punctuate comma $ pretty <$> operands) <> "}"
       Lit lit ->
         pretty lit
 
@@ -119,7 +120,6 @@ instance Pretty Type where
       Word -> "word"
       WordPointer -> "word*"
       FunctionPointer returnType argTypes -> pretty returnType <+> tupled (pretty <$> argTypes)
-      Struct types -> "{" <> hsep (punctuate comma $ pretty <$> types) <> "}"
 
 instance Pretty Instruction where
   pretty instruction =
@@ -151,13 +151,17 @@ instance Pretty Instruction where
       RestoreStack o ->
         voidInstr "restorestack" [o]
       HeapAllocate dst a b ->
-        returningInstr dst "heap_alloc" [Lit $ Literal.Integer $ fromIntegral a, b]
+        returningInstr dst "gcmalloc" [Lit $ Literal.Integer $ fromIntegral a, b]
+      Retains pointer size_ ->
+        voidInstr "retains" [pointer, size_]
+      Releases pointer size_ ->
+        voidInstr "releases" [pointer, size_]
+      AllocateGlobal dst size_ ->
+        returningInstr dst "malloc" [size_]
       ExtractHeapPointer dst a ->
         returningInstr dst "extract heap pointer" [a]
       ExtractHeapPointerConstructorTag dst a ->
         returningInstr dst "extract heap pointer" [a]
-      ExtractValue dst struct index ->
-        pretty dst <+> "=" <+> "extractvalue" <+> hsep [pretty struct, pretty index]
       Switch result scrutinee branches default_ ->
         case result of
           Void -> ""

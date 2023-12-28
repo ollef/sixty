@@ -135,7 +135,7 @@ typeRepresentation env type_ =
           maybeType' <- Evaluation.applyFunction env (Telescope.fromVoid tele) args
           case maybeType' of
             Nothing ->
-              pure Representation.Direct -- a closure
+              pure Representation.Direct
             Just type' ->
               typeRepresentation env type'
         Syntax.DataDefinition Boxed _ ->
@@ -173,8 +173,8 @@ constructorFieldRepresentation env type_ accumulatedRepresentation = do
     Domain.Pi _ fieldType closure -> do
       fieldRepresentation <- typeRepresentation env fieldType
       case accumulatedRepresentation <> fieldRepresentation of
-        Representation.Indirect ->
-          pure Representation.Indirect
+        representation@Representation.Indirect ->
+          pure representation
         accumulatedRepresentation' -> do
           (context', var) <- Environment.extend env
           type'' <- Evaluation.evaluateClosure closure $ Domain.var var
@@ -198,7 +198,7 @@ compileData env dataTypeName (Syntax.ConstructorDefinitions constructors) = do
   (boxity, maybeTags) <- fetch $ Query.ConstructorRepresentations dataTypeName
   case boxity of
     Boxed ->
-      pure $ Syntax.Global (Name.Lifted Builtin.WordRepresentationName 0)
+      pure $ Syntax.Global (Name.Lifted Builtin.PointerRepresentationName 0)
     Unboxed -> do
       compiledConstructorFields <- forM (OrderedHashMap.toList constructors) \(_, type_) -> do
         type' <- Evaluation.evaluate env type_

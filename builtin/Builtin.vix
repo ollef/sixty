@@ -18,7 +18,11 @@ subInt : Int -> Int -> Int
 
 EmptyRepresentation : Type
 WordRepresentation : Type
+PointerRepresentation : Type
 
 maxRepresentation : Type -> Type -> Type
 addRepresentation : Type -> Type -> Type
 
+representationBytes : Type -> Int
+representationPointers : Type -> Int
+representationNonPointerBytes : Type -> Int

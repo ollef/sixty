@@ -11,8 +11,6 @@
 
 module Rules where
 
-import qualified Assembly.HeapAllocates
-import qualified Assembly.HeapAllocates as Assembly
 import qualified AssemblyToLLVM
 import qualified Builtin
 import qualified ClosureConversion
@@ -458,13 +456,6 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
       noError do
         definition <- fetch $ ClosureConverted name
         runM $ ClosureConvertedToAssembly.generateDefinition name definition
-    HeapAllocates name ->
-      noError do
-        maybeAssembly <- fetch $ Assembly name
-        case maybeAssembly of
-          Nothing -> pure False
-          Just assembly ->
-            runM $ Assembly.HeapAllocates.run $ Assembly.definitionHeapAllocates assembly
     AssemblyModule module_ ->
       noError do
         names <- fetch $ LambdaLiftedModuleDefinitions module_

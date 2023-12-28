@@ -58,7 +58,7 @@ runBuilder (Builder s) =
   evalStateT
     s
     BuilderState
-      { fresh = 3
+      { fresh = 0
       , instructions = mempty
       }
 
@@ -95,15 +95,14 @@ emptyEnvironment =
 
 extend :: Environment v -> Syntax.Type v -> Operand -> Builder (Environment (Succ v))
 extend env type_ location =
-  Builder $
-    lift do
-      type' <- Evaluation.evaluate (Context.toEnvironment env.context) type_
-      (context', var) <- Context.extend env.context type'
-      pure
-        Environment
-          { context = context'
-          , varLocations = EnumMap.insert var location env.varLocations
-          }
+  Builder $ lift do
+    type' <- Evaluation.evaluate (Context.toEnvironment env.context) type_
+    (context', var) <- Context.extend env.context type'
+    pure
+      Environment
+        { context = context'
+        , varLocations = EnumMap.insert var location env.varLocations
+        }
 
 operandNameSuggestion :: Assembly.Operand -> Assembly.NameSuggestion
 operandNameSuggestion operand =
@@ -116,21 +115,18 @@ operandNameSuggestion operand =
       Assembly.NameSuggestion $ Assembly.nameText global
     Assembly.Lit _ ->
       "literal"
-    Assembly.StructOperand _ ->
-      "struct"
 
 data Operand
   = Empty
   | -- | word sized
     Direct !Assembly.Operand
-  | Indirect !Assembly.Operand
+  | Indirect !Assembly.Operand !Assembly.Operand
 
 -------------------------------------------------------------------------------
 
 indexOperand :: Index v -> Environment v -> Operand
 indexOperand index env = do
-  let var =
-        Context.lookupIndexVar index env.context
+  let var = Context.lookupIndexVar index env.context
   fromMaybe (panic "ClosureConvertedToAssembly.indexOperand") $
     EnumMap.lookup var env.varLocations
 
@@ -143,6 +139,7 @@ globalConstantOperand name = do
         Assembly.GlobalConstant name case representation of
           Representation.Empty -> Assembly.WordPointer
           Representation.Direct -> Assembly.Word
+          -- TODO: needs to be a reference pair
           Representation.Indirect -> Assembly.WordPointer
     _ ->
       panic $ "ClosureConvertedToAssembly.globalConstantLocation: global without constant signature " <> show name
@@ -169,6 +166,18 @@ heapAllocate nameSuggestion constructorTag size = do
   emit Assembly.HeapAllocate {destination, constructorTag, size}
   pure $ Assembly.LocalOperand destination
 
+retains :: Assembly.Operand -> Assembly.Operand -> Builder ()
+retains pointer size = emit $ Assembly.Retains pointer size
+
+releases :: Assembly.Operand -> Assembly.Operand -> Builder ()
+releases pointer size = emit $ Assembly.Releases pointer size
+
+allocateGlobal :: Assembly.NameSuggestion -> Assembly.Operand -> Builder Assembly.Operand
+allocateGlobal nameSuggestion size = do
+  destination <- freshLocal nameSuggestion
+  emit Assembly.AllocateGlobal {destination, size}
+  pure $ Assembly.LocalOperand destination
+
 extractHeapPointer :: Assembly.NameSuggestion -> Assembly.Operand -> Builder Assembly.Operand
 extractHeapPointer nameSuggestion location = do
   destination <- freshLocal nameSuggestion
@@ -183,13 +192,12 @@ extractHeapPointerConstructorTag nameSuggestion location = do
 
 typeOf :: Environment v -> Syntax.Term v -> Builder (Operand, Representation)
 typeOf env term = do
-  (type_, typeRepresentation) <- Builder $
-    lift do
-      value <- Evaluation.evaluate (Context.toEnvironment env.context) term
-      typeValue <- TypeOf.typeOf env.context value
-      typeRepresentation <- ClosureConverted.Representation.typeRepresentation (Context.toEnvironment env.context) typeValue
-      type_ <- Readback.readback (Context.toEnvironment env.context) typeValue
-      pure (type_, typeRepresentation)
+  (type_, typeRepresentation) <- Builder $ lift do
+    value <- Evaluation.evaluate (Context.toEnvironment env.context) term
+    typeValue <- TypeOf.typeOf env.context value
+    typeRepresentation <- ClosureConverted.Representation.typeRepresentation (Context.toEnvironment env.context) typeValue
+    type_ <- Readback.readback (Context.toEnvironment env.context) typeValue
+    pure (type_, typeRepresentation)
   typeOperand <- generateType env type_
   pure (typeOperand, typeRepresentation)
 
@@ -291,12 +299,6 @@ addPointer nameSuggestion i1 i2 = do
   emit $ Assembly.AddPointer destination i1 i2
   pure $ Assembly.LocalOperand destination
 
-extractValue :: Assembly.NameSuggestion -> Assembly.Operand -> Int -> Builder Assembly.Operand
-extractValue nameSuggestion struct index = do
-  destination <- freshLocal nameSuggestion
-  emit $ Assembly.ExtractValue destination struct index
-  pure $ Assembly.LocalOperand destination
-
 -------------------------------------------------------------------------------
 
 forceIndirect :: Operand -> Builder (Assembly.Operand, Builder ())
@@ -371,8 +373,8 @@ generateModuleInit
 generateModuleInit moduleName definitions =
   runBuilder do
     inited <- load "inited" $ Assembly.GlobalConstant initedName Assembly.Word
-    Assembly.Void <-
-      switch
+    void
+      $ switch
         Assembly.Void
         inited
         [
@@ -386,7 +388,7 @@ generateModuleInit moduleName definitions =
               pure Assembly.Void
           )
         ]
-        $ pure Assembly.Void
+      $ pure Assembly.Void
     instructions <- gets (.instructions)
     pure
       [
@@ -405,12 +407,9 @@ generateModuleInit moduleName definitions =
     initedName = moduleInitedName moduleName
     initDefinition (name, definition) =
       case definition of
-        Assembly.KnownConstantDefinition {} ->
-          pure ()
-        Assembly.ConstantDefinition {} ->
-          callVoid (initDefinitionName name) []
-        Assembly.FunctionDefinition {} ->
-          pure ()
+        Assembly.KnownConstantDefinition {} -> pure ()
+        Assembly.ConstantDefinition {} -> callVoid (initDefinitionName name) []
+        Assembly.FunctionDefinition {} -> pure ()
 
 generateDefinition :: Name.Lifted -> Syntax.Definition -> M (Maybe Assembly.Definition)
 generateDefinition name@(Name.Lifted qualifiedName _) definition = do
@@ -447,21 +446,20 @@ generateGlobal env name representation term = do
     Nothing ->
       case representation of
         Representation.Empty -> makeConstantDefinition Assembly.WordPointer do
-          (_, deallocateTerm) <- generateTypedTerm env term (Direct emptyTypeOperand) representation
-          sequence_ deallocateTerm
+          (_, releaseTerm) <- generateTypedTerm env term (Direct emptyTypeOperand) representation
+          sequence_ releaseTerm
         Representation.Direct -> makeConstantDefinition Assembly.Word do
-          (result, deallocateTerm) <- generateTypedTerm env term (Direct directTypeOperand) representation
+          (result, releaseTerm) <- generateTypedTerm env term (Direct directTypeOperand) representation
           directResult <- forceDirect result
-          sequence_ deallocateTerm
+          sequence_ releaseTerm
           initGlobal name Assembly.Word directResult
         Representation.Indirect ->
           makeConstantDefinition Assembly.WordPointer do
             (type_, _representation) <- typeOf env term
             typeSize <- sizeOfType type_
-            taggedPointer <- heapAllocate "tagged_global_pointer" 0 typeSize
-            pointer <- extractHeapPointer "global_pointer" taggedPointer
-            storeTerm env term pointer type_
-            initGlobal name Assembly.WordPointer pointer
+            globalPointer <- allocateGlobal "global" typeSize
+            storeTerm env term globalPointer type_
+            initGlobal name Assembly.WordPointer globalPointer
 
 makeConstantDefinition
   :: Assembly.Type
@@ -518,7 +516,7 @@ generateFunction env returnRepresentation tele parameterRepresentations params =
           makeFunctionDefinition (Assembly.Return Assembly.Word) (toList params) do
             (result, deallocateTerm) <- generateTypedTerm env term (Direct directTypeOperand) returnRepresentation
             directResult <- forceDirect result
-            sequence_ deallocateTerm
+            sequence_ releaseTerm
             pure $ Assembly.Return directResult
         Representation.Indirect -> do
           returnLocation <- freshLocal "return_location"
@@ -551,19 +549,23 @@ makeFunctionDefinition
 makeFunctionDefinition returnType parameters m = do
   returnOperand <- m
   instructions <- gets (.instructions)
-  pure $ Assembly.FunctionDefinition returnType parameters $ Assembly.BasicBlock (toList instructions) returnOperand
+  pure $
+    Assembly.FunctionDefinition
+      returnType_
+      parameters
+      $ Assembly.BasicBlock (toList instructions) returnOperand
 
 -------------------------------------------------------------------------------
 
 generateType :: Environment v -> Syntax.Type v -> Builder Operand
 generateType env type_ = do
-  (type', maybeDeallocateType) <- generateTypedTerm env type_ (Direct pointerBytesOperand) Representation.Direct
-  case maybeDeallocateType of
+  (type', maybeReleaseType) <- generateTypedTerm env type_ (Direct pointerBytesOperand) Representation.Direct
+  case maybeReleaseType of
     Nothing ->
       pure type'
-    Just deallocateType -> do
+    Just releaseType -> do
       directType <- forceDirect type'
-      deallocateType
+      releaseType
       pure $ Direct directType
 
 generateTypedTerm :: Environment v -> Syntax.Term v -> Operand -> Representation -> Builder (Operand, Maybe (Builder ()))
@@ -572,10 +574,13 @@ generateTypedTerm env term type_ representation = do
         typeSize <- sizeOfType type_
         stack <- saveStack
         termLocation <- stackAllocate "term_location" typeSize
+        let release = releases termLocation typeSize
         storeTerm env term termLocation type_
         pure
           ( Indirect termLocation
-          , Just $ restoreStack stack
+          , Just do
+              release
+              restoreStack stack
           )
   case term of
     Syntax.Var index ->
@@ -591,10 +596,10 @@ generateTypedTerm env term type_ representation = do
       typeValue <- Builder $ lift $ Evaluation.evaluate (Context.toEnvironment env.context) termType
       typeRepresentation <- Builder $ lift $ ClosureConverted.Representation.typeRepresentation (Context.toEnvironment env.context) typeValue
       termType' <- generateType env termType
-      (term'', deallocateTerm) <- generateTypedTerm env term' termType' typeRepresentation
+      (term'', releaseTerm) <- generateTypedTerm env term' termType' typeRepresentation
       env' <- extend env termType term''
-      (result, deallocateBody) <- generateTypedTerm env' body type_ representation
-      pure (result, (>>) <$> deallocateBody <*> deallocateTerm)
+      (result, releaseBody) <- generateTypedTerm env' body type_ representation
+      pure (result, (>>) <$> releaseBody <*> releaseTerm)
     Syntax.Function _ ->
       pure (Direct pointerBytesOperand, Nothing)
     Syntax.Apply global arguments -> do
@@ -640,10 +645,12 @@ storeTerm env term returnLocation returnType =
             indexOperand index env
       returnTypeSize <- sizeOfType returnType
       copy returnLocation varOperand returnTypeSize
+      retains returnLocation returnTypeSize
     Syntax.Global global -> do
       operand <- globalConstantOperand global
       returnTypeSize <- sizeOfType returnType
       copy returnLocation operand returnTypeSize
+      retains returnLocation returnTypeSize
     Syntax.Con con params args -> do
       (boxity, maybeTag) <- fetch $ Query.ConstructorRepresentation con
       let tagArgs =
@@ -700,10 +707,10 @@ storeTerm env term returnLocation returnType =
       typeValue <- Builder $ lift $ Evaluation.evaluate (Context.toEnvironment env.context) type_
       typeRepresentation <- Builder $ lift $ ClosureConverted.Representation.typeRepresentation (Context.toEnvironment env.context) typeValue
       type' <- generateType env type_
-      (term'', deallocateTerm) <- generateTypedTerm env term' type' typeRepresentation
+      (term'', releaseTerm) <- generateTypedTerm env term' type' typeRepresentation
       env' <- extend env type_ term''
       storeTerm env' body returnLocation returnType
-      sequence_ deallocateTerm
+      sequence_ releaseTerm
     Syntax.Function _ ->
       store returnLocation pointerBytesOperand
     Syntax.Apply global arguments -> do
@@ -721,7 +728,7 @@ storeTerm env term returnLocation returnType =
         Representation.Direct -> do
           result <- callDirect "call_result" global arguments'
           store returnLocation result
-        Representation.Indirect -> do
+        Representation.Indirect ->
           callIndirect global arguments' returnLocation
       deallocateArguments
     Syntax.Pi {} ->
@@ -736,7 +743,7 @@ storeTerm env term returnLocation returnType =
               (Syntax.Apply (Name.Lifted Builtin.UnknownName 0) [Syntax.Global $ Name.Lifted Builtin.UnitName 0])
               maybeDefaultBranch
       (scrutineeType, scrutineeRepresentation) <- typeOf env scrutinee
-      (scrutinee', deallocateScrutinee) <- generateTypedTerm env scrutinee scrutineeType scrutineeRepresentation
+      (scrutinee', releaseScrutinee) <- generateTypedTerm env scrutinee scrutineeType scrutineeRepresentation
       branches' <- ClosureConverted.Representation.compileBranches branches
       case branches' of
         ClosureConverted.Representation.TaggedConstructorBranches Unboxed constructorBranches -> do
@@ -750,24 +757,22 @@ storeTerm env term returnLocation returnType =
               constructorTag
               [ ( fromIntegral $ shiftL branchTag 1
                 , do
-                    storeUnboxedBranch env firstConstructorFieldBuilder branch returnLocation returnType
+                    storeBranch env firstConstructorFieldBuilder branch returnLocation returnType
                     deallocateScrutinee'
-                    sequence_ deallocateScrutinee
+                    sequence_ releaseScrutinee
                     pure Assembly.Void
                 )
               | (branchTag, branch) <- constructorBranches
               ]
               ( do
                   deallocateScrutinee'
-                  sequence_ deallocateScrutinee
+                  sequence_ releaseScrutinee
                   storeTerm env defaultBranch returnLocation returnType
                   pure Assembly.Void
               )
         ClosureConverted.Representation.TaggedConstructorBranches Boxed constructorBranches -> do
           scrutinee'' <- forceDirect scrutinee'
-          sequence_ deallocateScrutinee
-          let constructorBasePointerBuilder = extractHeapPointer "boxed_constructor_pointer" scrutinee''
-              firstConstructorFieldOffsetBuilder _ = pure $ Assembly.Lit $ Literal.Integer 0
+          let constructorBasePointerBuilder suggestion = extractHeapPointer suggestion scrutinee''
           constructorTag <- extractHeapPointerConstructorTag "heap_scrutinee_tag" scrutinee''
           void $
             switch
@@ -775,29 +780,27 @@ storeTerm env term returnLocation returnType =
               constructorTag
               [ ( fromIntegral branchTag
                 , do
-                    storeBoxedBranch env constructorBasePointerBuilder firstConstructorFieldOffsetBuilder branch returnLocation returnType
+                    storeBranch env constructorBasePointerBuilder branch returnLocation returnType
                     pure Assembly.Void
                 )
               | (branchTag, branch) <- constructorBranches
               ]
               ( do
                   storeTerm env defaultBranch returnLocation returnType
+                  sequence_ releaseScrutinee
                   pure Assembly.Void
               )
         ClosureConverted.Representation.UntaggedConstructorBranch Unboxed branch -> do
-          (scrutinee'', deallocateScrutinee') <- forceIndirect scrutinee'
-          storeUnboxedBranch env (const $ pure scrutinee'') branch returnLocation returnType
-          deallocateScrutinee'
-          sequence_ deallocateScrutinee
+          (scrutinee'', releaseScrutinee') <- forceIndirect scrutinee'
+          storeBranch env (const $ pure scrutinee'') branch returnLocation returnType
+          releaseScrutinee'
+          sequence_ releaseScrutinee
         ClosureConverted.Representation.UntaggedConstructorBranch Boxed branch -> do
           scrutinee'' <- forceDirect scrutinee'
-          sequence_ deallocateScrutinee
-          let constructorBasePointerBuilder = extractHeapPointer "boxed_constructor_pointer" scrutinee''
-              firstConstructorFieldOffsetBuilder _ = pure $ Assembly.Lit $ Literal.Integer 0
-          storeBoxedBranch env constructorBasePointerBuilder firstConstructorFieldOffsetBuilder branch returnLocation returnType
+          let constructorBasePointerBuilder suggestion = extractHeapPointer suggestion scrutinee''
+          storeBranch env constructorBasePointerBuilder branch returnLocation returnType
         ClosureConverted.Representation.LiteralBranches literalBranches -> do
           directScrutinee <- forceDirect scrutinee'
-          sequence_ deallocateScrutinee
           void $
             switch
               Assembly.Void
@@ -814,14 +817,14 @@ storeTerm env term returnLocation returnType =
                   pure Assembly.Void
               )
 
-storeUnboxedBranch
+storeBranch
   :: Environment v
   -> (Assembly.NameSuggestion -> Builder Assembly.Operand)
   -> Telescope Name Syntax.Type Syntax.Term v
   -> Assembly.Operand
   -> Operand
   -> Builder ()
-storeUnboxedBranch env constructorFieldBuilder tele returnLocation returnType =
+storeBranch env constructorFieldBuilder tele returnLocation returnType =
   case tele of
     Telescope.Extend (Name name) type_ _plicity tele' -> do
       constructorField <- constructorFieldBuilder $ Assembly.NameSuggestion name
@@ -830,6 +833,7 @@ storeUnboxedBranch env constructorFieldBuilder tele returnLocation returnType =
             typeSize <- sizeOfType type'
             addPointer nameSuggestion constructorField typeSize
       env' <- extend env type_ $ Indirect constructorField
+<<<<<<< HEAD
       storeUnboxedBranch env' nextConstructorFieldBuilder tele' returnLocation returnType
     Telescope.Empty branch ->
       storeTerm env branch returnLocation returnType
@@ -858,45 +862,46 @@ storeBoxedBranch env constructorBasePointerBuilder constructorFieldOffsetBuilder
       env' <- extend env type_ $ Indirect stackConstructorField
       storeBoxedBranch env' constructorBasePointerBuilder nextConstructorFieldOffsetBuilder tele' returnLocation returnType
       restoreStack stack
+      storeBranch env' nextConstructorFieldBuilder tele' returnLocation returnType
     Telescope.Empty branch ->
       storeTerm env branch returnLocation returnType
 
 generateArguments :: Environment v -> [(Syntax.Term v, Representation)] -> Builder ([(Assembly.Type, Assembly.Operand)], Builder ())
 generateArguments env arguments = do
-  (argumentGenerators, outerDeallocators) <- mapAndUnzipM (uncurry $ generateArgument env) arguments
-  (arguments', innerDeallocators) <- unzip <$> sequence argumentGenerators
+  (argumentGenerators, outerReleases) <- mapAndUnzipM (uncurry $ generateArgument env) arguments
+  (arguments', innerReleases) <- unzip <$> sequence argumentGenerators
   pure
     ( concat arguments'
     , do
-        sequence_ $ reverse innerDeallocators
-        sequence_ $ reverse outerDeallocators
+        sequence_ $ reverse innerReleases
+        sequence_ $ reverse outerReleases
     )
 
 generateArgument :: Environment v -> Syntax.Term v -> Representation -> Builder (Builder ([(Assembly.Type, Assembly.Operand)], Builder ()), Builder ())
 generateArgument env term representation =
   case representation of
     Representation.Empty -> do
-      (_, deallocateTerm) <- generateTypedTerm env term (Direct emptyTypeOperand) representation
+      (_, releaseTerm) <- generateTypedTerm env term (Direct emptyTypeOperand) representation
       pure
         ( pure ([], pure ())
-        , sequence_ deallocateTerm
+        , sequence_ releaseTerm
         )
     Representation.Direct -> do
-      (term', deallocateTerm) <- generateTypedTerm env term (Direct directTypeOperand) representation
+      (term', releaseTerm) <- generateTypedTerm env term (Direct directTypeOperand) representation
       pure
         ( do
             directTerm <- forceDirect term'
             pure ([(Assembly.Word, directTerm)], pure ())
-        , sequence_ deallocateTerm
+        , sequence_ releaseTerm
         )
     Representation.Indirect -> do
       (type_, representation_) <- typeOf env term
-      (termOperand, deallocateTermOperand) <- generateTypedTerm env term type_ representation_
+      (termOperand, releaseTermOperand) <- generateTypedTerm env term type_ representation_
       pure
         ( do
-            (termLocation, deallocateTerm) <- forceIndirect termOperand
-            pure ([(Assembly.WordPointer, termLocation)], deallocateTerm)
-        , sequence_ deallocateTermOperand
+            (termLocation, releaseTerm) <- forceIndirect termOperand
+            pure ([(Assembly.WordPointer, termLocation)], releaseTerm)
+        , sequence_ releaseTermOperand
         )
 
 -------------------------------------------------------------------------------

@@ -20,7 +20,6 @@ import qualified Data.ByteString.Short as ShortByteString
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
-import qualified Data.List as List
 import Data.String (fromString)
 import qualified Literal
 import qualified Name
@@ -85,8 +84,6 @@ llvmType type_ =
     Assembly.Word -> wordSizedInt
     Assembly.WordPointer -> pointer
     Assembly.FunctionPointer _returnType _argumentTypes -> pointer
-    Assembly.Struct types ->
-      braces $ llvmType <$> types
 
 parameterAttributes :: Assembly.Type -> [Builder]
 parameterAttributes type_ =
@@ -94,7 +91,6 @@ parameterAttributes type_ =
     Assembly.Word -> []
     Assembly.WordPointer -> ["nonnull"]
     Assembly.FunctionPointer {} -> ["nonnull"]
-    Assembly.Struct _ -> []
 
 llvmReturnType :: Assembly.Return Assembly.Type -> Builder
 llvmReturnType result =
@@ -425,7 +421,7 @@ assembleInstruction instruction =
       declare "llvm.stackrestore" $ "declare ccc void @llvm.stackrestore" <> parens [pointer]
       emitInstruction $ "call ccc void @llvm.stackrestore" <> parens [typedOperand argument']
     Assembly.HeapAllocate {destination, constructorTag, size} -> do
-      destination' <- activateLocal Assembly.Word destination
+      destination' <- activateLocal Assembly.WordPointer destination
       size' <- assembleOperandAndCastTo Assembly.Word size
       declare
         "__regcall3__heap_alloc"
@@ -442,6 +438,9 @@ assembleInstruction instruction =
             [ "i8 " <> Builder.word8Dec constructorTag
             , typedOperand size'
             ]
+    Assembly.Retains ptr size -> _
+    Assembly.Releases ptr size -> _
+    Assembly.AllocateGlobal dst size -> _
     Assembly.ExtractHeapPointer destination pointer_ -> do
       destination' <- activateLocal Assembly.WordPointer destination
       pointer' <- assembleOperandAndCastTo Assembly.Word pointer_
@@ -457,14 +456,6 @@ assembleInstruction instruction =
           <> wordSizedInt
           <> " @heap_object_constructor_tag"
           <> parens [typedOperand pointer']
-    Assembly.ExtractValue destination struct index -> do
-      (_nameSuggestion, structType, struct') <- assembleOperand struct
-      case structType of
-        Assembly.Struct types -> do
-          let fieldType = types List.!! index
-          destination' <- activateLocal fieldType destination
-          emitInstruction $ localName destination' <> " = extractvalue " <> typedOperand struct' <> ", " <> Builder.intDec index
-        _ -> panic "AssemblyToLLVM.assembleInstruction: ExtractValue of non-struct"
     Assembly.Switch destination scrutinee branches (Assembly.BasicBlock defaultBranchInstructions defaultBranchResult) -> do
       scrutinee' <- assembleOperandAndCastTo Assembly.Word scrutinee
       branchLabels <- forM branches \(i, _) -> do
@@ -534,8 +525,6 @@ assembleOperand = \case
         emitInstruction $
           localName destination <> " = load " <> llvmType_ <> ", ptr " <> globalName globalName_ <> ", align " <> Builder.intDec alignment
         pure (nameSuggestion, Assembly.WordPointer, TypedOperand {type_ = llvmType_, operand = Local destination})
-      Assembly.Struct types ->
-        pure (nameSuggestion, Assembly.Struct types, TypedOperand {type_ = pointer, operand = Global globalName_})
   Assembly.GlobalFunction global returnType parameterTypes -> do
     let defType = Assembly.FunctionPointer returnType parameterTypes
         globalNameText = Assembly.nameText global
@@ -544,18 +533,6 @@ assembleOperand = \case
         globalType = llvmType defType
     declare globalName_ $ "declare fastcc " <> llvmReturnType returnType <> " " <> globalName globalName_ <> parens (llvmType <$> parameterTypes)
     pure (nameSuggestion, defType, TypedOperand {type_ = globalType, operand = Global globalName_})
-  Assembly.StructOperand operands -> do
-    typedOperands <- mapM assembleOperand operands
-    let types = (\(_, type', _) -> type') <$> typedOperands
-        operands' = (\(_, _, operand') -> operand') <$> typedOperands
-        type_ = Assembly.Struct types
-        llvmType_ = llvmType type_
-        go (index, struct) fieldOperand = do
-          struct' <- freshName "struct"
-          emitInstruction $ localName struct' <> " = insertvalue " <> typedOperand struct <> ", " <> typedOperand fieldOperand <> ", " <> Builder.intDec index
-          pure (index + 1, TypedOperand {type_ = llvmType_, operand = Local struct'})
-    result <- snd <$> foldM go (0, TypedOperand {type_ = llvmType_, operand = Constant "undef"}) operands'
-    pure ("struct", type_, result)
   Assembly.Lit lit ->
     case lit of
       Literal.Integer int ->
@@ -586,20 +563,6 @@ cast nameSuggestion newType type_ operand_
           emitInstruction $
             localName newOperand <> " = ptrtoint " <> typedOperand operand_ <> " to " <> llvmNewType
           pure TypedOperand {type_ = llvmNewType, operand = Local newOperand}
-        (Assembly.Struct types, Assembly.Struct newTypes) -> do
-          let llvmType_ = llvmType type_
-              go (index, struct) (fieldType, newFieldType) = do
-                field <- freshName "field"
-                let fieldOperand = TypedOperand {type_ = llvmType fieldType, operand = Local field}
-                emitInstruction $
-                  localName field <> " = extractvalue " <> typedOperand operand_ <> ", " <> Builder.intDec index
-                castField <- cast "field" newFieldType fieldType fieldOperand
-                struct' <- freshName "struct"
-                emitInstruction $
-                  localName struct' <> " = insertvalue " <> typedOperand struct <> ", " <> typedOperand castField <> ", " <> Builder.intDec index
-                pure (index + 1, TypedOperand {type_ = llvmType_, operand = Local struct'})
-
-          snd <$> foldM go (0, TypedOperand {type_ = llvmType_, operand = Constant "undef"}) (zip types newTypes)
         _ -> do
           newOperand <- freshName $ nameSuggestion <> "_cast"
           emitInstruction $

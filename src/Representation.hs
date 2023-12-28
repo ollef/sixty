@@ -1,6 +1,7 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Representation where
@@ -25,20 +26,15 @@ instance Semigroup Representation where
   _ <> _ = Indirect
 
 instance Monoid Representation where
-  mempty =
-    Empty
+  mempty = Empty
 
 instance Pretty Representation where
-  pretty representation =
-    case representation of
-      Empty ->
-        "empty"
-      Direct ->
-        "direct"
-      Indirect ->
-        "indirect"
+  pretty = \case
+    Empty -> "empty"
+    Direct -> "direct"
+    Indirect -> "indirect"
 
-maxM :: (Monad m) => [m Representation] -> m Representation
+maxM :: Monad m => [m Representation] -> m Representation
 maxM [] = pure mempty
 maxM (m : ms) = do
   representation <- m

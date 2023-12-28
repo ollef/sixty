@@ -100,6 +100,10 @@ pattern WordRepresentationName :: Name.Qualified
 pattern WordRepresentationName =
   "Sixten.Builtin.WordRepresentation"
 
+pattern PointerRepresentationName :: Name.Qualified
+pattern PointerRepresentationName =
+  "Sixten.Builtin.PointerRepresentation"
+
 pattern AddRepresentationName :: Name.Qualified
 pattern AddRepresentationName =
   "Sixten.Builtin.addRepresentation"

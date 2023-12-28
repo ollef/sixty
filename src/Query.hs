@@ -83,7 +83,6 @@ data Query a where
   ConstructorRepresentations :: Name.Qualified -> Query (Boxity, Maybe (HashMap Name.Constructor Int))
   ConstructorRepresentation :: Name.QualifiedConstructor -> Query (Boxity, Maybe Int)
   Assembly :: Name.Lifted -> Query (Maybe Assembly.Definition)
-  HeapAllocates :: Name.Lifted -> Query Bool
   AssemblyModule :: Name.Module -> Query [(Name.Lifted, Assembly.Definition)]
   LLVMModule :: Name.Module -> Query Lazy.ByteString
   LLVMModuleInitModule :: Query Lazy.ByteString
@@ -144,10 +143,9 @@ instance Hashable (Query a) where
       ConstructorRepresentations a -> h 30 a
       ConstructorRepresentation a -> h 31 a
       Assembly a -> h 32 a
-      HeapAllocates a -> h 33 a
-      AssemblyModule a -> h 34 a
-      LLVMModule a -> h 35 a
-      LLVMModuleInitModule -> h 36 ()
+      AssemblyModule a -> h 33 a
+      LLVMModule a -> h 34 a
+      LLVMModuleInitModule -> h 35 ()
     where
       {-# INLINE h #-}
       h :: (Hashable b) => Int -> b -> Int
