@@ -7,20 +7,19 @@ import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
-import Data.Persist
 import qualified Name
 import Orphans ()
 import Protolude
 
 data DefinitionKind = Type | Definition
-  deriving (Eq, Ord, Show, Generic, Hashable, Persist)
+  deriving (Eq, Ord, Show, Generic, Hashable)
 
 data Entry
   = Name !Name.Qualified
   | -- | Only data
     Constructors (HashSet Name.QualifiedConstructor) (HashSet Name.Qualified)
   | Ambiguous (HashSet Name.QualifiedConstructor) (HashSet Name.Qualified)
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 entryConstructors :: Entry -> HashSet Name.QualifiedConstructor
 entryConstructors entry =

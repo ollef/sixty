@@ -4,7 +4,6 @@
 
 module Plicity where
 
-import Data.Persist
 import Prettyprinter
 import Protolude
 
@@ -12,7 +11,7 @@ data Plicity
   = Implicit
   | Explicit
   | Constraint
-  deriving (Eq, Ord, Show, Generic, Persist, Hashable)
+  deriving (Eq, Ord, Show, Generic, Hashable)
 
 instance Pretty Plicity where
   pretty plicity =

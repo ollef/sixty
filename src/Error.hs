@@ -7,7 +7,6 @@ module Error where
 import Core.Domain.Pattern (Pattern)
 import qualified Core.Syntax as Syntax
 import Data.HashSet (HashSet)
-import Data.Persist
 import Data.Tsil (Tsil)
 import qualified Error.Parsing as Error
 import qualified Meta
@@ -27,7 +26,7 @@ data Error
   | MultipleFilesWithModuleName !Name.Module FilePath FilePath
   | ModuleFileNameMismatch !Name.Module !Name.Module !Span.Absolute FilePath
   | Elaboration !Scope.DefinitionKind !Name.Qualified !Error.Spanned
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic)
 
 data Elaboration
   = NotInScope !Name.Surface
@@ -43,18 +42,18 @@ data Elaboration
   | PlicityMismatch !FieldOrArgument !PlicityMismatch
   | UnableToInferImplicitLambda
   | ImplicitApplicationMismatch (HashSet Name) !PrettyableTerm !PrettyableTerm
-  deriving (Eq, Show, Generic, Persist, Exception)
+  deriving (Eq, Show, Generic, Exception)
 
 data PlicityMismatch
   = Mismatch !Plicity !Plicity
   | Missing !Plicity
   | Extra
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic)
 
 data FieldOrArgument
   = Field
   | Argument
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic)
 
 instance Pretty FieldOrArgument where
   pretty fieldOrArg =
@@ -68,7 +67,7 @@ data MatchKind
   = Clause
   | Branch
   | Lambda
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic)
 
 instance Pretty MatchKind where
   pretty clauseOrPat =
@@ -82,12 +81,12 @@ instance Pretty MatchKind where
 
 data Spanned
   = Spanned !Span.Relative !Error.Elaboration
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic)
 
 data V
 
 data PrettyableTerm = PrettyableTerm Name.Module [Name] (Syntax.Term V)
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic)
 
 data PrettyablePattern = PrettyablePattern Name.Module [Name] Pattern
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic)

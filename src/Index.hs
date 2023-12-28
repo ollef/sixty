@@ -4,14 +4,13 @@
 
 module Index where
 
-import Data.Persist
 import Protolude hiding (pred)
 
 -------------------------------------------------------------------------------
 -- Indices
 
 newtype Index v = Index Int
-  deriving (Eq, Ord, Show, Persist, Hashable)
+  deriving (Eq, Ord, Show, Hashable)
 
 -------------------------------------------------------------------------------
 -- Phantom types

@@ -35,7 +35,6 @@ import Data.IORef.Lifted
 import qualified Data.IntSeq as IntSeq
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
-import Data.Persist
 import qualified Data.Set as Set
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
@@ -89,7 +88,7 @@ data Match = Match !Domain.Value !Domain.Value !Plicity !Pattern !Domain.Type
 data Pattern
   = UnresolvedPattern !Span.Relative !Surface.UnspannedPattern
   | Pattern !Span.Relative !UnspannedPattern
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 data UnspannedPattern
   = Con !Span.Relative !Name.QualifiedConstructor [Surface.PlicitPattern]
@@ -98,12 +97,12 @@ data UnspannedPattern
   | Lit !Literal
   | Anno !Surface.Pattern !Surface.Type
   | Forced !Surface.Term
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 data PlicitPattern
   = ExplicitPattern !Pattern
   | ImplicitPattern !Span.Relative (HashMap Name Pattern)
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 unresolvedPattern :: Surface.Pattern -> Pattern
 unresolvedPattern (Surface.Pattern span unspannedPattern) =
@@ -755,14 +754,13 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
         _ -> do
           typeType <- fetch $ Query.ElaboratedType typeName
           typeType' <- Evaluation.evaluate Environment.empty typeType
-          let
-            -- Ensure the metas don't depend on the scrutineeVar, because that
-            -- is guaranteed to lead to circularity when solving scrutineeVar
-            -- later.
-            contextWithoutScrutineeVar =
-              outerContext
-                { Context.boundVars = IntSeq.delete scrutineeVar outerContext.boundVars
-                }
+          let -- Ensure the metas don't depend on the scrutineeVar, because that
+              -- is guaranteed to lead to circularity when solving scrutineeVar
+              -- later.
+              contextWithoutScrutineeVar =
+                outerContext
+                  { Context.boundVars = IntSeq.delete scrutineeVar outerContext.boundVars
+                  }
           (metas, _) <- Elaboration.insertMetas contextWithoutScrutineeVar Elaboration.UntilTheEnd typeType'
           f <- Unification.tryUnify outerContext (Domain.Neutral (Domain.Global typeName) $ Domain.Apps $ fromList metas) outerType
           result <- goParams (Context.spanned span outerContext) metas mempty tele'

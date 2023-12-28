@@ -10,7 +10,6 @@ module Error.Hydrated where
 
 import qualified Core.Pretty as Pretty
 import Data.Coerce
-import Data.Persist
 import qualified Data.Text as Text
 import qualified Data.Text.Unsafe as Text
 import Error (Error)
@@ -35,7 +34,7 @@ data Hydrated = Hydrated
   , lineText :: !Text
   , error :: !Error
   }
-  deriving (Show, Generic, Persist)
+  deriving (Show, Generic)
 
 headingAndBody :: (MonadFetch Query m, MonadIO m) => Error -> m (Doc ann, Doc ann)
 headingAndBody error =

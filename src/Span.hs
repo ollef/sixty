@@ -5,16 +5,15 @@
 
 module Span where
 
-import Data.Persist
 import qualified Position
 import Prettyprinter
 import Protolude
 
 data Absolute = Absolute !Position.Absolute !Position.Absolute
-  deriving (Eq, Ord, Show, Generic, Hashable, Persist, NFData)
+  deriving (Eq, Ord, Show, Generic, Hashable, NFData)
 
 data Relative = Relative !Position.Relative !Position.Relative
-  deriving (Eq, Ord, Show, Generic, Hashable, Persist)
+  deriving (Eq, Ord, Show, Generic, Hashable)
 
 relativeTo :: Position.Absolute -> Span.Absolute -> Span.Relative
 relativeTo base (Span.Absolute start end) =
@@ -37,7 +36,7 @@ relativeContains (Relative start end) pos =
   start <= pos && pos < end
 
 data LineColumn = LineColumns !Position.LineColumn !Position.LineColumn
-  deriving (Show, Generic, Persist)
+  deriving (Show, Generic)
 
 lineColumn :: Absolute -> Text -> (LineColumn, Text)
 lineColumn (Absolute start end) text =

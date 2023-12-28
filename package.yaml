@@ -64,7 +64,6 @@ library:
     - lifted-base
     - monad-control
     - parsers
-    - persist
     - prettyprinter
     - process
     - random

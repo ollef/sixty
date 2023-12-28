@@ -4,7 +4,6 @@
 
 module Core.Binding where
 
-import Data.Persist
 import Data.String
 import Name (Name (Name))
 import qualified Name
@@ -15,7 +14,7 @@ import qualified Surface.Syntax as Surface
 data Binding
   = Spanned !Span.Relative !Name
   | Unspanned !Name
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 toName :: Binding -> Name
 toName bindings =

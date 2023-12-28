@@ -3,13 +3,12 @@
 
 module Literal where
 
-import Data.Persist
 import Prettyprinter
 import Protolude
 
 newtype Literal
   = Integer Integer
-  deriving (Eq, Generic, Show, Hashable, Persist)
+  deriving (Eq, Generic, Show, Hashable)
 
 instance Pretty Literal where
   pretty literal =

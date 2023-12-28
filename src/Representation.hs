@@ -5,25 +5,24 @@
 
 module Representation where
 
-import Data.Persist
 import Prettyprinter
 import Protolude
 
 data Signature
   = ConstantSignature !Representation
   | FunctionSignature [Representation] !Representation
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 data Representation
   = Empty
   | Direct !ContainsHeapPointers
   | Indirect !ContainsHeapPointers
-  deriving (Eq, Ord, Show, Generic, Persist, Hashable)
+  deriving (Eq, Ord, Show, Generic, Hashable)
 
 data ContainsHeapPointers
   = Doesn'tContainHeapPointers
   | MightContainHeapPointers
-  deriving (Eq, Ord, Show, Generic, Persist, Hashable)
+  deriving (Eq, Ord, Show, Generic, Hashable)
 
 instance Semigroup Representation where
   Empty <> representation = representation

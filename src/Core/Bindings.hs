@@ -5,7 +5,6 @@
 module Core.Bindings where
 
 import qualified Data.List.NonEmpty as NonEmpty
-import Data.Persist
 import Data.String
 import Name (Name)
 import Protolude
@@ -14,7 +13,7 @@ import qualified Span
 data Bindings
   = Spanned (NonEmpty (Span.Relative, Name))
   | Unspanned !Name
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 toName :: Bindings -> Name
 toName bindings =

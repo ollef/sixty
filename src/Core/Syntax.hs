@@ -13,7 +13,6 @@ import Data.EnumSet (EnumSet)
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import Data.OrderedHashMap (OrderedHashMap)
-import Data.Persist
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import Index
@@ -42,21 +41,21 @@ data Term v
   | App !(Term v) !Plicity !(Term v)
   | Case !(Term v) (Branches v) !(Maybe (Term v))
   | Spanned !Span.Relative !(Term v)
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 type Type = Term
 
 data Branches v
   = ConstructorBranches !Name.Qualified (ConstructorBranches v)
   | LiteralBranches (LiteralBranches v)
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 data Lets v
   = LetType !Binding !(Type v) !(Scope Lets v)
   | -- | index must refer to a variable introduced in a LetType in the same Lets block
     Let !Bindings !(Index v) !(Term v) !(Lets v)
   | In !(Term v)
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 type ConstructorBranches v =
   OrderedHashMap Name.Constructor ([Span.Relative], Telescope Bindings Type Term v)
@@ -130,12 +129,12 @@ data Definition
   = TypeDeclaration !(Type Void)
   | ConstantDefinition !(Term Void)
   | DataDefinition !Boxity !(Telescope Binding Type ConstructorDefinitions Void)
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 newtype ConstructorDefinitions v
   = ConstructorDefinitions (OrderedHashMap Name.Constructor (Type v))
   deriving (Show, Generic)
-  deriving newtype (Eq, Persist, Hashable)
+  deriving newtype (Eq, Hashable)
 
 constructorFieldPlicities :: Type v -> [Plicity]
 constructorFieldPlicities type_ =

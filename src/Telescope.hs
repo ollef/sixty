@@ -6,7 +6,6 @@
 
 module Telescope where
 
-import Data.Persist
 import Index
 import Plicity
 import Protolude
@@ -24,10 +23,6 @@ deriving instance
 deriving instance
   (Show n, (forall v'. Show (t v')), (forall v'. Show (k v')))
   => Show (Telescope n t k v)
-
-deriving instance
-  (Persist n, (forall v'. Persist (t v')), (forall v'. Persist (k v')))
-  => Persist (Telescope n t k v)
 
 deriving instance
   (Hashable n, (forall v'. Hashable (t v')), (forall v'. Hashable (k v')))

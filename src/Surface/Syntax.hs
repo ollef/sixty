@@ -7,7 +7,6 @@ module Surface.Syntax where
 
 import Boxity
 import Data.HashMap.Lazy (HashMap)
-import Data.Persist
 import qualified Error.Parsing as Error
 import qualified Extra
 import Literal (Literal)
@@ -21,7 +20,7 @@ import qualified Span
 
 data Term
   = Term !Span.Relative !UnspannedTerm
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 unspanned :: Term -> UnspannedTerm
 unspanned (Term _ term) =
@@ -39,21 +38,21 @@ data UnspannedTerm
   | Case !Term [(Pattern, Term)]
   | Wildcard
   | ParseError !Error.Parsing
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 type Type = Term
 
 data Let
   = LetType !SpannedName !Type
   | Let !Name.Surface [(Span.Relative, Clause)]
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 data SpannedName = SpannedName !Span.Relative !Name.Surface
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 data Pattern
   = Pattern !Span.Relative !UnspannedPattern
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 data UnspannedPattern
   = ConOrVar !SpannedName [PlicitPattern]
@@ -61,19 +60,19 @@ data UnspannedPattern
   | LitPattern !Literal
   | Anno !Pattern !Type
   | Forced !Term
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 data PlicitPattern
   = ExplicitPattern !Pattern
   | ImplicitPattern !Span.Relative (HashMap Name ImplicitPatternBinding)
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 data ImplicitPatternBinding = ImplicitPatternBinding
   { spanIncludingName :: !Span.Relative
   , pattern_ :: !Pattern
   , isTextuallyFirst :: !Bool
   }
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 plicitPatternSpan :: PlicitPattern -> Span.Relative
 plicitPatternSpan pat =
@@ -150,19 +149,19 @@ data Definition
   = TypeDeclaration !Span.Relative !Type
   | ConstantDefinition [(Span.Relative, Clause)]
   | DataDefinition !Span.Relative !Boxity [(SpannedName, Type, Plicity)] [ConstructorDefinition]
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 data Clause = Clause
   { span :: !Span.Relative
   , patterns :: [PlicitPattern]
   , rhs :: !Term
   }
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 data ConstructorDefinition
   = GADTConstructors [(Span.Relative, Name.Constructor)] Type
   | ADTConstructor !Span.Relative Name.Constructor [Type]
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 spans :: Definition -> [Span.Relative]
 spans def =

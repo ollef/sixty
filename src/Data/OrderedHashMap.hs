@@ -5,7 +5,6 @@ module Data.OrderedHashMap where
 
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
-import Data.Persist
 import Protolude hiding (get, put, toList)
 import Prelude (Show (showsPrec), showParen, showString, shows)
 
@@ -34,13 +33,6 @@ instance Foldable (OrderedHashMap k) where
 instance (Hashable k, Hashable v) => Hashable (OrderedHashMap k v) where
   hashWithSalt s =
     hashWithSalt s . toList
-
-instance (Hashable k, Persist k, Persist v) => Persist (OrderedHashMap k v) where
-  get =
-    fromList <$> get
-
-  put =
-    put . toList
 
 null :: OrderedHashMap k v -> Bool
 null (OrderedHashMap h) =

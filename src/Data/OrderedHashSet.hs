@@ -5,12 +5,11 @@ module Data.OrderedHashSet where
 
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
-import Data.Persist
 import Protolude hiding (toList)
 import Prelude (Show (showsPrec), showParen, showString, shows)
 
 newtype OrderedHashSet a = OrderedHashSet (OrderedHashMap a ())
-  deriving (Eq, Ord, Hashable, Persist)
+  deriving (Eq, Ord, Hashable)
 
 instance Show a => Show (OrderedHashSet a) where
   showsPrec p xs =

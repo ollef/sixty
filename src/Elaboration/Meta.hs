@@ -14,7 +14,6 @@ import qualified Data.EnumMap as EnumMap
 import Data.EnumSet (EnumSet)
 import qualified Data.EnumSet as EnumSet
 import Data.List (partition)
-import Data.Persist
 import qualified Meta
 import Orphans ()
 import qualified Postponement
@@ -33,7 +32,7 @@ data CachedMetas = CachedMetas
   , unsolved :: EnumSet Meta.Index -- Or unknown
   , solved :: EnumSet Meta.Index
   }
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 instance Semigroup CachedMetas where
   CachedMetas a1 b1 c1 <> CachedMetas a2 b2 c2 =
@@ -148,13 +147,13 @@ addPostponedIndices index postponementIndices state =
 data EagerEntry
   = EagerUnsolved (Syntax.Type Void) !Int (EnumSet Postponement.Index) !Span.Relative
   | EagerSolved (Syntax.Term Void) CachedMetas (Syntax.Type Void)
-  deriving (Eq, Generic, Persist, Hashable)
+  deriving (Eq, Generic, Hashable)
 
 data EagerState = EagerState
   { eagerEntries :: EnumMap Meta.Index EagerEntry
   , eagerNextIndex :: !Meta.Index
   }
-  deriving (Eq, Generic, Persist, Hashable)
+  deriving (Eq, Generic, Hashable)
 
 fromEagerState :: EagerState -> State m
 fromEagerState state =

@@ -7,7 +7,6 @@
 
 module Name where
 
-import Data.Persist
 import Data.String
 import qualified Data.Text as Text
 import Extra
@@ -16,34 +15,34 @@ import Protolude hiding (Constructor)
 
 newtype Surface = Surface Text
   deriving stock (Eq, Ord, Show)
-  deriving newtype (IsString, Semigroup, Hashable, Persist)
+  deriving newtype (IsString, Semigroup, Hashable)
 
 newtype Name = Name Text
   deriving stock (Eq, Ord, Show)
-  deriving newtype (IsString, Hashable, Persist)
+  deriving newtype (IsString, Hashable)
 
 newtype Constructor = Constructor Text
   deriving stock (Eq, Ord, Show)
-  deriving newtype (IsString, Hashable, Persist)
+  deriving newtype (IsString, Hashable)
 
 newtype Module = Module Text
   deriving stock (Eq, Ord, Show)
-  deriving newtype (IsString, Hashable, Persist)
+  deriving newtype (IsString, Hashable)
 
 data Qualified = Qualified
   { moduleName :: !Module
   , name :: !Name
   }
-  deriving (Eq, Ord, Show, Generic, Persist)
+  deriving (Eq, Ord, Show, Generic)
 
 data QualifiedConstructor = QualifiedConstructor
   { typeName :: !Qualified
   , constructorName :: !Constructor
   }
-  deriving (Eq, Ord, Show, Generic, Persist)
+  deriving (Eq, Ord, Show, Generic)
 
 data Lifted = Lifted !Qualified !Int
-  deriving (Eq, Ord, Show, Generic, Persist)
+  deriving (Eq, Ord, Show, Generic)
 
 unqualifyConstructor :: QualifiedConstructor -> Constructor
 unqualifyConstructor (QualifiedConstructor _ c) = c

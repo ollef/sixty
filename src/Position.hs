@@ -6,18 +6,17 @@
 
 module Position where
 
-import Data.Persist
 import qualified Data.Text as Text
 import qualified Data.Text.Unsafe as Text
 import Protolude
 
 newtype Absolute = Absolute Int
   deriving stock (Eq, Ord, Show)
-  deriving newtype (Num, Hashable, Persist, NFData)
+  deriving newtype (Num, Hashable, NFData)
 
 newtype Relative = Relative Int
   deriving stock (Eq, Ord, Show)
-  deriving newtype (Num, Hashable, Persist)
+  deriving newtype (Num, Hashable)
 
 relativeTo :: Absolute -> Absolute -> Relative
 relativeTo (Absolute base) (Absolute pos) =
@@ -27,7 +26,7 @@ add :: Absolute -> Relative -> Absolute
 add (Absolute base) (Relative rel) = Absolute $ base + rel
 
 data LineColumn = LineColumn !Int !Int
-  deriving (Eq, Ord, Show, Generic, Persist, NFData)
+  deriving (Eq, Ord, Show, Generic, NFData)
 
 addLine :: LineColumn -> LineColumn
 addLine (LineColumn line _) =

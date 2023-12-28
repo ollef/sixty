@@ -10,14 +10,11 @@
 
 module Query.Mapped where
 
-import Control.Monad.Fail
 import Data.Constraint
 import Data.Constraint.Extras
-import qualified Data.Dependent.HashMap as DHashMap
 import Data.GADT.Compare
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
-import Data.Persist as Persist
 import Orphans ()
 import Protolude
 import Rock
@@ -74,22 +71,3 @@ instance ArgDict c (Query key result) where
     case query of
       Map -> Dict
       Query {} -> Dict
-
-instance Persist key => Persist (DHashMap.Some (Query key result)) where
-  put (DHashMap.Some query) =
-    case query of
-      Map ->
-        Persist.put @Word8 0
-      Query q -> do
-        Persist.put @Word8 1
-        Persist.put q
-
-  get = do
-    tag <- Persist.get @Word8
-    case tag of
-      0 ->
-        pure $ DHashMap.Some Map
-      1 ->
-        DHashMap.Some . Query <$> Persist.get
-      _ ->
-        fail "getSome Query"

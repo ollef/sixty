@@ -3,7 +3,6 @@
 
 module Core.Domain.Pattern where
 
-import Data.Persist
 import Literal (Literal)
 import qualified Name
 import Plicity
@@ -13,4 +12,4 @@ data Pattern
   = Wildcard
   | Con !Name.QualifiedConstructor [(Plicity, Pattern)]
   | Lit !Literal
-  deriving (Eq, Show, Generic, Persist)
+  deriving (Eq, Show, Generic)

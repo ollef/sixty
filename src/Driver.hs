@@ -24,8 +24,6 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import Data.IORef.Lifted
-import Data.Persist (Persist)
-import qualified Data.Persist as Persist
 import qualified Data.Text.IO as Text
 import Data.Text.Utf16.Rope (Rope)
 import qualified Data.Text.Utf16.Rope as Rope
@@ -118,24 +116,6 @@ initialState = do
       , tracesVar
       , errorsVar
       }
-
-encodeState :: Persist err => State (err, doc) -> IO ByteString
-encodeState state = do
-  traces <- readIORef state.tracesVar
-  errors <- readIORef state.errorsVar
-  pure $
-    Persist.encode (traces, DHashMap.map (\(Const errDocs) -> Const $ fst <$> errDocs) errors)
-
-decodeState :: Persist err => ByteString -> IO (State err)
-decodeState bs = do
-  s <- initialState
-  case Persist.decode bs of
-    Right (traces, errors) -> do
-      void $ atomicWriteIORef s.tracesVar traces
-      void $ atomicWriteIORef s.errorsVar errors
-    Left _ ->
-      pure ()
-  pure s
 
 data Prune
   = Don'tPrune

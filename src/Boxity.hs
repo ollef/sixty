@@ -4,14 +4,13 @@
 
 module Boxity where
 
-import Data.Persist
 import Prettyprinter
 import Protolude
 
 data Boxity
   = Unboxed
   | Boxed
-  deriving (Eq, Ord, Show, Generic, Persist, Hashable)
+  deriving (Eq, Ord, Show, Generic, Hashable)
 
 instance Pretty Boxity where
   pretty boxity =

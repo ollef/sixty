@@ -9,7 +9,6 @@
 
 module Assembly where
 
-import Data.Persist
 import Literal (Literal)
 import qualified Literal
 import qualified Name
@@ -17,11 +16,11 @@ import Prettyprinter
 import Protolude hiding (Type, local, moduleName)
 
 data Local = Local !Int !NameSuggestion
-  deriving (Eq, Ord, Show, Generic, Hashable, Persist)
+  deriving (Eq, Ord, Show, Generic, Hashable)
 
 newtype NameSuggestion = NameSuggestion Text
   deriving stock (Show, Generic)
-  deriving newtype (IsString, Persist, Semigroup, Monoid)
+  deriving newtype (IsString, Semigroup, Monoid)
 
 data Operand
   = LocalOperand !Local
@@ -29,17 +28,17 @@ data Operand
   | GlobalFunction !Name.Lifted !(Return Type) [Type]
   | StructOperand [Operand]
   | Lit !Literal
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 data Type
   = Word
   | WordPointer
   | FunctionPointer !(Return Type) [Type]
   | Struct [Type]
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 data Return a = Void | Return a
-  deriving (Eq, Show, Generic, Persist, Hashable, Foldable, Traversable, Functor)
+  deriving (Eq, Show, Generic, Hashable, Foldable, Traversable, Functor)
 
 data Instruction
   = Copy !Operand !Operand !Operand
@@ -66,18 +65,18 @@ data Instruction
   | ExtractHeapPointerConstructorTag !Local !Operand
   | ExtractValue !Local !Operand !Int
   | Switch !(Return (Type, Local)) !Operand [(Integer, BasicBlock)] BasicBlock
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 data Definition
   = KnownConstantDefinition !Type !Literal !Bool
   | ConstantDefinition !Type !(Return Type) [(Type, Local)] BasicBlock
   | FunctionDefinition !(Return Type) [(Type, Local)] BasicBlock
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 type StackPointer = Local
 
 data BasicBlock = BasicBlock [Instruction] !(Return Operand)
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 instance Applicative Return where
   pure = Return

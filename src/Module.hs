@@ -5,7 +5,6 @@
 module Module where
 
 import Data.HashSet (HashSet)
-import Data.Persist
 import qualified Name
 import Orphans ()
 import Protolude
@@ -15,7 +14,7 @@ data Header = Header
   { exposedNames :: !ExposedNames
   , imports :: [Import]
   }
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 instance Semigroup Header where
   Header exposed1 imports1 <> Header exposed2 imports2 =
@@ -31,7 +30,7 @@ instance Monoid Header where
 data ExposedNames
   = Exposed (HashSet Name.Surface)
   | AllExposed
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 instance Semigroup ExposedNames where
   Exposed names1 <> Exposed names2 =
@@ -51,4 +50,4 @@ data Import = Import
   , alias :: !(Span.Absolute, Name.Surface)
   , importedNames :: !ExposedNames
   }
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)

@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE NoFieldSelectors #-}
 
 module Occurrences.Intervals where
 
@@ -18,7 +19,6 @@ import qualified Data.HashSet as HashSet
 import Data.IntervalMap.FingerTree (IntervalMap)
 import qualified Data.IntervalMap.FingerTree as IntervalMap
 import qualified Data.List as List
-import Data.Persist
 import qualified Data.Text.Unsafe as Text
 import Literal (Literal)
 import qualified Name
@@ -33,14 +33,14 @@ data Item
   | Con Name.QualifiedConstructor
   | Lit Literal
   | Var Var
-  deriving (Show, Eq, Generic, Hashable, Persist)
+  deriving (Show, Eq, Generic, Hashable)
 
 data Intervals = Intervals
   { intervals :: IntervalMap Position.Relative Item
   , items :: HashMap Item (HashSet Span.Relative)
   , varBindingSpans :: EnumMap Var (NonEmpty Span.Relative)
   }
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 instance Semigroup Intervals where
   Intervals a1 b1 c1 <> Intervals a2 b2 c2 =

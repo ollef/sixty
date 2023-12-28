@@ -16,7 +16,6 @@ module Query where
 import qualified Assembly
 import Boxity
 import qualified ClosureConverted.Syntax as ClosureConverted
-import Control.Monad.Fail
 import Core.Binding (Binding)
 import qualified Core.Syntax as Syntax
 import qualified Data.ByteString.Lazy as Lazy
@@ -27,7 +26,6 @@ import Data.GADT.Show.TH
 import Data.HashMap.Lazy (HashMap)
 import Data.HashSet (HashSet)
 import Data.OrderedHashSet (OrderedHashSet)
-import Data.Persist as Persist
 import Data.Some (Some (Some))
 import Data.Text.Utf16.Rope (Rope)
 import qualified Elaboration.Meta
@@ -162,93 +160,3 @@ instance Hashable (Some Query) where
   {-# INLINE hashWithSalt #-}
   hashWithSalt salt (Some query) =
     hashWithSalt salt query
-
-instance Persist (Some Query) where
-  get = do
-    n <- get @Word8
-    case n of
-      0 -> pure $ Some SourceDirectories
-      1 -> pure $ Some InputFiles
-      2 -> Some . FileText <$> get
-      3 -> Some . FileRope <$> get
-      4 -> Some . ModuleFile <$> get
-      5 -> Some . ParsedFile <$> get
-      6 -> Some . ModuleDefinitions <$> get
-      7 -> Some . ModuleHeader <$> get
-      8 -> (\(x, Some y) -> Some $ ImportedNames x y) <$> get
-      9 -> Some . NameAliases <$> get
-      10 -> Some . ModulePositionMap <$> get
-      11 -> Some . ModuleSpanMap <$> get
-      12 -> (\(x, Some y) -> Some $ ParsedDefinition x y) <$> get
-      13 -> Some . ModuleScope <$> get
-      14 -> Some . uncurry ResolvedName <$> get
-      15 -> (\(x, y) -> Some $ ElaboratingDefinition x y) <$> get
-      16 -> Some . ElaboratedType <$> get
-      17 -> Some . ElaboratedDefinition <$> get
-      18 -> (\(x, Some y) -> Some $ Dependencies x y) <$> get
-      19 -> (\(x, Some y) -> Some $ TransitiveDependencies x y) <$> get
-      20 -> Some . ConstructorType <$> get
-      21 -> (\(x, y) -> Some $ DefinitionPosition x y) <$> get
-      22 -> (\(x, y) -> Some $ Occurrences x y) <$> get
-      23 -> Some . LambdaLifted <$> get
-      24 -> Some . LambdaLiftedDefinition <$> get
-      25 -> Some . LambdaLiftedModuleDefinitions <$> get
-      26 -> Some . ClosureConverted <$> get
-      27 -> Some . ClosureConvertedType <$> get
-      28 -> Some . ClosureConvertedConstructorType <$> get
-      29 -> Some . ClosureConvertedSignature <$> get
-      30 -> Some . ConstructorRepresentations <$> get
-      31 -> Some . ConstructorRepresentation <$> get
-      32 -> Some . Assembly <$> get
-      33 -> Some . HeapAllocates <$> get
-      34 -> Some . AssemblyModule <$> get
-      35 -> Some . LLVMModule <$> get
-      36 -> pure $ Some LLVMModuleInitModule
-      _ -> fail "Persist (Some Query): no such tag"
-
-  put (Some query) =
-    case query of
-      SourceDirectories -> p 0 ()
-      InputFiles -> p 1 ()
-      FileText a -> p 2 a
-      FileRope a -> p 3 a
-      ModuleFile a -> p 4 a
-      ParsedFile a -> p 5 a
-      ModuleDefinitions a -> p 6 a
-      ModuleHeader a -> p 7 a
-      ImportedNames a b -> p 8 (a, Some b)
-      NameAliases a -> p 9 a
-      ModulePositionMap a -> p 10 a
-      ModuleSpanMap a -> p 11 a
-      ParsedDefinition a b -> p 12 (a, Some b)
-      ModuleScope a -> p 13 a
-      ResolvedName a b -> p 14 (a, b)
-      ElaboratingDefinition a b -> p 15 (a, b)
-      ElaboratedType a -> p 16 a
-      ElaboratedDefinition a -> p 17 a
-      Dependencies a b -> p 18 (a, Some b)
-      TransitiveDependencies a b -> p 19 (a, Some b)
-      ConstructorType a -> p 20 a
-      DefinitionPosition a b -> p 21 (a, b)
-      Occurrences a b -> p 22 (a, b)
-      LambdaLifted a -> p 23 a
-      LambdaLiftedDefinition a -> p 24 a
-      LambdaLiftedModuleDefinitions a -> p 25 a
-      ClosureConverted a -> p 26 a
-      ClosureConvertedType a -> p 27 a
-      ClosureConvertedConstructorType a -> p 28 a
-      ClosureConvertedSignature a -> p 29 a
-      ConstructorRepresentations a -> p 30 a
-      ConstructorRepresentation a -> p 31 a
-      Assembly a -> p 32 a
-      HeapAllocates a -> p 33 a
-      AssemblyModule a -> p 34 a
-      LLVMModule a -> p 35 a
-      LLVMModuleInitModule -> p 36 ()
-    where
-      -- Don't forget to add a case to `get` above!
-
-      p :: Persist a => Word8 -> a -> Put ()
-      p tag a = do
-        put tag
-        put a

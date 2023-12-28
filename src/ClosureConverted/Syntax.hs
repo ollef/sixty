@@ -7,7 +7,6 @@ module ClosureConverted.Syntax where
 
 import Boxity
 import Data.OrderedHashMap (OrderedHashMap)
-import Data.Persist
 import Index
 import Literal (Literal)
 import Name (Name)
@@ -59,14 +58,14 @@ data Term v
   | Closure !Name.Lifted [Term v]
   | ApplyClosure !(Term v) [Term v]
   | Case !(Term v) (Branches v) !(Maybe (Term v))
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 type Type = Term
 
 data Branches v
   = ConstructorBranches !Name.Qualified (ConstructorBranches v)
   | LiteralBranches (LiteralBranches v)
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 type ConstructorBranches v =
   OrderedHashMap Name.Constructor (Telescope Name Type Term v)
@@ -80,12 +79,12 @@ data Definition
   | FunctionDefinition !(Telescope Name Type Term Void)
   | DataDefinition !Boxity (ConstructorDefinitions Void)
   | ParameterisedDataDefinition !Boxity !(Telescope Name Type ConstructorDefinitions Void)
-  deriving (Eq, Show, Generic, Persist, Hashable)
+  deriving (Eq, Show, Generic, Hashable)
 
 newtype ConstructorDefinitions v
   = ConstructorDefinitions (OrderedHashMap Name.Constructor (Type v))
   deriving (Show, Generic)
-  deriving newtype (Eq, Persist, Hashable)
+  deriving newtype (Eq, Hashable)
 
 fromVoid :: Term Void -> Term v
 fromVoid =
