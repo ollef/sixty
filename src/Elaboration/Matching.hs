@@ -754,13 +754,14 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
         _ -> do
           typeType <- fetch $ Query.ElaboratedType typeName
           typeType' <- Evaluation.evaluate Environment.empty typeType
-          let -- Ensure the metas don't depend on the scrutineeVar, because that
-              -- is guaranteed to lead to circularity when solving scrutineeVar
-              -- later.
-              contextWithoutScrutineeVar =
-                outerContext
-                  { Context.boundVars = IntSeq.delete scrutineeVar outerContext.boundVars
-                  }
+          let
+            -- Ensure the metas don't depend on the scrutineeVar, because that
+            -- is guaranteed to lead to circularity when solving scrutineeVar
+            -- later.
+            contextWithoutScrutineeVar =
+              outerContext
+                { Context.boundVars = IntSeq.delete scrutineeVar outerContext.boundVars
+                }
           (metas, _) <- Elaboration.insertMetas contextWithoutScrutineeVar Elaboration.UntilTheEnd typeType'
           f <- Unification.tryUnify outerContext (Domain.Neutral (Domain.Global typeName) $ Domain.Apps $ fromList metas) outerType
           result <- goParams (Context.spanned span outerContext) metas mempty tele'
