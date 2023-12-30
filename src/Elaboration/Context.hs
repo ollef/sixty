@@ -162,7 +162,7 @@ extendSurface context name@(Name.Surface nameText) type_ = do
   pure
     ( context
         { surfaceNames = HashMap.insert name (Domain.var var, type_) context.surfaceNames
-        , varNames = EnumMap.insert var (Name nameText) $ context.varNames
+        , varNames = EnumMap.insert var (Name nameText) context.varNames
         , indices = context.indices Index.Map.:> var
         , types = EnumMap.insert var type_ context.types
         , boundVars = context.boundVars IntSeq.:> var
@@ -271,7 +271,7 @@ define context var value = do
 
       (pre, post) =
         Tsil.partition (`EnumSet.member` deps) $
-          IntSeq.toTsil $
+          IntSeq.toTsil
             context'.boundVars
 
   pure

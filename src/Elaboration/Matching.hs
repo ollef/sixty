@@ -359,7 +359,7 @@ check context config canPostpone = do
       splitEqualityOr context config' matches $
         splitConstructorOr context config' matches $ do
           let indeterminateIndexUnification = do
-                Context.report context $ Error.IndeterminateIndexUnification $ config.matchKind
+                Context.report context $ Error.IndeterminateIndexUnification config.matchKind
                 Elaboration.readback context $ Builtin.Unknown config.expectedType
           case solved matches of
             Nothing ->
