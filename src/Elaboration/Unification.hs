@@ -16,7 +16,9 @@ import qualified Core.Domain as Domain
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
+import qualified Data.EnumMap as EnumMap
 import qualified Data.EnumSet as EnumSet
+import qualified Data.HashSet as HashSet
 import Data.IntSeq (IntSeq)
 import qualified Data.IntSeq as IntSeq
 import qualified Data.OrderedHashMap as OrderedHashMap
@@ -215,6 +217,16 @@ unify context flexibility value1 value2 = do
           matches <- potentiallyMatchingBranches context value1' branches
           invertCase meta spine args matches
 
+    -- Check var equals all cases.
+    (Domain.Neutral (Domain.Var var) (Domain.Empty Domain.:> Domain.Case branches), v2) ->
+      assumeBranches context var branches \context' -> unify context' flexibility value1' v2
+    (v1, Domain.Neutral (Domain.Var var) (Domain.Empty Domain.:> Domain.Case branches)) ->
+      assumeBranches context var branches \context' -> unify context' flexibility v1 value2'
+    -- Unify branches if scrutinees are flexibly equal.
+    (Domain.Neutral head1 (spine1 Domain.:> Domain.Case branches1), Domain.Neutral head2 (spine2 Domain.:> Domain.Case branches2)) -> do
+      unify context Flexibility.Flexible (Domain.Neutral head1 spine1) (Domain.Neutral head2 spine2)
+      unifyBranches context flexibility branches1 branches2
+
     -- Last call for cases: all branches have to unify with the RHS.
     (Domain.Neutral _ (_ Domain.:> Domain.Case (Domain.Branches env1 brs1 defaultBranch1)), v2) -> do
       case defaultBranch1 of
@@ -345,6 +357,61 @@ unifySpines context flexibility spine1 spine2 =
           throwIO $ Error.TypeMismatch mempty
     _ ->
       throwIO $ Error.TypeMismatch mempty
+
+assumeBranches :: Context v -> Var -> Domain.Branches -> (forall v'. Context v' -> M ()) -> M ()
+assumeBranches context var (Domain.Branches _env branches defaultBranch) k =
+  case branches of
+    Syntax.ConstructorBranches conTypeName conBranches -> do
+      let constrs = Name.QualifiedConstructor conTypeName <$> OrderedHashMap.keys conBranches
+          coveredConstrs = EnumMap.findWithDefault mempty var context.coveredConstructors
+          uncoveredConstrs = filter (`HashSet.member` coveredConstrs) constrs
+      forM_ uncoveredConstrs \constr -> do
+        varType <- Context.forceHead context $ Context.lookupVarType var context
+        case varType of
+          Domain.Neutral (Domain.Global _typeName) (Domain.Apps typeArgs) -> do
+            constrType <- fetch $ Query.ConstructorType constr
+            constrType' <-
+              Evaluation.evaluate
+                Environment.empty
+                (Syntax.fromVoid $ Telescope.fold Syntax.Pi constrType)
+            instantiatedConstrType <- Context.instantiateType context constrType' $ toList typeArgs
+            assumeConstructor context instantiatedConstrType constr Tsil.Empty
+          _ -> panic "assumeBranches"
+      when (isJust defaultBranch) do
+        -- TODO evaluation needs coveredConstructors
+        let context' = context {Context.coveredConstructors = EnumMap.insertWith (<>) var (HashSet.fromList uncoveredConstrs) context.coveredConstructors}
+        k context'
+    Syntax.LiteralBranches litBranches -> do
+      let lits = OrderedHashMap.keys litBranches
+          coveredLits = EnumMap.findWithDefault mempty var context.coveredLiterals
+          uncoveredLits = filter (`HashSet.member` coveredLits) lits
+      forM_ uncoveredLits \lit -> do
+        let context' = Context.defineWellOrdered context var (Domain.Lit lit)
+        k context'
+      when (isJust defaultBranch) do
+        -- TODO evaluation needs coveredLiterals
+        let context' =
+              context
+                { Context.coveredLiterals =
+                    EnumMap.insertWith (<>) var (HashSet.fromList uncoveredLits) context.coveredLiterals
+                }
+        k context'
+  where
+    assumeConstructor :: Context v -> Domain.Type -> Name.QualifiedConstructor -> Tsil (Plicity, Domain.Value) -> M ()
+    assumeConstructor context' constrType constr args = do
+      constrType' <- Context.forceHead context' constrType
+      case constrType' of
+        Domain.Fun domain plicity target -> do
+          (context'', var') <- Context.extendUnindexed context' "name" domain
+          assumeConstructor context'' target constr (args Tsil.:> (plicity, Domain.var var'))
+        Domain.Pi binding domain plicity closure -> do
+          (context'', var') <- Context.extend context' (Binding.toName binding) domain
+          target <- Evaluation.evaluateClosure closure $ Domain.var var'
+          assumeConstructor context'' target constr (args Tsil.:> (plicity, Domain.var var'))
+        Domain.Neutral (Domain.Global _typeName) _ -> do
+          let context'' = Context.defineWellOrdered context var $ Domain.Con constr args
+          k context''
+        _ -> panic "assumeConstructor"
 
 unifyBranches
   :: Context v

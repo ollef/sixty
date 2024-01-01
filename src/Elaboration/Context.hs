@@ -187,6 +187,22 @@ extend context name type_ = do
     , var
     )
 
+extendUnindexed
+  :: Context v
+  -> Name
+  -> Domain.Type
+  -> M (Context v, Var)
+extendUnindexed context name type_ = do
+  var <- freshVar
+  pure
+    ( context
+        { varNames = EnumMap.insert var name context.varNames
+        , types = EnumMap.insert var type_ context.types
+        , boundVars = context.boundVars IntSeq.:> var
+        }
+    , var
+    )
+
 extendSurfaceDef
   :: Context v
   -> Name.Surface
