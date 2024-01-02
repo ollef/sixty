@@ -162,7 +162,7 @@ extendSurface context name@(Name.Surface nameText) type_ = do
   pure
     ( context
         { surfaceNames = HashMap.insert name (Domain.var var, type_) context.surfaceNames
-        , varNames = EnumMap.insert var (Name nameText) $ context.varNames
+        , varNames = EnumMap.insert var (Name nameText) context.varNames
         , indices = context.indices Index.Map.:> var
         , types = EnumMap.insert var type_ context.types
         , boundVars = context.boundVars IntSeq.:> var
@@ -266,14 +266,10 @@ skip context = do
 define :: Context v -> Var -> Domain.Value -> M (Context v)
 define context var value = do
   deps <- evalStateT (dependencies context value) mempty
-  let context' =
-        defineWellOrdered context var value
-
+  let context' = defineWellOrdered context var value
       (pre, post) =
         Tsil.partition (`EnumSet.member` deps) $
-          IntSeq.toTsil $
-            context'.boundVars
-
+          IntSeq.toTsil context'.boundVars
   pure
     context'
       { boundVars =

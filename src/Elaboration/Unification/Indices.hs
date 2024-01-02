@@ -66,10 +66,10 @@ isTouchable var = do
 extend :: Name -> Domain.Type -> (Var -> Unify (Succ v) a) -> Unify v a
 extend name type_ k = do
   st <- get
-  (result, st') <- lift $ do
+  (result, st') <- lift do
     (context', var) <- Context.extend st.context name type_
     runStateT (k var) st {context = context', touchableBefore = Index.Succ st.touchableBefore}
-  put st' {context = unextend $ st'.context, touchableBefore = st.touchableBefore}
+  put st' {context = unextend st'.context, touchableBefore = st.touchableBefore}
   pure result
 
 unextend :: Context (Succ v) -> Context v
