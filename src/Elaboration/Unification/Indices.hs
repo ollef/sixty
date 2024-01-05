@@ -59,7 +59,7 @@ isTouchable :: Var -> Unify v Bool
 isTouchable var = do
   touchableIndex <- gets (.touchableBefore)
   context <- gets (.context)
-  pure $ case Context.lookupVarIndex var context of
+  pure case Context.lookupVarIndex var context of
     Just varIndex -> Index.Succ varIndex > touchableIndex
     Nothing -> False
 
@@ -336,17 +336,15 @@ occursHead occ flexibility hd =
   case hd of
     Domain.Var var
       | var == occ ->
-          throwIO $
-            case flexibility of
-              Flexibility.Rigid -> Nope
-              Flexibility.Flexible -> Dunno
+          throwIO case flexibility of
+            Flexibility.Rigid -> Nope
+            Flexibility.Flexible -> Dunno
       | otherwise -> do
           touchable <- isTouchable var
           unless touchable $
-            throwIO $
-              case flexibility of
-                Flexibility.Rigid -> Nope
-                Flexibility.Flexible -> Dunno
+            throwIO case flexibility of
+              Flexibility.Rigid -> Nope
+              Flexibility.Flexible -> Dunno
     Domain.Global _ -> pure ()
     Domain.Meta _ -> pure ()
 
