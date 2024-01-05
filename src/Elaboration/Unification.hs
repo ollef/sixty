@@ -320,12 +320,13 @@ compareHeadDepths head1 head2 =
     (Domain.Global global1, Domain.Global global2) -> do
       global1DependsOn2 <- fetch $ Query.TransitiveDependencies global2 $ Mapped.Query global1
       global2DependsOn1 <- fetch $ Query.TransitiveDependencies global1 $ Mapped.Query global2
-      pure $ case (global1DependsOn2, global2DependsOn1) of
+      pure case (global1DependsOn2, global2DependsOn1) of
         (Just _, Nothing) -> GT
         (Nothing, Just _) -> LT
         _ -> EQ
     (_, Domain.Global _) -> pure LT
     (Domain.Global _, _) -> pure GT
+    (Domain.Var v1, Domain.Var v2) -> pure $ compare v1 v2
     _ -> pure EQ
 
 unifySpines :: Context v -> Flexibility -> Domain.Spine -> Domain.Spine -> M ()
