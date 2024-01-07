@@ -95,7 +95,7 @@ toEnvironment
 toEnvironment context =
   Environment
     { indices = context.indices
-    , values = context.values
+    , values = mempty
     , glueableBefore = Index.Zero
     }
 

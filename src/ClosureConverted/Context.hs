@@ -19,7 +19,6 @@ import Var (Var)
 
 data Context (v :: Data.Kind.Type) = Context
   { indices :: Index.Map v Var
-  , values :: EnumMap Var Domain.Value
   , types :: EnumMap Var Domain.Type
   , glueableBefore :: !(Index (Succ v))
   }
@@ -28,7 +27,6 @@ empty :: Context Void
 empty =
   Context
     { indices = Index.Map.Empty
-    , values = mempty
     , types = mempty
     , glueableBefore = Index.Zero
     }
@@ -49,7 +47,7 @@ toEnvironment
 toEnvironment context =
   Environment
     { indices = indices context
-    , values = values context
+    , values = mempty
     , glueableBefore = glueableBefore context
     }
 
