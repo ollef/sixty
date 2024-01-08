@@ -69,7 +69,7 @@ unify :: Context v -> Flexibility -> Domain.Value -> Domain.Value -> M ()
 unify context flexibility value1 value2 = do
   value1' <- Context.forceHeadGlue context value1
   value2' <- Context.forceHeadGlue context value2
-  catchAndAdd $ case (value1', value2') of
+  catchAndAdd case (value1', value2') of
     -- Both metas
     (Domain.Neutral (Domain.Meta metaIndex1) (Domain.Apps args1), Domain.Neutral (Domain.Meta metaIndex2) (Domain.Apps args2))
       | Flexibility.Rigid <- flexibility -> do
