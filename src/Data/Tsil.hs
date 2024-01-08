@@ -5,6 +5,7 @@
 
 module Data.Tsil where
 
+import qualified Data.Sequence as Seq
 import GHC.Exts
 import Protolude
 import qualified Prelude
@@ -101,3 +102,11 @@ unzip Empty = (Empty, Empty)
 unzip (as :> (a, b)) = (as' :> a, bs' :> b)
   where
     (as', bs') = Data.Tsil.unzip as
+
+toSeq :: Tsil a -> Seq a
+toSeq Empty = Seq.Empty
+toSeq (as :> a) = toSeq as Seq.:|> a
+
+fromSeq :: Seq a -> Tsil a
+fromSeq Seq.Empty = Empty
+fromSeq (as Seq.:|> a) = fromSeq as :> a
