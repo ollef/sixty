@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternSynonyms #-}
@@ -40,7 +42,7 @@ data Head
   = Var !Var
   | Global !Name.Qualified
   | Meta !Meta.Index
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic, Hashable)
 
 type Environment = Environment.Environment Value
 
