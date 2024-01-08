@@ -5,6 +5,7 @@ module Builtin where
 
 import qualified Core.Domain as Domain
 import qualified Core.Syntax as Syntax
+import qualified Data.Sequence as Seq
 import qualified Data.Tsil as Tsil
 import qualified Name
 import Plicity
@@ -31,7 +32,7 @@ pattern UnknownName =
 
 pattern Unknown :: Domain.Type -> Domain.Value
 pattern Unknown type_ =
-  Domain.Neutral (Domain.Global UnknownName) (Domain.Apps (Tsil.Empty Tsil.:> (Explicit, type_)))
+  Domain.Neutral (Domain.Global UnknownName) (Domain.Apps (Seq.Empty Seq.:|> (Explicit, type_)))
 
 pattern UnitName :: Name.Qualified
 pattern UnitName =
@@ -53,7 +54,7 @@ pattern Equals
 pattern Equals k a b =
   Domain.Neutral
     (Domain.Global EqualsName)
-    (Domain.Apps (Tsil.Empty Tsil.:> (Implicit, k) Tsil.:> (Explicit, a) Tsil.:> (Explicit, b)))
+    (Domain.Apps (Seq.Empty Seq.:|> (Implicit, k) Seq.:|> (Explicit, a) Seq.:|> (Explicit, b)))
 
 equals
   :: Syntax.Type v

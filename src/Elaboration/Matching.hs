@@ -1001,7 +1001,7 @@ uninhabitedScrutinee context value = do
   case value' of
     Domain.Neutral (Domain.Var var) (Domain.Apps args) -> do
       let varType = Context.lookupVarType var context
-      type_ <- Context.instantiateType context varType $ toList args
+      type_ <- Context.instantiateType context varType args
       uninhabitedType context 1 (EnumMap.findWithDefault mempty var context.coveredConstructors) type_
     Domain.Con constr constructorArgs -> do
       constrType <- fetch $ Query.ConstructorType constr

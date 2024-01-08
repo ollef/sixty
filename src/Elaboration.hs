@@ -31,6 +31,8 @@ import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import Data.IORef.Lifted
 import qualified Data.OrderedHashMap as OrderedHashMap
+import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq
 import Data.Some (Some)
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
@@ -182,7 +184,7 @@ inferDataDefinition
   :: Context v
   -> [(Surface.SpannedName, Surface.Type, Plicity)]
   -> [Surface.ConstructorDefinition]
-  -> Tsil (Plicity, Var)
+  -> Seq (Plicity, Var)
   -> M (Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v, Syntax.Type v)
 inferDataDefinition context surfaceParams constrs paramVars =
   case surfaceParams of
@@ -221,11 +223,8 @@ inferDataDefinition context surfaceParams constrs paramVars =
       type' <- check context type_ Builtin.Type
       type'' <- lazyEvaluate context type'
       (context', paramVar) <- Context.extendSurface context name type''
-      let paramVars' =
-            paramVars Tsil.:> (plicity, paramVar)
-
-          binding =
-            Binding.fromSurface spannedName
+      let paramVars' = paramVars Seq.:|> (plicity, paramVar)
+          binding = Binding.fromSurface spannedName
       (tele, dataType) <- inferDataDefinition context' surfaceParams' constrs paramVars'
       pure
         ( Telescope.Extend binding type' plicity tele
@@ -247,7 +246,7 @@ postProcessDataDefinition outerContext boxity outerTele = do
       :: Context v
       -> Postponed.Checks
       -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v
-      -> Tsil (Plicity, Var)
+      -> Seq (Plicity, Var)
       -> M (Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v)
     go context postponed tele paramVars =
       case tele of
@@ -263,9 +262,9 @@ postProcessDataDefinition outerContext boxity outerTele = do
           (context', paramVar) <- Context.extend context (Binding.toName name) typeValue
           let zonkedType =
                 ZonkPostponedChecks.zonkTerm postponed type_
-          Telescope.Extend name zonkedType plicity <$> go context' postponed tele' (paramVars Tsil.:> (plicity, paramVar))
+          Telescope.Extend name zonkedType plicity <$> go context' postponed tele' (paramVars Seq.:|> (plicity, paramVar))
 
-addConstructorIndexEqualities :: Context v -> Tsil (Plicity, Var) -> Syntax.Term v -> M (Syntax.Term v)
+addConstructorIndexEqualities :: Context v -> Seq (Plicity, Var) -> Syntax.Term v -> M (Syntax.Term v)
 addConstructorIndexEqualities context paramVars constrType =
   case constrType of
     Syntax.Spanned span' constrType' -> do
@@ -304,7 +303,7 @@ addConstructorIndexEqualities context paramVars constrType =
           pure $ Syntax.Fun domain' plicity target'
         Domain.Neutral (Domain.Global headGlobal) (Domain.appsView -> Just indices)
           | headGlobal == dataName ->
-              valueIndexEqualities context' (toList indices) (toList paramVars)
+              valueIndexEqualities context' indices paramVars
         _ -> do
           f <-
             Unification.tryUnify
@@ -350,12 +349,12 @@ addConstructorIndexEqualities context paramVars constrType =
 
     valueIndexEqualities
       :: Context v
-      -> [(Plicity, Domain.Value)]
-      -> [(Plicity, Var)]
+      -> Seq (Plicity, Domain.Value)
+      -> Seq (Plicity, Var)
       -> M (Syntax.Term v)
     valueIndexEqualities context' indices paramVars' =
       case (indices, paramVars') of
-        ((plicity1, index) : indices', (plicity2, paramVar) : paramVars'')
+        ((plicity1, index) Seq.:<| indices', (plicity2, paramVar) Seq.:<| paramVars'')
           | plicity1 == plicity2 -> do
               index' <- Context.forceHead context' index
               case index' of
@@ -375,7 +374,7 @@ addConstructorIndexEqualities context paramVars constrType =
                   pure $ Syntax.Fun domain' Constraint target
           | otherwise ->
               panic "indexEqualities plicity mismatch"
-        ([], []) ->
+        (Seq.Empty, Seq.Empty) ->
           readback context' $
             Domain.Neutral (Domain.Global dataName) $
               Domain.Apps $

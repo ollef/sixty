@@ -8,6 +8,8 @@ module Core.Domain where
 import Core.Binding (Binding)
 import Core.Bindings (Bindings)
 import qualified Core.Syntax as Syntax
+import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Environment
@@ -77,9 +79,9 @@ headFlexibility = \case
 
 -- * Elimination spines
 
-data Spine = Spine (Tsil (Args, Branches)) Args
+data Spine = Spine (Seq (Args, Branches)) Args
 
-type Args = Tsil (Plicity, Value)
+type Args = Seq (Plicity, Value)
 
 data Elimination
   = App !Plicity !Value
@@ -87,7 +89,7 @@ data Elimination
 
 pattern Empty :: Spine
 pattern Empty =
-  Spine Tsil.Empty Tsil.Empty
+  Spine Seq.Empty Seq.Empty
 
 pattern (:>) :: Spine -> Elimination -> Spine
 pattern spine :> elimination <-
@@ -96,35 +98,35 @@ pattern spine :> elimination <-
     Spine spine args :> elim =
       case elim of
         App plicity arg ->
-          Spine spine (args Tsil.:> (plicity, arg))
+          Spine spine (args Seq.:|> (plicity, arg))
         Case brs ->
-          Spine (spine Tsil.:> (args, brs)) Tsil.Empty
+          Spine (spine Seq.:|> (args, brs)) Seq.Empty
 
 {-# COMPLETE Empty, (:>) #-}
 
-pattern Apps :: Tsil (Plicity, Value) -> Spine
+pattern Apps :: Seq (Plicity, Value) -> Spine
 pattern Apps args <-
   (appsView -> Just args)
   where
     Apps args =
-      Spine Tsil.Empty args
+      Spine Seq.Empty args
 
 eliminationView :: Spine -> Maybe (Spine, Elimination)
 eliminationView (Spine spine apps) =
   case apps of
-    Tsil.Empty ->
+    Seq.Empty ->
       case spine of
-        Tsil.Empty ->
+        Seq.Empty ->
           Nothing
-        spine' Tsil.:> (apps', brs) ->
+        spine' Seq.:|> (apps', brs) ->
           Just (Spine spine' apps', Case brs)
-    apps' Tsil.:> (plicity, arg) ->
+    apps' Seq.:|> (plicity, arg) ->
       Just (Spine spine apps', App plicity arg)
 
-appsView :: Spine -> Maybe (Tsil (Plicity, Value))
+appsView :: Spine -> Maybe (Seq (Plicity, Value))
 appsView (Spine spine args) =
   case spine of
-    Tsil.Empty ->
+    Seq.Empty ->
       Just args
     _ ->
       Nothing

@@ -34,6 +34,7 @@ import Data.IORef.Lifted
 import Data.IntSeq (IntSeq)
 import qualified Data.IntSeq as IntSeq
 import qualified Data.Kind
+import qualified Data.Sequence as Seq
 import qualified Data.Set as Set
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
@@ -472,12 +473,12 @@ newMetaType :: Context v -> M Domain.Value
 newMetaType context =
   newMeta context Builtin.Type
 
-newMetaReturningIndex :: Context v -> Domain.Type -> M (Meta.Index, Tsil (Plicity, Var), Domain.Value)
+newMetaReturningIndex :: Context v -> Domain.Type -> M (Meta.Index, Seq (Plicity, Var), Domain.Value)
 newMetaReturningIndex context type_ = do
   (closedType, arity) <- piBoundVars context type_
   i <- atomicModifyIORef' context.metas $ Meta.new closedType arity context.span
   let args =
-        (,) Explicit <$> IntSeq.toTsil context.boundVars
+        (,) Explicit <$> IntSeq.toSeq context.boundVars
   pure (i, args, Domain.Neutral (Domain.Meta i) $ Domain.Apps (second Domain.var <$> args))
 
 piBoundVars :: Context v -> Domain.Type -> M (Syntax.Type Void, Int)
@@ -637,17 +638,17 @@ forceHeadGlue context value =
 instantiateType
   :: Context v
   -> Domain.Type
-  -> [(Plicity, Domain.Value)]
+  -> Seq (Plicity, Domain.Value)
   -> M Domain.Type
 instantiateType context type_ spine = do
   type' <- forceHead context type_
   case (type', spine) of
-    (_, []) ->
+    (_, Seq.Empty) ->
       pure type'
-    (Domain.Fun _ plicity1 target, (plicity2, _) : spine')
+    (Domain.Fun _ plicity1 target, (plicity2, _) Seq.:<| spine')
       | plicity1 == plicity2 ->
           instantiateType context target spine'
-    (Domain.Pi _ _ plicity1 targetClosure, (plicity2, arg) : spine')
+    (Domain.Pi _ _ plicity1 targetClosure, (plicity2, arg) Seq.:<| spine')
       | plicity1 == plicity2 -> do
           target <- Evaluation.evaluateClosure targetClosure arg
           instantiateType context target spine'

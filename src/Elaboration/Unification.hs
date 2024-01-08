@@ -9,6 +9,7 @@ module Elaboration.Unification where
 
 import qualified Builtin
 import Control.Exception.Lifted
+import Control.Monad.Zip
 import qualified Core.Binding as Binding
 import Core.Bindings (Bindings)
 import qualified Core.Bindings as Bindings
@@ -20,7 +21,7 @@ import qualified Data.EnumSet as EnumSet
 import Data.IntSeq (IntSeq)
 import qualified Data.IntSeq as IntSeq
 import qualified Data.OrderedHashMap as OrderedHashMap
-import Data.Tsil (Tsil)
+import qualified Data.Sequence as Seq
 import qualified Data.Tsil as Tsil
 import {-# SOURCE #-} qualified Elaboration
 import Elaboration.Context (Context)
@@ -81,9 +82,9 @@ unify context flexibility value1 value2 = do
               -- variables its solution must not mention any variables at
               -- positions where the lists differ.
               let keep =
-                    Tsil.zipWith (shouldKeepMetaArgument `on` snd) args1' args2'
+                    mzipWith (shouldKeepMetaArgument `on` snd) args1' args2'
               if and keep
-                then Tsil.zipWithM_ (unify context flexibility `on` snd) args1 args2
+                then sequence_ $ Seq.zipWith (unify context flexibility `on` snd) args1 args2
                 else pruneMeta context metaIndex1 keep
             else do
               let maybeUniqueVars1 = do
@@ -540,14 +541,14 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
 instantiatedMetaType
   :: Context v
   -> Meta.Index
-  -> Tsil (Plicity, Domain.Value)
+  -> Seq (Plicity, Domain.Value)
   -> M Domain.Type
 instantiatedMetaType context meta args = do
   solution <- Context.lookupMeta context meta
   case solution of
     Meta.Unsolved metaType _ _ _ -> do
       metaType' <- Evaluation.evaluate Environment.empty metaType
-      Context.instantiateType context metaType' $ toList args
+      Context.instantiateType context metaType' args
     Meta.Solved {} ->
       panic "instantiatedMetaType already solved"
     Meta.LazilySolved {} ->
@@ -567,9 +568,9 @@ fullyApplyToMetas context constr type_ = do
         Evaluation.evaluate
           Environment.empty
           (Syntax.fromVoid $ Telescope.fold Syntax.Pi constrType)
-      instantiatedConstrType <- Context.instantiateType context constrType' $ toList typeArgs
+      instantiatedConstrType <- Context.instantiateType context constrType' typeArgs
       (metas, _) <- Elaboration.insertMetas context Elaboration.UntilTheEnd instantiatedConstrType
-      pure $ Domain.Con constr $ typeArgs <> fromList metas
+      pure $ Domain.Con constr $ Tsil.fromSeq typeArgs <> fromList metas
     _ ->
       panic "fullyApplyToMetas"
 
@@ -604,7 +605,7 @@ shouldKeepMetaArgument value1 value2 =
 -- Solution checking and pruning
 
 -- | Solve `meta = \vars. value`.
-solve :: Context v -> Meta.Index -> Tsil (Plicity, Var) -> Domain.Value -> M ()
+solve :: Context v -> Meta.Index -> Seq (Plicity, Var) -> Domain.Value -> M ()
 solve context meta vars value = do
   term <- checkSolution context meta vars value
   Context.solveMeta context meta term
@@ -614,12 +615,11 @@ solve context meta vars value = do
 checkSolution
   :: Context v
   -> Meta.Index
-  -> Tsil (Plicity, Var)
+  -> Seq (Plicity, Var)
   -> Domain.Value
   -> M (Syntax.Term Void)
 checkSolution outerContext meta vars value = do
-  let indices =
-        IntSeq.fromTsil $ snd <$> vars
+  let indices = IntSeq.fromSeq $ snd <$> vars
       renaming =
         PartialRenaming
           { occurs = Just meta
@@ -643,15 +643,15 @@ data PartialRenaming v' = PartialRenaming
 addAndRenameLambdas
   :: Context v
   -> Meta.Index
-  -> Tsil Plicity
+  -> Seq Plicity
   -> IntSeq Var
   -> Syntax.Term v'
   -> M (Syntax.Term v')
 addAndRenameLambdas outerContext meta plicities vars term =
   case (plicities, vars) of
-    (Tsil.Empty, IntSeq.Empty) ->
+    (Seq.Empty, IntSeq.Empty) ->
       pure term
-    (plicities' Tsil.:> plicity, vars' IntSeq.:> var) -> do
+    (plicities' Seq.:|> plicity, vars' IntSeq.:> var) -> do
       let name =
             Context.lookupVarName var outerContext
           type_ =
@@ -832,7 +832,7 @@ renameBranch outerContext renaming innerEnv tele =
 pruneMeta
   :: Context v
   -> Meta.Index
-  -> Tsil Bool
+  -> Seq Bool
   -> M ()
 pruneMeta context meta allowedArgs = do
   entry <- Context.lookupMeta context meta
@@ -842,18 +842,14 @@ pruneMeta context meta allowedArgs = do
     Meta.Unsolved metaType _ _ _ -> do
       -- putText $ show metaType
       metaType' <- Evaluation.evaluate Environment.empty metaType
-      solution' <-
-        go
-          (toList allowedArgs)
-          (Context.emptyFrom context)
-          metaType'
+      solution' <- go allowedArgs (Context.emptyFrom context) metaType'
       Context.solveMeta context meta solution'
     Meta.Solved {} ->
       panic "pruneMeta already solved"
     Meta.LazilySolved {} ->
       panic "pruneMeta already solved"
   where
-    go :: [Bool] -> Context v -> Domain.Type -> M (Syntax.Term v)
+    go :: Seq Bool -> Context v -> Domain.Type -> M (Syntax.Term v)
     go alloweds context' type_ = do
       let renaming =
             PartialRenaming
@@ -862,10 +858,10 @@ pruneMeta context meta allowedArgs = do
               , renamingFlexibility = Flexibility.Rigid
               }
       case alloweds of
-        [] -> do
+        Seq.Empty -> do
           v <- Context.newMeta context' type_
           renameValue context' renaming v
-        allowed : alloweds' -> do
+        allowed Seq.:<| alloweds' -> do
           type' <- Context.forceHead context type_
           case type' of
             Domain.Fun domain plicity target -> do
