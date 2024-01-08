@@ -469,13 +469,14 @@ potentiallyMatchingBranches
   -> M [Maybe (Either Name.QualifiedConstructor Literal)]
 potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv branches defaultBranch) = do
   resultValue' <- Context.forceHead outerContext resultValue
-  defaultBranch' <- fmap (catMaybes . toList) $
-    forM defaultBranch \branch -> do
-      isMatch <- branchMatches outerContext resultValue' outerEnv $ Telescope.Empty branch
-      pure $
-        if isMatch
-          then Just Nothing
-          else Nothing
+  defaultBranch' <-
+    catMaybes . toList
+      <$> forM defaultBranch \branch -> do
+        isMatch <- branchMatches outerContext resultValue' outerEnv $ Telescope.Empty branch
+        pure
+          if isMatch
+            then Just Nothing
+            else Nothing
 
   branches' <- fmap catMaybes $
     case branches of
