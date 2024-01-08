@@ -130,3 +130,9 @@ toTsil (IntSeq seq _) =
           Tsil.Empty
         as' Seq.:|> a ->
           go as' Tsil.:> a
+
+toSeq :: IntSeq a -> Seq a
+toSeq (IntSeq seq _) = seq
+
+fromSeq :: Enum a => Seq a -> IntSeq a
+fromSeq seq = IntSeq seq $ EnumMap.fromList $ zip (toList seq) [0 ..]
