@@ -57,6 +57,7 @@ import qualified Name
 import Plicity
 import qualified Postponement
 import Prettyprinter (Doc)
+import qualified Prettyprinter.Render.Text as Prettyprinter
 import Protolude hiding (catch, check, force, moduleName, state)
 import qualified Query
 import Rock
@@ -431,10 +432,22 @@ prettyTerm context term = do
   pt <- toPrettyableTerm context term
   Error.prettyPrettyableTerm 0 pt
 
+dumpTerm :: Context v -> Syntax.Term v -> M ()
+dumpTerm context term = do
+  term' <- zonk context term
+  doc <- prettyTerm context term'
+  liftIO $ Prettyprinter.putDoc doc
+  putText ""
+
 prettyValue :: Context v -> Domain.Value -> M (Doc ann)
 prettyValue context term = do
   pt <- toPrettyableValue context term
   Error.prettyPrettyableTerm 0 pt
+
+dumpValue :: Context v -> Domain.Value -> M ()
+dumpValue context value = do
+  term <- Readback.readback (toEnvironment context) value
+  dumpTerm context term
 
 toPrettyableTerm :: Context v -> Syntax.Term v -> M Error.PrettyableTerm
 toPrettyableTerm context term = do
