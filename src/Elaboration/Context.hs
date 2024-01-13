@@ -588,7 +588,7 @@ metaSolutionMetas context index = do
 -------------------------------------------------------------------------------
 
 -- | Evaluate the head of a value further, if (now) possible due to meta
--- solutions or new value bindings. Also evalutes through glued values.
+-- solutions or new value bindings. Also evaluates through glued values.
 forceHead
   :: Context v
   -> Domain.Value
