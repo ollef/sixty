@@ -330,16 +330,23 @@ checkSingle context scrutinee plicity pat@(Surface.Pattern patSpan _) rhs@(Surfa
 
 checkWithCoverage :: Context v -> Config -> M (Syntax.Term v)
 checkWithCoverage context config = do
-  result <- check context config Postponement.CanPostpone
-  let allClauseSpans =
+  let allClauses =
         Set.fromList
           [ span
           | Clause span _ _ <- config.clauses
           ]
-  usedClauseSpans <- readIORef config.usedClauses
-  forM_ (Set.difference allClauseSpans usedClauseSpans) \span ->
-    Context.report (Context.spanned span context) $ Error.RedundantMatch config.matchKind
-  pure result
+  atomicModifyIORef'
+    context.coverageChecks
+    \coverageChecks ->
+      ( coverageChecks
+          Tsil.:> Context.CoverageCheck
+            { Context.allClauses = allClauses
+            , Context.usedClauses = config.usedClauses
+            , Context.matchKind = config.matchKind
+            }
+      , ()
+      )
+  check context config Postponement.CanPostpone
 
 check :: Context v -> Config -> Postponement.CanPostpone -> M (Syntax.Term v)
 check context config canPostpone = do
@@ -359,7 +366,7 @@ check context config canPostpone = do
       splitEqualityOr context config' matches $
         splitConstructorOr context config' matches $ do
           let indeterminateIndexUnification = do
-                Context.report context $ Error.IndeterminateIndexUnification $ config.matchKind
+                Context.report context $ Error.IndeterminateIndexUnification config.matchKind
                 Elaboration.readback context $ Builtin.Unknown config.expectedType
           case solved matches of
             Nothing ->
@@ -378,7 +385,7 @@ check context config canPostpone = do
                     withPatternInstantiation inst context
               mapM_ (checkForcedPattern context') matches
               result <- Elaboration.check context' firstClause.rhs config.expectedType
-              modifyIORef config.usedClauses $ Set.insert firstClause.span
+              atomicModifyIORef' config.usedClauses \usedClauses -> (Set.insert firstClause.span usedClauses, ())
               pure result
 
 findPatternResolutionBlocker :: Context v -> [Clause] -> M (Maybe Meta.Index)

@@ -8,4 +8,4 @@ data List2 a where
 
 test x = -- unsolved meta error expected
   case x of
-    Nil -> 610 -- redundant match error expected, ambiguous name error expected
+    Nil -> 610 -- ambiguous name error expected

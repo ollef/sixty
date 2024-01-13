@@ -34,6 +34,7 @@ import Data.IORef.Lifted
 import Data.IntSeq (IntSeq)
 import qualified Data.IntSeq as IntSeq
 import qualified Data.Kind
+import qualified Data.Set as Set
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Elaboration.Meta as Meta
@@ -79,6 +80,7 @@ data Context (v :: Data.Kind.Type) = Context
   , postponed :: !(IORef Postponed.Checks)
   , coveredConstructors :: CoveredConstructors
   , coveredLiterals :: CoveredLiterals
+  , coverageChecks :: !(IORef (Tsil CoverageCheck))
   , errors :: !(IORef (Tsil Error))
   }
 
@@ -88,6 +90,12 @@ moduleName context = context.definitionName.moduleName
 type CoveredConstructors = EnumMap Var (HashSet Name.QualifiedConstructor)
 
 type CoveredLiterals = EnumMap Var (HashSet Literal)
+
+data CoverageCheck = CoverageCheck
+  { allClauses :: Set Span.Relative
+  , usedClauses :: IORef (Set Span.Relative)
+  , matchKind :: !Error.MatchKind
+  }
 
 toEnvironment
   :: Context v
@@ -104,6 +112,7 @@ empty definitionKind definitionName = do
   ms <- newIORef Meta.empty
   es <- newIORef mempty
   ps <- newIORef Postponed.empty
+  cs <- newIORef mempty
   pure
     Context
       { definitionKind
@@ -121,6 +130,7 @@ empty definitionKind definitionName = do
       , errors = es
       , coveredConstructors = mempty
       , coveredLiterals = mempty
+      , coverageChecks = cs
       }
 
 emptyFrom :: Context v -> Context Void
@@ -141,6 +151,7 @@ emptyFrom context =
     , errors = context.errors
     , coveredConstructors = mempty
     , coveredLiterals = mempty
+    , coverageChecks = context.coverageChecks
     }
 
 spanned :: Span.Relative -> Context v -> Context v
@@ -816,3 +827,11 @@ inferAllPostponedChecks context =
 
               (postponed'', do doIt; go $ index + 1)
             else (postponed', pure ())
+
+reportCoverage :: Context v -> M ()
+reportCoverage context = do
+  coverageChecks <- atomicModifyIORef' context.coverageChecks (mempty,)
+  forM_ coverageChecks \coverageCheck -> do
+    usedClauses <- readIORef coverageCheck.usedClauses
+    forM_ (Set.difference coverageCheck.allClauses usedClauses) \span ->
+      report (spanned span context) $ Error.RedundantMatch coverageCheck.matchKind

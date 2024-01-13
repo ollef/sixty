@@ -172,6 +172,7 @@ inferDefinition context def =
 postProcessDefinition :: Context v -> Syntax.Definition -> M Syntax.Definition
 postProcessDefinition context def = do
   Context.inferAllPostponedChecks context
+  Context.reportCoverage context
   postponed <- readIORef context.postponed
   pure $ ZonkPostponedChecks.zonkDefinition postponed def
 
@@ -238,6 +239,7 @@ postProcessDataDefinition
   -> M Syntax.Definition
 postProcessDataDefinition outerContext boxity outerTele = do
   Context.inferAllPostponedChecks outerContext
+  Context.reportCoverage outerContext
   postponed <- readIORef outerContext.postponed
   Syntax.DataDefinition boxity <$> go outerContext postponed outerTele mempty
   where
