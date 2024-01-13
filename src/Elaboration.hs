@@ -81,7 +81,7 @@ inferTopLevelDefinition definitionKind defName def = do
   (def', type_) <- inferDefinition context def
   postponed <- readIORef context.postponed
   metaVars <- readIORef context.metas
-  errors <- readIORef $ context.errors
+  errors <- readIORef context.errors
   let zonkedDef = ZonkPostponedChecks.zonkDefinition postponed def'
   eagerMetaVars <- Meta.toEagerState metaVars zonkedDef $ Just type_
   pure ((zonkedDef, type_, eagerMetaVars), toList errors)
