@@ -411,23 +411,52 @@ data Mode result where
 
 result :: Context v -> Mode result -> Syntax.Term v -> Domain.Type -> M (result (Syntax.Term v))
 result context mode term type_ =
-  case mode of
-    Infer _ ->
-      pure $ Inferred term type_
-    Check expectedType -> do
-      (args, type') <- insertMetasReturningSyntax context UntilExplicit type_
-      f <- Unification.tryUnify context type' expectedType
-      pure $ Checked $ f $ Syntax.apps term args
+  resultWith context mode term type_ UntilExplicit Postponement.CanPostpone
 
 implicitLambdaResult :: Context v -> Mode result -> Syntax.Term v -> Domain.Type -> M (result (Syntax.Term v))
 implicitLambdaResult context mode term type_ =
+  resultWith context mode term type_ (UntilImplicit $ const True) Postponement.CanPostpone
+
+resultWith
+  :: Context v
+  -> Mode result
+  -> Syntax.Term v
+  -> Domain.Type
+  -> InsertUntil
+  -> Postponement.CanPostpone
+  -> M (result (Syntax.Term v))
+resultWith context mode term type_ insertUntil canPostpone =
   case mode of
     Infer _ ->
       pure $ Inferred term type_
     Check expectedType -> do
-      (args, type') <- insertMetasReturningSyntax context (UntilImplicit $ const True) type_
-      f <- Unification.tryUnify context type' expectedType
-      pure $ Checked $ f $ Syntax.apps term args
+      (args, type') <- insertMetasReturningSyntax context insertUntil type_
+      case canPostpone of
+        Postponement.CanPostpone -> do
+          type'' <- Context.forceHead context type'
+          case type'' of
+            Domain.Neutral (Domain.Meta blockingMeta) _ ->
+              postponeResult context term type_ expectedType insertUntil blockingMeta
+            _ -> do
+              f <- Unification.tryUnify context type' expectedType
+              pure $ Checked $ f $ Syntax.apps term args
+        Postponement.Can'tPostpone -> do
+          f <- Unification.tryUnify context type' expectedType
+          pure $ Checked $ f $ Syntax.apps term args
+
+postponeResult
+  :: Context v
+  -> Syntax.Term v
+  -> Domain.Type
+  -> Domain.Type
+  -> InsertUntil
+  -> Meta.Index
+  -> M (Checked (Syntax.Term v))
+postponeResult context term type_ expectedType insertUntil blockingMeta =
+  Checked
+    <$> postpone context expectedType blockingMeta \canPostpone -> do
+      Checked resultTerm <- resultWith context (Check expectedType) term type_ insertUntil canPostpone
+      pure resultTerm
 
 elaborate :: Functor result => Context v -> Surface.Term -> Mode result -> M (result (Syntax.Term v))
 elaborate context term@(Surface.Term span _) mode =
@@ -503,7 +532,7 @@ elaborateWith context spannedTerm@(Surface.Term span term) mode canPostpone = do
                         checkUnderBinder
               _ ->
                 checkUnderBinder
-    (_, Check expectedType@(Domain.Neutral (Domain.Meta blockingMeta) _))
+    (Surface.Lam _ _, Check expectedType@(Domain.Neutral (Domain.Meta blockingMeta) _))
       | Postponement.CanPostpone <- canPostpone ->
           postponeCheck context spannedTerm expectedType blockingMeta
     (Surface.Lam plicitPattern body@(Surface.Term bodySpan _), _) -> do
