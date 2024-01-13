@@ -562,12 +562,9 @@ elaborateWith context spannedTerm@(Surface.Term span term) mode canPostpone = do
                       type' <- evaluate context $ Syntax.fromVoid type_
                       result context mode (Syntax.Spanned span $ Syntax.Global qualifiedName) type'
             Just (Scope.Constructors constructorCandidates dataCandidates) -> do
-              resolution <- resolveConstructor constructorCandidates dataCandidates $
-                case mode of
-                  Check expectedType ->
-                    getExpectedTypeName context expectedType
-                  Infer m ->
-                    m
+              resolution <-
+                resolveConstructor constructorCandidates dataCandidates $
+                  getModeExpectedTypeName context mode
               case resolution of
                 Left blockingMeta ->
                   case (canPostpone, mode) of
