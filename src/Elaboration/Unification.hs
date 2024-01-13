@@ -26,6 +26,7 @@ import qualified Data.Tsil as Tsil
 import {-# SOURCE #-} qualified Elaboration
 import Elaboration.Context (Context)
 import qualified Elaboration.Context as Context
+import Elaboration.Depth (compareHeadDepths)
 import qualified Elaboration.Meta as Meta
 import Environment (Environment (Environment))
 import qualified Environment
@@ -43,7 +44,6 @@ import qualified Name
 import Plicity
 import Protolude hiding (catch, check, evaluate, force, head, throwIO)
 import qualified Query
-import qualified Query.Mapped as Mapped
 import Rock
 import Telescope (Telescope)
 import qualified Telescope
@@ -311,24 +311,6 @@ unify context flexibility value1 value2 = do
 
     can'tUnify =
       throwIO $ Error.TypeMismatch mempty
-
--- | Try to find out which of two heads might refer to the other so we can
--- unfold glued values that are defined later first (see "depth" in
--- https://arxiv.org/pdf/1505.04324.pdf).
-compareHeadDepths :: Domain.Head -> Domain.Head -> M Ordering
-compareHeadDepths head1 head2 =
-  case (head1, head2) of
-    (Domain.Global global1, Domain.Global global2) -> do
-      global1DependsOn2 <- fetch $ Query.TransitiveDependencies global2 $ Mapped.Query global1
-      global2DependsOn1 <- fetch $ Query.TransitiveDependencies global1 $ Mapped.Query global2
-      pure case (global1DependsOn2, global2DependsOn1) of
-        (Just _, Nothing) -> GT
-        (Nothing, Just _) -> LT
-        _ -> EQ
-    (_, Domain.Global _) -> pure LT
-    (Domain.Global _, _) -> pure GT
-    (Domain.Var v1, Domain.Var v2) -> pure $ compare v1 v2
-    _ -> pure EQ
 
 unifySpines :: Context v -> Flexibility -> Domain.Spine -> Domain.Spine -> M ()
 unifySpines context flexibility spine1 spine2 =
