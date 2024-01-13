@@ -202,3 +202,14 @@ instance Semigroup Spine where
 
 instance Monoid Spine where
   mempty = Empty
+
+matchSpinePrefix :: Spine -> Spine -> Maybe (Spine, Spine)
+matchSpinePrefix (Spine Seq.Empty sargs) (Spine Seq.Empty pargs)
+  | Seq.length sargs >= Seq.length pargs = do
+      let (prefix, suffix) = Seq.splitAt (Seq.length pargs) sargs
+      Just (Spine Seq.Empty prefix, Spine Seq.Empty suffix)
+matchSpinePrefix (Spine ((sargs, sbrs) Seq.:<| srest) sargs') (Spine ((pargs, _) Seq.:<| prest) pargs')
+  | Seq.length sargs == Seq.length pargs = do
+      (Spine prefix prefixArgs, suffix) <- matchSpinePrefix (Spine srest sargs') (Spine prest pargs')
+      Just (Spine ((sargs, sbrs) Seq.:<| prefix) prefixArgs, suffix)
+matchSpinePrefix _ _ = Nothing
