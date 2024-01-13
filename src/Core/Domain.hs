@@ -93,9 +93,25 @@ pattern Empty :: Spine
 pattern Empty =
   Spine Seq.Empty Seq.Empty
 
+pattern (:<) :: Elimination -> Spine -> Spine
+pattern elimination :< spine <-
+  (eliminationViewL -> Just (elimination, spine))
+  where
+    elim :< Spine spine args =
+      case elim of
+        App plicity arg ->
+          case spine of
+            Seq.Empty -> Spine Seq.Empty ((plicity, arg) Seq.:<| args)
+            (apps, brs) Seq.:<| spine' ->
+              Spine (((plicity, arg) Seq.:<| apps, brs) Seq.:<| spine') args
+        Case brs ->
+          Spine ((Seq.Empty, brs) Seq.:<| spine) args
+
+{-# COMPLETE Empty, (:<) #-}
+
 pattern (:>) :: Spine -> Elimination -> Spine
 pattern spine :> elimination <-
-  (eliminationView -> Just (spine, elimination))
+  (eliminationViewR -> Just (spine, elimination))
   where
     Spine spine args :> elim =
       case elim of
@@ -113,8 +129,19 @@ pattern Apps args <-
     Apps args =
       Spine Seq.Empty args
 
-eliminationView :: Spine -> Maybe (Spine, Elimination)
-eliminationView (Spine spine apps) =
+eliminationViewL :: Spine -> Maybe (Elimination, Spine)
+eliminationViewL (Spine spine apps) =
+  case spine of
+    Seq.Empty -> case apps of
+      Seq.Empty -> Nothing
+      (plicity, arg) Seq.:<| apps' -> Just (App plicity arg, Spine spine apps')
+    (Seq.Empty, brs) Seq.:<| spine' ->
+      Just (Case brs, Spine spine' apps)
+    ((plicity, arg) Seq.:<| apps', brs) Seq.:<| spine' ->
+      Just (App plicity arg, Spine ((apps', brs) Seq.:<| spine') apps)
+
+eliminationViewR :: Spine -> Maybe (Spine, Elimination)
+eliminationViewR (Spine spine apps) =
   case apps of
     Seq.Empty ->
       case spine of
