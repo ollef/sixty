@@ -6,7 +6,7 @@ homepage:            https://github.com/ollef/sixty#readme
 license:             BSD3
 author:              Olle Fredriksson
 maintainer:          fredriksson.olle@gmail.com
-copyright:           2019-2021 Olle Fredriksson
+copyright:           2019-2024 Olle Fredriksson
 category:            Language, Compiler
 extra-source-files:
 - README.md
