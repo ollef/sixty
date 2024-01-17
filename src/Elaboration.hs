@@ -301,7 +301,7 @@ addConstructorIndexEqualities context paramVars constrType =
           domain' <- readback context' domain
           target' <- goValue context' target
           pure $ Syntax.Fun domain' plicity target'
-        Domain.Neutral (Domain.Global headGlobal) (Domain.appsView -> Just indices)
+        Domain.Neutral (Domain.Global headGlobal) (Domain.Apps indices)
           | headGlobal == dataName ->
               valueIndexEqualities context' indices paramVars
         _ -> do

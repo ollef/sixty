@@ -81,7 +81,7 @@ headFlexibility = \case
 
 -- * Elimination spines
 
-data Spine = Spine (Seq (Args, Branches)) Args
+data Spine = Spine Args (Seq (Branches, Args))
 
 type Args = Seq (Plicity, Value)
 
@@ -97,15 +97,8 @@ pattern (:<) :: Elimination -> Spine -> Spine
 pattern elimination :< spine <-
   (eliminationViewL -> Just (elimination, spine))
   where
-    elim :< Spine spine args =
-      case elim of
-        App plicity arg ->
-          case spine of
-            Seq.Empty -> Spine Seq.Empty ((plicity, arg) Seq.:<| args)
-            (apps, brs) Seq.:<| spine' ->
-              Spine (((plicity, arg) Seq.:<| apps, brs) Seq.:<| spine') args
-        Case brs ->
-          Spine ((Seq.Empty, brs) Seq.:<| spine) args
+    App plicity arg :< Spine args spine = Spine ((plicity, arg) Seq.:<| args) spine
+    Case brs :< Spine args spine = Spine mempty ((brs, args) Seq.:<| spine)
 
 {-# COMPLETE Empty, (:<) #-}
 
@@ -113,52 +106,29 @@ pattern (:>) :: Spine -> Elimination -> Spine
 pattern spine :> elimination <-
   (eliminationViewR -> Just (spine, elimination))
   where
-    Spine spine args :> elim =
-      case elim of
-        App plicity arg ->
-          Spine spine (args Seq.:|> (plicity, arg))
-        Case brs ->
-          Spine (spine Seq.:|> (args, brs)) Seq.Empty
+    Spine args Seq.Empty :> App plicity arg =
+      Spine (args Seq.:|> (plicity, arg)) Seq.Empty
+    Spine args (spine Seq.:|> (brs, args')) :> App plicity arg =
+      Spine args (spine Seq.:|> (brs, args' Seq.:|> (plicity, arg)))
+    Spine args spine :> Case brs = Spine args (spine Seq.:|> (brs, mempty))
 
 {-# COMPLETE Empty, (:>) #-}
 
 pattern Apps :: Seq (Plicity, Value) -> Spine
-pattern Apps args <-
-  (appsView -> Just args)
-  where
-    Apps args =
-      Spine Seq.Empty args
+pattern Apps args = Spine args Seq.Empty
 
 eliminationViewL :: Spine -> Maybe (Elimination, Spine)
-eliminationViewL (Spine spine apps) =
-  case spine of
-    Seq.Empty -> case apps of
-      Seq.Empty -> Nothing
-      (plicity, arg) Seq.:<| apps' -> Just (App plicity arg, Spine spine apps')
-    (Seq.Empty, brs) Seq.:<| spine' ->
-      Just (Case brs, Spine spine' apps)
-    ((plicity, arg) Seq.:<| apps', brs) Seq.:<| spine' ->
-      Just (App plicity arg, Spine ((apps', brs) Seq.:<| spine') apps)
+eliminationViewL = \case
+  Spine ((plicity, arg) Seq.:<| args) spine -> Just (App plicity arg, Spine args spine)
+  Spine Seq.Empty ((brs, args) Seq.:<| spine) -> Just (Case brs, Spine args spine)
+  Spine Seq.Empty Seq.Empty -> Nothing
 
 eliminationViewR :: Spine -> Maybe (Spine, Elimination)
-eliminationViewR (Spine spine apps) =
-  case apps of
-    Seq.Empty ->
-      case spine of
-        Seq.Empty ->
-          Nothing
-        spine' Seq.:|> (apps', brs) ->
-          Just (Spine spine' apps', Case brs)
-    apps' Seq.:|> (plicity, arg) ->
-      Just (Spine spine apps', App plicity arg)
-
-appsView :: Spine -> Maybe (Seq (Plicity, Value))
-appsView (Spine spine args) =
-  case spine of
-    Seq.Empty ->
-      Just args
-    _ ->
-      Nothing
+eliminationViewR = \case
+  Spine args (spine Seq.:|> (brs, args' Seq.:|> (plicity, arg))) -> Just (Spine args (spine Seq.:|> (brs, args')), App plicity arg)
+  Spine args (spine Seq.:|> (brs, Seq.Empty)) -> Just (Spine args spine, Case brs)
+  Spine (args Seq.:|> (plicity, arg)) Seq.Empty -> Just (Spine args Seq.Empty, App plicity arg)
+  Spine Seq.Empty Seq.Empty -> Nothing
 
 foldl :: (a -> Elimination -> a) -> a -> Spine -> a
 foldl f e spine =
@@ -204,12 +174,12 @@ instance Monoid Spine where
   mempty = Empty
 
 matchSpinePrefix :: Spine -> Spine -> Maybe (Spine, Spine)
-matchSpinePrefix (Spine Seq.Empty sargs) (Spine Seq.Empty pargs)
+matchSpinePrefix (Spine sargs srest) (Spine pargs Seq.Empty)
   | Seq.length sargs >= Seq.length pargs = do
       let (prefix, suffix) = Seq.splitAt (Seq.length pargs) sargs
-      Just (Spine Seq.Empty prefix, Spine Seq.Empty suffix)
-matchSpinePrefix (Spine ((sargs, sbrs) Seq.:<| srest) sargs') (Spine ((pargs, _) Seq.:<| prest) pargs')
+      Just (Spine prefix Seq.Empty, Spine suffix srest)
+matchSpinePrefix (Spine sargs ((sbrs, sargs') Seq.:<| srest)) (Spine pargs ((_, pargs') Seq.:<| prest))
   | Seq.length sargs == Seq.length pargs = do
-      (Spine prefix prefixArgs, suffix) <- matchSpinePrefix (Spine srest sargs') (Spine prest pargs')
-      Just (Spine ((sargs, sbrs) Seq.:<| prefix) prefixArgs, suffix)
+      (Spine prefixArgs prefix, suffix) <- matchSpinePrefix (Spine sargs' srest) (Spine pargs' prest)
+      Just (Spine sargs ((sbrs, prefixArgs) Seq.:<| prefix), suffix)
 matchSpinePrefix _ _ = Nothing
