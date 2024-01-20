@@ -622,6 +622,68 @@ metaSolutionMetas context index = do
 
 -------------------------------------------------------------------------------
 
+forceNeutral :: Context v -> Domain.Head -> Domain.Spine -> M (Maybe (M Domain.Value))
+forceNeutral context head_ spine@(Domain.Spine args caseSpine)
+  | Domain.Var var <- head_
+  , Just value <- EnumMap.lookup var context.values =
+      pure $ Just $ Evaluation.applySpine value spine
+  | Just argEqualities <- HashMap.lookup head_ context.equal =
+      findArgEquality argEqualities
+  | otherwise = chooseDefaultBranch
+  where
+    findArgEquality [] = chooseDefaultBranch
+    findArgEquality ((eqArgs, eqValue) : rest)
+      | Just (argsPrefix, argsSuffix) <- Domain.matchArgsPrefix args eqArgs = do
+          eq <- Unification.equalArgs context argsPrefix eqArgs
+          if eq
+            then pure $ Just $ Evaluation.applySpine eqValue $ Domain.Spine argsSuffix caseSpine
+            else findArgEquality rest
+    findArgEquality (_ : rest) = findArgEquality rest
+
+    chooseDefaultBranch =
+      case spine of
+        ( Domain.Spine
+            args1
+            ( ( Domain.Branches env' (Syntax.ConstructorBranches typeName cbrs) (Just defaultBranch)
+                , args2
+                )
+                Seq.:<| caseSpine'
+              )
+          ) -> do
+            covered <- coveredConstructors context head_ args1
+            if all (\c -> HashSet.member (Name.QualifiedConstructor typeName c) covered) $ OrderedHashMap.keys cbrs
+              then pure $ Just do
+                branchValue <- Evaluation.evaluate env' defaultBranch
+                Evaluation.applySpine branchValue $ Domain.Spine args2 caseSpine'
+              else metaSolution
+        ( Domain.Spine
+            args1
+            ( ( Domain.Branches env' (Syntax.LiteralBranches lbrs) (Just defaultBranch)
+                , args2
+                )
+                Seq.:<| caseSpine'
+              )
+          ) -> do
+            covered <- coveredLiterals context head_ args1
+            if all (`HashSet.member` covered) $ OrderedHashMap.keys lbrs
+              then pure $ Just do
+                branchValue <- Evaluation.evaluate env' defaultBranch
+                Evaluation.applySpine branchValue $ Domain.Spine args2 caseSpine'
+              else metaSolution
+        _ -> metaSolution
+
+    metaSolution = case head_ of
+      Domain.Meta metaIndex -> do
+        meta <- lookupEagerMeta context metaIndex
+        case meta of
+          Meta.EagerSolved headValue _ _ -> do
+            pure $ Just do
+              headValue' <- Evaluation.evaluate Environment.empty headValue
+              Evaluation.applySpine headValue' spine
+          Meta.EagerUnsolved {} ->
+            pure Nothing
+      _ -> pure Nothing
+
 -- | Evaluate the head of a value further, if (now) possible due to meta
 -- solutions or new value bindings. Also evaluates through glued values.
 forceHead
@@ -630,66 +692,14 @@ forceHead
   -> M Domain.Value
 forceHead context value =
   case value of
-    Domain.Neutral (Domain.Meta metaIndex) spine -> do
-      meta <- lookupEagerMeta context metaIndex
-      case meta of
-        Meta.EagerSolved headValue _ _ -> do
-          headValue' <- Evaluation.evaluate Environment.empty headValue
-          value' <- Evaluation.applySpine headValue' spine
-          forceHead context value'
-        Meta.EagerUnsolved {} ->
-          pure value
-    Domain.Neutral (Domain.Var var) spine
-      | Just value' <- EnumMap.lookup var context.values -> do
-          value'' <- Evaluation.applySpine value' spine
+    Domain.Neutral head_ spine -> do
+      maybeEqValue <- forceNeutral context head_ spine
+      case maybeEqValue of
+        Just meqValue -> do
+          value'' <- meqValue
           forceHead context value''
-    Domain.Neutral head_ (Domain.Spine args caseSpine)
-      | Just argEqualities <- HashMap.lookup head_ context.equal -> do
-          let go [] = pure value
-              go ((eqArgs, eqValue) : rest)
-                | Just (argsPrefix, argsSuffix) <- Domain.matchArgsPrefix args eqArgs = do
-                    eq <- Unification.equalArgs context argsPrefix eqArgs
-                    if eq
-                      then do
-                        value' <- Evaluation.applySpine eqValue $ Domain.Spine argsSuffix caseSpine
-                        forceHead context value'
-                      else go rest
-              go (_ : rest) = go rest
-          go argEqualities
-    Domain.Neutral
-      head_
-      ( Domain.Spine
-          args1
-          ( ( Domain.Branches env' (Syntax.ConstructorBranches typeName cbrs) (Just defaultBranch)
-              , args2
-              )
-              Seq.:<| caseSpine
-            )
-        ) -> do
-        covered <- coveredConstructors context head_ args1
-        if all (\c -> HashSet.member (Name.QualifiedConstructor typeName c) covered) $ OrderedHashMap.keys cbrs
-          then do
-            branchValue <- Evaluation.evaluate env' defaultBranch
-            value' <- Evaluation.applySpine branchValue $ Domain.Spine args2 caseSpine
-            forceHead context value'
-          else pure value
-    Domain.Neutral
-      head_
-      ( Domain.Spine
-          args1
-          ( ( Domain.Branches env' (Syntax.LiteralBranches lbrs) (Just defaultBranch)
-              , args2
-              )
-              Seq.:<| caseSpine
-            )
-        ) -> do
-        covered <- coveredLiterals context head_ args1
-        if all (`HashSet.member` covered) $ OrderedHashMap.keys lbrs
-          then do
-            branchValue <- Evaluation.evaluate env' defaultBranch
-            value' <- Evaluation.applySpine branchValue $ Domain.Spine args2 caseSpine
-            forceHead context value'
-          else pure value
+        Nothing ->
+          pure value
     Domain.Glued _ _ value' ->
       forceHead context value'
     Domain.Lazy lazyValue -> do
@@ -706,71 +716,14 @@ forceHeadGlue
   -> M Domain.Value
 forceHeadGlue context value =
   case value of
-    Domain.Neutral (Domain.Meta metaIndex) spine -> do
-      meta <- lookupEagerMeta context metaIndex
-      case meta of
-        Meta.EagerSolved headValue _ _ -> do
-          lazyValue <- lazy do
-            headValue' <- Evaluation.evaluate Environment.empty headValue
-            Evaluation.applySpine headValue' spine
-          pure $ Domain.Glued (Domain.Meta metaIndex) spine $ Domain.Lazy lazyValue
-        Meta.EagerUnsolved {} ->
-          pure value
-    Domain.Neutral head_@(Domain.Var var) spine
-      | Just value' <- EnumMap.lookup var context.values -> do
-          lazyValue <- lazy $ Evaluation.applySpine value' spine
+    Domain.Neutral head_ spine -> do
+      maybeEqValue <- forceNeutral context head_ spine
+      case maybeEqValue of
+        Just meqValue -> do
+          lazyValue <- lazy meqValue
           pure $ Domain.Glued head_ spine $ Domain.Lazy lazyValue
-    Domain.Neutral head_ spine@(Domain.Spine args caseSpine)
-      | Just argEqualities <- HashMap.lookup head_ context.equal -> do
-          let go [] = pure value
-              go ((eqArgs, eqValue) : rest)
-                | Just (argsPrefix, argsSuffix) <- Domain.matchArgsPrefix args eqArgs = do
-                    eq <- Unification.equalArgs context argsPrefix eqArgs
-                    if eq
-                      then do
-                        lazyValue <- lazy $ Evaluation.applySpine eqValue $ Domain.Spine argsSuffix caseSpine
-                        pure $ Domain.Glued head_ spine $ Domain.Lazy lazyValue
-                      else go rest
-              go (_ : rest) = go rest
-          go argEqualities
-    Domain.Neutral
-      head_
-      spine@( Domain.Spine
-                args1
-                ( ( Domain.Branches env' (Syntax.ConstructorBranches typeName cbrs) (Just defaultBranch)
-                    , args2
-                    )
-                    Seq.:<| caseSpine
-                  )
-              ) -> do
-        covered <- coveredConstructors context head_ args1
-        if all (\c -> HashSet.member (Name.QualifiedConstructor typeName c) covered) $ OrderedHashMap.keys cbrs
-          then do
-            lazyValue <- lazy do
-              branchValue <- Evaluation.evaluate env' defaultBranch
-              value' <- Evaluation.applySpine branchValue $ Domain.Spine args2 caseSpine
-              forceHead context value'
-            pure $ Domain.Glued head_ spine $ Domain.Lazy lazyValue
-          else pure value
-    Domain.Neutral
-      head_
-      spine@( Domain.Spine
-                args1
-                ( ( Domain.Branches env' (Syntax.LiteralBranches lbrs) (Just defaultBranch)
-                    , args2
-                    )
-                    Seq.:<| caseSpine
-                  )
-              ) -> do
-        covered <- coveredLiterals context head_ args1
-        if all (`HashSet.member` covered) $ OrderedHashMap.keys lbrs
-          then do
-            lazyValue <- lazy do
-              branchValue <- Evaluation.evaluate env' defaultBranch
-              value' <- Evaluation.applySpine branchValue $ Domain.Spine args2 caseSpine
-              forceHead context value'
-            pure $ Domain.Glued head_ spine $ Domain.Lazy lazyValue
-          else pure value
+        Nothing ->
+          pure value
     Domain.Lazy lazyValue -> do
       value' <- force lazyValue
       forceHeadGlue context value'
