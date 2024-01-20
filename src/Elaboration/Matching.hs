@@ -791,7 +791,7 @@ splitConstructor outerContext config scrutineeValue scrutineeHead scrutineeArgs 
           tele <- goConstrFields context' constr conArgs' target patterns'
           pure $ Telescope.Extend bindings domain'' plicity tele
         _ -> do
-          context' <- Equation.equate context Flexibility.Rigid scrutineeValue $ Domain.Con constr conArgs
+          context' <- Context.define context scrutineeHead scrutineeArgs $ Domain.Con constr conArgs
           result <- check context' config Postponement.CanPostpone
           pure $ Telescope.Empty result
 
