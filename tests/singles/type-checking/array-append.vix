@@ -1,0 +1,39 @@
+data Nat = Z | S Nat
+
+data Bool = False | True
+
+add : Nat -> Nat -> Nat
+add Z n = n
+add (S m) n = S (add m n)
+
+data Unit = Unit
+data Product A B = Product A B
+
+data Vector n A where
+  Nil : Vector Z A
+  Cons : forall n. A -> Vector n A -> Vector (S n) A
+
+append_vector : forall m n A. Vector m A -> Vector n A -> Vector (add m n) A
+append_vector Nil ys = ys
+append_vector (Cons x xs) ys = Cons x (append_vector xs ys)
+
+data Array A where
+  Array : forall n. Vector n A -> Array A
+
+append_array : forall A. Array A -> Array A -> Array A
+append_array (Array xs) (Array ys) = Array (append_vector xs ys)
+
+filter_length : forall A n. (A -> Bool) -> Vector n A -> Nat
+filter_length p Nil = Z
+filter_length p (Cons x xs) = case p x of
+  False -> filter_length p xs
+  True -> S (filter_length p xs)
+
+filter_vector : forall A n. (p : A -> Bool)(xs : Vector n A) -> Vector (filter_length p xs) A
+filter_vector p Nil = Nil
+filter_vector p (Cons x xs) = case p x of
+  False -> filter_vector p xs
+  True -> Cons x (filter_vector p xs)
+
+filter_array : forall A. (A -> Bool) -> Array A -> Array A
+filter_array p (Array xs) = Array (filter_vector p xs)

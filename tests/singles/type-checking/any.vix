@@ -1,0 +1,8 @@
+data Any where
+  Any : (A : Type) -> A -> Any
+
+anyType : Any -> Type
+anyType (Any T _) = T
+
+anyValue : (any : Any) -> anyType any
+anyValue (Any _ V) = V
