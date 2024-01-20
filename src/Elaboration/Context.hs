@@ -77,27 +77,7 @@ toEnvironment
 toEnvironment context =
   Environment
     { indices = context.indices
-    , values =
-        EnumMap.fromList
-          $ mapMaybe
-            ( \(head_, argEqualities) ->
-                case head_ of
-                  Domain.Var var -> do
-                    let emptySpineValues =
-                          mapMaybe
-                            ( \(args, value) ->
-                                case args of
-                                  Seq.Empty -> Just (var, value)
-                                  _ -> Nothing
-                            )
-                            argEqualities
-                    case emptySpineValues of
-                      [value] -> Just value
-                      [] -> Nothing
-                      _ -> panic "multiple spine values"
-                  _ -> Nothing
-            )
-          $ HashMap.toList context.equal
+    , values = context.values
     , glueableBefore = Index.Zero
     }
 
@@ -120,6 +100,7 @@ empty definitionKind definitionName = do
       , boundVars = mempty
       , metas = ms
       , postponed = ps
+      , values = mempty
       , equal = mempty
       , notEqual = mempty
       , coverageChecks = cs
@@ -140,6 +121,7 @@ emptyFrom context =
     , boundVars = mempty
     , metas = context.metas
     , postponed = context.postponed
+    , values = mempty
     , equal = mempty
     , notEqual = mempty
     , coverageChecks = context.coverageChecks
@@ -241,7 +223,7 @@ extendSurfaceDef context surfaceName@(Name.Surface nameText) value type_ = do
         { surfaceNames = HashMap.insert surfaceName (Domain.var var, type_) context.surfaceNames
         , varNames = EnumMap.insert var (Name nameText) context.varNames
         , indices = context.indices Index.Map.:> var
-        , equal = HashMap.insert (Domain.Var var) [(Seq.Empty, value)] context.equal
+        , values = EnumMap.insert var value context.values
         , types = EnumMap.insert var type_ context.types
         }
     , var
@@ -265,7 +247,7 @@ extendDef context name value type_ = do
     ( context
         { varNames = EnumMap.insert var name context.varNames
         , indices = context.indices Index.Map.:> var
-        , equal = HashMap.insert (Domain.Var var) [(Seq.Empty, value)] context.equal
+        , values = EnumMap.insert var value context.values
         , types = EnumMap.insert var type_ context.types
         }
     , var
@@ -293,12 +275,14 @@ extendBefore context beforeVar binding type_ = do
     )
 
 defineWellOrdered :: Context v -> Domain.Head -> Domain.Args -> Domain.Value -> Context v
+defineWellOrdered context (Domain.Var var) Seq.Empty value =
+  context
+    { values = EnumMap.insert var value context.values
+    , boundVars = IntSeq.delete var context.boundVars
+    }
 defineWellOrdered context head_ args value =
   context
     { equal = HashMap.insertWith (<>) head_ [(args, value)] context.equal
-    , boundVars = case (head_, args) of
-        (Domain.Var var, Seq.Empty) -> IntSeq.delete var context.boundVars
-        _ -> context.boundVars
     }
 
 skip :: Context v -> M (Context (Succ v))
@@ -479,8 +463,16 @@ dumpValue context value = do
   term <- Readback.readback env value
   dumpTerm context term
   putText ""
-  unless (HashMap.null context.equal) $
+  unless (HashMap.null context.equal && EnumMap.null context.values) $
     putText "  where"
+  forM_ (EnumMap.toList context.values) \(var, value') -> do
+    lhsTerm <- Readback.readback env (Domain.Neutral (Domain.Var var) mempty)
+    rhsTerm <- Readback.readback env value'
+    putStr ("    " :: Text)
+    dumpTerm context lhsTerm
+    putStr (" = " :: Text)
+    dumpTerm context rhsTerm
+    putText ""
   forM_ (HashMap.toList context.equal) \(head_, argValues) ->
     forM_ argValues \(args, eqValue) -> do
       lhsTerm <- Readback.readback env (Domain.Neutral head_ $ Domain.Apps args)
@@ -647,6 +639,10 @@ forceHead context value =
           forceHead context value'
         Meta.EagerUnsolved {} ->
           pure value
+    Domain.Neutral (Domain.Var var) spine
+      | Just value' <- EnumMap.lookup var context.values -> do
+          value'' <- Evaluation.applySpine value' spine
+          forceHead context value''
     Domain.Neutral head_ (Domain.Spine args caseSpine)
       | Just argEqualities <- HashMap.lookup head_ context.equal -> do
           let go [] = pure value
@@ -720,6 +716,10 @@ forceHeadGlue context value =
           pure $ Domain.Glued (Domain.Meta metaIndex) spine $ Domain.Lazy lazyValue
         Meta.EagerUnsolved {} ->
           pure value
+    Domain.Neutral head_@(Domain.Var var) spine
+      | Just value' <- EnumMap.lookup var context.values -> do
+          lazyValue <- lazy $ Evaluation.applySpine value' spine
+          pure $ Domain.Glued head_ spine $ Domain.Lazy lazyValue
     Domain.Neutral head_ spine@(Domain.Spine args caseSpine)
       | Just argEqualities <- HashMap.lookup head_ context.equal -> do
           let go [] = pure value

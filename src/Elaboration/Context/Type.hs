@@ -36,6 +36,7 @@ data Context (v :: Data.Kind.Type) = Context
   , boundVars :: IntSeq Var
   , metas :: !(IORef (Meta.State M))
   , postponed :: !(IORef Postponed.Checks)
+  , values :: EnumMap Var Domain.Value
   , equal :: HashMap Domain.Head [(Domain.Args, Domain.Value)]
   , notEqual :: HashMap Domain.Head [(Domain.Args, HashSet Name.QualifiedConstructor, HashSet Literal)]
   , coverageChecks :: !(IORef (Tsil CoverageCheck))
