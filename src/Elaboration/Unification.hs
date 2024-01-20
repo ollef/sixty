@@ -1,6 +1,5 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -18,17 +17,19 @@ import qualified Core.Evaluation as Evaluation
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
 import qualified Data.EnumSet as EnumSet
+import qualified Data.HashSet as HashSet
 import Data.IntSeq (IntSeq)
 import qualified Data.IntSeq as IntSeq
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Sequence as Seq
+import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import {-# SOURCE #-} qualified Elaboration
 import Elaboration.Context (Context)
 import qualified Elaboration.Context as Context
 import Elaboration.Depth (compareHeadDepths)
+import qualified Elaboration.Equation as Equation
 import qualified Elaboration.Meta as Meta
-import Environment (Environment (Environment))
 import qualified Environment
 import qualified Error
 import Extra
@@ -67,192 +68,177 @@ tryUnifyD context value1 value2 = do
       else const $ Builtin.Unknown value2
 
 unify :: Context v -> Flexibility -> Domain.Value -> Domain.Value -> M ()
-unify context flexibility value1 value2 = do
-  value1' <- Context.forceHeadGlue context value1
-  value2' <- Context.forceHeadGlue context value2
-  catchAndAdd case (value1', value2') of
-    -- Both metas
-    (Domain.Neutral (Domain.Meta metaIndex1) (Domain.Apps args1), Domain.Neutral (Domain.Meta metaIndex2) (Domain.Apps args2))
-      | Flexibility.Rigid <- flexibility -> do
-          args1' <- mapM (mapM $ Context.forceHead context) args1
-          args2' <- mapM (mapM $ Context.forceHead context) args2
-          if metaIndex1 == metaIndex2 && map fst args1 == map fst args2
-            then do
-              -- Intersection: If the same metavar is applied to two different lists of unknown
-              -- variables its solution must not mention any variables at
-              -- positions where the lists differ.
-              let keep =
-                    mzipWith (shouldKeepMetaArgument `on` snd) args1' args2'
-              if and keep
-                then sequence_ $ Seq.zipWith (unify context flexibility `on` snd) args1 args2
-                else pruneMeta context metaIndex1 keep
-            else do
-              let maybeUniqueVars1 = do
-                    vars1 <- mapM (mapM Domain.singleVarView) args1'
-                    guard $ unique $ snd <$> vars1
-                    pure vars1
+unify context flexibility unforcedValue1 unforcedValue2 = catchAndAdd $ go unforcedValue1 unforcedValue2
+  where
+    go value1 value2 = do
+      value1' <- Context.forceHeadGlue context value1
+      value2' <- Context.forceHeadGlue context value2
+      -- putText "unifying"
+      -- Context.dumpValue context value1'
+      -- Context.dumpValue context value2'
+      case (value1', value2') of
+        -- Glued values
+        (Domain.Glued head1 (Domain.Apps args1) value1'', Domain.Glued head2 (Domain.Apps args2) value2'')
+          | head1 == head2
+          , (fst <$> args1) == (fst <$> args2) ->
+              sequence_ (Seq.zipWith (unify context Flexibility.Flexible `on` snd) args1 args2) `catch` \(_ :: Error.Elaboration) ->
+                unify context flexibility value1'' value2''
+          | otherwise -> do
+              ordering <- compareHeadDepths head1 head2
+              case ordering of
+                LT -> go value1' value2''
+                GT -> go value1'' value2'
+                EQ -> go value1'' value2''
+        (Domain.Glued _ _ value1'', _) ->
+          go value1'' value2'
+        (_, Domain.Glued _ _ value2'') ->
+          go value1' value2''
+        -- Both metas
+        (Domain.Neutral (Domain.Meta metaIndex1) (Domain.Apps args1), Domain.Neutral (Domain.Meta metaIndex2) (Domain.Apps args2))
+          | Flexibility.Rigid <- flexibility -> do
+              args1' <- mapM (mapM $ Context.forceHead context) args1
+              args2' <- mapM (mapM $ Context.forceHead context) args2
+              if metaIndex1 == metaIndex2 && map fst args1 == map fst args2
+                then do
+                  -- Intersection: If the same metavar is applied to two different lists of unknown
+                  -- variables its solution must not mention any variables at
+                  -- positions where the lists differ.
+                  let keep =
+                        mzipWith (shouldKeepMetaArgument `on` snd) args1' args2'
+                  if and keep
+                    then sequence_ $ Seq.zipWith (unify context flexibility `on` snd) args1 args2
+                    else pruneMeta context metaIndex1 keep
+                else do
+                  let maybeUniqueVars1 = do
+                        vars1 <- mapM (mapM Domain.singleVarView) args1'
+                        guard $ unique $ snd <$> vars1
+                        pure vars1
 
-                  maybeUniqueVars2 = do
-                    vars2 <- mapM (mapM Domain.singleVarView) args2'
-                    guard $ unique $ snd <$> vars2
-                    pure vars2
+                      maybeUniqueVars2 = do
+                        vars2 <- mapM (mapM Domain.singleVarView) args2'
+                        guard $ unique $ snd <$> vars2
+                        pure vars2
 
-              case (maybeUniqueVars1, maybeUniqueVars2) of
-                (Just vars1, Just vars2)
-                  | length vars1 > length vars2 ->
-                      solve context metaIndex1 vars1 value2
-                  | otherwise ->
-                      solve context metaIndex2 vars2 value1
-                (Just vars1, _) ->
-                  solve context metaIndex1 vars1 value2
-                (_, Just vars2) ->
-                  solve context metaIndex2 vars2 value1
+                  case (maybeUniqueVars1, maybeUniqueVars2) of
+                    (Just vars1, Just vars2)
+                      | length vars1 > length vars2 ->
+                          solve context metaIndex1 vars1 unforcedValue2
+                      | otherwise ->
+                          solve context metaIndex2 vars2 unforcedValue1
+                    (Just vars1, _) ->
+                      solve context metaIndex1 vars1 unforcedValue2
+                    (_, Just vars2) ->
+                      solve context metaIndex2 vars2 unforcedValue1
+                    _ ->
+                      can'tUnify
+
+        -- Same heads
+        (Domain.Neutral head1 (Domain.Apps args1), Domain.Neutral head2 (Domain.Apps args2))
+          | head1 == head2
+          , (fst <$> args1) == (fst <$> args2) -> do
+              let flexibility' =
+                    max (Domain.headFlexibility head1) flexibility
+              sequence_ $ Seq.zipWith (unify context flexibility' `on` snd) args1 args2
+        (Domain.Con con1 args1, Domain.Con con2 args2)
+          | con1 == con2
+          , map fst args1 == map fst args2 ->
+              Tsil.zipWithM_ (unify context flexibility `on` snd) args1 args2
+          | otherwise ->
+              can'tUnify
+        (Domain.Lit lit1, Domain.Lit lit2)
+          | lit1 == lit2 ->
+              pure ()
+          | otherwise ->
+              can'tUnify
+        (Domain.Lam bindings1 type1 plicity1 closure1, Domain.Lam _ type2 plicity2 closure2)
+          | plicity1 == plicity2 ->
+              unifyAbstraction (Bindings.toName bindings1) type1 closure1 type2 closure2
+        (Domain.Pi binding1 domain1 plicity1 targetClosure1, Domain.Pi _ domain2 plicity2 targetClosure2)
+          | plicity1 == plicity2 ->
+              unifyAbstraction (Binding.toName binding1) domain1 targetClosure1 domain2 targetClosure2
+        (Domain.Pi binding1 domain1 plicity1 targetClosure1, Domain.Fun domain2 plicity2 target2)
+          | plicity1 == plicity2 -> do
+              unify context flexibility domain2 domain1
+              (context', var) <- Context.extend context (Binding.toName binding1) domain1
+              target1 <- Evaluation.evaluateClosure targetClosure1 $ Domain.var var
+              unify context' flexibility target1 target2
+        (Domain.Fun domain1 plicity1 target1, Domain.Pi binding2 domain2 plicity2 targetClosure2)
+          | plicity1 == plicity2 -> do
+              unify context flexibility domain2 domain1
+              (context', var) <- Context.extend context (Binding.toName binding2) domain2
+              target2 <- Evaluation.evaluateClosure targetClosure2 $ Domain.var var
+              unify context' flexibility target1 target2
+        (Domain.Fun domain1 plicity1 target1, Domain.Fun domain2 plicity2 target2)
+          | plicity1 == plicity2 -> do
+              unify context flexibility domain2 domain1
+              unify context flexibility target1 target2
+
+        -- Eta expand
+        (Domain.Lam bindings1 type1 plicity1 closure1, v2) -> do
+          (context', var) <- Context.extend context (Bindings.toName bindings1) type1
+          let varValue =
+                Domain.var var
+
+          body1 <- Evaluation.evaluateClosure closure1 varValue
+          body2 <- Evaluation.apply v2 plicity1 varValue
+
+          unify context' flexibility body1 body2
+        (v1, Domain.Lam bindings2 type2 plicity2 closure2) -> do
+          (context', var) <- Context.extend context (Bindings.toName bindings2) type2
+          let varValue =
+                Domain.var var
+
+          body1 <- Evaluation.apply v1 plicity2 varValue
+          body2 <- Evaluation.evaluateClosure closure2 varValue
+
+          unify context' flexibility body1 body2
+
+        -- Metas
+        (Domain.Neutral (Domain.Meta metaIndex1) (Domain.Apps args1), _)
+          | Flexibility.Rigid <- flexibility -> do
+              args1' <- mapM (mapM $ Context.forceHead context) args1
+              case traverse (traverse Domain.singleVarView) args1' of
+                Just vars1
+                  | unique $ snd <$> vars1 ->
+                      solve context metaIndex1 vars1 unforcedValue2
+                _ ->
+                  can'tUnify
+        (_, Domain.Neutral (Domain.Meta metaIndex2) (Domain.Apps args2))
+          | Flexibility.Rigid <- flexibility -> do
+              args2' <- mapM (mapM $ Context.forceHead context) args2
+              case traverse (traverse Domain.singleVarView) args2' of
+                Just vars2
+                  | unique $ snd <$> vars2 ->
+                      solve context metaIndex2 vars2 unforcedValue1
                 _ ->
                   can'tUnify
 
-    -- Same heads
-    (Domain.Neutral head1 spine1, Domain.Neutral head2 spine2)
-      | head1 == head2 -> do
-          let flexibility' =
-                max (Domain.headFlexibility head1) flexibility
-
-          unifySpines context flexibility' spine1 spine2
-    (Domain.Con con1 args1, Domain.Con con2 args2)
-      | con1 == con2
-      , map fst args1 == map fst args2 ->
-          Tsil.zipWithM_ (unify context flexibility `on` snd) args1 args2
-      | otherwise ->
-          can'tUnify
-    (Domain.Lit lit1, Domain.Lit lit2)
-      | lit1 == lit2 ->
+        -- Case inversion
+        (Domain.Neutral (Domain.Meta meta) (spine@(Domain.Apps args) Domain.:> Domain.Case branches), _)
+          | Flexibility.Rigid <- flexibility -> do
+              matches <- potentiallyMatchingBranches context value2' branches
+              invertCase meta spine args matches
+        (_, Domain.Neutral (Domain.Meta meta) (spine@(Domain.Apps args) Domain.:> Domain.Case branches))
+          | Flexibility.Rigid <- flexibility -> do
+              matches <- potentiallyMatchingBranches context value1' branches
+              invertCase meta spine args matches
+        (Domain.Neutral head1 spine1@(Domain.Spine args1 ((branches1, _) Seq.:<| _)), Domain.Neutral head2 spine2)
+          | head1 == head2 ->
+              unifySpines context Flexibility.Flexible spine1 spine2 `catch` \(_ :: Error.Elaboration) ->
+                withBranches context head1 args1 branches1 $ \context' -> unify context' flexibility value1' value2
+        (Domain.Neutral head (Domain.Spine args ((branches, _) Seq.:<| _)), _) ->
+          withBranches context head args branches $ \context' -> unify context' flexibility value1' value2
+        (_, Domain.Neutral head (Domain.Spine args ((branches, _) Seq.:<| _))) ->
+          withBranches context head args branches $ \context' -> unify context' flexibility value1 value2'
+        -- Failure terms mean that there has been an earlier error that's already
+        -- been reported, so let's not trigger more errors from them.
+        (Domain.Neutral (Domain.Global Builtin.UnknownName) _, _) ->
           pure ()
-      | otherwise ->
+        (_, Domain.Neutral (Domain.Global Builtin.UnknownName) _) ->
+          pure ()
+        _ ->
           can'tUnify
-    (Domain.Lam bindings1 type1 plicity1 closure1, Domain.Lam _ type2 plicity2 closure2)
-      | plicity1 == plicity2 ->
-          unifyAbstraction (Bindings.toName bindings1) type1 closure1 type2 closure2
-    (Domain.Pi binding1 domain1 plicity1 targetClosure1, Domain.Pi _ domain2 plicity2 targetClosure2)
-      | plicity1 == plicity2 ->
-          unifyAbstraction (Binding.toName binding1) domain1 targetClosure1 domain2 targetClosure2
-    (Domain.Pi binding1 domain1 plicity1 targetClosure1, Domain.Fun domain2 plicity2 target2)
-      | plicity1 == plicity2 -> do
-          unify context flexibility domain2 domain1
-          (context', var) <- Context.extend context (Binding.toName binding1) domain1
-          target1 <- Evaluation.evaluateClosure targetClosure1 $ Domain.var var
-          unify context' flexibility target1 target2
-    (Domain.Fun domain1 plicity1 target1, Domain.Pi binding2 domain2 plicity2 targetClosure2)
-      | plicity1 == plicity2 -> do
-          unify context flexibility domain2 domain1
-          (context', var) <- Context.extend context (Binding.toName binding2) domain2
-          target2 <- Evaluation.evaluateClosure targetClosure2 $ Domain.var var
-          unify context' flexibility target1 target2
-    (Domain.Fun domain1 plicity1 target1, Domain.Fun domain2 plicity2 target2)
-      | plicity1 == plicity2 -> do
-          unify context flexibility domain2 domain1
-          unify context flexibility target1 target2
 
-    -- Eta expand
-    (Domain.Lam bindings1 type1 plicity1 closure1, v2) -> do
-      (context', var) <- Context.extend context (Bindings.toName bindings1) type1
-      let varValue =
-            Domain.var var
-
-      body1 <- Evaluation.evaluateClosure closure1 varValue
-      body2 <- Evaluation.apply v2 plicity1 varValue
-
-      unify context' flexibility body1 body2
-    (v1, Domain.Lam bindings2 type2 plicity2 closure2) -> do
-      (context', var) <- Context.extend context (Bindings.toName bindings2) type2
-      let varValue =
-            Domain.var var
-
-      body1 <- Evaluation.apply v1 plicity2 varValue
-      body2 <- Evaluation.evaluateClosure closure2 varValue
-
-      unify context' flexibility body1 body2
-
-    -- Glued values
-    (Domain.Glued head1 spine1 value1'', Domain.Glued head2 spine2 value2'')
-      | head1 == head2 ->
-          unifySpines context Flexibility.Flexible spine1 spine2 `catch` \(_ :: Error.Elaboration) ->
-            unify context flexibility value1'' value2''
-      | otherwise -> do
-          ordering <- compareHeadDepths head1 head2
-          case ordering of
-            LT -> unify context flexibility value1' value2''
-            GT -> unify context flexibility value1'' value2'
-            EQ -> unify context flexibility value1'' value2''
-    (Domain.Glued _ _ value1'', _) ->
-      unify context flexibility value1'' value2'
-    (_, Domain.Glued _ _ value2'') ->
-      unify context flexibility value1' value2''
-    -- Metas
-    (Domain.Neutral (Domain.Meta metaIndex1) (Domain.Apps args1), v2)
-      | Flexibility.Rigid <- flexibility -> do
-          args1' <- mapM (mapM $ Context.forceHead context) args1
-          case traverse (traverse Domain.singleVarView) args1' of
-            Just vars1
-              | unique $ snd <$> vars1 ->
-                  solve context metaIndex1 vars1 v2
-            _ ->
-              can'tUnify
-    (v1, Domain.Neutral (Domain.Meta metaIndex2) (Domain.Apps args2))
-      | Flexibility.Rigid <- flexibility -> do
-          args2' <- mapM (mapM $ Context.forceHead context) args2
-          case traverse (traverse Domain.singleVarView) args2' of
-            Just vars2
-              | unique $ snd <$> vars2 ->
-                  solve context metaIndex2 vars2 v1
-            _ ->
-              can'tUnify
-
-    -- Case inversion
-    (Domain.Neutral (Domain.Meta meta) (spine@(Domain.Apps args) Domain.:> Domain.Case branches), _)
-      | Flexibility.Rigid <- flexibility -> do
-          matches <- potentiallyMatchingBranches context value2' branches
-          invertCase meta spine args matches
-    (_, Domain.Neutral (Domain.Meta meta) (spine@(Domain.Apps args) Domain.:> Domain.Case branches))
-      | Flexibility.Rigid <- flexibility -> do
-          matches <- potentiallyMatchingBranches context value1' branches
-          invertCase meta spine args matches
-
-    -- Last call for cases: all branches have to unify with the RHS.
-    (Domain.Neutral _ (_ Domain.:> Domain.Case (Domain.Branches env1 brs1 defaultBranch1)), v2) -> do
-      case defaultBranch1 of
-        Just br -> do
-          v1 <- Evaluation.evaluate env1 br
-          unify context flexibility v1 v2
-        Nothing -> pure ()
-      case brs1 of
-        Syntax.ConstructorBranches _ constructorBranches ->
-          forM_ constructorBranches \(_, tele1) -> withInstantiatedTele context env1 tele1 \context' v1 ->
-            unify context' flexibility v1 v2
-        Syntax.LiteralBranches literalBranches -> forM_ literalBranches \(_, term1) -> do
-          v1 <- Evaluation.evaluate env1 term1
-          unify context flexibility v1 v2
-    (v1, Domain.Neutral _ (_ Domain.:> Domain.Case (Domain.Branches env2 brs2 defaultBranch2))) -> do
-      case defaultBranch2 of
-        Just br -> do
-          v2 <- Evaluation.evaluate env2 br
-          unify context flexibility v1 v2
-        Nothing -> pure ()
-      case brs2 of
-        Syntax.ConstructorBranches _ constructorBranches ->
-          forM_ constructorBranches \(_, tele2) -> withInstantiatedTele context env2 tele2 \context' v2 ->
-            unify context' flexibility v1 v2
-        Syntax.LiteralBranches literalBranches -> forM_ literalBranches \(_, term2) -> do
-          v2 <- Evaluation.evaluate env2 term2
-          unify context flexibility v1 v2
-
-    -- Failure terms mean that there has been an earlier error that's already
-    -- been reported, so let's not trigger more errors from them.
-    (Domain.Neutral (Domain.Global Builtin.UnknownName) _, _) ->
-      pure ()
-    (_, Domain.Neutral (Domain.Global Builtin.UnknownName) _) ->
-      pure ()
-    _ ->
-      can'tUnify
-  where
     unifyAbstraction name type1 closure1 type2 closure2 = do
       unify context flexibility type1 type2
 
@@ -270,10 +256,10 @@ unify context flexibility value1 value2 = do
           metaType <- instantiatedMetaType context meta args
           appliedConstr <- fullyApplyToMetas context constr metaType
           unify context flexibility (Domain.Neutral (Domain.Meta meta) spine) appliedConstr
-          unify context flexibility value1 value2
+          go unforcedValue1 unforcedValue2
         [Just (Right lit)] -> do
           unify context flexibility (Domain.Neutral (Domain.Meta meta) spine) $ Domain.Lit lit
-          unify context flexibility value1 value2
+          go unforcedValue1 unforcedValue2
         _ ->
           can'tUnify
 
@@ -283,8 +269,8 @@ unify context flexibility value1 value2 = do
           m `catch` \err ->
             case err of
               Error.TypeMismatch stack -> do
-                term1 <- Elaboration.readback context value1
-                term2 <- Elaboration.readback context value2
+                term1 <- Elaboration.readback context unforcedValue1
+                term2 <- Elaboration.readback context unforcedValue2
                 pterm1 <- Context.toPrettyableTerm context term1
                 pterm2 <- Context.toPrettyableTerm context term2
                 throwIO $
@@ -294,8 +280,8 @@ unify context flexibility value1 value2 = do
                               , pterm2
                               )
               Error.OccursCheck stack -> do
-                term1 <- Elaboration.readback context value1
-                term2 <- Elaboration.readback context value2
+                term1 <- Elaboration.readback context unforcedValue1
+                term2 <- Elaboration.readback context unforcedValue2
                 pterm1 <- Context.toPrettyableTerm context term1
                 pterm2 <- Context.toPrettyableTerm context term2
                 throwIO $
@@ -311,6 +297,93 @@ unify context flexibility value1 value2 = do
 
     can'tUnify =
       throwIO $ Error.TypeMismatch mempty
+
+equalArgs :: Context v -> Domain.Args -> Domain.Args -> M Bool
+equalArgs context args1 args2 =
+  (True <$ sequence_ (Seq.zipWith (unify context Flexibility.Flexible `on` snd) args1 args2))
+    `catch` \(_ :: Error.Elaboration) -> pure False
+
+-------------------------------------------------------------------------------
+-- Branch unification
+
+withBranches :: Context v -> Domain.Head -> Domain.Args -> Domain.Branches -> (forall v'. Context v' -> M ()) -> M ()
+withBranches context head args (Domain.Branches env brs maybeDefaultBranch) k =
+  case brs of
+    Syntax.ConstructorBranches typeName cbrs -> do
+      headType_ <- typeOfHead context head
+      type_ <- Context.instantiateType context headType_ args
+      type' <- Context.forceHead context type_
+      case type' of
+        Domain.Neutral (Domain.Global typeName') (Domain.Apps typeArgs) | typeName == typeName' -> do
+          covered <- Context.coveredConstructors context head args
+          forM_ (OrderedHashMap.toList cbrs) \(constr, (_, tele)) -> do
+            let qconstr = Name.QualifiedConstructor typeName constr
+            unless (HashSet.member qconstr covered) $
+              withConstructorBranch context env head args qconstr (first implicitise <$> Tsil.fromSeq typeArgs) tele k
+          when (isJust maybeDefaultBranch) do
+            let covered' = HashSet.map (Name.QualifiedConstructor typeName) $ HashSet.fromMap (void $ OrderedHashMap.toMap cbrs)
+            let context' = Context.withCoveredConstructors context head args covered'
+            k context'
+        _ -> panic "withBranches type mismatch"
+    Syntax.LiteralBranches lbrs -> do
+      covered <- Context.coveredLiterals context head args
+      forM_ (OrderedHashMap.keys lbrs) \lit -> do
+        unless (HashSet.member lit covered) do
+          let context' = Context.defineWellOrdered context head args $ Domain.Lit lit
+          k context'
+      when (isJust maybeDefaultBranch) do
+        let covered' = HashSet.fromMap $ void $ OrderedHashMap.toMap lbrs
+        let context' = Context.withCoveredLiterals context head args covered'
+        k context'
+
+-- TODO use Core.TypeOf.typeOfHead
+typeOfHead :: Context v -> Domain.Head -> M Domain.Type
+typeOfHead context hd =
+  case hd of
+    Domain.Var var ->
+      pure $ Context.lookupVarType var context
+    Domain.Global global -> do
+      type_ <- fetch $ Query.ElaboratedType global
+      Evaluation.evaluate Environment.empty type_
+    Domain.Meta index -> do
+      solution <- Context.lookupMeta context index
+      Evaluation.evaluate Environment.empty $ Meta.entryType solution
+
+withConstructorBranch
+  :: Context v
+  -> Domain.Environment v1
+  -> Domain.Head
+  -> Domain.Args
+  -> Name.QualifiedConstructor
+  -> Tsil (Plicity, Domain.Value)
+  -> Telescope Bindings Syntax.Type Syntax.Term v1
+  -> (forall v'. Context v' -> M a)
+  -> M a
+withConstructorBranch context env head args constr constrArgs tele k =
+  case tele of
+    Telescope.Empty _ -> do
+      let constrValue = Domain.Con constr constrArgs
+      context' <- case constrValue of
+        Builtin.Refl _ value1 value2 ->
+          Equation.equate context Flexibility.Rigid value1 value2
+        _ -> pure context
+      let context'' = Context.defineWellOrdered context' head args $ Domain.Con constr constrArgs
+      k context''
+    Telescope.Extend bindings type_ plicity tele' -> do
+      type' <- Evaluation.evaluate env type_
+      (context', var) <- Context.extend context (Bindings.toName bindings) type'
+      withConstructorBranch
+        context'
+        (Environment.extendVar env var)
+        head
+        args
+        constr
+        (constrArgs Tsil.:> (plicity, Domain.var var))
+        tele'
+        k
+
+-------------------------------------------------------------------------------
+-- Spine unification
 
 unifySpines :: Context v -> Flexibility -> Domain.Spine -> Domain.Spine -> M ()
 unifySpines context flexibility spine1 spine2 =
@@ -606,10 +679,9 @@ checkSolution outerContext meta vars value = do
         PartialRenaming
           { occurs = Just meta
           , environment =
-              Environment
-                { indices = Index.Map indices
-                , values = outerContext.values
-                , glueableBefore = Index $ IntSeq.length indices
+              (Context.toEnvironment outerContext)
+                { Environment.indices = Index.Map indices
+                , Environment.glueableBefore = Index $ IntSeq.length indices
                 }
           , renamingFlexibility = Flexibility.Rigid
           }
@@ -642,10 +714,9 @@ addAndRenameLambdas outerContext meta plicities vars term =
             PartialRenaming
               { occurs = Just meta
               , environment =
-                  Environment
-                    { indices = Index.Map vars'
-                    , values = outerContext.values
-                    , glueableBefore = Index $ IntSeq.length vars'
+                  (Context.toEnvironment outerContext)
+                    { Environment.indices = Index.Map vars'
+                    , Environment.glueableBefore = Index $ IntSeq.length vars'
                     }
               , renamingFlexibility = Flexibility.Rigid
               }
@@ -706,7 +777,7 @@ renameValue outerContext renaming value = do
           if EnumSet.member occursMeta metas
             then -- The meta solution might contain `occurs`, so we need to force.
               renameValue outerContext renaming value''
-            else -- The solved meta (`meta`) does contain the meta we're solving
+            else -- The solved meta (`meta`) doesn't contain the meta we're solving
             -- (`occursMeta`) in scope, so we can try without unfolding
             -- `meta`.
 

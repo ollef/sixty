@@ -24,9 +24,7 @@ import qualified Core.Domain.Pattern as Domain.Pattern
 import qualified Core.Domain.Telescope as Domain (Telescope)
 import qualified Core.Domain.Telescope as Domain.Telescope
 import qualified Core.Evaluation as Evaluation
-import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
-import qualified Data.EnumMap as EnumMap
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
@@ -41,14 +39,14 @@ import qualified Data.Tsil as Tsil
 import {-# SOURCE #-} qualified Elaboration
 import Elaboration.Context (Context)
 import qualified Elaboration.Context as Context
+import qualified Elaboration.Equation as Equation
 import qualified Elaboration.Matching.SuggestedName as SuggestedName
+import qualified Elaboration.Meta as Meta
 import qualified Elaboration.Unification as Unification
-import qualified Elaboration.Unification.Indices as Indices
 import qualified Environment
 import qualified Error
 import qualified Flexibility
 import GHC.Exts (fromList)
-import qualified Index
 import Literal (Literal)
 import qualified Meta
 import Monad
@@ -166,109 +164,30 @@ resolvePattern context unspannedPattern type_ canPostpone = do
 
 checkCase
   :: Context v
-  -> Syntax.Term (Index.Succ v)
+  -> Syntax.Term v
   -> Domain.Type
   -> [(Surface.Pattern, Surface.Term)]
   -> Domain.Type
-  -> Postponement.CanPostpone
   -> M (Syntax.Term v)
-checkCase context scrutinee scrutineeType branches expectedType canPostpone = do
-  skippedContext <- Context.skip context
-  scrutineeValue <- Elaboration.evaluate skippedContext scrutinee
-  blockingMetaOrIsPatternScrutinee <- runExceptT $ isPatternValue context scrutineeValue
-  case (canPostpone, blockingMetaOrIsPatternScrutinee) of
-    (Postponement.CanPostpone, Left blockingMeta) ->
-      postponeCaseCheck context scrutinee scrutineeType branches expectedType blockingMeta
-    _ -> do
-      (context', var) <-
-        if fromRight False blockingMetaOrIsPatternScrutinee
-          then Context.extendDef context "scrutinee" scrutineeValue scrutineeType
-          else Context.extend context "scrutinee" scrutineeType
-
-      let scrutineeVarValue =
-            Domain.var var
-      usedClauses <- newIORef mempty
-      term <-
-        checkWithCoverage
-          context'
-          Config
-            { expectedType = expectedType
-            , scrutinees = pure (Explicit, scrutineeVarValue)
-            , clauses =
-                [ Clause
-                  { span = Span.add patSpan rhsSpan
-                  , matches = [Match scrutineeVarValue scrutineeVarValue Explicit (unresolvedPattern pat) scrutineeType]
-                  , rhs = rhs'
-                  }
-                | (pat@(Surface.Pattern patSpan _), rhs'@(Surface.Term rhsSpan _)) <- branches
-                ]
-            , usedClauses = usedClauses
-            , matchKind = Error.Branch
+checkCase context scrutinee scrutineeType branches expectedType = do
+  scrutineeValue <- Elaboration.evaluate context scrutinee
+  usedClauses <- newIORef mempty
+  checkWithCoverage
+    context
+    Config
+      { expectedType = expectedType
+      , scrutinees = pure (Explicit, scrutineeValue)
+      , clauses =
+          [ Clause
+            { span = Span.add patSpan rhsSpan
+            , matches = [Match scrutineeValue scrutineeValue Explicit (unresolvedPattern pat) scrutineeType]
+            , rhs = rhs'
             }
-      scrutineeType' <- Readback.readback (Context.toEnvironment context) scrutineeType
-      pure $
-        Syntax.Lets $
-          Syntax.LetType "scrutinee" scrutineeType' $
-            Syntax.Let "scrutinee" Index.Zero scrutinee $
-              Syntax.In term
-
-postponeCaseCheck
-  :: Context v
-  -> Syntax.Term (Index.Succ v)
-  -> Domain.Type
-  -> [(Surface.Pattern, Surface.Term)]
-  -> Domain.Type
-  -> Meta.Index
-  -> M (Syntax.Term v)
-postponeCaseCheck context scrutinee scrutineeType branches expectedType blockingMeta =
-  Elaboration.postpone context expectedType blockingMeta $
-    checkCase context scrutinee scrutineeType branches expectedType
-
-isPatternValue :: Context v -> Domain.Value -> ExceptT Meta.Index M Bool
-isPatternValue context value = do
-  value' <- lift $ Context.forceHead context value
-  case value' of
-    Domain.Neutral (Domain.Var _) Domain.Empty ->
-      pure True
-    Domain.Neutral (Domain.Var _) (_ Domain.:> _) ->
-      pure False
-    Domain.Neutral (Domain.Global _) _ ->
-      pure False
-    Domain.Neutral (Domain.Meta blockingMeta) _ ->
-      throwError blockingMeta
-    Domain.Lit _ ->
-      pure True
-    Domain.Con constr args -> do
-      constrTypeTele <- fetch $ Query.ConstructorType constr
-      let spine' =
-            dropTypeArgs constrTypeTele $ toList args
-
-      and <$> mapM (isPatternValue context . snd) spine'
-    Domain.Glued _ _ value'' ->
-      isPatternValue context value''
-    Domain.Lazy lazyValue -> do
-      value'' <- lift $ force lazyValue
-      isPatternValue context value''
-    Domain.Lam {} ->
-      pure False
-    Domain.Pi {} ->
-      pure False
-    Domain.Fun {} ->
-      pure False
-  where
-    dropTypeArgs
-      :: Telescope n t t' v
-      -> [(Plicity, value)]
-      -> [(Plicity, value)]
-    dropTypeArgs tele args =
-      case (tele, args) of
-        (Telescope.Empty _, _) ->
-          args
-        (Telescope.Extend _ _ plicity1 tele', (plicity2, _) : args')
-          | plicity1 == plicity2 ->
-              dropTypeArgs tele' args'
-        _ ->
-          panic "chooseBranch arg mismatch"
+          | (pat@(Surface.Pattern patSpan _), rhs'@(Surface.Term rhsSpan _)) <- branches
+          ]
+      , usedClauses = usedClauses
+      , matchKind = Error.Branch
+      }
 
 checkClauses
   :: Context v
@@ -302,14 +221,9 @@ checkSingle
   -> Domain.Type
   -> M (Syntax.Term v)
 checkSingle context scrutinee plicity pat@(Surface.Pattern patSpan _) rhs@(Surface.Term rhsSpan _) expectedType = do
-  let scrutineeValue =
-        Domain.var scrutinee
-
-      scrutineeType =
-        Context.lookupVarType scrutinee context
-
+  let scrutineeValue = Domain.var scrutinee
+      scrutineeType = Context.lookupVarType scrutinee context
   usedClauses <- newIORef mempty
-
   checkWithCoverage
     context
     Config
@@ -364,7 +278,7 @@ check context config canPostpone = do
     firstClause : _ -> do
       let matches = firstClause.matches
       splitEqualityOr context config' matches $
-        splitConstructorOr context config' matches $ do
+        splitConstructorOr context config' matches canPostpone do
           let indeterminateIndexUnification = do
                 Context.report context $ Error.IndeterminateIndexUnification config.matchKind
                 Elaboration.readback context $ Builtin.Unknown config.expectedType
@@ -396,6 +310,10 @@ findPatternResolutionBlocker context clauses =
         forM_ clause.matches \case
           Match _ _ _ (UnresolvedPattern span unspannedSurfacePattern) type_ ->
             void $ resolvePattern (Context.spanned span context) unspannedSurfacePattern type_ Postponement.CanPostpone
+          Match _ (Domain.Neutral (Domain.Meta blockingMeta) _) _ (Pattern _ Con {}) _ ->
+            throwError blockingMeta
+          Match _ (Domain.Neutral (Domain.Meta blockingMeta) _) _ (Pattern _ Lit {}) _ ->
+            throwError blockingMeta
           Match _ _ _ Pattern {} _ ->
             pure ()
 
@@ -425,10 +343,8 @@ uncoveredScrutineePatterns
 uncoveredScrutineePatterns context value = do
   value' <- Context.forceHead context value
   case value' of
-    Domain.Neutral (Domain.Var v) Domain.Empty -> do
-      let covered =
-            EnumMap.findWithDefault mempty v context.coveredConstructors
-
+    Domain.Neutral head_ (Domain.Apps args) -> do
+      covered <- Context.coveredConstructors context head_ args
       case HashSet.toList covered of
         [] ->
           pure [Domain.Pattern.Wildcard]
@@ -453,11 +369,7 @@ uncoveredScrutineePatterns context value = do
                       ]
             _ ->
               panic "uncoveredScrutineePatterns non-data"
-    Domain.Neutral (Domain.Var _) (_ Domain.:> _) ->
-      pure []
-    Domain.Neutral (Domain.Meta _) _ ->
-      pure []
-    Domain.Neutral (Domain.Global _) _ ->
+    Domain.Neutral {} ->
       pure []
     Domain.Lit lit ->
       pure [Domain.Pattern.Lit lit]
@@ -494,7 +406,7 @@ uncoveredScrutineePatterns context value = do
           | plicity1 == plicity2 ->
               dropTypeArgs tele' args'
         _ ->
-          panic "chooseBranch arg mismatch"
+          panic "uncoveredScrutineePatterns arg mismatch"
 
 -------------------------------------------------------------------------------
 
@@ -557,14 +469,16 @@ simplifyMatch context canPostpone match@(Match value forcedValue plicity pat typ
               pure []
           | otherwise ->
               fail "Literal mismatch"
-        (Domain.Neutral (Domain.Var var) Domain.Empty, Con _ constr _)
-          | Just coveredConstrs <- EnumMap.lookup var context.coveredConstructors
-          , HashSet.member constr coveredConstrs ->
-              fail "Constructor already covered"
-        (Domain.Neutral (Domain.Var var) Domain.Empty, Lit lit)
-          | Just coveredLits <- EnumMap.lookup var context.coveredLiterals
-          , HashSet.member lit coveredLits ->
-              fail "Literal already covered"
+        (Domain.Neutral head_ (Domain.Apps args), Con _ constr _) -> do
+          covered <- lift $ Context.coveredConstructors context head_ args
+          if HashSet.member constr covered
+            then fail "Constructor already covered"
+            else pure [match']
+        (Domain.Neutral head_ (Domain.Apps args), Lit lit) -> do
+          covered <- lift $ Context.coveredLiterals context head_ args
+          if HashSet.member lit covered
+            then fail "Literal already covered"
+            else pure [match']
         _ ->
           pure [match']
 
@@ -700,7 +614,7 @@ expandAnnotations context matches =
                 pure ()
               pure $ Match value forcedValue plicity (unresolvedPattern pat) type_ : matches'
             _ ->
-              fail "couldn't create instantitation for prefix"
+              fail "couldn't create instantiation for prefix"
 
 matchInstantiation :: Match -> Maybe PatternInstantiation
 matchInstantiation match =
@@ -712,7 +626,7 @@ matchInstantiation match =
     Match _ _ _ (Pattern _ (Forced _)) _ ->
       pure mempty
     _ ->
-      fail "No match instantitation"
+      fail "No match instantiation"
 
 solved :: [Match] -> Maybe PatternInstantiation
 solved =
@@ -724,31 +638,36 @@ splitConstructorOr
   :: Context v
   -> Config
   -> [Match]
+  -> Postponement.CanPostpone
   -> M (Syntax.Term v)
   -> M (Syntax.Term v)
-splitConstructorOr context config matches k =
+splitConstructorOr context config matches canPostpone k =
   case matches of
     [] ->
       k
     match : matches' ->
       case match of
-        Match scrutinee (Domain.Neutral (Domain.Var var) Domain.Empty) _ (Pattern span (Con _ constr _)) type_ ->
-          splitConstructor context config scrutinee var span constr type_
-        Match scrutinee (Domain.Neutral (Domain.Var var) Domain.Empty) _ (Pattern span (Lit lit)) type_ ->
-          splitLiteral context config scrutinee var span lit type_
+        Match _ (Domain.Neutral (Domain.Meta _) _) _ _ _
+          | Postponement.CanPostpone <- canPostpone ->
+              splitConstructorOr context config matches' canPostpone k
+        Match scrutinee (Domain.Neutral head_ (Domain.Apps args)) _ (Pattern span (Con _ constr _)) type_ ->
+          splitConstructor context config scrutinee head_ args span constr type_
+        Match scrutinee (Domain.Neutral head_ (Domain.Apps args)) _ (Pattern span (Lit lit)) type_ ->
+          splitLiteral context config scrutinee head_ args span lit type_
         _ ->
-          splitConstructorOr context config matches' k
+          splitConstructorOr context config matches' canPostpone k
 
 splitConstructor
   :: Context v
   -> Config
   -> Domain.Value
-  -> Var
+  -> Domain.Head
+  -> Domain.Args
   -> Span.Relative
   -> Name.QualifiedConstructor
   -> Domain.Type
   -> M (Syntax.Term v)
-splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.QualifiedConstructor typeName _) outerType = do
+splitConstructor outerContext config scrutineeValue scrutineeHead scrutineeArgs span (Name.QualifiedConstructor typeName _) outerType = do
   (definition, _) <- fetch $ Query.ElaboratedDefinition typeName
   case definition of
     Syntax.DataDefinition _ tele -> do
@@ -761,14 +680,17 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
         _ -> do
           typeType <- fetch $ Query.ElaboratedType typeName
           typeType' <- Evaluation.evaluate Environment.empty typeType
-          let
-            -- Ensure the metas don't depend on the scrutineeVar, because that
-            -- is guaranteed to lead to circularity when solving scrutineeVar
-            -- later.
-            contextWithoutScrutineeVar =
-              outerContext
-                { Context.boundVars = IntSeq.delete scrutineeVar outerContext.boundVars
-                }
+          let contextWithoutScrutineeVar =
+                case scrutineeHead of
+                  Domain.Var scrutineeVar ->
+                    -- Ensure the metas don't depend on the scrutineeVar, because that
+                    -- is guaranteed to lead to circularity when solving scrutineeVar
+                    -- later.
+                    outerContext
+                      { Context.boundVars = IntSeq.delete scrutineeVar outerContext.boundVars
+                      }
+                  -- TODO: is this correct?
+                  _ -> outerContext
           (metas, _) <- Elaboration.insertMetas contextWithoutScrutineeVar Elaboration.UntilTheEnd typeType'
           f <- Unification.tryUnify outerContext (Domain.Neutral (Domain.Global typeName) $ Domain.Apps $ fromList metas) outerType
           result <- goParams (Context.spanned span outerContext) metas mempty tele'
@@ -785,11 +707,12 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
     goParams context params conArgs dataTele =
       case (params, dataTele) of
         ([], Domain.Telescope.Empty constructors) -> do
-          let matchedConstructors =
-                OrderedHashMap.fromListWith (<>) $
-                  concat $
-                    takeWhile (not . null) $
-                      findVarConstructorMatches scrutineeVar . (.matches) <$> config.clauses
+          matchedConstructors <-
+            OrderedHashMap.fromListWith (<>)
+              . concat
+              <$> mapWhileM
+                (fmap $ \xs -> if null xs then Nothing else Just xs)
+                (findConstructorMatches context scrutineeHead scrutineeArgs . (.matches) <$> config.clauses)
 
           branches <- forM (OrderedHashMap.toList matchedConstructors) \(qualifiedConstr@(Name.QualifiedConstructor _ constr), patterns) -> do
             let constrType =
@@ -807,19 +730,13 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
           defaultBranch <-
             if OrderedHashMap.size matchedConstructors == length constructors
               then pure Nothing
-              else
-                Just
-                  <$> check
-                    context
-                      { Context.coveredConstructors =
-                          EnumMap.insertWith
-                            (<>)
-                            scrutineeVar
-                            (HashSet.fromMap $ void $ OrderedHashMap.toMap matchedConstructors)
-                            context.coveredConstructors
-                      }
-                    config
-                    Postponement.CanPostpone
+              else do
+                let context' =
+                      Context.withCoveredConstructors context scrutineeHead scrutineeArgs $
+                        HashSet.fromMap $
+                          void $
+                            OrderedHashMap.toMap matchedConstructors
+                Just <$> check context' config Postponement.CanPostpone
 
           scrutinee <- Elaboration.readback context scrutineeValue
 
@@ -852,7 +769,7 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
               Constraint ->
                 pure (Bindings.Unspanned piName, patterns)
 
-          (context', fieldVar) <- Context.extendBefore context scrutineeVar bindings domain
+          (context', fieldVar) <- Context.extend context (Bindings.toName bindings) domain
           let fieldValue = Domain.var fieldVar
               conArgs' = conArgs Tsil.:> (plicity, fieldValue)
           target <- Evaluation.evaluateClosure targetClosure fieldValue
@@ -868,86 +785,99 @@ splitConstructor outerContext config scrutineeValue scrutineeVar span (Name.Qual
                 SuggestedName.nextImplicit context "x" patterns
               Constraint ->
                 pure (Bindings.Unspanned "x", patterns)
-          (context', fieldVar) <- Context.extendBefore context scrutineeVar bindings domain
+          (context', fieldVar) <- Context.extend context (Bindings.toName bindings) domain
           let fieldValue = Domain.var fieldVar
               conArgs' = conArgs Tsil.:> (plicity, fieldValue)
           tele <- goConstrFields context' constr conArgs' target patterns'
           pure $ Telescope.Extend bindings domain'' plicity tele
         _ -> do
-          let context' =
-                Context.defineWellOrdered context scrutineeVar $ Domain.Con constr conArgs
+          context' <- Equation.equate context Flexibility.Rigid scrutineeValue $ Domain.Con constr conArgs
           result <- check context' config Postponement.CanPostpone
           pure $ Telescope.Empty result
 
-findVarConstructorMatches
-  :: Var
+mapWhileM :: Monad m => (a -> m (Maybe b)) -> [a] -> m [b]
+mapWhileM f as =
+  case as of
+    [] -> pure []
+    a : as' -> do
+      mb <- f a
+      case mb of
+        Nothing -> pure []
+        Just b -> (b :) <$> mapWhileM f as'
+
+findConstructorMatches
+  :: Context v
+  -> Domain.Head
+  -> Domain.Args
   -> [Match]
-  -> [(Name.QualifiedConstructor, [(Span.Relative, [Surface.PlicitPattern])])]
-findVarConstructorMatches var matches =
+  -> M [(Name.QualifiedConstructor, [(Span.Relative, [Surface.PlicitPattern])])]
+findConstructorMatches context head_ args matches =
   case matches of
     [] ->
-      []
-    Match _ (Domain.Neutral (Domain.Var var') Domain.Empty) _ (Pattern _ (Con span constr patterns)) _ : matches'
-      | var == var' ->
-          (constr, [(span, patterns)]) : findVarConstructorMatches var matches'
+      pure []
+    Match _ (Domain.Neutral head' (Domain.Apps args')) _ (Pattern _ (Con span constr patterns)) _ : matches'
+      | head_ == head' -> do
+          eq <- Unification.equalArgs context args args'
+          if eq
+            then ((constr, [(span, patterns)]) :) <$> findConstructorMatches context head_ args matches'
+            else findConstructorMatches context head_ args matches
     _ : matches' ->
-      findVarConstructorMatches var matches'
+      findConstructorMatches context head_ args matches'
 
 splitLiteral
   :: Context v
   -> Config
   -> Domain.Value
-  -> Var
+  -> Domain.Head
+  -> Domain.Args
   -> Span.Relative
   -> Literal
   -> Domain.Type
   -> M (Syntax.Term v)
-splitLiteral context config scrutineeValue scrutineeVar span lit outerType = do
-  let matchedLiterals =
-        OrderedHashMap.fromListWith (<>) $
-          concat $
-            takeWhile (not . null) $
-              findVarLiteralMatches scrutineeVar . (.matches) <$> config.clauses
+splitLiteral context config scrutineeValue scrutineeHead scrutineeArgs span lit outerType = do
+  matchedLiterals <-
+    OrderedHashMap.fromListWith (<>) . concat
+      <$> mapWhileM
+        (fmap $ \xs -> if null xs then Nothing else Just xs)
+        (findLiteralMatches context scrutineeHead scrutineeArgs . (.matches) <$> config.clauses)
 
   f <- Unification.tryUnify (Context.spanned span context) (Elaboration.inferLiteral lit) outerType
 
   branches <- forM (OrderedHashMap.toList matchedLiterals) \(int, spans) -> do
-    let context' =
-          Context.defineWellOrdered context scrutineeVar $ Domain.Lit int
+    let context' = Context.defineWellOrdered context scrutineeHead scrutineeArgs $ Domain.Lit int
     result <- check context' config Postponement.CanPostpone
     pure (int, (spans, f result))
 
-  defaultBranch <-
-    Just
-      <$> check
-        context
-          { Context.coveredLiterals =
-              EnumMap.insertWith
-                (<>)
-                scrutineeVar
-                (HashSet.fromMap $ void $ OrderedHashMap.toMap matchedLiterals)
-                context.coveredLiterals
-          }
-        config
-        Postponement.CanPostpone
+  defaultBranch <- do
+    let context' =
+          Context.withCoveredLiterals context scrutineeHead scrutineeArgs $
+            HashSet.fromMap $
+              void $
+                OrderedHashMap.toMap matchedLiterals
+    Just <$> check context' config Postponement.CanPostpone
 
   scrutinee <- Elaboration.readback context scrutineeValue
 
   pure $ f $ Syntax.Case scrutinee (Syntax.LiteralBranches $ OrderedHashMap.fromList branches) defaultBranch
 
-findVarLiteralMatches
-  :: Var
+findLiteralMatches
+  :: Context v
+  -> Domain.Head
+  -> Domain.Args
   -> [Match]
-  -> [(Literal, [Span.Relative])]
-findVarLiteralMatches var matches =
+  -> M [(Literal, [Span.Relative])]
+findLiteralMatches context head_ args matches =
   case matches of
     [] ->
-      []
-    Match _ (Domain.Neutral (Domain.Var var') Domain.Empty) _ (Pattern span (Lit lit)) _ : matches'
-      | var == var' ->
-          (lit, [span]) : findVarLiteralMatches var matches'
+      pure []
+    Match _ (Domain.Neutral head' (Domain.Apps args')) _ (Pattern span (Lit lit)) _ : matches'
+      | head_ == head' -> do
+          eq <- Unification.equalArgs context args args'
+          if eq
+            then ((lit, [span]) :) <$> findLiteralMatches context head_ args matches'
+            else findLiteralMatches context head_ args matches'
     _ : matches' ->
-      findVarLiteralMatches var matches'
+      findLiteralMatches context head_ args matches'
 
 -------------------------------------------------------------------------------
 
@@ -964,24 +894,22 @@ splitEqualityOr context config matches k =
     match : matches' ->
       case match of
         Match
-          _
-          (Domain.Neutral (Domain.Var var) Domain.Empty)
+          scrutineeValue
+          scrutineeValue'@Domain.Neutral {}
           _
           (Pattern _ Wildcard)
           (Builtin.Equals type_ value1 value2) -> do
-            unificationResult <- try $ Indices.unify context Flexibility.Rigid value1 value2
+            unificationResult <- try do
+              context' <- Equation.equate context Flexibility.Rigid value1 value2
+              Equation.equate context' Flexibility.Rigid scrutineeValue' $ Builtin.Refl type_ value1 value2
             case unificationResult of
-              Left Indices.Nope ->
-                check
-                  context
-                  config {clauses = drop 1 config.clauses}
-                  Postponement.CanPostpone
-              Left Indices.Dunno ->
+              Left Equation.Nope -> do
+                check context config {clauses = drop 1 config.clauses} Postponement.CanPostpone
+              Left Equation.Dunno -> do
                 splitEqualityOr context config matches' k
               Right context' -> do
-                context'' <- Context.define context' var $ Builtin.Refl type_ value1 value2
-                result <- check context'' config Postponement.CanPostpone
-                scrutinee <- Elaboration.readback context'' $ Domain.var var
+                result <- check context' config Postponement.CanPostpone
+                scrutinee <- Elaboration.readback context' scrutineeValue
                 pure $
                   Syntax.Case
                     scrutinee
@@ -994,15 +922,28 @@ splitEqualityOr context config matches k =
           splitEqualityOr context config matches' k
 
 -------------------------------------------------------------------------------
+-- TODO use Core.TypeOf.typeOfHead
+typeOfHead :: Context v -> Domain.Head -> M Domain.Type
+typeOfHead context hd =
+  case hd of
+    Domain.Var var ->
+      pure $ Context.lookupVarType var context
+    Domain.Global global -> do
+      type_ <- fetch $ Query.ElaboratedType global
+      Evaluation.evaluate Environment.empty type_
+    Domain.Meta index -> do
+      solution <- Context.lookupMeta context index
+      Evaluation.evaluate Environment.empty $ Meta.entryType solution
 
 uninhabitedScrutinee :: Context v -> Domain.Value -> M Bool
 uninhabitedScrutinee context value = do
   value' <- Context.forceHead context value
   case value' of
-    Domain.Neutral (Domain.Var var) (Domain.Apps args) -> do
-      let varType = Context.lookupVarType var context
-      type_ <- Context.instantiateType context varType args
-      uninhabitedType context 1 (EnumMap.findWithDefault mempty var context.coveredConstructors) type_
+    Domain.Neutral head_ (Domain.Apps args) -> do
+      headType_ <- typeOfHead context head_
+      type_ <- Context.instantiateType context headType_ args
+      covered <- Context.coveredConstructors context head_ args
+      uninhabitedType context 1 covered type_
     Domain.Con constr constructorArgs -> do
       constrType <- fetch $ Query.ConstructorType constr
       let args = snd <$> drop (Telescope.length constrType) (toList constructorArgs)
@@ -1016,15 +957,15 @@ uninhabitedType
   -> HashSet Name.QualifiedConstructor
   -> Domain.Type
   -> M Bool
-uninhabitedType context fuel coveredConstructors type_ = do
+uninhabitedType context fuel covered type_ = do
   type' <- Context.forceHead context type_
   case type' of
     Builtin.Equals _ value1 value2 -> do
-      result <- try $ Indices.unify context Flexibility.Rigid value1 value2
+      result <- try $ Equation.equate context Flexibility.Rigid value1 value2
       pure $ case result of
-        Left Indices.Nope ->
+        Left Equation.Nope ->
           True
-        Left Indices.Dunno ->
+        Left Equation.Dunno ->
           False
         Right _ ->
           False
@@ -1044,7 +985,7 @@ uninhabitedType context fuel coveredConstructors type_ = do
 
                   uncoveredConstructorTypes =
                     toList $
-                      OrderedHashMap.differenceFromMap qualifiedConstructors (HashSet.toMap coveredConstructors)
+                      OrderedHashMap.differenceFromMap qualifiedConstructors (HashSet.toMap covered)
 
               allM (uninhabitedConstrType context fuel) uncoveredConstructorTypes
             _ ->

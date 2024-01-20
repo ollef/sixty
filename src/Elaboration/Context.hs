@@ -9,7 +9,10 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
-module Elaboration.Context where
+module Elaboration.Context (
+  module Elaboration.Context,
+  module Elaboration.Context.Type,
+) where
 
 import qualified Builtin
 import Control.Exception.Lifted
@@ -27,28 +30,26 @@ import Data.EnumMap (EnumMap)
 import qualified Data.EnumMap as EnumMap
 import Data.EnumSet (EnumSet)
 import qualified Data.EnumSet as EnumSet
-import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
+import qualified Data.HashSet as HashSet
 import Data.IORef.Lifted
-import Data.IntSeq (IntSeq)
 import qualified Data.IntSeq as IntSeq
-import qualified Data.Kind
+import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Sequence as Seq
 import qualified Data.Set as Set
-import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
+import Elaboration.Context.Type
 import qualified Elaboration.Meta as Meta
 import qualified Elaboration.Postponed as Postponed
+import {-# SOURCE #-} Elaboration.Unification as Unification
 import Environment (Environment (Environment))
 import qualified Environment
-import Error (Error)
 import qualified Error
 import qualified Error.Hydrated as Error
 import qualified Error.Parsing as Error
 import Index
 import qualified Index.Map
-import qualified Index.Map as Index
 import Literal (Literal)
 import qualified Meta
 import Monad
@@ -67,37 +68,8 @@ import Telescope (Telescope)
 import qualified Telescope
 import Var
 
-data Context (v :: Data.Kind.Type) = Context
-  { definitionKind :: !Scope.DefinitionKind
-  , definitionName :: !Name.Qualified
-  , definitionType :: Maybe Domain.Type
-  , span :: !Span.Relative
-  , indices :: Index.Map v Var
-  , surfaceNames :: HashMap Name.Surface (Domain.Value, Domain.Type)
-  , varNames :: EnumMap Var Name
-  , values :: EnumMap Var Domain.Value
-  , types :: EnumMap Var Domain.Type
-  , boundVars :: IntSeq Var
-  , metas :: !(IORef (Meta.State M))
-  , postponed :: !(IORef Postponed.Checks)
-  , coveredConstructors :: CoveredConstructors
-  , coveredLiterals :: CoveredLiterals
-  , coverageChecks :: !(IORef (Tsil CoverageCheck))
-  , errors :: !(IORef (Tsil Error))
-  }
-
 moduleName :: Context v -> Name.Module
 moduleName context = context.definitionName.moduleName
-
-type CoveredConstructors = EnumMap Var (HashSet Name.QualifiedConstructor)
-
-type CoveredLiterals = EnumMap Var (HashSet Literal)
-
-data CoverageCheck = CoverageCheck
-  { allClauses :: Set Span.Relative
-  , usedClauses :: IORef (Set Span.Relative)
-  , matchKind :: !Error.MatchKind
-  }
 
 toEnvironment
   :: Context v
@@ -105,7 +77,27 @@ toEnvironment
 toEnvironment context =
   Environment
     { indices = context.indices
-    , values = mempty
+    , values =
+        EnumMap.fromList
+          $ mapMaybe
+            ( \(head_, argEqualities) ->
+                case head_ of
+                  Domain.Var var -> do
+                    let emptySpineValues =
+                          mapMaybe
+                            ( \(args, value) ->
+                                case args of
+                                  Seq.Empty -> Just (var, value)
+                                  _ -> Nothing
+                            )
+                            argEqualities
+                    case emptySpineValues of
+                      [value] -> Just value
+                      [] -> Nothing
+                      _ -> panic "multiple spine values"
+                  _ -> Nothing
+            )
+          $ HashMap.toList context.equations.equal
     , glueableBefore = Index.Zero
     }
 
@@ -124,15 +116,13 @@ empty definitionKind definitionName = do
       , surfaceNames = mempty
       , varNames = mempty
       , indices = Index.Map.Empty
-      , values = mempty
       , types = mempty
       , boundVars = mempty
       , metas = ms
       , postponed = ps
-      , errors = es
-      , coveredConstructors = mempty
-      , coveredLiterals = mempty
+      , equations = Equations mempty mempty
       , coverageChecks = cs
+      , errors = es
       }
 
 emptyFrom :: Context v -> Context Void
@@ -145,21 +135,63 @@ emptyFrom context =
     , surfaceNames = mempty
     , varNames = mempty
     , indices = Index.Map.Empty
-    , values = mempty
     , types = mempty
     , boundVars = mempty
     , metas = context.metas
     , postponed = context.postponed
-    , errors = context.errors
-    , coveredConstructors = mempty
-    , coveredLiterals = mempty
+    , equations = Equations mempty mempty
     , coverageChecks = context.coverageChecks
+    , errors = context.errors
     }
 
 spanned :: Span.Relative -> Context v -> Context v
 spanned s context =
   context
     { span = s
+    }
+
+-------------------------------------------------------------------------------
+coveredConstructorsAndLiterals :: Context v -> Domain.Head -> Domain.Args -> M (HashSet Name.QualifiedConstructor, HashSet Literal)
+coveredConstructorsAndLiterals context head_ args =
+  case HashMap.lookup head_ context.equations.notEqual of
+    Nothing -> pure mempty
+    Just spines ->
+      fold
+        <$> mapM
+          ( \(args', constructors, literals) -> do
+              eq <- Unification.equalArgs context args args'
+              pure if eq then (constructors, literals) else mempty
+          )
+          spines
+
+coveredConstructors :: Context v -> Domain.Head -> Domain.Args -> M (HashSet Name.QualifiedConstructor)
+coveredConstructors context head_ args = fst <$> coveredConstructorsAndLiterals context head_ args
+
+coveredLiterals :: Context v -> Domain.Head -> Domain.Args -> M (HashSet Literal)
+coveredLiterals context head_ args = snd <$> coveredConstructorsAndLiterals context head_ args
+
+withCoveredConstructors :: Context v -> Domain.Head -> Domain.Args -> HashSet Name.QualifiedConstructor -> Context v
+withCoveredConstructors context head_ args constructors =
+  context
+    { equations =
+        context.equations
+          { notEqual =
+              HashMap.insertWith (<>) head_ [(args, constructors, mempty)] context.equations.notEqual
+          }
+    }
+
+withCoveredLiterals :: Context v -> Domain.Head -> Domain.Args -> HashSet Literal -> Context v
+withCoveredLiterals context head_ args literals =
+  context
+    { equations =
+        context.equations
+          { notEqual =
+              HashMap.insertWith
+                (<>)
+                head_
+                [(args, mempty, literals)]
+                context.equations.notEqual
+          }
     }
 
 -------------------------------------------------------------------------------
@@ -213,7 +245,10 @@ extendSurfaceDef context surfaceName@(Name.Surface nameText) value type_ = do
         { surfaceNames = HashMap.insert surfaceName (Domain.var var, type_) context.surfaceNames
         , varNames = EnumMap.insert var (Name nameText) context.varNames
         , indices = context.indices Index.Map.:> var
-        , values = EnumMap.insert var value context.values
+        , equations =
+            context.equations
+              { equal = HashMap.insert (Domain.Var var) [(Seq.Empty, value)] context.equations.equal
+              }
         , types = EnumMap.insert var type_ context.types
         }
     , var
@@ -237,7 +272,10 @@ extendDef context name value type_ = do
     ( context
         { varNames = EnumMap.insert var name context.varNames
         , indices = context.indices Index.Map.:> var
-        , values = EnumMap.insert var value context.values
+        , equations =
+            context.equations
+              { equal = HashMap.insert (Domain.Var var) [(Seq.Empty, value)] context.equations.equal
+              }
         , types = EnumMap.insert var type_ context.types
         }
     , var
@@ -264,11 +302,16 @@ extendBefore context beforeVar binding type_ = do
     , var
     )
 
-defineWellOrdered :: Context v -> Var -> Domain.Value -> Context v
-defineWellOrdered context var value =
+defineWellOrdered :: Context v -> Domain.Head -> Domain.Args -> Domain.Value -> Context v
+defineWellOrdered context head_ args value =
   context
-    { values = EnumMap.insert var value context.values
-    , boundVars = IntSeq.delete var context.boundVars
+    { equations =
+        context.equations
+          { equal = HashMap.insertWith (<>) head_ [(args, value)] context.equations.equal
+          }
+    , boundVars = case (head_, args) of
+        (Domain.Var var, Seq.Empty) -> IntSeq.delete var context.boundVars
+        _ -> context.boundVars
     }
 
 skip :: Context v -> M (Context (Succ v))
@@ -276,65 +319,69 @@ skip context = do
   (context', _) <- extendDef context "skip" Builtin.Type Builtin.Type
   pure context'
 
-define :: Context v -> Var -> Domain.Value -> M (Context v)
-define context var value = do
-  deps <- evalStateT (dependencies context value) mempty
-  let context' = defineWellOrdered context var value
-      (pre, post) =
-        Tsil.partition (`EnumSet.member` deps) $
-          IntSeq.toTsil context'.boundVars
-  pure
-    context'
-      { boundVars =
-          IntSeq.fromTsil pre <> IntSeq.fromTsil post
-      }
+define :: Context v -> Domain.Head -> Domain.Args -> Domain.Value -> M (Context v)
+define context head_ args value = do
+  -- putText "define"
+  -- dumpValue context (Domain.Neutral head_ $ Domain.Apps args)
+  -- dumpValue context value
+  deps <- evalStateT (freeVars context value) mempty
+  let context' = defineWellOrdered context head_ args value
+      context''
+        | EnumSet.null deps = context'
+        | otherwise =
+            context'
+              { boundVars =
+                  IntSeq.fromTsil pre <> IntSeq.fromTsil post
+              }
+      (pre, post) = Tsil.partition (`EnumSet.member` deps) $ IntSeq.toTsil context'.boundVars
+  pure context''
 
 -- TODO: Move
-dependencies
+freeVars
   :: Context v
   -> Domain.Value
   -> StateT (EnumMap Var (EnumSet Var)) M (EnumSet Var)
-dependencies context value = do
+freeVars context value = do
   value' <- lift $ forceHeadGlue context value
   case value' of
     Domain.Neutral hd spine -> do
       hdVars <- headVars hd
-      elimVars <- Domain.mapM eliminationDependencies spine
+      elimVars <- Domain.mapM eliminationVars spine
       pure $ hdVars <> fold elimVars
     Domain.Con _ args ->
-      fold <$> mapM (dependencies context . snd) args
+      fold <$> mapM (freeVars context . snd) args
     Domain.Lit _ ->
       pure mempty
     Domain.Glued (Domain.Global _) spine _ ->
-      fold <$> Domain.mapM eliminationDependencies spine
+      fold <$> Domain.mapM eliminationVars spine
     Domain.Glued _ _ value'' ->
-      dependencies context value''
+      freeVars context value''
     Domain.Lazy lazyValue -> do
       value'' <- lift $ force lazyValue
-      dependencies context value''
+      freeVars context value''
     Domain.Lam bindings type' _ closure ->
-      abstractionDependencies (Bindings.toName bindings) type' closure
+      abstractionVars (Bindings.toName bindings) type' closure
     Domain.Pi binding type' _ closure ->
-      abstractionDependencies (Binding.toName binding) type' closure
+      abstractionVars (Binding.toName binding) type' closure
     Domain.Fun domain _ target -> do
-      domainVars <- dependencies context domain
-      targetVars <- dependencies context target
+      domainVars <- freeVars context domain
+      targetVars <- freeVars context target
       pure $ domainVars <> targetVars
   where
-    eliminationDependencies elimination =
+    eliminationVars elimination =
       case elimination of
         Domain.App _plicity arg ->
-          dependencies context arg
+          freeVars context arg
         Domain.Case (Domain.Branches env branches defaultBranch) -> do
-          defaultBranchVars <- mapM (dependencies context <=< lift . Evaluation.evaluate env) defaultBranch
+          defaultBranchVars <- mapM (freeVars context <=< lift . Evaluation.evaluate env) defaultBranch
           brVars <- branchVars context env branches
           pure $ fold defaultBranchVars <> brVars
 
-    abstractionDependencies name type' closure = do
-      typeVars <- dependencies context type'
+    abstractionVars name type' closure = do
+      typeVars <- freeVars context type'
       (context', var) <- lift $ extend context name type'
       body <- lift $ Evaluation.evaluateClosure closure $ Domain.var var
-      bodyVars <- dependencies context' body
+      bodyVars <- freeVars context' body
       pure $ typeVars <> EnumSet.delete var bodyVars
 
     headVars hd =
@@ -344,7 +391,7 @@ dependencies context value = do
               cache <- get
               typeDeps <- case EnumMap.lookup v cache of
                 Nothing -> do
-                  typeDeps <- dependencies context $ lookupVarType v context
+                  typeDeps <- freeVars context $ lookupVarType v context
                   modify $ EnumMap.insert v typeDeps
                   pure typeDeps
                 Just typeDeps ->
@@ -371,7 +418,7 @@ dependencies context value = do
           Syntax.LiteralBranches literalBranches ->
             forM (toList literalBranches) \(_, branch) -> do
               branch' <- lift $ Evaluation.evaluate env branch
-              dependencies context' branch'
+              freeVars context' branch'
 
     telescopeVars
       :: Context v
@@ -382,10 +429,10 @@ dependencies context value = do
       case tele of
         Telescope.Empty body -> do
           body' <- lift $ Evaluation.evaluate env body
-          dependencies context' body'
+          freeVars context' body'
         Telescope.Extend binding domain _ tele' -> do
           domain' <- lift $ Evaluation.evaluate env domain
-          domainVars <- dependencies context' domain'
+          domainVars <- freeVars context' domain'
           (context'', var) <- lift $ extend context' (Bindings.toName binding) domain'
           let env' =
                 Environment.extendVar env var
@@ -420,10 +467,6 @@ lookupVarType :: Var -> Context v -> Domain.Type
 lookupVarType var context =
   EnumMap.findWithDefault (panic $ "Context.lookupVarType " <> show var) var context.types
 
-lookupVarValue :: Var -> Context v -> Maybe Domain.Type
-lookupVarValue var context =
-  EnumMap.lookup var context.values
-
 -------------------------------------------------------------------------------
 -- Prettyable terms
 
@@ -437,7 +480,6 @@ dumpTerm context term = do
   term' <- zonk context term
   doc <- prettyTerm context term'
   liftIO $ Prettyprinter.putDoc doc
-  putText ""
 
 prettyValue :: Context v -> Domain.Value -> M (Doc ann)
 prettyValue context term = do
@@ -446,8 +488,21 @@ prettyValue context term = do
 
 dumpValue :: Context v -> Domain.Value -> M ()
 dumpValue context value = do
-  term <- Readback.readback (toEnvironment context) value
+  let env = toEnvironment context
+  term <- Readback.readback env value
   dumpTerm context term
+  putText ""
+  unless (HashMap.null context.equations.equal) $
+    putText "  where"
+  forM_ (HashMap.toList context.equations.equal) \(head_, argValues) ->
+    forM_ argValues \(args, eqValue) -> do
+      lhsTerm <- Readback.readback env (Domain.Neutral head_ $ Domain.Apps args)
+      rhsTerm <- Readback.readback env eqValue
+      putStr ("    " :: Text)
+      dumpTerm context lhsTerm
+      putStr (" = " :: Text)
+      dumpTerm context rhsTerm
+      putText ""
 
 toPrettyableTerm :: Context v -> Syntax.Term v -> M Error.PrettyableTerm
 toPrettyableTerm context term = do
@@ -500,7 +555,8 @@ piBoundVars context type_ = do
   piType <-
     varPis
       context
-      Environment.empty {Environment.values = context.values}
+      -- TODO
+      (toEnvironment context) {Environment.indices = Index.Map.Empty, Environment.glueableBefore = Index.Zero}
       ((Explicit,) <$> toList context.boundVars)
       type_
   pure (piType, arity)
@@ -595,13 +651,8 @@ forceHead
   -> M Domain.Value
 forceHead context value =
   case value of
-    Domain.Neutral (Domain.Var var) spine
-      | Just headValue <- lookupVarValue var context -> do
-          value' <- Evaluation.applySpine headValue spine
-          forceHead context value'
     Domain.Neutral (Domain.Meta metaIndex) spine -> do
       meta <- lookupEagerMeta context metaIndex
-
       case meta of
         Meta.EagerSolved headValue _ _ -> do
           headValue' <- Evaluation.evaluate Environment.empty headValue
@@ -609,6 +660,53 @@ forceHead context value =
           forceHead context value'
         Meta.EagerUnsolved {} ->
           pure value
+    Domain.Neutral head_ (Domain.Spine args caseSpine)
+      | Just argEqualities <- HashMap.lookup head_ context.equations.equal -> do
+          let go [] = pure value
+              go ((eqArgs, eqValue) : rest)
+                | Just (argsPrefix, argsSuffix) <- Domain.matchArgsPrefix args eqArgs = do
+                    eq <- Unification.equalArgs context argsPrefix eqArgs
+                    if eq
+                      then do
+                        value' <- Evaluation.applySpine eqValue $ Domain.Spine argsSuffix caseSpine
+                        forceHead context value'
+                      else go rest
+              go (_ : rest) = go rest
+          go argEqualities
+    Domain.Neutral
+      head_
+      ( Domain.Spine
+          args1
+          ( ( Domain.Branches env' (Syntax.ConstructorBranches typeName cbrs) (Just defaultBranch)
+              , args2
+              )
+              Seq.:<| caseSpine
+            )
+        ) -> do
+        covered <- coveredConstructors context head_ args1
+        if all (\c -> HashSet.member (Name.QualifiedConstructor typeName c) covered) $ OrderedHashMap.keys cbrs
+          then do
+            branchValue <- Evaluation.evaluate env' defaultBranch
+            value' <- Evaluation.applySpine branchValue $ Domain.Spine args2 caseSpine
+            forceHead context value'
+          else pure value
+    Domain.Neutral
+      head_
+      ( Domain.Spine
+          args1
+          ( ( Domain.Branches env' (Syntax.LiteralBranches lbrs) (Just defaultBranch)
+              , args2
+              )
+              Seq.:<| caseSpine
+            )
+        ) -> do
+        covered <- coveredLiterals context head_ args1
+        if all (`HashSet.member` covered) $ OrderedHashMap.keys lbrs
+          then do
+            branchValue <- Evaluation.evaluate env' defaultBranch
+            value' <- Evaluation.applySpine branchValue $ Domain.Spine args2 caseSpine
+            forceHead context value'
+          else pure value
     Domain.Glued _ _ value' ->
       forceHead context value'
     Domain.Lazy lazyValue -> do
@@ -625,23 +723,67 @@ forceHeadGlue
   -> M Domain.Value
 forceHeadGlue context value =
   case value of
-    Domain.Neutral (Domain.Var var) spine
-      | Just headValue <- lookupVarValue var context -> do
-          lazyValue <- lazy $ do
-            value' <- Evaluation.applySpine headValue spine
-            forceHeadGlue context value'
-          pure $ Domain.Glued (Domain.Var var) spine $ Domain.Lazy lazyValue
     Domain.Neutral (Domain.Meta metaIndex) spine -> do
       meta <- lookupEagerMeta context metaIndex
       case meta of
         Meta.EagerSolved headValue _ _ -> do
-          lazyValue <- lazy $ do
+          lazyValue <- lazy do
             headValue' <- Evaluation.evaluate Environment.empty headValue
-            value' <- Evaluation.applySpine headValue' spine
-            forceHeadGlue context value'
+            Evaluation.applySpine headValue' spine
           pure $ Domain.Glued (Domain.Meta metaIndex) spine $ Domain.Lazy lazyValue
         Meta.EagerUnsolved {} ->
           pure value
+    Domain.Neutral head_ spine@(Domain.Spine args caseSpine)
+      | Just argEqualities <- HashMap.lookup head_ context.equations.equal -> do
+          let go [] = pure value
+              go ((eqArgs, eqValue) : rest)
+                | Just (argsPrefix, argsSuffix) <- Domain.matchArgsPrefix args eqArgs = do
+                    eq <- Unification.equalArgs context argsPrefix eqArgs
+                    if eq
+                      then do
+                        lazyValue <- lazy $ Evaluation.applySpine eqValue $ Domain.Spine argsSuffix caseSpine
+                        pure $ Domain.Glued head_ spine $ Domain.Lazy lazyValue
+                      else go rest
+              go (_ : rest) = go rest
+          go argEqualities
+    Domain.Neutral
+      head_
+      spine@( Domain.Spine
+                args1
+                ( ( Domain.Branches env' (Syntax.ConstructorBranches typeName cbrs) (Just defaultBranch)
+                    , args2
+                    )
+                    Seq.:<| caseSpine
+                  )
+              ) -> do
+        covered <- coveredConstructors context head_ args1
+        if all (\c -> HashSet.member (Name.QualifiedConstructor typeName c) covered) $ OrderedHashMap.keys cbrs
+          then do
+            lazyValue <- lazy do
+              branchValue <- Evaluation.evaluate env' defaultBranch
+              value' <- Evaluation.applySpine branchValue $ Domain.Spine args2 caseSpine
+              forceHead context value'
+            pure $ Domain.Glued head_ spine $ Domain.Lazy lazyValue
+          else pure value
+    Domain.Neutral
+      head_
+      spine@( Domain.Spine
+                args1
+                ( ( Domain.Branches env' (Syntax.LiteralBranches lbrs) (Just defaultBranch)
+                    , args2
+                    )
+                    Seq.:<| caseSpine
+                  )
+              ) -> do
+        covered <- coveredLiterals context head_ args1
+        if all (`HashSet.member` covered) $ OrderedHashMap.keys lbrs
+          then do
+            lazyValue <- lazy do
+              branchValue <- Evaluation.evaluate env' defaultBranch
+              value' <- Evaluation.applySpine branchValue $ Domain.Spine args2 caseSpine
+              forceHead context value'
+            pure $ Domain.Glued head_ spine $ Domain.Lazy lazyValue
+          else pure value
     Domain.Lazy lazyValue -> do
       value' <- force lazyValue
       forceHeadGlue context value'

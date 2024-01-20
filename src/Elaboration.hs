@@ -620,15 +620,14 @@ elaborateWith context spannedTerm@(Surface.Term span term) mode canPostpone = do
       target' <- check context target Builtin.Type
       result context mode (Syntax.Spanned span $ Syntax.Fun domain' Explicit target') Builtin.Type
     (Surface.Case scrutinee branches, _) -> do
-      skipContext <- Context.skip context
-      (scrutinee', scrutineeType) <- inferAndInsertMetas skipContext UntilExplicit scrutinee $ pure Nothing
+      (scrutinee', scrutineeType) <- inferAndInsertMetas context UntilExplicit scrutinee $ pure Nothing
       case mode of
         Infer _ -> do
           expectedType <- Context.newMetaType context
-          term' <- Matching.checkCase context scrutinee' scrutineeType branches expectedType Postponement.CanPostpone
+          term' <- Matching.checkCase context scrutinee' scrutineeType branches expectedType
           pure $ Inferred (Syntax.Spanned span term') expectedType
         Check expectedType -> do
-          term' <- Matching.checkCase context scrutinee' scrutineeType branches expectedType Postponement.CanPostpone
+          term' <- Matching.checkCase context scrutinee' scrutineeType branches expectedType
           pure $ Checked $ Syntax.Spanned span term'
     (Surface.App function@(Surface.Term functionSpan _) argument@(Surface.Term argumentSpan _), _) -> do
       (function', functionType) <- inferAndInsertMetas context UntilExplicit function $ getModeExpectedTypeName context mode
@@ -758,11 +757,9 @@ elaborateLets context declaredNames undefinedVars definedVars lets body mode = d
               . Syntax.Let bindings Index.Zero boundTerm
               <$> lets''
         Just (previousSpan, var) -> do
-          case Context.lookupVarValue var context of
-            Just _ -> do
-              Context.report (Context.spanned span context) $ Error.DuplicateLetName surfaceName previousSpan
-              elaborateLets context declaredNames undefinedVars definedVars lets' body mode
-            Nothing -> do
+          value <- Context.forceHead context (Domain.Neutral (Domain.Var var) Domain.Empty)
+          case value of
+            (Domain.Neutral (Domain.Var sameVar) Domain.Empty) | var == sameVar -> do
               let type_ =
                     Context.lookupVarType var context
               boundTerm <- Clauses.check context clauses' type_
@@ -780,12 +777,15 @@ elaborateLets context declaredNames undefinedVars definedVars lets body mode = d
                 pure $ defines context values
               lets'' <- elaborateLets redefinedContext declaredNames undefinedVars' definedVars' lets' body mode
               pure $ Syntax.Let bindings index boundTerm <$> lets''
+            _ -> do
+              Context.report (Context.spanned span context) $ Error.DuplicateLetName surfaceName previousSpan
+              elaborateLets context declaredNames undefinedVars definedVars lets' body mode
   where
     defines :: Context v -> Tsil (Var, Domain.Value) -> Context v
     defines =
       foldr' \(var, value) context' ->
         if isJust $ Context.lookupVarIndex var context'
-          then Context.defineWellOrdered context' var value
+          then Context.defineWellOrdered context' (Domain.Var var) Seq.Empty value
           else context'
 
 forceExpectedTypeHead :: Context v -> Mode result -> M (Mode result)
