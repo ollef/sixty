@@ -97,7 +97,7 @@ toEnvironment context =
                       _ -> panic "multiple spine values"
                   _ -> Nothing
             )
-          $ HashMap.toList context.equations.equal
+          $ HashMap.toList context.equal
     , glueableBefore = Index.Zero
     }
 
@@ -120,7 +120,8 @@ empty definitionKind definitionName = do
       , boundVars = mempty
       , metas = ms
       , postponed = ps
-      , equations = Equations mempty mempty
+      , equal = mempty
+      , notEqual = mempty
       , coverageChecks = cs
       , errors = es
       }
@@ -139,7 +140,8 @@ emptyFrom context =
     , boundVars = mempty
     , metas = context.metas
     , postponed = context.postponed
-    , equations = Equations mempty mempty
+    , equal = mempty
+    , notEqual = mempty
     , coverageChecks = context.coverageChecks
     , errors = context.errors
     }
@@ -153,7 +155,7 @@ spanned s context =
 -------------------------------------------------------------------------------
 coveredConstructorsAndLiterals :: Context v -> Domain.Head -> Domain.Args -> M (HashSet Name.QualifiedConstructor, HashSet Literal)
 coveredConstructorsAndLiterals context head_ args =
-  case HashMap.lookup head_ context.equations.notEqual of
+  case HashMap.lookup head_ context.notEqual of
     Nothing -> pure mempty
     Just spines ->
       fold
@@ -173,25 +175,19 @@ coveredLiterals context head_ args = snd <$> coveredConstructorsAndLiterals cont
 withCoveredConstructors :: Context v -> Domain.Head -> Domain.Args -> HashSet Name.QualifiedConstructor -> Context v
 withCoveredConstructors context head_ args constructors =
   context
-    { equations =
-        context.equations
-          { notEqual =
-              HashMap.insertWith (<>) head_ [(args, constructors, mempty)] context.equations.notEqual
-          }
+    { notEqual =
+        HashMap.insertWith (<>) head_ [(args, constructors, mempty)] context.notEqual
     }
 
 withCoveredLiterals :: Context v -> Domain.Head -> Domain.Args -> HashSet Literal -> Context v
 withCoveredLiterals context head_ args literals =
   context
-    { equations =
-        context.equations
-          { notEqual =
-              HashMap.insertWith
-                (<>)
-                head_
-                [(args, mempty, literals)]
-                context.equations.notEqual
-          }
+    { notEqual =
+        HashMap.insertWith
+          (<>)
+          head_
+          [(args, mempty, literals)]
+          context.notEqual
     }
 
 -------------------------------------------------------------------------------
@@ -245,10 +241,7 @@ extendSurfaceDef context surfaceName@(Name.Surface nameText) value type_ = do
         { surfaceNames = HashMap.insert surfaceName (Domain.var var, type_) context.surfaceNames
         , varNames = EnumMap.insert var (Name nameText) context.varNames
         , indices = context.indices Index.Map.:> var
-        , equations =
-            context.equations
-              { equal = HashMap.insert (Domain.Var var) [(Seq.Empty, value)] context.equations.equal
-              }
+        , equal = HashMap.insert (Domain.Var var) [(Seq.Empty, value)] context.equal
         , types = EnumMap.insert var type_ context.types
         }
     , var
@@ -272,10 +265,7 @@ extendDef context name value type_ = do
     ( context
         { varNames = EnumMap.insert var name context.varNames
         , indices = context.indices Index.Map.:> var
-        , equations =
-            context.equations
-              { equal = HashMap.insert (Domain.Var var) [(Seq.Empty, value)] context.equations.equal
-              }
+        , equal = HashMap.insert (Domain.Var var) [(Seq.Empty, value)] context.equal
         , types = EnumMap.insert var type_ context.types
         }
     , var
@@ -305,10 +295,7 @@ extendBefore context beforeVar binding type_ = do
 defineWellOrdered :: Context v -> Domain.Head -> Domain.Args -> Domain.Value -> Context v
 defineWellOrdered context head_ args value =
   context
-    { equations =
-        context.equations
-          { equal = HashMap.insertWith (<>) head_ [(args, value)] context.equations.equal
-          }
+    { equal = HashMap.insertWith (<>) head_ [(args, value)] context.equal
     , boundVars = case (head_, args) of
         (Domain.Var var, Seq.Empty) -> IntSeq.delete var context.boundVars
         _ -> context.boundVars
@@ -492,9 +479,9 @@ dumpValue context value = do
   term <- Readback.readback env value
   dumpTerm context term
   putText ""
-  unless (HashMap.null context.equations.equal) $
+  unless (HashMap.null context.equal) $
     putText "  where"
-  forM_ (HashMap.toList context.equations.equal) \(head_, argValues) ->
+  forM_ (HashMap.toList context.equal) \(head_, argValues) ->
     forM_ argValues \(args, eqValue) -> do
       lhsTerm <- Readback.readback env (Domain.Neutral head_ $ Domain.Apps args)
       rhsTerm <- Readback.readback env eqValue
@@ -661,7 +648,7 @@ forceHead context value =
         Meta.EagerUnsolved {} ->
           pure value
     Domain.Neutral head_ (Domain.Spine args caseSpine)
-      | Just argEqualities <- HashMap.lookup head_ context.equations.equal -> do
+      | Just argEqualities <- HashMap.lookup head_ context.equal -> do
           let go [] = pure value
               go ((eqArgs, eqValue) : rest)
                 | Just (argsPrefix, argsSuffix) <- Domain.matchArgsPrefix args eqArgs = do
@@ -734,7 +721,7 @@ forceHeadGlue context value =
         Meta.EagerUnsolved {} ->
           pure value
     Domain.Neutral head_ spine@(Domain.Spine args caseSpine)
-      | Just argEqualities <- HashMap.lookup head_ context.equations.equal -> do
+      | Just argEqualities <- HashMap.lookup head_ context.equal -> do
           let go [] = pure value
               go ((eqArgs, eqValue) : rest)
                 | Just (argsPrefix, argsSuffix) <- Domain.matchArgsPrefix args eqArgs = do
