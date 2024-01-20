@@ -144,7 +144,7 @@ chooseConstructorBranch
 chooseConstructorBranch outerEnv qualifiedConstr@(Name.QualifiedConstructor _ constr) outerArgs branches defaultBranch =
   case (OrderedHashMap.lookup constr branches, defaultBranch) of
     (Nothing, Nothing) ->
-      panic "chooseBranch no branches"
+      panic "chooseConstructorBranch no branches"
     (Nothing, Just branch) ->
       evaluate outerEnv branch
     (Just (_, tele), _) -> do
@@ -163,7 +163,7 @@ chooseConstructorBranch outerEnv qualifiedConstr@(Name.QualifiedConstructor _ co
           | plicity1 == plicity2 ->
               dropTypeArgs tele' args'
         _ ->
-          panic "chooseBranch arg mismatch"
+          panic "chooseConstructorBranch arg mismatch"
 
     go
       :: Domain.Environment v
