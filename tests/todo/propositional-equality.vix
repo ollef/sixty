@@ -1,9 +1,0 @@
-data Nat where
-  Z : Nat
-  S : Nat -> Nat
-
-data Equals forall T. (a b : T) where
-  Refl : Equals a a
-
-rhs1 : Equals Nat ((\x. x) Nat)
-rhs1 = Refl
