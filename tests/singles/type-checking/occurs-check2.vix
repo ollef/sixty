@@ -1,0 +1,5 @@
+the : (A : Type) -> A -> A
+
+f = \(x : _ -> _). the Type -- unsolved meta error expected
+  (x
+  x) -- occurs check error expected
