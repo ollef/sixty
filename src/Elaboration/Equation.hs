@@ -92,43 +92,42 @@ equateM flexibility unforcedValue1 unforcedValue2 = go unforcedValue1 unforcedVa
               equateM flexibility target1 target2
 
         -- Neutrals
-        (Domain.Neutral head1 (Domain.Apps args1), Domain.Neutral head2 (Domain.Apps args2))
+        (Domain.Neutral head1 spine1, Domain.Neutral head2 spine2)
           | Flexibility.Rigid <- max (Domain.headFlexibility head1) flexibility
-          , Flexibility.Rigid <- max (Domain.headFlexibility head2) flexibility
-          , (fst <$> args1) == (fst <$> args2) -> do
+          , Flexibility.Rigid <- max (Domain.headFlexibility head2) flexibility -> do
               -- TODO: check both directions?
               ordering <- lift $ compareHeadDepths head1 head2
               case ordering of
-                LT -> solve head2 args2 unforcedValue1
-                GT -> solve head1 args1 unforcedValue2
-                EQ -> solve head2 args2 unforcedValue1
-        (Domain.Neutral head1 (Domain.Apps args1), _)
+                LT -> solve head2 spine2 unforcedValue1
+                GT -> solve head1 spine1 unforcedValue2
+                EQ -> solve head2 spine2 unforcedValue1
+        (Domain.Neutral head1 spine1, _)
           | Flexibility.Rigid <- max (Domain.headFlexibility head1) flexibility ->
-              solve head1 args1 unforcedValue2
-        (_, Domain.Neutral head2 (Domain.Apps args2))
+              solve head1 spine1 unforcedValue2
+        (_, Domain.Neutral head2 spine2)
           | Flexibility.Rigid <- max (Domain.headFlexibility head2) flexibility ->
-              solve head2 args2 unforcedValue1
+              solve head2 spine2 unforcedValue1
         _ ->
           throwIO Dunno
 
-solve :: Domain.Head -> Domain.Args -> Domain.Value -> Equate v ()
-solve head_ args value = do
+solve :: Domain.Head -> Domain.Spine -> Domain.Value -> Equate v ()
+solve head_ spine value = do
   context <- get
   context' <- lift do
     value' <- Context.forceHead context value
     case value' of
       Domain.Con con _ -> do
-        covered <- Context.coveredConstructors context head_ args
+        covered <- Context.coveredConstructors context head_ spine
         when (con `HashSet.member` covered) $
           throwIO Nope
       Domain.Lit lit -> do
-        covered <- Context.coveredLiterals context head_ args
+        covered <- Context.coveredLiterals context head_ spine
         when (lit `HashSet.member` covered) $
           throwIO Nope
       _ -> pure ()
     occurs context (== head_) Flexibility.Rigid value
-    mapM_ (occurs context isMeta Flexibility.Rigid . snd) args
-    Context.define context head_ args value
+    occursSpine context isMeta Flexibility.Rigid spine
+    Context.define context head_ spine value
   put context'
   where
     isMeta (Domain.Meta _) = True

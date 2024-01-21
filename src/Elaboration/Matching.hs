@@ -343,8 +343,8 @@ uncoveredScrutineePatterns
 uncoveredScrutineePatterns context value = do
   value' <- Context.forceHead context value
   case value' of
-    Domain.Neutral head_ (Domain.Apps args) -> do
-      covered <- Context.coveredConstructors context head_ args
+    Domain.Neutral head_ spine -> do
+      covered <- Context.coveredConstructors context head_ spine
       case HashSet.toList covered of
         [] ->
           pure [Domain.Pattern.Wildcard]
@@ -369,8 +369,6 @@ uncoveredScrutineePatterns context value = do
                       ]
             _ ->
               panic "uncoveredScrutineePatterns non-data"
-    Domain.Neutral {} ->
-      pure []
     Domain.Lit lit ->
       pure [Domain.Pattern.Lit lit]
     Domain.Con constr args -> do
@@ -469,13 +467,13 @@ simplifyMatch context canPostpone match@(Match value forcedValue plicity pat typ
               pure []
           | otherwise ->
               fail "Literal mismatch"
-        (Domain.Neutral head_ (Domain.Apps args), Con _ constr _) -> do
-          covered <- lift $ Context.coveredConstructors context head_ args
+        (Domain.Neutral head_ spine, Con _ constr _) -> do
+          covered <- lift $ Context.coveredConstructors context head_ spine
           if HashSet.member constr covered
             then fail "Constructor already covered"
             else pure [match']
-        (Domain.Neutral head_ (Domain.Apps args), Lit lit) -> do
-          covered <- lift $ Context.coveredLiterals context head_ args
+        (Domain.Neutral head_ spine, Lit lit) -> do
+          covered <- lift $ Context.coveredLiterals context head_ spine
           if HashSet.member lit covered
             then fail "Literal already covered"
             else pure [match']
@@ -650,10 +648,10 @@ splitConstructorOr context config matches canPostpone k =
         Match _ (Domain.Neutral (Domain.Meta _) _) _ _ _
           | Postponement.CanPostpone <- canPostpone ->
               splitConstructorOr context config matches' canPostpone k
-        Match scrutinee (Domain.Neutral head_ (Domain.Apps args)) _ (Pattern span (Con _ constr _)) type_ ->
-          splitConstructor context config scrutinee head_ args span constr type_
-        Match scrutinee (Domain.Neutral head_ (Domain.Apps args)) _ (Pattern span (Lit lit)) type_ ->
-          splitLiteral context config scrutinee head_ args span lit type_
+        Match scrutinee (Domain.Neutral head_ spine) _ (Pattern span (Con _ constr _)) type_ ->
+          splitConstructor context config scrutinee head_ spine span constr type_
+        Match scrutinee (Domain.Neutral head_ spine) _ (Pattern span (Lit lit)) type_ ->
+          splitLiteral context config scrutinee head_ spine span lit type_
         _ ->
           splitConstructorOr context config matches' canPostpone k
 
@@ -662,12 +660,12 @@ splitConstructor
   -> Config
   -> Domain.Value
   -> Domain.Head
-  -> Domain.Args
+  -> Domain.Spine
   -> Span.Relative
   -> Name.QualifiedConstructor
   -> Domain.Type
   -> M (Syntax.Term v)
-splitConstructor outerContext config scrutineeValue scrutineeHead scrutineeArgs span (Name.QualifiedConstructor typeName _) outerType = do
+splitConstructor outerContext config scrutineeValue scrutineeHead scrutineeSpine span (Name.QualifiedConstructor typeName _) outerType = do
   (definition, _) <- fetch $ Query.ElaboratedDefinition typeName
   case definition of
     Syntax.DataDefinition _ tele -> do
@@ -712,7 +710,7 @@ splitConstructor outerContext config scrutineeValue scrutineeHead scrutineeArgs 
               . concat
               <$> mapWhileM
                 (fmap $ \xs -> if null xs then Nothing else Just xs)
-                (findConstructorMatches context scrutineeHead scrutineeArgs . (.matches) <$> config.clauses)
+                (findConstructorMatches context scrutineeHead scrutineeSpine . (.matches) <$> config.clauses)
 
           branches <- forM (OrderedHashMap.toList matchedConstructors) \(qualifiedConstr@(Name.QualifiedConstructor _ constr), patterns) -> do
             let constrType =
@@ -732,7 +730,7 @@ splitConstructor outerContext config scrutineeValue scrutineeHead scrutineeArgs 
               then pure Nothing
               else do
                 let context' =
-                      Context.withCoveredConstructors context scrutineeHead scrutineeArgs $
+                      Context.withCoveredConstructors context scrutineeHead scrutineeSpine $
                         HashSet.fromMap $
                           void $
                             OrderedHashMap.toMap matchedConstructors
@@ -791,7 +789,7 @@ splitConstructor outerContext config scrutineeValue scrutineeHead scrutineeArgs 
           tele <- goConstrFields context' constr conArgs' target patterns'
           pure $ Telescope.Extend bindings domain'' plicity tele
         _ -> do
-          context' <- Context.define context scrutineeHead scrutineeArgs $ Domain.Con constr conArgs
+          context' <- Context.define context scrutineeHead scrutineeSpine $ Domain.Con constr conArgs
           result <- check context' config Postponement.CanPostpone
           pure $ Telescope.Empty result
 
@@ -808,49 +806,49 @@ mapWhileM f as =
 findConstructorMatches
   :: Context v
   -> Domain.Head
-  -> Domain.Args
+  -> Domain.Spine
   -> [Match]
   -> M [(Name.QualifiedConstructor, [(Span.Relative, [Surface.PlicitPattern])])]
-findConstructorMatches context head_ args matches =
+findConstructorMatches context head_ spine matches =
   case matches of
     [] ->
       pure []
-    Match _ (Domain.Neutral head' (Domain.Apps args')) _ (Pattern _ (Con span constr patterns)) _ : matches'
+    Match _ (Domain.Neutral head' spine') _ (Pattern _ (Con span constr patterns)) _ : matches'
       | head_ == head' -> do
-          eq <- Unification.equalArgs context args args'
+          eq <- Unification.equalSpines context spine spine'
           if eq
-            then ((constr, [(span, patterns)]) :) <$> findConstructorMatches context head_ args matches'
-            else findConstructorMatches context head_ args matches
+            then ((constr, [(span, patterns)]) :) <$> findConstructorMatches context head_ spine matches'
+            else findConstructorMatches context head_ spine matches
     _ : matches' ->
-      findConstructorMatches context head_ args matches'
+      findConstructorMatches context head_ spine matches'
 
 splitLiteral
   :: Context v
   -> Config
   -> Domain.Value
   -> Domain.Head
-  -> Domain.Args
+  -> Domain.Spine
   -> Span.Relative
   -> Literal
   -> Domain.Type
   -> M (Syntax.Term v)
-splitLiteral context config scrutineeValue scrutineeHead scrutineeArgs span lit outerType = do
+splitLiteral context config scrutineeValue scrutineeHead scrutineeSpine span lit outerType = do
   matchedLiterals <-
     OrderedHashMap.fromListWith (<>) . concat
       <$> mapWhileM
         (fmap $ \xs -> if null xs then Nothing else Just xs)
-        (findLiteralMatches context scrutineeHead scrutineeArgs . (.matches) <$> config.clauses)
+        (findLiteralMatches context scrutineeHead scrutineeSpine . (.matches) <$> config.clauses)
 
   f <- Unification.tryUnify (Context.spanned span context) (Elaboration.inferLiteral lit) outerType
 
   branches <- forM (OrderedHashMap.toList matchedLiterals) \(int, spans) -> do
-    let context' = Context.defineWellOrdered context scrutineeHead scrutineeArgs $ Domain.Lit int
+    let context' = Context.defineWellOrdered context scrutineeHead scrutineeSpine $ Domain.Lit int
     result <- check context' config Postponement.CanPostpone
     pure (int, (spans, f result))
 
   defaultBranch <- do
     let context' =
-          Context.withCoveredLiterals context scrutineeHead scrutineeArgs $
+          Context.withCoveredLiterals context scrutineeHead scrutineeSpine $
             HashSet.fromMap $
               void $
                 OrderedHashMap.toMap matchedLiterals
@@ -863,21 +861,21 @@ splitLiteral context config scrutineeValue scrutineeHead scrutineeArgs span lit 
 findLiteralMatches
   :: Context v
   -> Domain.Head
-  -> Domain.Args
+  -> Domain.Spine
   -> [Match]
   -> M [(Literal, [Span.Relative])]
-findLiteralMatches context head_ args matches =
+findLiteralMatches context head_ spine matches =
   case matches of
     [] ->
       pure []
-    Match _ (Domain.Neutral head' (Domain.Apps args')) _ (Pattern span (Lit lit)) _ : matches'
+    Match _ (Domain.Neutral head' spine') _ (Pattern span (Lit lit)) _ : matches'
       | head_ == head' -> do
-          eq <- Unification.equalArgs context args args'
+          eq <- Unification.equalSpines context spine spine'
           if eq
-            then ((lit, [span]) :) <$> findLiteralMatches context head_ args matches'
-            else findLiteralMatches context head_ args matches'
+            then ((lit, [span]) :) <$> findLiteralMatches context head_ spine matches'
+            else findLiteralMatches context head_ spine matches'
     _ : matches' ->
-      findLiteralMatches context head_ args matches'
+      findLiteralMatches context head_ spine matches'
 
 -------------------------------------------------------------------------------
 
@@ -942,7 +940,7 @@ uninhabitedScrutinee context value = do
     Domain.Neutral head_ (Domain.Apps args) -> do
       headType_ <- typeOfHead context head_
       type_ <- Context.instantiateType context headType_ args
-      covered <- Context.coveredConstructors context head_ args
+      covered <- Context.coveredConstructors context head_ (Domain.Apps args)
       uninhabitedType context 1 covered type_
     Domain.Con constr constructorArgs -> do
       constrType <- fetch $ Query.ConstructorType constr

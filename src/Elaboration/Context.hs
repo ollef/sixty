@@ -135,40 +135,40 @@ spanned s context =
     }
 
 -------------------------------------------------------------------------------
-coveredConstructorsAndLiterals :: Context v -> Domain.Head -> Domain.Args -> M (HashSet Name.QualifiedConstructor, HashSet Literal)
-coveredConstructorsAndLiterals context head_ args =
+coveredConstructorsAndLiterals :: Context v -> Domain.Head -> Domain.Spine -> M (HashSet Name.QualifiedConstructor, HashSet Literal)
+coveredConstructorsAndLiterals context head_ spine =
   case HashMap.lookup head_ context.notEqual of
     Nothing -> pure mempty
     Just spines ->
       fold
         <$> mapM
-          ( \(args', constructors, literals) -> do
-              eq <- Unification.equalArgs context args args'
+          ( \(spine', constructors, literals) -> do
+              eq <- Unification.equalSpines context spine spine'
               pure if eq then (constructors, literals) else mempty
           )
           spines
 
-coveredConstructors :: Context v -> Domain.Head -> Domain.Args -> M (HashSet Name.QualifiedConstructor)
-coveredConstructors context head_ args = fst <$> coveredConstructorsAndLiterals context head_ args
+coveredConstructors :: Context v -> Domain.Head -> Domain.Spine -> M (HashSet Name.QualifiedConstructor)
+coveredConstructors context head_ spine = fst <$> coveredConstructorsAndLiterals context head_ spine
 
-coveredLiterals :: Context v -> Domain.Head -> Domain.Args -> M (HashSet Literal)
-coveredLiterals context head_ args = snd <$> coveredConstructorsAndLiterals context head_ args
+coveredLiterals :: Context v -> Domain.Head -> Domain.Spine -> M (HashSet Literal)
+coveredLiterals context head_ spine = snd <$> coveredConstructorsAndLiterals context head_ spine
 
-withCoveredConstructors :: Context v -> Domain.Head -> Domain.Args -> HashSet Name.QualifiedConstructor -> Context v
-withCoveredConstructors context head_ args constructors =
+withCoveredConstructors :: Context v -> Domain.Head -> Domain.Spine -> HashSet Name.QualifiedConstructor -> Context v
+withCoveredConstructors context head_ spine constructors =
   context
     { notEqual =
-        HashMap.insertWith (<>) head_ [(args, constructors, mempty)] context.notEqual
+        HashMap.insertWith (<>) head_ [(spine, constructors, mempty)] context.notEqual
     }
 
-withCoveredLiterals :: Context v -> Domain.Head -> Domain.Args -> HashSet Literal -> Context v
-withCoveredLiterals context head_ args literals =
+withCoveredLiterals :: Context v -> Domain.Head -> Domain.Spine -> HashSet Literal -> Context v
+withCoveredLiterals context head_ spine literals =
   context
     { notEqual =
         HashMap.insertWith
           (<>)
           head_
-          [(args, mempty, literals)]
+          [(spine, mempty, literals)]
           context.notEqual
     }
 
@@ -274,15 +274,15 @@ extendBefore context beforeVar binding type_ = do
     , var
     )
 
-defineWellOrdered :: Context v -> Domain.Head -> Domain.Args -> Domain.Value -> Context v
-defineWellOrdered context (Domain.Var var) Seq.Empty value =
+defineWellOrdered :: Context v -> Domain.Head -> Domain.Spine -> Domain.Value -> Context v
+defineWellOrdered context (Domain.Var var) Domain.Empty value =
   context
     { values = EnumMap.insert var value context.values
     , boundVars = IntSeq.delete var context.boundVars
     }
-defineWellOrdered context head_ args value =
+defineWellOrdered context head_ spine value =
   context
-    { equal = HashMap.insertWith (<>) head_ [(args, value)] context.equal
+    { equal = HashMap.insertWith (<>) head_ [(spine, value)] context.equal
     }
 
 skip :: Context v -> M (Context (Succ v))
@@ -290,13 +290,13 @@ skip context = do
   (context', _) <- extendDef context "skip" Builtin.Type Builtin.Type
   pure context'
 
-define :: Context v -> Domain.Head -> Domain.Args -> Domain.Value -> M (Context v)
-define context head_ args value = do
+define :: Context v -> Domain.Head -> Domain.Spine -> Domain.Value -> M (Context v)
+define context head_ spine value = do
   -- putText "define"
-  -- dumpValue context (Domain.Neutral head_ $ Domain.Apps args)
+  -- dumpValue context (Domain.Neutral head_ spine)
   -- dumpValue context value
   deps <- evalStateT (freeVars context value) mempty
-  let context' = defineWellOrdered context head_ args value
+  let context' = defineWellOrdered context head_ spine value
       context''
         | EnumSet.null deps = context'
         | otherwise =
@@ -474,8 +474,8 @@ dumpValue context value = do
     dumpTerm context rhsTerm
     putText ""
   forM_ (HashMap.toList context.equal) \(head_, argValues) ->
-    forM_ argValues \(args, eqValue) -> do
-      lhsTerm <- Readback.readback env (Domain.Neutral head_ $ Domain.Apps args)
+    forM_ argValues \(spine, eqValue) -> do
+      lhsTerm <- Readback.readback env (Domain.Neutral head_ spine)
       rhsTerm <- Readback.readback env eqValue
       putStr ("    " :: Text)
       dumpTerm context lhsTerm
@@ -623,54 +623,50 @@ metaSolutionMetas context index = do
 -------------------------------------------------------------------------------
 
 forceNeutral :: Context v -> Domain.Head -> Domain.Spine -> M (Maybe (M Domain.Value))
-forceNeutral context head_ spine@(Domain.Spine args caseSpine)
+forceNeutral context head_ spine
   | Domain.Var var <- head_
   , Just value <- EnumMap.lookup var context.values =
       pure $ Just $ Evaluation.applySpine value spine
-  | Just argEqualities <- HashMap.lookup head_ context.equal =
-      findArgEquality argEqualities
+  | Just spineEqualities <- HashMap.lookup head_ context.equal =
+      findSpineEquality spineEqualities
   | otherwise = chooseDefaultBranch
   where
-    findArgEquality [] = chooseDefaultBranch
-    findArgEquality ((eqArgs, eqValue) : rest)
-      | Just (argsPrefix, argsSuffix) <- Domain.matchArgsPrefix args eqArgs = do
-          eq <- Unification.equalArgs context argsPrefix eqArgs
+    findSpineEquality [] = chooseDefaultBranch
+    findSpineEquality ((eqSpine, eqValue) : rest)
+      | Just (spinePrefix, spineSuffix) <- Domain.matchSpinePrefix spine eqSpine = do
+          eq <- Unification.equalSpines context spinePrefix eqSpine
           if eq
-            then pure $ Just $ Evaluation.applySpine eqValue $ Domain.Spine argsSuffix caseSpine
-            else findArgEquality rest
-    findArgEquality (_ : rest) = findArgEquality rest
+            then pure $ Just $ Evaluation.applySpine eqValue spineSuffix
+            else findSpineEquality rest
+      | otherwise = findSpineEquality rest
 
     chooseDefaultBranch =
       case spine of
-        ( Domain.Spine
-            args1
-            ( ( Domain.Branches env' (Syntax.ConstructorBranches typeName cbrs) (Just defaultBranch)
-                , args2
-                )
-                Seq.:<| caseSpine'
-              )
-          ) -> do
-            covered <- coveredConstructors context head_ args1
-            if all (\c -> HashSet.member (Name.QualifiedConstructor typeName c) covered) $ OrderedHashMap.keys cbrs
-              then pure $ Just do
-                branchValue <- Evaluation.evaluate env' defaultBranch
-                Evaluation.applySpine branchValue $ Domain.Spine args2 caseSpine'
-              else metaSolution
-        ( Domain.Spine
-            args1
-            ( ( Domain.Branches env' (Syntax.LiteralBranches lbrs) (Just defaultBranch)
-                , args2
-                )
-                Seq.:<| caseSpine'
-              )
-          ) -> do
-            covered <- coveredLiterals context head_ args1
-            if all (`HashSet.member` covered) $ OrderedHashMap.keys lbrs
-              then pure $ Just do
-                branchValue <- Evaluation.evaluate env' defaultBranch
-                Evaluation.applySpine branchValue $ Domain.Spine args2 caseSpine'
-              else metaSolution
+        (Domain.Spine _ (_ Seq.:<| _))
+          | Just spineInequalities <- HashMap.lookup head_ context.notEqual -> do
+              findMatchingDefaultBranch spineInequalities
         _ -> metaSolution
+
+    findMatchingDefaultBranch [] = metaSolution
+    findMatchingDefaultBranch ((eqSpine, coveredConstrs, coveredLits) : rest)
+      | Just (spinePrefix, Domain.Spine Seq.Empty spineSuffix) <- Domain.matchSpinePrefix spine eqSpine =
+          case spineSuffix of
+            (Domain.Branches env (Syntax.ConstructorBranches typeName cbrs) (Just defaultBranch), args) Seq.:<| spineSuffix' -> do
+              eq <- Unification.equalSpines context spinePrefix eqSpine
+              if eq && all (\c -> HashSet.member (Name.QualifiedConstructor typeName c) coveredConstrs) (OrderedHashMap.keys cbrs)
+                then pure $ Just do
+                  branchValue <- Evaluation.evaluate env defaultBranch
+                  Evaluation.applySpine branchValue $ Domain.Spine args spineSuffix'
+                else findMatchingDefaultBranch rest
+            (Domain.Branches env (Syntax.LiteralBranches lbrs) (Just defaultBranch), args) Seq.:<| spineSuffix' -> do
+              eq <- Unification.equalSpines context spinePrefix eqSpine
+              if eq && all (`HashSet.member` coveredLits) (OrderedHashMap.keys lbrs)
+                then pure $ Just do
+                  branchValue <- Evaluation.evaluate env defaultBranch
+                  Evaluation.applySpine branchValue $ Domain.Spine args spineSuffix'
+                else findMatchingDefaultBranch rest
+            _ -> findMatchingDefaultBranch rest
+      | otherwise = findMatchingDefaultBranch rest
 
     metaSolution = case head_ of
       Domain.Meta metaIndex -> do

@@ -5,4 +5,4 @@ import Monad
 import Protolude
 import qualified Core.Domain as Domain
 
-equalArgs :: Context v -> Domain.Args -> Domain.Args -> M Bool
+equalSpines :: Context v -> Domain.Spine -> Domain.Spine -> M Bool

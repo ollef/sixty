@@ -785,7 +785,7 @@ elaborateLets context declaredNames undefinedVars definedVars lets body mode = d
     defines =
       foldr' \(var, value) context' ->
         if isJust $ Context.lookupVarIndex var context'
-          then Context.defineWellOrdered context' (Domain.Var var) Seq.Empty value
+          then Context.defineWellOrdered context' (Domain.Var var) Domain.Empty value
           else context'
 
 forceExpectedTypeHead :: Context v -> Mode result -> M (Mode result)

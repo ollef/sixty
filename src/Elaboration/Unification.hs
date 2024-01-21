@@ -298,9 +298,9 @@ unify context flexibility unforcedValue1 unforcedValue2 = catchAndAdd $ go unfor
     can'tUnify =
       throwIO $ Error.TypeMismatch mempty
 
-equalArgs :: Context v -> Domain.Args -> Domain.Args -> M Bool
-equalArgs context args1 args2 =
-  (True <$ sequence_ (Seq.zipWith (unify context Flexibility.Flexible `on` snd) args1 args2))
+equalSpines :: Context v -> Domain.Spine -> Domain.Spine -> M Bool
+equalSpines context spine1 spine2 =
+  (True <$ unifySpines context Flexibility.Flexible spine1 spine2)
     `catch` \(_ :: Error.Elaboration) -> pure False
 
 -------------------------------------------------------------------------------
@@ -315,25 +315,25 @@ withBranches context head args (Domain.Branches env brs maybeDefaultBranch) k =
       type' <- Context.forceHead context type_
       case type' of
         Domain.Neutral (Domain.Global typeName') (Domain.Apps typeArgs) | typeName == typeName' -> do
-          covered <- Context.coveredConstructors context head args
+          covered <- Context.coveredConstructors context head $ Domain.Apps args
           forM_ (OrderedHashMap.toList cbrs) \(constr, (_, tele)) -> do
             let qconstr = Name.QualifiedConstructor typeName constr
             unless (HashSet.member qconstr covered) $
               withConstructorBranch context env head args qconstr (first implicitise <$> Tsil.fromSeq typeArgs) tele k
           when (isJust maybeDefaultBranch) do
             let covered' = HashSet.map (Name.QualifiedConstructor typeName) $ HashSet.fromMap (void $ OrderedHashMap.toMap cbrs)
-            let context' = Context.withCoveredConstructors context head args covered'
+            let context' = Context.withCoveredConstructors context head (Domain.Apps args) covered'
             k context'
         _ -> panic "withBranches type mismatch"
     Syntax.LiteralBranches lbrs -> do
-      covered <- Context.coveredLiterals context head args
+      covered <- Context.coveredLiterals context head $ Domain.Apps args
       forM_ (OrderedHashMap.keys lbrs) \lit -> do
         unless (HashSet.member lit covered) do
-          let context' = Context.defineWellOrdered context head args $ Domain.Lit lit
+          let context' = Context.defineWellOrdered context head (Domain.Apps args) $ Domain.Lit lit
           k context'
       when (isJust maybeDefaultBranch) do
         let covered' = HashSet.fromMap $ void $ OrderedHashMap.toMap lbrs
-        let context' = Context.withCoveredLiterals context head args covered'
+        let context' = Context.withCoveredLiterals context head (Domain.Apps args) covered'
         k context'
 
 -- TODO use Core.TypeOf.typeOfHead
@@ -367,7 +367,7 @@ withConstructorBranch context env head args constr constrArgs tele k =
         Builtin.Refl _ value1 value2 ->
           Equation.equate context Flexibility.Rigid value1 value2
         _ -> pure context
-      let context'' = Context.defineWellOrdered context' head args $ Domain.Con constr constrArgs
+      let context'' = Context.defineWellOrdered context' head (Domain.Apps args) $ Domain.Con constr constrArgs
       k context''
     Telescope.Extend bindings type_ plicity tele' -> do
       type' <- Evaluation.evaluate env type_
