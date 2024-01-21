@@ -43,7 +43,7 @@ import qualified Meta
 import Monad
 import qualified Name
 import Plicity
-import Protolude hiding (catch, check, evaluate, force, head, throwIO)
+import Protolude hiding (catch, check, evaluate, force, head, throwIO, try)
 import qualified Query
 import Rock
 import Telescope (Telescope)
@@ -357,18 +357,25 @@ withConstructorBranch
   -> Name.QualifiedConstructor
   -> Tsil (Plicity, Domain.Value)
   -> Telescope Bindings Syntax.Type Syntax.Term v1
-  -> (forall v'. Context v' -> M a)
-  -> M a
+  -> (forall v'. Context v' -> M ())
+  -> M ()
 withConstructorBranch context env head args constr constrArgs tele k =
   case tele of
     Telescope.Empty _ -> do
       let constrValue = Domain.Con constr constrArgs
-      context' <- case constrValue of
-        Builtin.Refl _ value1 value2 ->
-          Equation.equate context Flexibility.Rigid value1 value2
-        _ -> pure context
-      let context'' = Context.defineWellOrdered context' head (Domain.Apps args) $ Domain.Con constr constrArgs
-      k context''
+      maybeBranchContext <- case constrValue of
+        Builtin.Refl _ value1 value2 -> do
+          result <- try $ Equation.equate context Flexibility.Rigid value1 value2
+          pure case result of
+            Left Equation.Nope -> Nothing
+            Left Equation.Dunno -> Just context
+            Right context' -> Just context'
+        _ -> pure $ Just context
+      case maybeBranchContext of
+        Nothing -> pure ()
+        Just context' -> do
+          let context'' = Context.defineWellOrdered context' head (Domain.Apps args) $ Domain.Con constr constrArgs
+          k context''
     Telescope.Extend bindings type_ plicity tele' -> do
       type' <- Evaluation.evaluate env type_
       (context', var) <- Context.extend context (Bindings.toName bindings) type'
