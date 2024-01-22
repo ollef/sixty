@@ -168,7 +168,7 @@ prettyTerm prec env term =
 prettyGlobal :: Environment v -> Name.Qualified -> Doc ann
 prettyGlobal env global = do
   let aliases =
-        sortOn (\(Name.Surface name) -> Text.lengthWord16 name) $
+        sortOn (\(Name.Surface name) -> Text.lengthWord8 name) $
           filter (unambiguous env) $
             HashSet.toList $
               HashMap.lookupDefault mempty global $
@@ -183,7 +183,7 @@ prettyGlobal env global = do
 prettyConstr :: Environment v -> Name.QualifiedConstructor -> Doc ann
 prettyConstr env constr = do
   let aliases =
-        sortOn (\(Name.Surface name) -> Text.lengthWord16 name) $
+        sortOn (\(Name.Surface name) -> Text.lengthWord8 name) $
           filter (unambiguous env) $
             HashSet.toList $
               HashMap.lookupDefault mempty constr $

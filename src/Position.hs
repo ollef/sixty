@@ -39,16 +39,16 @@ addColumns (LineColumn line column) delta =
 lineColumn :: Absolute -> Text -> (LineColumn, Text)
 lineColumn (Absolute index) text =
   let prefix =
-        Text.takeWord16 index text
+        Text.takeWord8 index text
 
       suffix =
-        Text.dropWord16 index text
+        Text.dropWord8 index text
 
       linePrefixLength =
-        Text.lengthWord16 $ Text.takeWhileEnd (/= '\n') prefix
+        Text.lengthWord8 $ Text.takeWhileEnd (/= '\n') prefix
 
       lineSuffixLength =
-        Text.lengthWord16 $ Text.takeWhile (/= '\n') suffix
+        Text.lengthWord8 $ Text.takeWhile (/= '\n') suffix
 
       lineStart =
         index - linePrefixLength
@@ -57,8 +57,8 @@ lineColumn (Absolute index) text =
         linePrefixLength + lineSuffixLength
 
       line =
-        Text.takeWord16 lineLength $
-          Text.dropWord16 lineStart text
+        Text.takeWord8 lineLength $
+          Text.dropWord8 lineStart text
    in ( LineColumn
           (Text.count "\n" prefix)
           linePrefixLength

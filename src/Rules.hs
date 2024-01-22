@@ -245,7 +245,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                   [] ->
                     []
                   [(loc, (name, def))] ->
-                    [((Surface.definitionKind def, name), Span.Absolute loc $ Position.Absolute $ Text.lengthWord16 text)]
+                    [((Surface.definitionKind def, name), Span.Absolute loc $ Position.Absolute $ Text.lengthWord8 text)]
                   (loc1, (name, def)) : defs'@((loc2, _) : _) ->
                     ((Surface.definitionKind def, name), Span.Absolute loc1 loc2) : go defs'
 

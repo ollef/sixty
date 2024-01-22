@@ -39,7 +39,7 @@ codeLens filePath =
               prettyType <- Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context type_
               pure
                 [
-                  ( toLineColumns $ Span.Absolute pos $ pos + Position.Absolute (Text.lengthWord16 nameText)
+                  ( toLineColumns $ Span.Absolute pos $ pos + Position.Absolute (Text.lengthWord8 nameText)
                   , prettyType
                   )
                 ]

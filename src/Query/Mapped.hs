@@ -5,6 +5,7 @@
 {-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
@@ -65,8 +66,7 @@ instance (Ord key) => GCompare (Query key result) where
       EQ -> GEQ
       GT -> GGT
 
-instance ArgDict c (Query key result) where
-  type ConstraintsFor (Query key result) c = (c (HashMap key result), c (Maybe result))
+instance (c (Maybe result), c (HashMap key result)) => Has c (Query key result) where
   argDict query =
     case query of
       Map -> Dict

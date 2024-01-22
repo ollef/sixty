@@ -257,13 +257,13 @@ pretty h = do
             show (startLineNumber + 1)
 
           lineNumberTextLength =
-            Text.lengthWord16 lineNumberText
+            Text.lengthWord8 lineNumberText
 
           (spanLength, spanEnding)
             | startLineNumber == endLineNumber =
                 (endColumnNumber - startColumnNumber, mempty)
             | otherwise =
-                (Text.lengthWord16 h.lineText - startColumnNumber, "...")
+                (Text.lengthWord8 h.lineText - startColumnNumber, "...")
        in Doc.pretty (Text.replicate (lineNumberTextLength + 1) " ")
             <> "| "
             <> line
@@ -302,7 +302,7 @@ fromError err = do
         case eofOrSpan of
           Left Error.Parsing.EOF -> do
             let eofPos =
-                  Position.Absolute $ Text.lengthWord16 text
+                  Position.Absolute $ Text.lengthWord8 text
             Span.lineColumn (Span.Absolute eofPos eofPos) text
           Right span ->
             Span.lineColumn span text

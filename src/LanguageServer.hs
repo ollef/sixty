@@ -25,10 +25,10 @@ import qualified Error.Hydrated
 import qualified Error.Hydrated as Error (Hydrated)
 import qualified FileSystem
 import qualified Language.LSP.Diagnostics as LSP
+import qualified Language.LSP.Protocol.Lens as LSP hiding (rootPath)
+import qualified Language.LSP.Protocol.Types as LSP
 import qualified Language.LSP.Server as LSP
 import qualified Language.LSP.Server as LSP.Server
-import qualified Language.LSP.Types as LSP
-import qualified Language.LSP.Types.Lens as LSP hiding (rootPath)
 import qualified Language.LSP.VFS as LSP
 import qualified LanguageServer.CodeLens as CodeLens
 import qualified LanguageServer.Completion as Completion
@@ -252,7 +252,10 @@ messagePump state = do
             Nothing ->
               respond $
                 Left
-                  LSP.ResponseError {_code = LSP.UnknownErrorCode, _message = "Couldn't find a definition to jump to under the cursor", _xdata = Nothing}
+                  LSP.ResponseError
+                    { _code = LSP.UnknownErrorCode
+                    , _message = "Couldn't find a definition to jump to under the cursor"
+                    }
             Just (file, span) ->
               respond $ Right $ LSP.InL $ spanToLocation file span
           k state

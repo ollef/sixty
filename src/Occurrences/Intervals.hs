@@ -143,11 +143,11 @@ nameSpan
     case item of
       Global (Name.Qualified _ (Name.Name name)) ->
         Span.LineColumns
-          (Position.LineColumn endLine (endColumn - Text.lengthWord16 name))
+          (Position.LineColumn endLine (endColumn - Text.lengthWord8 name))
           (Position.LineColumn endLine endColumn)
       Con (Name.QualifiedConstructor _ (Name.Constructor name)) ->
         Span.LineColumns
-          (Position.LineColumn endLine (endColumn - Text.lengthWord16 name))
+          (Position.LineColumn endLine (endColumn - Text.lengthWord8 name))
           (Position.LineColumn endLine endColumn)
       Lit _ ->
         span
