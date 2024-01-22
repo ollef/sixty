@@ -10,6 +10,8 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
+-- Comes from deriveArgDict
+{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 module Query where
 
