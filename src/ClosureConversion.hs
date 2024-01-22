@@ -15,7 +15,7 @@ import Telescope (Telescope)
 import qualified Telescope
 
 convertDefinition
-  :: MonadFetch Query m
+  :: (MonadFetch Query m)
   => LambdaLifted.Definition
   -> m ClosureConverted.Definition
 convertDefinition def =
@@ -33,7 +33,7 @@ convertDefinition def =
       ClosureConverted.ParameterisedDataDefinition boxity <$> convertParameterisedDataDefinition tele
 
 convertParameterisedDataDefinition
-  :: MonadFetch Query m
+  :: (MonadFetch Query m)
   => Telescope Name LambdaLifted.Type LambdaLifted.ConstructorDefinitions v
   -> m (Telescope Name ClosureConverted.Type ClosureConverted.ConstructorDefinitions v)
 convertParameterisedDataDefinition tele =
@@ -47,14 +47,14 @@ convertParameterisedDataDefinition tele =
         <*> convertParameterisedDataDefinition tele'
 
 convertTerm
-  :: MonadFetch Query m
+  :: (MonadFetch Query m)
   => LambdaLifted.Term v
   -> m (ClosureConverted.Term v)
 convertTerm term =
   convertAppliedTerm term []
 
 convertAppliedTerm
-  :: MonadFetch Query m
+  :: (MonadFetch Query m)
   => LambdaLifted.Term v
   -> [ClosureConverted.Term v]
   -> m (ClosureConverted.Term v)
@@ -91,7 +91,7 @@ convertAppliedTerm term args =
           <*> mapM convertTerm defaultBranch
 
 convertGlobal
-  :: MonadFetch Query m
+  :: (MonadFetch Query m)
   => Name.Lifted
   -> [ClosureConverted.Term v]
   -> m (ClosureConverted.Term v)
@@ -132,7 +132,7 @@ convertGlobal global args = do
     LambdaLifted.DataDefinition _ tele ->
       functionCase tele
 
-convertTypeDeclaration :: MonadFetch Query m => LambdaLifted.Type Void -> m (ClosureConverted.Type Void)
+convertTypeDeclaration :: (MonadFetch Query m) => LambdaLifted.Type Void -> m (ClosureConverted.Type Void)
 convertTypeDeclaration type_ =
   case LambdaLifted.pisView identity type_ of
     Telescope.Empty _ ->
@@ -141,7 +141,7 @@ convertTypeDeclaration type_ =
       ClosureConverted.Function <$> Telescope.hoistA convertTerm convertTerm tele
 
 convertBranches
-  :: MonadFetch Query m
+  :: (MonadFetch Query m)
   => LambdaLifted.Branches v
   -> m (ClosureConverted.Branches v)
 convertBranches branches =
@@ -154,7 +154,7 @@ convertBranches branches =
         <$> OrderedHashMap.mapMUnordered convertTerm literalBranches
 
 convertTelescope
-  :: MonadFetch Query m
+  :: (MonadFetch Query m)
   => Telescope Name LambdaLifted.Type LambdaLifted.Term v
   -> m (Telescope Name ClosureConverted.Type ClosureConverted.Term v)
 convertTelescope tele =
@@ -168,7 +168,7 @@ convertTelescope tele =
         <*> convertTelescope tele'
 
 applyArgs
-  :: Monad m
+  :: (Monad m)
   => [ClosureConverted.Term v]
   -> m (ClosureConverted.Term v)
   -> m (ClosureConverted.Term v)

@@ -112,7 +112,7 @@ typeOfHead context head =
           pure type'
 
 typeOfSpineApplication
-  :: Foldable f
+  :: (Foldable f)
   => Context v
   -> Domain.Type
   -> f Domain.Elimination

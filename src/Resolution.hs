@@ -123,7 +123,7 @@ exposedNames exposed m =
     Module.Exposed names ->
       HashMap.intersection m (HashSet.toMap names)
 
-importedNames :: Semigroup a => Module.Import -> HashMap Name.Surface a -> HashMap Name.Surface a
+importedNames :: (Semigroup a) => Module.Import -> HashMap Name.Surface a -> HashMap Name.Surface a
 importedNames import_ m =
   HashMap.unionWith (<>) unqualifiedNames qualifiedNames
   where

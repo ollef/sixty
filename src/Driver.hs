@@ -275,7 +275,7 @@ pooledForConcurrently_ as f =
     pooledForConcurrentlyIO_ as (runInIO . f)
 
 pooledForConcurrentlyIO_
-  :: Foldable t
+  :: (Foldable t)
   => t a
   -> (a -> IO b)
   -> IO ()
@@ -297,7 +297,7 @@ pooledForConcurrentlyIO_ as f = do
   replicateConcurrently_ (max 8 processCount) go
 
 pooledForConcurrentlyIO
-  :: Traversable t
+  :: (Traversable t)
   => t a
   -> (a -> IO b)
   -> IO (t b)

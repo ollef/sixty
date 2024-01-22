@@ -39,7 +39,7 @@ update :: Postponement.Index -> Check -> Checks -> Checks
 update index newCheck p =
   p {checks = EnumMap.insert index newCheck $ checks p}
 
-adjustF :: Functor f => (Check -> f Check) -> Postponement.Index -> Checks -> f Checks
+adjustF :: (Functor f) => (Check -> f Check) -> Postponement.Index -> Checks -> f Checks
 adjustF adjust index p =
   (\checks' -> p {checks = checks'}) <$> EnumMap.alterF alter index (checks p)
   where

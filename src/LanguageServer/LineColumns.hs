@@ -13,13 +13,13 @@ import qualified Scope
 import Span (LineColumn (LineColumns))
 import qualified Span
 
-fromDefinitionName :: MonadFetch Query m => Scope.DefinitionKind -> Name.Qualified -> m (Maybe (Span.Relative -> Span.LineColumn))
+fromDefinitionName :: (MonadFetch Query m) => Scope.DefinitionKind -> Name.Qualified -> m (Maybe (Span.Relative -> Span.LineColumn))
 fromDefinitionName definitionKind name@(Name.Qualified moduleName _) = do
   (_, maybeAbsolutePosition) <- fetch $ Query.DefinitionPosition definitionKind name
   toLineColumns <- fromAbsolute moduleName
   pure $ fmap ((toLineColumns .) . Span.absoluteFrom) maybeAbsolutePosition
 
-fromAbsolute :: MonadFetch Query m => Name.Module -> m (Span.Absolute -> Span.LineColumn)
+fromAbsolute :: (MonadFetch Query m) => Name.Module -> m (Span.Absolute -> Span.LineColumn)
 fromAbsolute moduleName = do
   maybeFilePath <- fetch $ Query.ModuleFile moduleName
   case maybeFilePath of

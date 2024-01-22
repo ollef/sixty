@@ -132,7 +132,7 @@ makeApp fun arg =
     occurrences fun
       <> occurrences arg
 
-makeApps :: Foldable f => Value -> f Value -> Value
+makeApps :: (Foldable f) => Value -> f Value -> Value
 makeApps =
   foldl makeApp
 

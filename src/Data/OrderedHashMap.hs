@@ -50,15 +50,15 @@ lookupDefault :: (Hashable k) => v -> k -> OrderedHashMap k v -> v
 lookupDefault def k (OrderedHashMap h) =
   (\(Ordered _ v) -> v) $ HashMap.lookupDefault (Ordered 0 def) k h
 
-mapMUnordered :: Applicative f => (a -> f b) -> OrderedHashMap k a -> f (OrderedHashMap k b)
+mapMUnordered :: (Applicative f) => (a -> f b) -> OrderedHashMap k a -> f (OrderedHashMap k b)
 mapMUnordered f (OrderedHashMap h) =
   OrderedHashMap <$> traverse (traverse f) h
 
-mapMUnordered_ :: Applicative f => (a -> f ()) -> OrderedHashMap k a -> f ()
+mapMUnordered_ :: (Applicative f) => (a -> f ()) -> OrderedHashMap k a -> f ()
 mapMUnordered_ f (OrderedHashMap h) =
   traverse_ (traverse_ f) h
 
-forMUnordered :: Applicative f => OrderedHashMap k a -> (a -> f b) -> f (OrderedHashMap k b)
+forMUnordered :: (Applicative f) => OrderedHashMap k a -> (a -> f b) -> f (OrderedHashMap k b)
 forMUnordered =
   flip mapMUnordered
 

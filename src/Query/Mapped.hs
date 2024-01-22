@@ -50,7 +50,7 @@ rule inject query fetchMap =
       m <- fetch $ inject Map
       pure $ HashMap.lookup key m
 
-instance Eq key => GEq (Query key result) where
+instance (Eq key) => GEq (Query key result) where
   geq Map Map = Just Refl
   geq (Query k1) (Query k2)
     | k1 == k2 = Just Refl

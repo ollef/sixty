@@ -170,7 +170,7 @@ fromEagerEntry entry =
     EagerSolved term metas type_ ->
       Solved term metas type_
 
-toEagerEntry :: Monad m => Entry m -> m EagerEntry
+toEagerEntry :: (Monad m) => Entry m -> m EagerEntry
 toEagerEntry entry =
   case entry of
     Unsolved type_ arity postponements span ->
@@ -183,7 +183,7 @@ toEagerEntry entry =
             termMetas solution <> termMetas type_
       pure $ EagerSolved solution mempty {direct = metas, unsolved = metas} type_
 
-toEagerState :: Monad m => State m -> Syntax.Definition -> Maybe (Syntax.Type Void) -> m EagerState
+toEagerState :: (Monad m) => State m -> Syntax.Definition -> Maybe (Syntax.Type Void) -> m EagerState
 toEagerState state definition maybeType = do
   entries_ <- go (definitionMetas definition <> foldMap termMetas maybeType) mempty
   pure
@@ -215,7 +215,7 @@ toEagerState state definition maybeType = do
 
 -------------------------------------------------------------------------------
 
-solutionMetas :: Monad m => Meta.Index -> State m -> m (Maybe CachedMetas, State m)
+solutionMetas :: (Monad m) => Meta.Index -> State m -> m (Maybe CachedMetas, State m)
 solutionMetas metaIndex state = do
   case lookup metaIndex state of
     Unsolved {} ->

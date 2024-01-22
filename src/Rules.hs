@@ -487,13 +487,13 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
 
         pure $ AssemblyToLLVM.assembleModule [(Name.Lifted "$module_init" 0, assemblyDefinition)]
   where
-    input :: Functor m => m a -> m ((a, TaskKind), [Error])
+    input :: (Functor m) => m a -> m ((a, TaskKind), [Error])
     input = fmap ((,mempty) . (,Input))
 
-    noError :: Functor m => m a -> m ((a, TaskKind), [Error])
+    noError :: (Functor m) => m a -> m ((a, TaskKind), [Error])
     noError = fmap ((,mempty) . (,NonInput))
 
-    nonInput :: Functor m => m (a, [Error]) -> m ((a, TaskKind), [Error])
+    nonInput :: (Functor m) => m (a, [Error]) -> m ((a, TaskKind), [Error])
     nonInput = fmap (first (,NonInput))
 
     runElaboratorWithDefault

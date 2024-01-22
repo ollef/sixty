@@ -32,11 +32,11 @@ import Var (Var)
 newtype M a = M {run :: Monad.M a}
   deriving (Functor, Applicative, Monad, MonadFetch Query)
 
-instance Semigroup a => Semigroup (M a) where
+instance (Semigroup a) => Semigroup (M a) where
   M m <> M n =
     M $ (<>) <$> m <*> n
 
-instance Monoid a => Monoid (M a) where
+instance (Monoid a) => Monoid (M a) where
   mempty =
     pure mempty
 
@@ -73,13 +73,13 @@ definitionOccurrences env definitionKind qualifiedName =
           foreach constructorSpans (\(span, con) -> Intervals.singleton span $ Intervals.Con con)
             <> foreach spans (`Intervals.singleton` Intervals.Global qualifiedName)
 
-definitionNameSpans :: MonadFetch Query m => Scope.DefinitionKind -> Name.Qualified -> m [Span.Relative]
+definitionNameSpans :: (MonadFetch Query m) => Scope.DefinitionKind -> Name.Qualified -> m [Span.Relative]
 definitionNameSpans definitionKind (Name.Qualified moduleName name) = do
   maybeParsedDefinition <- fetch $ Query.ParsedDefinition moduleName $ Mapped.Query (definitionKind, name)
   pure $ foldMap Surface.spans maybeParsedDefinition
 
 definitionConstructorSpans
-  :: MonadFetch Query m
+  :: (MonadFetch Query m)
   => Scope.DefinitionKind
   -> Name.Qualified
   -> m [(Span.Relative, Name.QualifiedConstructor)]

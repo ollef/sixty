@@ -11,7 +11,7 @@ import Prelude (Show (showsPrec), showParen, showString, shows)
 newtype OrderedHashSet a = OrderedHashSet (OrderedHashMap a ())
   deriving (Eq, Ord, Hashable)
 
-instance Show a => Show (OrderedHashSet a) where
+instance (Show a) => Show (OrderedHashSet a) where
   showsPrec p xs =
     showParen (p > 10) $
       showString "fromList " . shows (toList xs)

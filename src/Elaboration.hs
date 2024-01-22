@@ -430,12 +430,12 @@ implicitLambdaResult context mode term type_ =
       f <- Unification.tryUnify context type' expectedType
       pure $ Checked $ f $ Syntax.apps term args
 
-elaborate :: Functor result => Context v -> Surface.Term -> Mode result -> M (result (Syntax.Term v))
+elaborate :: (Functor result) => Context v -> Surface.Term -> Mode result -> M (result (Syntax.Term v))
 elaborate context term@(Surface.Term span _) mode =
   elaborateWith (Context.spanned span context) term mode Postponement.CanPostpone
 
 elaborateWith
-  :: Functor result
+  :: (Functor result)
   => Context v
   -> Surface.Term
   -> Mode result
@@ -676,7 +676,7 @@ data LetBoundTerm where
   LetBoundTerm :: Context v -> Syntax.Term v -> LetBoundTerm
 
 elaborateLets
-  :: Functor result
+  :: (Functor result)
   => Context v
   -> HashMap Name.Surface (Span.Relative, Var)
   -> EnumMap Var (Span.Relative, Name.Surface)

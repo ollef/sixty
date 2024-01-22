@@ -507,7 +507,7 @@ pattern_ =
     <**> ( flip Surface.anno <$ token Lexer.Colon <*> term
             <|> pure identity
          )
-    <?> "pattern"
+      <?> "pattern"
 
 plicitPattern :: Parser Surface.PlicitPattern
 plicitPattern =
@@ -516,8 +516,8 @@ plicitPattern =
     <*> sepBy patName (token $ Lexer.Operator ",")
     <*> token Lexer.RightImplicitBrace
     <|> Surface.ExplicitPattern
-    <$> atomicPattern
-    <?> "explicit or implicit pattern"
+      <$> atomicPattern
+        <?> "explicit or implicit pattern"
   where
     mkImplicitPattern span1 pats span2 =
       Surface.ImplicitPattern (Span.add span1 span2) $
@@ -611,9 +611,9 @@ term =
     <* token Lexer.RightArrow
     <*> term
     <|> atomicTerm
-    <**> (foldl' (flip (.)) identity <$> many plicitAtomicTerm)
-    <**> fun
-    <?> "term"
+      <**> (foldl' (flip (.)) identity <$> many plicitAtomicTerm)
+      <**> fun
+        <?> "term"
   where
     typedBindings =
       uncurry (,,)
@@ -642,7 +642,7 @@ definition =
                   <$> ( Surface.TypeDeclaration span <$ token Lexer.Colon <*> recoveringTerm
                           <|> Surface.ConstantDefinition <$> clauses span nameText
                       )
-              <?> "definition"
+                <?> "definition"
 
 clauses :: Span.Relative -> Text -> Parser [(Span.Relative, Surface.Clause)]
 clauses firstSpan nameText =

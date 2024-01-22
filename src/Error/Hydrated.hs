@@ -239,14 +239,17 @@ pretty h = do
   filePath <- liftIO $ Directory.makeRelativeToCurrentDirectory h.filePath
   (heading, body) <- headingAndBody h.error
   pure $
-    Doc.pretty filePath <> ":" <> Doc.pretty h.lineColumn <> ":"
+    Doc.pretty filePath
+      <> ":"
+      <> Doc.pretty h.lineColumn
+      <> ":"
       <+> heading
-        <> line
-        <> line
-        <> body
-        <> line
-        <> line
-        <> spannedLine
+      <> line
+      <> line
+      <> body
+      <> line
+      <> line
+      <> spannedLine
   where
     spannedLine =
       let Span.LineColumns
@@ -321,7 +324,7 @@ lineNumber err = l
   where
     Span.LineColumns (Position.LineColumn l _) _ = err.lineColumn
 
-prettyPrettyableTerm :: MonadFetch Query m => Int -> Error.PrettyableTerm -> m (Doc ann)
+prettyPrettyableTerm :: (MonadFetch Query m) => Int -> Error.PrettyableTerm -> m (Doc ann)
 prettyPrettyableTerm prec (Error.PrettyableTerm moduleName_ names term) = do
   env <- Pretty.emptyM moduleName_
   pure $ go names env
@@ -336,7 +339,7 @@ prettyPrettyableTerm prec (Error.PrettyableTerm moduleName_ names term) = do
                 Pretty.extend env' name
            in go names'' env''
 
-prettyPrettyablePattern :: MonadFetch Query m => Int -> (Plicity, Error.PrettyablePattern) -> m (Doc ann)
+prettyPrettyablePattern :: (MonadFetch Query m) => Int -> (Plicity, Error.PrettyablePattern) -> m (Doc ann)
 prettyPrettyablePattern prec (plicity, Error.PrettyablePattern moduleName_ names pattern_) = do
   env <- Pretty.emptyM moduleName_
   pure $ go names env

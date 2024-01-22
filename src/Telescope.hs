@@ -42,7 +42,7 @@ hoist f g tele =
     Extend name t plicity scope ->
       Extend name (f t) plicity $ hoist f g scope
 
-hoistA :: Applicative f => (forall v'. t v' -> f (t' v')) -> (forall v'. k v' -> f (k' v')) -> Telescope n t k v -> f (Telescope n t' k' v)
+hoistA :: (Applicative f) => (forall v'. t v' -> f (t' v')) -> (forall v'. k v' -> f (k' v')) -> Telescope n t k v -> f (Telescope n t' k' v)
 hoistA f g tele =
   case tele of
     Empty k ->
@@ -70,7 +70,7 @@ foldr f g tele =
       f name t plicity $ Telescope.foldr f g scope
 
 foldMap
-  :: Monoid result
+  :: (Monoid result)
   => (forall v'. type_ v' -> result)
   -> (forall v'. base v' -> result)
   -> Telescope name type_ base v

@@ -61,7 +61,7 @@ instance Semigroup ContainsHeapPointers where
 instance Monoid ContainsHeapPointers where
   mempty = Doesn'tContainHeapPointers
 
-maxM :: Monad m => [m Representation] -> m Representation
+maxM :: (Monad m) => [m Representation] -> m Representation
 maxM [] = pure mempty
 maxM (m : ms) = do
   representation <- m

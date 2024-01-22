@@ -81,7 +81,7 @@ toEnvironment context =
     , glueableBefore = Index.Zero
     }
 
-empty :: MonadBase IO m => Scope.DefinitionKind -> Name.Qualified -> m (Context Void)
+empty :: (MonadBase IO m) => Scope.DefinitionKind -> Name.Qualified -> m (Context Void)
 empty definitionKind definitionName = do
   ms <- newIORef Meta.empty
   es <- newIORef mempty
