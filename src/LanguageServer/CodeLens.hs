@@ -19,8 +19,9 @@ import Rock
 import qualified Scope
 import qualified Span
 import qualified Surface.Syntax as Surface
+import qualified UTF16
 
-codeLens :: FilePath -> Task Query [(Span.LineColumn, Doc ann)]
+codeLens :: FilePath -> Task Query [(UTF16.LineColumns, Doc ann)]
 codeLens filePath =
   runM $ do
     (moduleName, _, defs) <- fetch $ Query.ParsedFile filePath

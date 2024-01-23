@@ -1,12 +1,10 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ViewPatterns #-}
 
 module Span where
 
 import qualified Position
-import Prettyprinter
 import Protolude
 
 data Absolute = Absolute !Position.Absolute !Position.Absolute
@@ -37,27 +35,3 @@ relativeContains (Relative start end) pos =
 
 data LineColumn = LineColumns !Position.LineColumn !Position.LineColumn
   deriving (Show, Generic)
-
-lineColumn :: Absolute -> Text -> (LineColumn, Text)
-lineColumn (Absolute start end) text =
-  let (startLineColumn, lineText) =
-        Position.lineColumn start text
-   in ( LineColumns
-          startLineColumn
-          (fst $ Position.lineColumn end text)
-      , lineText
-      )
-
--- | Gives a summary (fileName:row:column) of the location
-instance Pretty LineColumn where
-  pretty
-    ( LineColumns
-        start@(Position.LineColumn ((+ 1) -> startLine) ((+ 1) -> startColumn))
-        end@(Position.LineColumn ((+ 1) -> endLine) ((+ 1) -> endColumn))
-      )
-      | start == end =
-          pretty startLine <> ":" <> pretty startColumn
-      | startLine == endLine =
-          pretty startLine <> ":" <> pretty startColumn <> "-" <> pretty endColumn
-      | otherwise =
-          pretty startLine <> ":" <> pretty startColumn <> "-" <> pretty endLine <> ":" <> pretty endColumn

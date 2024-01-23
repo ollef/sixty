@@ -20,17 +20,18 @@ import qualified Query
 import Rock
 import qualified Scope
 import qualified Span
+import qualified UTF16
 
-goToDefinition :: FilePath -> Position.LineColumn -> Task Query (Maybe (FilePath, Span.LineColumn))
-goToDefinition filePath (Position.LineColumn line column) = do
+goToDefinition :: FilePath -> UTF16.LineColumn -> Task Query (Maybe (FilePath, UTF16.LineColumns))
+goToDefinition filePath (UTF16.LineColumn line column) = do
   (moduleName, moduleHeader, _) <- fetch $ Query.ParsedFile filePath
   spans <- fetch $ Query.ModuleSpanMap moduleName
   rope <- fetch $ Query.FileRope filePath
   let pos =
         Position.Absolute $
-          case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral column)) rope of
+          case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral $ UTF16.toInt column)) rope of
             Nothing -> 0
-            Just (rope', _) -> fromIntegral $ Rope.length rope'
+            Just (rope', _) -> fromIntegral $ Rope.utf8Length rope'
 
   runMaybeT $
     asum $
@@ -44,7 +45,7 @@ goToDefinition filePath (Position.LineColumn line column) = do
               Nothing ->
                 empty
               Just definingFile ->
-                pure (definingFile, Span.LineColumns (Position.LineColumn 0 0) (Position.LineColumn 0 0))
+                pure (definingFile, UTF16.LineColumns (UTF16.LineColumn 0 0) (UTF16.LineColumn 0 0))
         )
         <> foreach
           (HashMap.toList spans)

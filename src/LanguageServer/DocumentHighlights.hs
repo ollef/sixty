@@ -14,22 +14,21 @@ import Query (Query)
 import qualified Query
 import Rock
 import qualified Span
+import qualified UTF16
 
 highlights
   :: FilePath
-  -> Position.LineColumn
-  -> Task Query [Span.LineColumn]
-highlights filePath (Position.LineColumn line column) = do
+  -> UTF16.LineColumn
+  -> Task Query [UTF16.LineColumns]
+highlights filePath (UTF16.LineColumn line column) = do
   (moduleName, _, _) <- fetch $ Query.ParsedFile filePath
   spans <- fetch $ Query.ModuleSpanMap moduleName
-  contents <- fetch $ Query.FileText filePath
-  let
-    -- TODO use the rope that we get from the LSP library instead
-    pos =
-      Position.Absolute $
-        case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral column)) $ Rope.fromText contents of
-          Nothing -> 0
-          Just (rope, _) -> fromIntegral $ Rope.length rope
+  contents <- fetch $ Query.FileRope filePath
+  let pos =
+        Position.Absolute $
+          case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral $ UTF16.toInt column)) contents of
+            Nothing -> 0
+            Just (rope, _) -> fromIntegral $ Rope.utf8Length rope
 
   toLineColumns <- LineColumns.fromAbsolute moduleName
 

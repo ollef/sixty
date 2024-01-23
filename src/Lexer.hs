@@ -185,7 +185,7 @@ lex state@State {..}
               identifier position lineColumn state'
         _
           | Just state' <- satisfy isASCIIOperator (\c -> Char.isSymbol c || Char.isPunctuation c) state ->
-              identifier position lineColumn state'
+              operator position lineColumn state'
         -------------------------------------------------------------------------
         -- Error
         _ ->

@@ -18,12 +18,13 @@ import Query (Query)
 import qualified Query
 import Rock
 import qualified Span
+import qualified UTF16
 
 references
   :: FilePath
-  -> Position.LineColumn
-  -> Task Query [(Intervals.Item, [(FilePath, Span.LineColumn)])]
-references filePath (Position.LineColumn line column) = do
+  -> UTF16.LineColumn
+  -> Task Query [(Intervals.Item, [(FilePath, UTF16.LineColumns)])]
+references filePath (UTF16.LineColumn line column) = do
   (originalModuleName, _, _) <- fetch $ Query.ParsedFile filePath
   let itemSpans definingModule item = do
         let mightUseDefiningModule moduleName header =
@@ -46,14 +47,12 @@ references filePath (Position.LineColumn line column) = do
                     pure $ (,) inputFile . toLineColumns . Span.absoluteFrom defPos <$> Intervals.itemSpans item occurrenceIntervals
               else pure mempty
 
-  contents <- fetch $ Query.FileText filePath
-  let
-    -- TODO use the rope that we get from the LSP library instead
-    pos =
-      Position.Absolute $
-        case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral column)) $ Rope.fromText contents of
-          Nothing -> 0
-          Just (rope, _) -> fromIntegral $ Rope.length rope
+  contents <- fetch $ Query.FileRope filePath
+  let pos =
+        Position.Absolute $
+          case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral $ UTF16.toInt column)) contents of
+            Nothing -> 0
+            Just (rope, _) -> fromIntegral $ Rope.utf8Length rope
   toLineColumns <- LineColumns.fromAbsolute originalModuleName
   spans <- fetch $ Query.ModuleSpanMap originalModuleName
   fmap concat $

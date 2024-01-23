@@ -10,31 +10,31 @@ import Query (Query)
 import qualified Query
 import Rock
 import qualified Scope
-import Span (LineColumn (LineColumns))
 import qualified Span
+import UTF16
 
-fromDefinitionName :: (MonadFetch Query m) => Scope.DefinitionKind -> Name.Qualified -> m (Maybe (Span.Relative -> Span.LineColumn))
+fromDefinitionName :: (MonadFetch Query m) => Scope.DefinitionKind -> Name.Qualified -> m (Maybe (Span.Relative -> UTF16.LineColumns))
 fromDefinitionName definitionKind name@(Name.Qualified moduleName _) = do
   (_, maybeAbsolutePosition) <- fetch $ Query.DefinitionPosition definitionKind name
   toLineColumns <- fromAbsolute moduleName
   pure $ fmap ((toLineColumns .) . Span.absoluteFrom) maybeAbsolutePosition
 
-fromAbsolute :: (MonadFetch Query m) => Name.Module -> m (Span.Absolute -> Span.LineColumn)
+fromAbsolute :: (MonadFetch Query m) => Name.Module -> m (Span.Absolute -> UTF16.LineColumns)
 fromAbsolute moduleName = do
   maybeFilePath <- fetch $ Query.ModuleFile moduleName
   case maybeFilePath of
     Nothing ->
-      pure $ const $ Span.LineColumns (Position.LineColumn 0 0) (Position.LineColumn 0 0)
+      pure $ const $ UTF16.LineColumns (UTF16.LineColumn 0 0) (UTF16.LineColumn 0 0)
     Just filePath -> do
       rope <- fetch $ Query.FileRope filePath
       let toLineColumn (Position.Absolute i) =
             case Rope.splitAt (fromIntegral i) rope of
-              Nothing -> Position.LineColumn 0 0
+              Nothing -> UTF16.LineColumn 0 0
               Just (rope', _) ->
                 let Rope.Position row column = Rope.lengthAsPosition rope'
-                 in Position.LineColumn (fromIntegral row) (fromIntegral column)
+                 in UTF16.LineColumn (fromIntegral row) (fromIntegral column)
 
           toLineColumns (Span.Absolute start end) =
-            Span.LineColumns (toLineColumn start) (toLineColumn end)
+            UTF16.LineColumns (toLineColumn start) (toLineColumn end)
 
       return toLineColumns

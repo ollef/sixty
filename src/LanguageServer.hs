@@ -36,16 +36,15 @@ import qualified LanguageServer.GoToDefinition as GoToDefinition
 import qualified LanguageServer.Hover as Hover
 import qualified LanguageServer.References as References
 import qualified Occurrences.Intervals
-import qualified Position
 import Prettyprinter (Doc)
 import qualified Prettyprinter as Doc
 import qualified Project
 import Protolude hiding (State, state)
 import Query (Query)
 import Rock (Task)
-import qualified Span
 import qualified System.Directory as Directory
 import qualified System.FSNotify as FSNotify
+import qualified UTF16
 
 run :: IO ()
 run = do
@@ -469,30 +468,30 @@ errorToDiagnostic err doc =
     , _data_ = Nothing
     }
 
-spanToLocation :: FilePath -> Span.LineColumn -> LSP.Location
+spanToLocation :: FilePath -> UTF16.LineColumns -> LSP.Location
 spanToLocation filePath span =
   LSP.Location
     { _uri = LSP.filePathToUri filePath
     , _range = spanToRange span
     }
 
-spanToRange :: Span.LineColumn -> LSP.Range
-spanToRange (Span.LineColumns start end) =
+spanToRange :: UTF16.LineColumns -> LSP.Range
+spanToRange (UTF16.LineColumns start end) =
   LSP.Range
     { _start = positionToPosition start
     , _end = positionToPosition end
     }
 
-positionToPosition :: Position.LineColumn -> LSP.Position
-positionToPosition (Position.LineColumn line column) =
+positionToPosition :: UTF16.LineColumn -> LSP.Position
+positionToPosition (UTF16.LineColumn line column) =
   LSP.Position
     { _line = fromIntegral line
-    , _character = fromIntegral column
+    , _character = fromIntegral $ UTF16.toInt column
     }
 
-positionFromPosition :: LSP.Position -> Position.LineColumn
+positionFromPosition :: LSP.Position -> UTF16.LineColumn
 positionFromPosition (LSP.Position line column) =
-  Position.LineColumn (fromIntegral line) (fromIntegral column)
+  UTF16.LineColumn (fromIntegral line) (UTF16.CodeUnits $ fromIntegral column)
 
 uriToFilePath :: LSP.Uri -> FilePath
 uriToFilePath =

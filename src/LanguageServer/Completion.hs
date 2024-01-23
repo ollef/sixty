@@ -26,7 +26,6 @@ import Monad
 import Name (Name (Name))
 import qualified Name
 import Plicity
-import qualified Position
 import Prettyprinter ((<+>))
 import Protolude hiding (catch, evaluate, moduleName)
 import Query (Query)
@@ -34,11 +33,13 @@ import qualified Query
 import qualified Query.Mapped as Mapped
 import Rock
 import qualified Scope
+import qualified UTF16
 import Var (Var)
 
-complete :: FilePath -> Position.LineColumn -> Task Query (Maybe [LSP.CompletionItem])
-complete filePath (Position.LineColumn line column) =
-  CursorAction.cursorAction filePath (Position.LineColumn line $ max 0 $ column - 1) \item _ ->
+complete :: FilePath -> UTF16.LineColumn -> Task Query (Maybe [LSP.CompletionItem])
+complete filePath (UTF16.LineColumn line column) =
+  -- TODO needs to work on code points, not code units
+  CursorAction.cursorAction filePath (UTF16.LineColumn line $ max 0 $ column - 1) \item _ ->
     case item of
       CursorAction.Import _ ->
         empty
@@ -72,9 +73,10 @@ complete filePath (Position.LineColumn line column) =
                 , _data_ = Nothing
                 }
 
-questionMark :: FilePath -> Position.LineColumn -> Task Query (Maybe [LSP.CompletionItem])
-questionMark filePath (Position.LineColumn line column) =
-  CursorAction.cursorAction filePath (Position.LineColumn line $ max 0 $ column - 1) \item _ ->
+questionMark :: FilePath -> UTF16.LineColumn -> Task Query (Maybe [LSP.CompletionItem])
+questionMark filePath (UTF16.LineColumn line column) =
+  -- TODO needs to work on code points, not code units
+  CursorAction.cursorAction filePath (UTF16.LineColumn line $ max 0 $ column - 1) \item _ ->
     case item of
       CursorAction.Import _ ->
         empty
@@ -140,12 +142,13 @@ questionMark filePath (Position.LineColumn line column) =
                                       { _start =
                                           LSP.Position
                                             { _line = fromIntegral line
-                                            , _character = fromIntegral $ column - 1
+                                            , -- TODO needs to work with code points
+                                              _character = fromIntegral $ UTF16.toInt $ column - 1
                                             }
                                       , _end =
                                           LSP.Position
                                             { _line = fromIntegral line
-                                            , _character = fromIntegral column
+                                            , _character = fromIntegral $ UTF16.toInt column
                                             }
                                       }
                                 , _newText =
