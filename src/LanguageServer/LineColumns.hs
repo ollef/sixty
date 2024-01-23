@@ -28,7 +28,7 @@ fromAbsolute moduleName = do
     Just filePath -> do
       rope <- fetch $ Query.FileRope filePath
       let toLineColumn (Position.Absolute i) =
-            case Rope.splitAt (fromIntegral i) rope of
+            case Rope.utf8SplitAt (fromIntegral i) rope of
               Nothing -> UTF16.LineColumn 0 0
               Just (rope', _) ->
                 let Rope.Position row column = Rope.lengthAsPosition rope'

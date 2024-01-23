@@ -111,7 +111,7 @@ data State = State
 satisfy :: Word8 -> (Word8 -> Bool) -> (Char -> Bool) -> State -> Maybe Int
 satisfy c satisfyASCII satisfyNonASCII State {..}
   | c < 128 = if satisfyASCII c then Just 1 else Nothing
-  | otherwise = do
+  | otherwise =
       case Utf8.utf8LengthByLeader c of
         2 | position + 1 < end, satisfyNonASCII (Utf8.chr2 c (index input $ position + 1)) -> Just 2
         3 | position + 2 < end, satisfyNonASCII (Utf8.chr3 c (index input $ position + 1) (index input $ position + 2)) -> Just 3
@@ -180,7 +180,7 @@ lex state@State {..}
           | Just n <- satisfy c isASCIIIdentifierStart Char.isAlpha state ->
               identifier position lineColumn $ incColumn n state
         c
-          | Just n <- satisfy c isASCIIOperator (\c -> Char.isSymbol c || Char.isPunctuation c) state ->
+          | Just n <- satisfy c isASCIIOperator (\c' -> Char.isSymbol c' || Char.isPunctuation c') state ->
               operator position lineColumn $ incColumn n state
         -------------------------------------------------------------------------
         -- Error
@@ -275,7 +275,7 @@ dotIdentifier !startPosition !startLineColumn !dotPosition !dotLineColumn state@
   | otherwise = case index input position of
       c
         | Just n <- satisfy c isASCIIIdentifierCont Char.isAlpha state -> identifier startPosition startLineColumn $ incColumn n state
-        | Just n <- satisfy c isASCIIOperator (\c -> Char.isSymbol c || Char.isPunctuation c) state ->
+        | Just n <- satisfy c isASCIIOperator (\c' -> Char.isSymbol c' || Char.isPunctuation c') state ->
             identifierToken input startPosition startLineColumn dotPosition $ operator dotPosition dotLineColumn $ incColumn n state
         | otherwise ->
             identifierToken input startPosition startLineColumn dotPosition $
@@ -322,7 +322,7 @@ operator !startPosition !startLineColumn state@State {..}
   | position >= end = operatorToken input startPosition startLineColumn position Empty
   | otherwise = case index input position of
       c
-        | Just n <- satisfy c isASCIIOperator (\c -> Char.isSymbol c || Char.isPunctuation c) state ->
+        | Just n <- satisfy c isASCIIOperator (\c' -> Char.isSymbol c' || Char.isPunctuation c') state ->
             operator startPosition startLineColumn $ incColumn n state
         | otherwise ->
             operatorToken input startPosition startLineColumn position $
