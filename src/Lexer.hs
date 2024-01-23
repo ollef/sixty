@@ -107,20 +107,16 @@ data State = State
   , end :: !Position.Absolute
   }
 
-satisfy :: (Word8 -> Bool) -> (Char -> Bool) -> State -> Maybe State
-satisfy satisfyASCII satisfyNonASCII state@State {..}
-  | position >= end = Nothing
-  | c1 < 128 = if satisfyASCII c1 then Just $ incColumn 1 state else Nothing
-  | otherwise = case Utf8.utf8LengthByLeader c1 of
-      2 | satisfyNonASCII (Utf8.chr2 c1 c2) -> Just $ incColumn 2 state
-      3 | satisfyNonASCII (Utf8.chr3 c1 c2 c3) -> Just $ incColumn 3 state
-      4 | satisfyNonASCII (Utf8.chr4 c1 c2 c3 c4) -> Just $ incColumn 4 state
-      _ -> Nothing
-  where
-    c1 = index input position
-    c2 = index input (position + 1)
-    c3 = index input (position + 2)
-    c4 = index input (position + 3)
+{-# INLINE satisfy #-}
+satisfy :: Word8 -> (Word8 -> Bool) -> (Char -> Bool) -> State -> Maybe Int
+satisfy c satisfyASCII satisfyNonASCII State {..}
+  | c < 128 = if satisfyASCII c then Just 1 else Nothing
+  | otherwise = do
+      case Utf8.utf8LengthByLeader c of
+        2 | position + 1 < end, satisfyNonASCII (Utf8.chr2 c (index input $ position + 1)) -> Just 2
+        3 | position + 2 < end, satisfyNonASCII (Utf8.chr3 c (index input $ position + 1) (index input $ position + 2)) -> Just 3
+        4 | position + 3 < end, satisfyNonASCII (Utf8.chr4 c (index input $ position + 1) (index input $ position + 2) (index input $ position + 3)) -> Just 4
+        _ -> Nothing
 
 incColumn :: Int -> State -> State
 incColumn n state@State {..} = state {position = Position.add position (coerce n), lineColumn = Position.addColumns lineColumn (coerce n)}
@@ -180,12 +176,12 @@ lex state@State {..}
           token1 RightImplicitBrace $ lex $ incColumn 1 state
         -------------------------------------------------------------------------
         -- Operator or identifier
-        _
-          | Just state' <- satisfy isASCIIIdentifierStart Char.isAlpha state ->
-              identifier position lineColumn state'
-        _
-          | Just state' <- satisfy isASCIIOperator (\c -> Char.isSymbol c || Char.isPunctuation c) state ->
-              operator position lineColumn state'
+        c
+          | Just n <- satisfy c isASCIIIdentifierStart Char.isAlpha state ->
+              identifier position lineColumn $ incColumn n state
+        c
+          | Just n <- satisfy c isASCIIOperator (\c -> Char.isSymbol c || Char.isPunctuation c) state ->
+              operator position lineColumn $ incColumn n state
         -------------------------------------------------------------------------
         -- Error
         _ ->
@@ -260,7 +256,7 @@ identifier !startPosition !startLineColumn state@State {..}
   | otherwise = case index input position of
       [UTF8.unit1|.|] ->
         dotIdentifier startPosition startLineColumn position lineColumn $ incColumn 1 state
-      _ | Just state' <- satisfy isASCIIIdentifierCont Char.isAlpha state -> identifier startPosition startLineColumn state'
+      c | Just n <- satisfy c isASCIIIdentifierCont Char.isAlpha state -> identifier startPosition startLineColumn $ incColumn n state
       _ ->
         identifierToken input startPosition startLineColumn position $
           lex state
@@ -273,13 +269,18 @@ dotIdentifier
   -> State
   -> TokenList
 dotIdentifier !startPosition !startLineColumn !dotPosition !dotLineColumn state@State {..}
-  | Just state' <- satisfy isASCIIIdentifierCont Char.isAlpha state = identifier startPosition startLineColumn state'
-  | Just state' <- satisfy isASCIIOperator (\c -> Char.isSymbol c || Char.isPunctuation c) state =
-      identifierToken input startPosition startLineColumn dotPosition $ operator dotPosition dotLineColumn state'
-  | otherwise =
+  | position >= end =
       identifierToken input startPosition startLineColumn dotPosition $
-        Token dotLineColumn (Span.Absolute dotPosition position) Dot $
-          lex state
+        Token dotLineColumn (Span.Absolute dotPosition position) Dot Empty
+  | otherwise = case index input position of
+      c
+        | Just n <- satisfy c isASCIIIdentifierCont Char.isAlpha state -> identifier startPosition startLineColumn $ incColumn n state
+        | Just n <- satisfy c isASCIIOperator (\c -> Char.isSymbol c || Char.isPunctuation c) state ->
+            identifierToken input startPosition startLineColumn dotPosition $ operator dotPosition dotLineColumn $ incColumn n state
+        | otherwise ->
+            identifierToken input startPosition startLineColumn dotPosition $
+              Token dotLineColumn (Span.Absolute dotPosition position) Dot $
+                lex state
 
 identifierToken
   :: Array
@@ -318,11 +319,14 @@ operator
   -> State
   -> TokenList
 operator !startPosition !startLineColumn state@State {..}
-  | Just state' <- satisfy isASCIIOperator (\c -> Char.isSymbol c || Char.isPunctuation c) state =
-      operator startPosition startLineColumn state'
-  | otherwise =
-      operatorToken input startPosition startLineColumn position $
-        lex state
+  | position >= end = operatorToken input startPosition startLineColumn position Empty
+  | otherwise = case index input position of
+      c
+        | Just n <- satisfy c isASCIIOperator (\c -> Char.isSymbol c || Char.isPunctuation c) state ->
+            operator startPosition startLineColumn $ incColumn n state
+        | otherwise ->
+            operatorToken input startPosition startLineColumn position $
+              lex state
 
 operatorToken
   :: Array
