@@ -9,14 +9,13 @@ import qualified Elaboration
 import qualified Elaboration.Context as Context
 import qualified Error.Hydrated as Error
 import qualified LanguageServer.CursorAction as CursorAction
-import qualified Position
 import Prettyprinter (Doc, (<+>))
 import Protolude hiding (evaluate, moduleName)
 import Query (Query)
 import Rock
-import qualified Span
+import qualified UTF16
 
-hover :: FilePath -> Position.LineColumn -> Task Query (Maybe (Span.LineColumn, Doc ann))
+hover :: FilePath -> UTF16.LineColumn -> Task Query (Maybe (UTF16.LineColumns, Doc ann))
 hover filePath pos =
   CursorAction.cursorAction filePath pos \item lineColumn ->
     case item of

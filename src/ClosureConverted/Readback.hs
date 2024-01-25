@@ -84,7 +84,7 @@ readbackGroupedElimination env eliminee elimination =
         readback env branch'
       pure $ Syntax.Case eliminee branches' defaultBranch'
 
-readbackGroupedSpine :: Foldable f => Domain.Environment v -> Syntax.Term v -> f Domain.GroupedElimination -> M (Syntax.Term v)
+readbackGroupedSpine :: (Foldable f) => Domain.Environment v -> Syntax.Term v -> f Domain.GroupedElimination -> M (Syntax.Term v)
 readbackGroupedSpine =
   foldlM . readbackGroupedElimination
 

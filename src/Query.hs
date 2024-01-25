@@ -10,6 +10,8 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
+-- Comes from deriveArgDict
+{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 module Query where
 
@@ -87,7 +89,7 @@ data Query a where
   LLVMModuleInitModule :: Query Lazy.ByteString
 
 fetchImportedName
-  :: MonadFetch Query m
+  :: (MonadFetch Query m)
   => Name.Module
   -> Name.Surface
   -> m (Maybe Scope.Entry)
@@ -148,7 +150,7 @@ instance Hashable (Query a) where
       LLVMModuleInitModule -> h 36 ()
     where
       {-# INLINE h #-}
-      h :: Hashable b => Int -> b -> Int
+      h :: (Hashable b) => Int -> b -> Int
       h tag payload =
         hash tag `hashWithSalt` payload
 

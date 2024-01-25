@@ -167,21 +167,21 @@ instance Pretty Instruction where
           Return local -> pretty local <+> "= "
           <> "switch"
           <+> pretty scrutinee
-            <> line
-            <> indent
-              2
-              ( vsep
-                  [ pretty i
-                    <+> "->"
-                      <> line
-                      <> indent 2 (pretty basicBlock)
-                  | (i, basicBlock) <- branches
-                  ]
+          <> line
+          <> indent
+            2
+            ( vsep
+                [ pretty i
+                  <+> "->"
                   <> line
-                  <> "_ -> "
-                  <> line
-                  <> indent 2 (pretty default_)
-              )
+                  <> indent 2 (pretty basicBlock)
+                | (i, basicBlock) <- branches
+                ]
+                <> line
+                <> "_ -> "
+                <> line
+                <> indent 2 (pretty default_)
+            )
     where
       voidInstr name args =
         name <+> hsep (pretty <$> args)
@@ -197,23 +197,23 @@ instance Pretty Definition where
           <+> pretty type_
           <+> "constant"
           <+> "="
-            <> line
-            <> indent 2 (pretty knownConstant)
+          <> line
+          <> indent 2 (pretty knownConstant)
       ConstantDefinition type_ returnType constantParameters basicBlock ->
         pretty type_
           <+> "constant"
           <+> pretty returnType
           <+> tupled (pretty <$> constantParameters)
           <+> "="
-            <> line
-            <> indent 2 (pretty basicBlock)
+          <> line
+          <> indent 2 (pretty basicBlock)
       FunctionDefinition returnType args basicBlock ->
         "function"
           <+> pretty returnType
           <+> tupled (pretty <$> args)
           <+> "="
-            <> line
-            <> indent 2 (pretty basicBlock)
+          <> line
+          <> indent 2 (pretty basicBlock)
 
 instance Pretty BasicBlock where
   pretty (BasicBlock instrs result) =
@@ -222,7 +222,7 @@ instance Pretty BasicBlock where
       , pretty result
       ]
 
-instance Pretty a => Pretty (Return a) where
+instance (Pretty a) => Pretty (Return a) where
   pretty voided = case voided of
     Void -> "void"
     Return a -> pretty a

@@ -15,7 +15,7 @@ data Tsil a
   | Tsil a :> a
   deriving (Eq, Functor, Ord, Traversable, Generic, Hashable)
 
-instance Show a => Show (Tsil a) where
+instance (Show a) => Show (Tsil a) where
   show = show . Protolude.toList
 
 instance Semigroup (Tsil a) where
@@ -59,7 +59,7 @@ null :: Tsil a -> Bool
 null Empty = True
 null (_ :> _) = False
 
-lookup :: Eq a => a -> Tsil (a, b) -> Maybe b
+lookup :: (Eq a) => a -> Tsil (a, b) -> Maybe b
 lookup _ Empty = Nothing
 lookup a (as :> (a', b))
   | a == a' = Just b
@@ -91,10 +91,10 @@ zipWith _ Empty _ = Empty
 zipWith _ _ Empty = Empty
 zipWith f (as :> a) (bs :> b) = Data.Tsil.zipWith f as bs :> f a b
 
-zipWithM :: Monad m => (a -> b -> m c) -> Tsil a -> Tsil b -> m (Tsil c)
+zipWithM :: (Monad m) => (a -> b -> m c) -> Tsil a -> Tsil b -> m (Tsil c)
 zipWithM f as bs = sequenceA (Data.Tsil.zipWith f as bs)
 
-zipWithM_ :: Monad m => (a -> b -> m c) -> Tsil a -> Tsil b -> m ()
+zipWithM_ :: (Monad m) => (a -> b -> m c) -> Tsil a -> Tsil b -> m ()
 zipWithM_ f as bs = sequenceA_ (Data.Tsil.zipWith f as bs)
 
 unzip :: Tsil (a, b) -> (Tsil a, Tsil b)

@@ -102,13 +102,13 @@ llvmReturnType result =
     Assembly.Void -> "void"
     Assembly.Return type_ -> llvmType type_
 
-alignment :: Num a => a
+alignment :: (Num a) => a
 alignment = 8
 
-wordBytes :: Num a => a
+wordBytes :: (Num a) => a
 wordBytes = 8
 
-wordBits :: Num a => a
+wordBits :: (Num a) => a
 wordBits = 64
 
 wordSizedInt :: Builder

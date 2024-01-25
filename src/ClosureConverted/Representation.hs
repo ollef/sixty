@@ -294,7 +294,7 @@ data Branches v
   | TaggedConstructorBranches !Boxity [(Int, Telescope Name Syntax.Type Syntax.Term v)]
   deriving (Eq, Show)
 
-compileBranches :: MonadFetch Query m => Syntax.Branches v -> m (Branches v)
+compileBranches :: (MonadFetch Query m) => Syntax.Branches v -> m (Branches v)
 compileBranches branches =
   case branches of
     Syntax.LiteralBranches literalBranches ->

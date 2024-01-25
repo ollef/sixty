@@ -19,8 +19,9 @@ import Rock
 import qualified Scope
 import qualified Span
 import qualified Surface.Syntax as Surface
+import qualified UTF16
 
-codeLens :: FilePath -> Task Query [(Span.LineColumn, Doc ann)]
+codeLens :: FilePath -> Task Query [(UTF16.LineColumns, Doc ann)]
 codeLens filePath =
   runM $ do
     (moduleName, _, defs) <- fetch $ Query.ParsedFile filePath
@@ -39,7 +40,7 @@ codeLens filePath =
               prettyType <- Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context type_
               pure
                 [
-                  ( toLineColumns $ Span.Absolute pos $ pos + Position.Absolute (Text.lengthWord16 nameText)
+                  ( toLineColumns $ Span.Absolute pos $ pos + Position.Absolute (Text.lengthWord8 nameText)
                   , prettyType
                   )
                 ]

@@ -47,7 +47,7 @@ runM r = do
       { nextVar = nextVarVar
       }
 
-allM :: Monad m => (a -> m Bool) -> [a] -> m Bool
+allM :: (Monad m) => (a -> m Bool) -> [a] -> m Bool
 allM _ [] = return True
 allM p (x : xs) = do
   b <- p x
@@ -55,7 +55,7 @@ allM p (x : xs) = do
     then allM p xs
     else return False
 
-anyM :: Monad m => (a -> m Bool) -> [a] -> m Bool
+anyM :: (Monad m) => (a -> m Bool) -> [a] -> m Bool
 anyM _ [] = return False
 anyM p (x : xs) = do
   b <- p x

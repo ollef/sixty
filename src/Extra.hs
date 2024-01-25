@@ -38,7 +38,7 @@ last =
           go (Just a) as'
 
 {-# INLINE defaultHashWithSalt #-}
-defaultHashWithSalt :: Hashable a => Int -> a -> Int
+defaultHashWithSalt :: (Hashable a) => Int -> a -> Int
 defaultHashWithSalt salt x =
   salt `combine` hash x
   where

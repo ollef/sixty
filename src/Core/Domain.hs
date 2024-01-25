@@ -138,7 +138,7 @@ foldl f e spine =
     spine' :> elim ->
       f (Core.Domain.foldl f e spine') elim
 
-foldlM :: Monad m => (a -> Elimination -> m a) -> a -> Spine -> m a
+foldlM :: (Monad m) => (a -> Elimination -> m a) -> a -> Spine -> m a
 foldlM f e spine =
   case spine of
     Empty ->
@@ -147,7 +147,7 @@ foldlM f e spine =
       a <- Core.Domain.foldlM f e spine'
       f a elim
 
-mapM :: Monad m => (Elimination -> m a) -> Spine -> m (Tsil a)
+mapM :: (Monad m) => (Elimination -> m a) -> Spine -> m (Tsil a)
 mapM f spine =
   case spine of
     Empty ->
@@ -157,7 +157,7 @@ mapM f spine =
       a <- f elim
       pure $ as Tsil.:> a
 
-mapM_ :: Monad m => (Elimination -> m ()) -> Spine -> m ()
+mapM_ :: (Monad m) => (Elimination -> m ()) -> Spine -> m ()
 mapM_ f spine =
   case spine of
     Empty ->

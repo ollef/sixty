@@ -90,7 +90,7 @@ implicitApp :: Term -> HashMap Name Term -> Span.Relative -> Term
 implicitApp fun@(Term funSpan _) args endSpan =
   Term (Span.add funSpan endSpan) $ ImplicitApps fun args
 
-lams :: Foldable f => Span.Relative -> f PlicitPattern -> Term -> Term
+lams :: (Foldable f) => Span.Relative -> f PlicitPattern -> Term -> Term
 lams span vs body@(Term bodySpan _) =
   Term (Span.add span outerSpan) result
   where

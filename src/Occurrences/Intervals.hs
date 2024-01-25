@@ -19,13 +19,13 @@ import qualified Data.HashSet as HashSet
 import Data.IntervalMap.FingerTree (IntervalMap)
 import qualified Data.IntervalMap.FingerTree as IntervalMap
 import qualified Data.List as List
-import qualified Data.Text.Unsafe as Text
 import Literal (Literal)
 import qualified Name
 import Orphans ()
 import qualified Position
 import Protolude
 import qualified Span
+import qualified UTF16
 import Var (Var)
 
 data Item
@@ -136,19 +136,19 @@ varSpans var position intervals = do
 spanStart :: Span.Relative -> Position.Relative
 spanStart (Span.Relative s _) = s
 
-nameSpan :: Item -> Span.LineColumn -> Span.LineColumn
+nameSpan :: Item -> UTF16.LineColumns -> UTF16.LineColumns
 nameSpan
   item
-  span@(Span.LineColumns _ (Position.LineColumn endLine endColumn)) =
+  span@(UTF16.LineColumns _ (UTF16.LineColumn endLine endColumn)) =
     case item of
       Global (Name.Qualified _ (Name.Name name)) ->
-        Span.LineColumns
-          (Position.LineColumn endLine (endColumn - Text.lengthWord16 name))
-          (Position.LineColumn endLine endColumn)
+        UTF16.LineColumns
+          (UTF16.LineColumn endLine (endColumn - UTF16.length name))
+          (UTF16.LineColumn endLine endColumn)
       Con (Name.QualifiedConstructor _ (Name.Constructor name)) ->
-        Span.LineColumns
-          (Position.LineColumn endLine (endColumn - Text.lengthWord16 name))
-          (Position.LineColumn endLine endColumn)
+        UTF16.LineColumns
+          (UTF16.LineColumn endLine (endColumn - UTF16.length name))
+          (UTF16.LineColumn endLine endColumn)
       Lit _ ->
         span
       Var _ ->

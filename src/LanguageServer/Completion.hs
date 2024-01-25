@@ -20,13 +20,12 @@ import qualified Elaboration
 import Elaboration.Context (Context)
 import qualified Elaboration.Context as Context
 import qualified Error.Hydrated as Error
-import qualified Language.LSP.Types as LSP
+import qualified Language.LSP.Protocol.Types as LSP
 import qualified LanguageServer.CursorAction as CursorAction
 import Monad
 import Name (Name (Name))
 import qualified Name
 import Plicity
-import qualified Position
 import Prettyprinter ((<+>))
 import Protolude hiding (catch, evaluate, moduleName)
 import Query (Query)
@@ -34,11 +33,13 @@ import qualified Query
 import qualified Query.Mapped as Mapped
 import Rock
 import qualified Scope
+import qualified UTF16
 import Var (Var)
 
-complete :: FilePath -> Position.LineColumn -> Task Query (Maybe [LSP.CompletionItem])
-complete filePath (Position.LineColumn line column) =
-  CursorAction.cursorAction filePath (Position.LineColumn line $ max 0 $ column - 1) \item _ ->
+complete :: FilePath -> UTF16.LineColumn -> Task Query (Maybe [LSP.CompletionItem])
+complete filePath (UTF16.LineColumn line column) =
+  -- TODO needs to work on code points, not code units
+  CursorAction.cursorAction filePath (UTF16.LineColumn line $ max 0 $ column - 1) \item _ ->
     case item of
       CursorAction.Import _ ->
         empty
@@ -52,6 +53,7 @@ complete filePath (Position.LineColumn line column) =
             pure
               LSP.CompletionItem
                 { _label = name
+                , _labelDetails = Nothing
                 , _kind = Just kind
                 , _detail = Just $ show $ ":" <+> prettyType
                 , _documentation = Nothing
@@ -63,16 +65,18 @@ complete filePath (Position.LineColumn line column) =
                 , _insertTextFormat = Nothing
                 , _insertTextMode = Nothing
                 , _textEdit = Nothing
+                , _textEditText = Nothing
                 , _additionalTextEdits = Nothing
                 , _commitCharacters = Nothing
                 , _command = Nothing
-                , _xdata = Nothing
                 , _tags = mempty
+                , _data_ = Nothing
                 }
 
-questionMark :: FilePath -> Position.LineColumn -> Task Query (Maybe [LSP.CompletionItem])
-questionMark filePath (Position.LineColumn line column) =
-  CursorAction.cursorAction filePath (Position.LineColumn line $ max 0 $ column - 1) \item _ ->
+questionMark :: FilePath -> UTF16.LineColumn -> Task Query (Maybe [LSP.CompletionItem])
+questionMark filePath (UTF16.LineColumn line column) =
+  -- TODO needs to work on code points, not code units
+  CursorAction.cursorAction filePath (UTF16.LineColumn line $ max 0 $ column - 1) \item _ ->
     case item of
       CursorAction.Import _ ->
         empty
@@ -118,6 +122,7 @@ questionMark filePath (Position.LineColumn line column) =
                   pure
                     LSP.CompletionItem
                       { _label = name
+                      , _labelDetails = Nothing
                       , _kind = Just kind
                       , _detail = Just $ show $ ":" <+> prettyTypeUnderCursor
                       , _documentation = Nothing
@@ -126,23 +131,24 @@ questionMark filePath (Position.LineColumn line column) =
                       , _sortText = Nothing
                       , _filterText = Nothing
                       , _insertText = Nothing
-                      , _insertTextFormat = Just LSP.Snippet
+                      , _insertTextFormat = Just LSP.InsertTextFormat_Snippet
                       , _insertTextMode = Nothing
                       , _textEdit =
                           Just $
-                            LSP.CompletionEditText
+                            LSP.InL
                               LSP.TextEdit
                                 { _range =
                                     LSP.Range
                                       { _start =
                                           LSP.Position
                                             { _line = fromIntegral line
-                                            , _character = fromIntegral $ column - 1
+                                            , -- TODO needs to work with code points
+                                              _character = fromIntegral $ UTF16.toInt $ column - 1
                                             }
                                       , _end =
                                           LSP.Position
                                             { _line = fromIntegral line
-                                            , _character = fromIntegral column
+                                            , _character = fromIntegral $ UTF16.toInt column
                                             }
                                       }
                                 , _newText =
@@ -154,11 +160,12 @@ questionMark filePath (Position.LineColumn line column) =
                                         ]
                                       <> (if null explicitArgs then "" else ")")
                                 }
+                      , _textEditText = Nothing
                       , _additionalTextEdits = Nothing
                       , _commitCharacters = Nothing
                       , _command = Nothing
-                      , _xdata = Nothing
                       , _tags = mempty
+                      , _data_ = Nothing
                       }
 
 getUsableNames :: CursorAction.ItemContext -> Context v -> EnumMap Var value -> M [(Text, Domain.Value, LSP.CompletionItemKind)]
@@ -169,7 +176,7 @@ getUsableNames itemContext context varPositions = do
       forM (EnumMap.toList varPositions) \(var, _) -> do
         let Name text =
               Context.lookupVarName var context
-        pure (text, Domain.var var, LSP.CiVariable)
+        pure (text, Domain.var var, LSP.CompletionItemKind_Variable)
     CursorAction.PatternContext ->
       pure []
     CursorAction.DefinitionContext ->
@@ -191,9 +198,9 @@ getUsableNames itemContext context varPositions = do
                   ( name
                   , Domain.global global
                   , case definition of
-                      Syntax.DataDefinition {} -> LSP.CiEnum
-                      Syntax.ConstantDefinition {} -> LSP.CiConstant
-                      Syntax.TypeDeclaration {} -> LSP.CiConstant
+                      Syntax.DataDefinition {} -> LSP.CompletionItemKind_Enum
+                      Syntax.ConstantDefinition {} -> LSP.CompletionItemKind_Constant
+                      Syntax.TypeDeclaration {} -> LSP.CompletionItemKind_Constant
                   )
                 ]
         case itemContext of
@@ -208,10 +215,10 @@ getUsableNames itemContext context varPositions = do
               pure $
                 case toList datas of
                   [data_] ->
-                    [(name, Domain.global data_, LSP.CiEnum)]
+                    [(name, Domain.global data_, LSP.CompletionItemKind_Enum)]
                   _ ->
                     []
-                  <> [ (name, Domain.con con, LSP.CiEnumMember)
+                  <> [ (name, Domain.con con, LSP.CompletionItemKind_EnumMember)
                      | con <- toList constrs
                      ]
         case itemContext of

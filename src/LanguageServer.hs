@@ -18,17 +18,16 @@ import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.Map as Map
-import Data.Text.Utf16.Rope (Rope)
-import qualified Data.Text.Utf16.Rope as Rope
 import qualified Driver
 import qualified Error.Hydrated
 import qualified Error.Hydrated as Error (Hydrated)
 import qualified FileSystem
 import qualified Language.LSP.Diagnostics as LSP
+import qualified Language.LSP.Protocol.Lens as LSP hiding (rootPath)
+import qualified Language.LSP.Protocol.Message as LSP
+import qualified Language.LSP.Protocol.Types as LSP
 import qualified Language.LSP.Server as LSP
 import qualified Language.LSP.Server as LSP.Server
-import qualified Language.LSP.Types as LSP
-import qualified Language.LSP.Types.Lens as LSP hiding (rootPath)
 import qualified Language.LSP.VFS as LSP
 import qualified LanguageServer.CodeLens as CodeLens
 import qualified LanguageServer.Completion as Completion
@@ -37,16 +36,15 @@ import qualified LanguageServer.GoToDefinition as GoToDefinition
 import qualified LanguageServer.Hover as Hover
 import qualified LanguageServer.References as References
 import qualified Occurrences.Intervals
-import qualified Position
 import Prettyprinter (Doc)
 import qualified Prettyprinter as Doc
 import qualified Project
 import Protolude hiding (State, state)
 import Query (Query)
 import Rock (Task)
-import qualified Span
 import qualified System.Directory as Directory
 import qualified System.FSNotify as FSNotify
+import qualified UTF16
 
 run :: IO ()
 run = do
@@ -58,7 +56,6 @@ run = do
     LSP.runServer
       LSP.ServerDefinition
         { LSP.defaultConfig = ()
-        , LSP.onConfigurationChange = \_ _ -> Right ()
         , LSP.doInitialize = \env _req -> do
             case LSP.resRootPath env of
               Nothing -> pure ()
@@ -66,7 +63,7 @@ run = do
                 maybeProjectFile <- Project.findProjectFile rootPath
                 forM_ maybeProjectFile \projectFile -> do
                   projectFile' <- Directory.canonicalizePath projectFile
-                  FSNotify.withManagerConf config \manager -> do
+                  FSNotify.withManager \manager -> do
                     stopListening <- FileSystem.runWatcher (FileSystem.projectWatcher projectFile') manager \(changedFiles, sourceDirectories, diskFiles) -> do
                       modifyMVar_ diskFileStateVar \(changedFiles', _, _) ->
                         pure (changedFiles <> changedFiles', sourceDirectories, diskFiles)
@@ -88,54 +85,52 @@ run = do
                     }
             _ <- forkIO $ messagePump state
             pure $ Right ()
-        , staticHandlers = handlers $ atomically . writeTQueue messageQueue
+        , staticHandlers = \_clientCapabilities -> handlers $ atomically . writeTQueue messageQueue
         , options
         , interpretHandler = \() -> LSP.Iso identity identity
+        , configSection = "sixten"
+        , parseConfig = \() _ -> Right ()
+        , onConfigChange = pure
         }
       `finally` do
         join $ swapMVar stopListeningVar mempty
 
   pure ()
-  where
-    config =
-      FSNotify.defaultConfig
-        { FSNotify.confDebounce = FSNotify.Debounce 0.010
-        }
 
 handlers :: (ReceivedMessage -> IO ()) -> LSP.Handlers IO
 handlers onReceivedMessage =
   mconcat
-    [ LSP.notificationHandler LSP.STextDocumentDidOpen $ onReceivedMessage . ReceivedNotification
-    , LSP.notificationHandler LSP.STextDocumentDidChange $ onReceivedMessage . ReceivedNotification
-    , LSP.notificationHandler LSP.STextDocumentDidSave $ onReceivedMessage . ReceivedNotification
-    , LSP.notificationHandler LSP.STextDocumentDidClose $ onReceivedMessage . ReceivedNotification
-    , LSP.requestHandler LSP.STextDocumentHover \req -> onReceivedMessage . ReceivedRequest req
-    , LSP.requestHandler LSP.STextDocumentDefinition \req -> onReceivedMessage . ReceivedRequest req
-    , LSP.requestHandler LSP.STextDocumentCompletion \req -> onReceivedMessage . ReceivedRequest req
-    , LSP.requestHandler LSP.STextDocumentDocumentHighlight \req -> onReceivedMessage . ReceivedRequest req
-    , LSP.requestHandler LSP.STextDocumentReferences \req -> onReceivedMessage . ReceivedRequest req
-    , LSP.requestHandler LSP.STextDocumentRename \req -> onReceivedMessage . ReceivedRequest req
-    , LSP.requestHandler LSP.STextDocumentCodeLens \req -> onReceivedMessage . ReceivedRequest req
+    [ LSP.notificationHandler LSP.SMethod_TextDocumentDidOpen $ onReceivedMessage . ReceivedNotification
+    , LSP.notificationHandler LSP.SMethod_TextDocumentDidChange $ onReceivedMessage . ReceivedNotification
+    , LSP.notificationHandler LSP.SMethod_TextDocumentDidSave $ onReceivedMessage . ReceivedNotification
+    , LSP.notificationHandler LSP.SMethod_TextDocumentDidClose $ onReceivedMessage . ReceivedNotification
+    , LSP.requestHandler LSP.SMethod_TextDocumentHover \req -> onReceivedMessage . ReceivedRequest req
+    , LSP.requestHandler LSP.SMethod_TextDocumentDefinition \req -> onReceivedMessage . ReceivedRequest req
+    , LSP.requestHandler LSP.SMethod_TextDocumentCompletion \req -> onReceivedMessage . ReceivedRequest req
+    , LSP.requestHandler LSP.SMethod_TextDocumentDocumentHighlight \req -> onReceivedMessage . ReceivedRequest req
+    , LSP.requestHandler LSP.SMethod_TextDocumentReferences \req -> onReceivedMessage . ReceivedRequest req
+    , LSP.requestHandler LSP.SMethod_TextDocumentRename \req -> onReceivedMessage . ReceivedRequest req
+    , LSP.requestHandler LSP.SMethod_TextDocumentCodeLens \req -> onReceivedMessage . ReceivedRequest req
     ]
 
 options :: LSP.Options
 options =
   def
-    { LSP.Server.textDocumentSync =
+    { LSP.Server.optTextDocumentSync =
         Just
           LSP.TextDocumentSyncOptions
             { LSP._openClose = Just True
-            , LSP._change = Just LSP.TdSyncIncremental
+            , LSP._change = Just LSP.TextDocumentSyncKind_Incremental
             , LSP._willSave = Just False
             , LSP._willSaveWaitUntil = Just False
             , LSP._save = Just $ LSP.InR $ LSP.SaveOptions {_includeText = Just False}
             }
-    , LSP.completionTriggerCharacters = Just "?"
+    , LSP.optCompletionTriggerCharacters = Just "?"
     }
 
 data ReceivedMessage where
-  ReceivedRequest :: LSP.RequestMessage m -> (Either LSP.ResponseError (LSP.ResponseResult m) -> IO ()) -> ReceivedMessage
-  ReceivedNotification :: LSP.NotificationMessage m -> ReceivedMessage
+  ReceivedRequest :: LSP.TRequestMessage m -> (Either LSP.ResponseError (LSP.MessageResult m) -> IO ()) -> ReceivedMessage
+  ReceivedNotification :: LSP.TNotificationMessage m -> ReceivedMessage
 
 data State = State
   { env :: !(LSP.LanguageContextEnv ())
@@ -177,7 +172,7 @@ messagePump state = do
     onMessage :: (State -> IO k) -> ReceivedMessage -> IO k
     onMessage k (ReceivedNotification message) =
       case message ^. LSP.method of
-        LSP.STextDocumentDidOpen -> do
+        LSP.SMethod_TextDocumentDidOpen -> do
           let document = message ^. LSP.params . LSP.textDocument
               uri = document ^. LSP.uri
           filePath <- Directory.canonicalizePath $ uriToFilePath uri
@@ -185,7 +180,7 @@ messagePump state = do
             state
               { changedFiles = HashSet.insert filePath state.changedFiles
               }
-        LSP.STextDocumentDidChange -> do
+        LSP.SMethod_TextDocumentDidChange -> do
           let document = message ^. LSP.params . LSP.textDocument
               uri = document ^. LSP.uri
           filePath <- Directory.canonicalizePath $ uriToFilePath uri
@@ -193,7 +188,7 @@ messagePump state = do
             state
               { changedFiles = HashSet.insert filePath state.changedFiles
               }
-        LSP.STextDocumentDidSave -> do
+        LSP.SMethod_TextDocumentDidSave -> do
           let document = message ^. LSP.params . LSP.textDocument
               uri = document ^. LSP.uri
           filePath <- Directory.canonicalizePath $ uriToFilePath uri
@@ -201,7 +196,7 @@ messagePump state = do
             state
               { changedFiles = HashSet.insert filePath state.changedFiles
               }
-        LSP.STextDocumentDidClose -> do
+        LSP.SMethod_TextDocumentDidClose -> do
           let document = message ^. LSP.params . LSP.textDocument
               uri = document ^. LSP.uri
           filePath <- Directory.canonicalizePath $ uriToFilePath uri
@@ -213,7 +208,7 @@ messagePump state = do
           k state
     onMessage k (ReceivedRequest message respond) =
       case message ^. LSP.method of
-        LSP.STextDocumentHover -> do
+        LSP.SMethod_TextDocumentHover -> do
           sendNotification state $ "messagePump: HoverRequest: " <> show message
           let document = message ^. LSP.params . LSP.textDocument
               uri = document ^. LSP.uri
@@ -228,17 +223,17 @@ messagePump state = do
                   \(span, doc) ->
                     LSP.Hover
                       { _contents =
-                          LSP.HoverContents
+                          LSP.InL
                             LSP.MarkupContent
-                              { _kind = LSP.MkPlainText
+                              { _kind = LSP.MarkupKind_PlainText
                               , _value = show doc
                               }
                       , _range = Just $ spanToRange span
                       }
 
-          respond $ Right response
+          respond $ Right $ LSP.maybeToNull response
           k state
-        LSP.STextDocumentDefinition -> do
+        LSP.SMethod_TextDocumentDefinition -> do
           sendNotification state $ "messagePump: DefinitionRequest: " <> show message
           let document = message ^. LSP.params . LSP.textDocument
               uri = document ^. LSP.uri
@@ -252,11 +247,15 @@ messagePump state = do
             Nothing ->
               respond $
                 Left
-                  LSP.ResponseError {_code = LSP.UnknownErrorCode, _message = "Couldn't find a definition to jump to under the cursor", _xdata = Nothing}
+                  LSP.ResponseError
+                    { _code = LSP.InR LSP.ErrorCodes_UnknownErrorCode
+                    , _message = "Couldn't find a definition to jump to under the cursor"
+                    , _xdata = Nothing
+                    }
             Just (file, span) ->
-              respond $ Right $ LSP.InL $ spanToLocation file span
+              respond $ Right $ LSP.InL $ LSP.Definition $ LSP.InL $ spanToLocation file span
           k state
-        LSP.STextDocumentCompletion -> do
+        LSP.SMethod_TextDocumentCompletion -> do
           sendNotification state $ "messagePump: CompletionRequest: " <> show message
           let document = message ^. LSP.params . LSP.textDocument
               uri = document ^. LSP.uri
@@ -266,7 +265,7 @@ messagePump state = do
           (completions, _) <-
             runTask state Driver.Don'tPrune $
               case maybeContext of
-                Just (LSP.CompletionContext LSP.CtTriggerCharacter (Just "?")) ->
+                Just (LSP.CompletionContext LSP.CompletionTriggerKind_TriggerCharacter (Just "?")) ->
                   Completion.questionMark (uriToFilePath uri) (positionFromPosition position)
                 _ ->
                   Completion.complete (uriToFilePath uri) (positionFromPosition position)
@@ -276,12 +275,13 @@ messagePump state = do
           let response =
                 LSP.CompletionList
                   { LSP._isIncomplete = False
-                  , LSP._items = LSP.List $ fold completions
+                  , LSP._itemDefaults = Nothing
+                  , LSP._items = fold completions
                   }
 
-          respond $ Right $ LSP.InR response
+          respond $ Right $ LSP.InR $ LSP.InL response
           k state
-        LSP.STextDocumentDocumentHighlight -> do
+        LSP.SMethod_TextDocumentDocumentHighlight -> do
           sendNotification state $ "messagePump: document highlights request: " <> show message
           let document = message ^. LSP.params . LSP.textDocument
               uri = document ^. LSP.uri
@@ -292,18 +292,17 @@ messagePump state = do
               DocumentHighlights.highlights (uriToFilePath uri) (positionFromPosition position)
 
           let response =
-                LSP.List
-                  [ LSP.DocumentHighlight
-                    { _range = spanToRange span
-                    , _kind = Just LSP.HkRead
-                    }
-                  | span <- highlights
-                  ]
+                [ LSP.DocumentHighlight
+                  { _range = spanToRange span
+                  , _kind = Just LSP.DocumentHighlightKind_Read
+                  }
+                | span <- highlights
+                ]
 
           sendNotification state $ "messagePump: document highlights response: " <> show highlights
-          respond $ Right response
+          respond $ Right $ LSP.InL response
           k state
-        LSP.STextDocumentReferences -> do
+        LSP.SMethod_TextDocumentReferences -> do
           sendNotification state $ "messagePump: references request: " <> show message
           let document = message ^. LSP.params . LSP.textDocument
               uri = document ^. LSP.uri
@@ -314,19 +313,18 @@ messagePump state = do
               References.references (uriToFilePath uri) (positionFromPosition position)
 
           let response =
-                LSP.List
-                  [ LSP.Location
-                    { _uri = LSP.filePathToUri filePath
-                    , _range = spanToRange span
-                    }
-                  | (_item, references') <- references
-                  , (filePath, span) <- references'
-                  ]
+                [ LSP.Location
+                  { _uri = LSP.filePathToUri filePath
+                  , _range = spanToRange span
+                  }
+                | (_item, references') <- references
+                , (filePath, span) <- references'
+                ]
 
           sendNotification state $ "messagePump: references response: " <> show response
-          respond $ Right response
+          respond $ Right $ LSP.InL response
           k state
-        LSP.STextDocumentRename -> do
+        LSP.SMethod_TextDocumentRename -> do
           sendNotification state $ "messagePump: rename request: " <> show message
           let document = message ^. LSP.params . LSP.textDocument
               uri = document ^. LSP.uri
@@ -341,15 +339,15 @@ messagePump state = do
                 LSP.WorkspaceEdit
                   { _changes =
                       Just $
-                        HashMap.fromListWith
+                        Map.fromListWith
                           (<>)
                           [ ( LSP.filePathToUri filePath
-                            , LSP.List
-                                [ LSP.TextEdit
-                                    { _range = spanToRange $ Occurrences.Intervals.nameSpan item span
-                                    , _newText = newName
-                                    }
-                                ]
+                            ,
+                              [ LSP.TextEdit
+                                  { _range = spanToRange $ Occurrences.Intervals.nameSpan item span
+                                  , _newText = newName
+                                  }
+                              ]
                             )
                           | (item, references') <- references
                           , (filePath, span) <- references'
@@ -359,9 +357,9 @@ messagePump state = do
                   }
 
           sendNotification state $ "messagePump: rename response: " <> show references
-          respond $ Right response
+          respond $ Right $ LSP.InL response
           k state
-        LSP.STextDocumentCodeLens -> do
+        LSP.SMethod_TextDocumentCodeLens -> do
           let document = message ^. LSP.params . LSP.textDocument
               uri = document ^. LSP.uri
 
@@ -370,21 +368,20 @@ messagePump state = do
               CodeLens.codeLens $
                 uriToFilePath uri
           let response =
-                LSP.List
-                  [ LSP.CodeLens
-                    { _range = spanToRange span
-                    , _command =
-                        Just
-                          LSP.Command
-                            { _title = show doc
-                            , _command = ""
-                            , _arguments = Nothing
-                            }
-                    , _xdata = Nothing
-                    }
-                  | (span, doc) <- codeLenses
-                  ]
-          respond $ Right response
+                [ LSP.CodeLens
+                  { _range = spanToRange span
+                  , _command =
+                      Just
+                        LSP.Command
+                          { _title = show doc
+                          , _command = ""
+                          , _arguments = Nothing
+                          }
+                  , _data_ = Nothing
+                  }
+                | (span, doc) <- codeLenses
+                ]
+          respond $ Right $ LSP.InL response
           k state
         _ ->
           k state
@@ -442,73 +439,60 @@ sendNotification state s =
   LSP.runLspT
     state.env
     $ LSP.sendNotification
-      LSP.SWindowLogMessage
-      LSP.LogMessageParams {_xtype = LSP.MtInfo, _message = s}
+      LSP.SMethod_WindowLogMessage
+      LSP.LogMessageParams {_type_ = LSP.MessageType_Info, _message = s}
 
-publishDiagnostics :: State -> LSP.NormalizedUri -> LSP.TextDocumentVersion -> [LSP.Diagnostic] -> IO ()
+type TextDocumentVersion = Int32
+
+publishDiagnostics :: State -> LSP.NormalizedUri -> TextDocumentVersion -> [LSP.Diagnostic] -> IO ()
 publishDiagnostics state uri version diagnostics =
   LSP.runLspT state.env $
-    LSP.Server.publishDiagnostics maxDiagnostics uri version (LSP.partitionBySource diagnostics)
+    LSP.Server.publishDiagnostics maxDiagnostics uri (Just version) (LSP.partitionBySource diagnostics)
   where
     maxDiagnostics = 100
 
-diagnosticSource :: LSP.DiagnosticSource
+diagnosticSource :: Text
 diagnosticSource = "sixten"
 
 errorToDiagnostic :: Error.Hydrated -> Doc ann -> LSP.Diagnostic
 errorToDiagnostic err doc =
   LSP.Diagnostic
     { _range = spanToRange err.lineColumn
-    , _severity = Just LSP.DsError
+    , _severity = Just LSP.DiagnosticSeverity_Error
     , _code = Nothing
     , _source = Just diagnosticSource
     , _message = show doc
     , _relatedInformation = Nothing
     , _tags = Nothing
+    , _codeDescription = Nothing
+    , _data_ = Nothing
     }
 
-spanToLocation :: FilePath -> Span.LineColumn -> LSP.Location
+spanToLocation :: FilePath -> UTF16.LineColumns -> LSP.Location
 spanToLocation filePath span =
   LSP.Location
     { _uri = LSP.filePathToUri filePath
     , _range = spanToRange span
     }
 
-spanToRange :: Span.LineColumn -> LSP.Range
-spanToRange (Span.LineColumns start end) =
+spanToRange :: UTF16.LineColumns -> LSP.Range
+spanToRange (UTF16.LineColumns start end) =
   LSP.Range
     { _start = positionToPosition start
     , _end = positionToPosition end
     }
 
-positionToPosition :: Position.LineColumn -> LSP.Position
-positionToPosition (Position.LineColumn line column) =
+positionToPosition :: UTF16.LineColumn -> LSP.Position
+positionToPosition (UTF16.LineColumn line column) =
   LSP.Position
     { _line = fromIntegral line
-    , _character = fromIntegral column
+    , _character = fromIntegral $ UTF16.toInt column
     }
 
-positionFromPosition :: LSP.Position -> Position.LineColumn
+positionFromPosition :: LSP.Position -> UTF16.LineColumn
 positionFromPosition (LSP.Position line column) =
-  Position.LineColumn (fromIntegral line) (fromIntegral column)
+  UTF16.LineColumn (fromIntegral line) (UTF16.CodeUnits $ fromIntegral column)
 
 uriToFilePath :: LSP.Uri -> FilePath
 uriToFilePath =
   fromMaybe "<TODO no filepath>" . LSP.uriToFilePath
-
-applyChanges :: Rope -> [LSP.TextDocumentContentChangeEvent] -> Rope
-applyChanges = foldl' applyChange
-
-applyChange :: Rope -> LSP.TextDocumentContentChangeEvent -> Rope
-applyChange _ (LSP.TextDocumentContentChangeEvent Nothing _ str) =
-  Rope.fromText str
-applyChange str (LSP.TextDocumentContentChangeEvent (Just (LSP.Range (LSP.Position sl sc) (LSP.Position fl fc))) _ txt) =
-  changeChars str (Rope.Position (fromIntegral sl) (fromIntegral sc)) (Rope.Position (fromIntegral fl) (fromIntegral fc)) txt
-
-changeChars :: Rope -> Rope.Position -> Rope.Position -> Text -> Rope
-changeChars str start finish new = do
-  case Rope.splitAtPosition finish str of
-    Nothing -> panic "split inside code point"
-    Just (before, after) -> case Rope.splitAtPosition start before of
-      Nothing -> panic "split inside code point"
-      Just (before', _) -> mconcat [before', Rope.fromText new, after]

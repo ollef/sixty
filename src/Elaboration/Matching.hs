@@ -793,7 +793,7 @@ splitConstructor outerContext config scrutineeValue scrutineeHead scrutineeSpine
           result <- check context' config Postponement.CanPostpone
           pure $ Telescope.Empty result
 
-mapWhileM :: Monad m => (a -> m (Maybe b)) -> [a] -> m [b]
+mapWhileM :: (Monad m) => (a -> m (Maybe b)) -> [a] -> m [b]
 mapWhileM f as =
   case as of
     [] -> pure []

@@ -8,6 +8,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
 module Driver where
@@ -27,6 +28,7 @@ import Data.IORef.Lifted
 import qualified Data.Text.IO as Text
 import Data.Text.Utf16.Rope (Rope)
 import qualified Data.Text.Utf16.Rope as Rope
+import Data.Type.Equality
 import Error (Error)
 import qualified Error.Hydrated
 import qualified Error.Hydrated as Error (Hydrated)
@@ -273,7 +275,7 @@ pooledForConcurrently_ as f =
     pooledForConcurrentlyIO_ as (runInIO . f)
 
 pooledForConcurrentlyIO_
-  :: Foldable t
+  :: (Foldable t)
   => t a
   -> (a -> IO b)
   -> IO ()
@@ -295,7 +297,7 @@ pooledForConcurrentlyIO_ as f = do
   replicateConcurrently_ (max 8 processCount) go
 
 pooledForConcurrentlyIO
-  :: Traversable t
+  :: (Traversable t)
   => t a
   -> (a -> IO b)
   -> IO (t b)

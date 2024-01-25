@@ -46,9 +46,10 @@ import qualified Scope
 import qualified Span
 import Telescope (Telescope)
 import qualified Telescope
+import qualified UTF16
 import Var (Var)
 
-type Callback a = ItemUnderCursor -> Span.LineColumn -> MaybeT M a
+type Callback a = ItemUnderCursor -> UTF16.LineColumns -> MaybeT M a
 
 data ItemUnderCursor where
   Term
@@ -70,22 +71,20 @@ data ItemContext
 cursorAction
   :: forall a
    . FilePath
-  -> Position.LineColumn
+  -> UTF16.LineColumn
   -> Callback a
   -> Task Query (Maybe a)
-cursorAction filePath (Position.LineColumn line column) k =
+cursorAction filePath (UTF16.LineColumn line column) k =
   runM $
     runMaybeT $ do
       (moduleName, moduleHeader, _) <- fetch $ Query.ParsedFile filePath
       spans <- fetch $ Query.ModuleSpanMap moduleName
-      contents <- fetch $ Query.FileText filePath
-      let
-        -- TODO use the rope that we get from the LSP library instead
-        pos =
-          Position.Absolute $
-            case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral column)) $ Rope.fromText contents of
-              Nothing -> 0
-              Just (rope, _) -> fromIntegral $ Rope.length rope
+      contents <- fetch $ Query.FileRope filePath
+      let pos =
+            Position.Absolute $
+              case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral $ UTF16.toInt column)) contents of
+                Nothing -> 0
+                Just (rope, _) -> fromIntegral $ Rope.utf8Length rope
 
       toLineColumns <- LineColumns.fromAbsolute moduleName
       asum $

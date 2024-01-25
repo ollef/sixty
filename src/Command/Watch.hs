@@ -23,7 +23,7 @@ watch argumentFiles = do
   watcher <- FileSystem.watcherFromArguments argumentFiles
   signalChangeVar <- newEmptyMVar
   fileStateVar <- newMVar mempty
-  FSNotify.withManagerConf config \manager -> do
+  FSNotify.withManager \manager -> do
     stopListening <- FileSystem.runWatcher watcher manager \(changedFiles, sourceDirectories, files) -> do
       modifyMVar_ fileStateVar \(changedFiles', _, _) ->
         pure (changedFiles <> changedFiles', sourceDirectories, files)
@@ -34,11 +34,6 @@ watch argumentFiles = do
       forever $ do
         (changedFiles, sourceDirectories, files) <- waitForChanges signalChangeVar fileStateVar driverState
         checkAndPrintErrors driverState changedFiles sourceDirectories files
-  where
-    config =
-      FSNotify.defaultConfig
-        { FSNotify.confDebounce = FSNotify.Debounce 0.010
-        }
 
 waitForChanges
   :: MVar ()

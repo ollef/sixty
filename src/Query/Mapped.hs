@@ -5,6 +5,7 @@
 {-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
@@ -49,7 +50,7 @@ rule inject query fetchMap =
       m <- fetch $ inject Map
       pure $ HashMap.lookup key m
 
-instance Eq key => GEq (Query key result) where
+instance (Eq key) => GEq (Query key result) where
   geq Map Map = Just Refl
   geq (Query k1) (Query k2)
     | k1 == k2 = Just Refl
@@ -65,8 +66,7 @@ instance (Ord key) => GCompare (Query key result) where
       EQ -> GEQ
       GT -> GGT
 
-instance ArgDict c (Query key result) where
-  type ConstraintsFor (Query key result) c = (c (HashMap key result), c (Maybe result))
+instance (c (Maybe result), c (HashMap key result)) => Has c (Query key result) where
   argDict query =
     case query of
       Map -> Dict

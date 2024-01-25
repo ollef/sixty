@@ -17,12 +17,11 @@ import Data.Coerce
 import Data.Text.Array (Array)
 import qualified Data.Text.Array as Array
 import qualified Data.Text.Internal as Text
-import qualified Data.Text.Internal.Encoding.Utf16 as Utf16
-import qualified Data.Text.Internal.Unsafe.Char as Char
+import qualified Data.Text.Internal.Encoding.Utf8 as Utf8
 import qualified Position
 import Protolude hiding (State, ord, state)
 import qualified Span
-import qualified UTF16
+import qualified UTF8
 
 data TokenList
   = Empty
@@ -108,6 +107,20 @@ data State = State
   , end :: !Position.Absolute
   }
 
+{-# INLINE satisfy #-}
+satisfy :: Word8 -> (Word8 -> Bool) -> (Char -> Bool) -> State -> Maybe Int
+satisfy c satisfyASCII satisfyNonASCII State {..}
+  | c < 128 = if satisfyASCII c then Just 1 else Nothing
+  | otherwise =
+      case Utf8.utf8LengthByLeader c of
+        2 | position + 1 < end, satisfyNonASCII (Utf8.chr2 c (index input $ position + 1)) -> Just 2
+        3 | position + 2 < end, satisfyNonASCII (Utf8.chr3 c (index input $ position + 1) (index input $ position + 2)) -> Just 3
+        4 | position + 3 < end, satisfyNonASCII (Utf8.chr4 c (index input $ position + 1) (index input $ position + 2) (index input $ position + 3)) -> Just 4
+        _ -> Nothing
+
+incColumn :: Int -> State -> State
+incColumn n state@State {..} = state {position = Position.add position (coerce n), lineColumn = Position.addColumns lineColumn (coerce n)}
+
 lex :: State -> TokenList
 lex state@State {..}
   | position >= end =
@@ -116,162 +129,118 @@ lex state@State {..}
       case index input position of
         -------------------------------------------------------------------------
         -- Parens
-        [UTF16.unit1|(|] ->
-          token1 LeftParen $ lex state1
-        [UTF16.unit1|)|] ->
-          token1 RightParen $ lex state1
+        [UTF8.unit1|(|] ->
+          token1 LeftParen $ lex $ incColumn 1 state
+        [UTF8.unit1|)|] ->
+          token1 RightParen $ lex $ incColumn 1 state
         -------------------------------------------------------------------------
         -- Comments
-        [UTF16.unit1|-|]
-          | position1 < end
-          , [UTF16.unit1|-|] <- index input position1 ->
-              singleLineComment state2
-        [UTF16.unit1|{|]
-          | position1 < end
-          , [UTF16.unit1|-|] <- index input position1 ->
-              multiLineComment state2 1
+        [UTF8.unit1|-|]
+          | position + 1 < end
+          , [UTF8.unit1|-|] <- index input (position + 1) ->
+              singleLineComment $ incColumn 2 state
+        [UTF8.unit1|{|]
+          | position + 1 < end
+          , [UTF8.unit1|-|] <- index input (position + 1) ->
+              multiLineComment (incColumn 2 state) 1
         -------------------------------------------------------------------------
         -- Whitespace
-        [UTF16.unit1| |] ->
-          lex state1
-        [UTF16.unit1|	|] ->
-          lex state1
-        [UTF16.unit1|
+        [UTF8.unit1| |] ->
+          lex $ incColumn 1 state
+        [UTF8.unit1|	|] ->
+          lex $ incColumn 1 state
+        [UTF8.unit1|
 |] ->
-            lex state1 {lineColumn = Position.addLine lineColumn}
+            lex (incColumn 1 state) {lineColumn = Position.addLine lineColumn}
         -------------------------------------------------------------------------
         -- Number
-        [UTF16.unit1|\|] ->
-          token1 Lambda $ lex state1
+        [UTF8.unit1|\|] ->
+          token1 Lambda $ lex $ incColumn 1 state
         -------------------------------------------------------------------------
         -- Number
-        [UTF16.unit1|-|]
-          | position1 < end
-          , c <- index input position1
+        [UTF8.unit1|-|]
+          | position + 1 < end
+          , c <- index input (position + 1)
           , isNumeric c ->
-              number position lineColumn state2 True (fromIntegral $ c - [UTF16.unit1|0|])
+              number position lineColumn (incColumn 1 state) True (fromIntegral $ c - [UTF8.unit1|0|])
         c
           | isNumeric c ->
-              number position lineColumn state1 False (fromIntegral $ c - [UTF16.unit1|0|])
+              number position lineColumn (incColumn 1 state) False (fromIntegral $ c - [UTF8.unit1|0|])
         -------------------------------------------------------------------------
         -- Implicit braces
-        [UTF16.unit1|@|]
-          | position1 < end
-          , [UTF16.unit1|{|] <- index input position1 ->
-              token2 LeftImplicitBrace $ lex state2
-        [UTF16.unit1|}|] ->
-          token1 RightImplicitBrace $ lex state1
+        [UTF8.unit1|@|]
+          | position + 1 < end
+          , [UTF8.unit1|{|] <- index input (position + 1) ->
+              token2 LeftImplicitBrace $ lex $ incColumn 2 state
+        [UTF8.unit1|}|] ->
+          token1 RightImplicitBrace $ lex $ incColumn 1 state
         -------------------------------------------------------------------------
         -- Operator or identifier
         c
-          | isASCIIIdentifierStart c ->
-              identifier position lineColumn state1
+          | Just n <- satisfy c isASCIIIdentifierStart Char.isAlpha state ->
+              identifier position lineColumn $ incColumn n state
         c
-          | isASCIIOperator c ->
-              operator position lineColumn state1
-        c
-          | c >= 128
-          , Utf16.validate1 c
-          , c' <- Char.unsafeChr c
-          , Char.isAlpha c' ->
-              identifier position lineColumn state1
-        c
-          | c >= 128
-          , Utf16.validate1 c
-          , c' <- Char.unsafeChr c
-          , Char.isSymbol c' || Char.isPunctuation c' ->
-              operator position lineColumn state1
-        c1
-          | position1 < end
-          , c2 <- index input position1
-          , Utf16.validate2 c1 c2
-          , c <- Utf16.chr2 c1 c2
-          , Char.isAlpha c ->
-              identifier position lineColumn state2
-        c1
-          | position1 < end
-          , c2 <- index input position1
-          , Utf16.validate2 c1 c2
-          , c <- Utf16.chr2 c1 c2
-          , Char.isSymbol c || Char.isPunctuation c ->
-              operator position lineColumn state2
+          | Just n <- satisfy c isASCIIOperator (\c' -> Char.isSymbol c' || Char.isPunctuation c') state ->
+              operator position lineColumn $ incColumn n state
         -------------------------------------------------------------------------
         -- Error
         _ ->
-          token1 Error $ lex state1
+          token1 Error $ lex $ incColumn 1 state
   where
-    state1 =
-      state
-        { position = position1
-        , lineColumn = Position.addColumns lineColumn 1
-        }
-
-    state2 =
-      state
-        { position = position2
-        , lineColumn = Position.addColumns lineColumn 2
-        }
-
-    position1 =
-      Position.add position 1
-
-    position2 =
-      Position.add position 2
-
     token1 =
-      Token lineColumn $ Span.Absolute position position1
+      Token lineColumn $ Span.Absolute position (position + 1)
 
     token2 =
-      Token lineColumn $ Span.Absolute position position2
+      Token lineColumn $ Span.Absolute position (position + 2)
 
 -------------------------------------------------------------------------------
 
-index :: Array -> Position.Absolute -> Word16
+index :: Array -> Position.Absolute -> Word8
 index =
   coerce Array.unsafeIndex
 
-isNumeric :: Word16 -> Bool
+isNumeric :: Word8 -> Bool
 isNumeric c =
-  [UTF16.unit1|0|] <= c && c <= [UTF16.unit1|9|]
+  [UTF8.unit1|0|] <= c && c <= [UTF8.unit1|9|]
 
-isASCIIIdentifierStart :: Word16 -> Bool
+isASCIIIdentifierStart :: Word8 -> Bool
 isASCIIIdentifierStart c =
-  [UTF16.unit1|a|] <= c && c <= [UTF16.unit1|z|]
-    || [UTF16.unit1|A|] <= c && c <= [UTF16.unit1|Z|]
-    || c == [UTF16.unit1|_|]
+  [UTF8.unit1|a|] <= c && c <= [UTF8.unit1|z|]
+    || [UTF8.unit1|A|] <= c && c <= [UTF8.unit1|Z|]
+    || c == [UTF8.unit1|_|]
 
-isASCIIIdentifierCont :: Word16 -> Bool
+isASCIIIdentifierCont :: Word8 -> Bool
 isASCIIIdentifierCont c =
   isASCIIIdentifierStart c
     || isNumeric c
-    || c == [UTF16.unit1|'|]
+    || c == [UTF8.unit1|'|]
 
-isASCIIOperator :: Word16 -> Bool
+isASCIIOperator :: Word8 -> Bool
 isASCIIOperator c =
   case c of
-    [UTF16.unit1|!|] -> True
-    [UTF16.unit1|#|] -> True
-    [UTF16.unit1|$|] -> True
-    [UTF16.unit1|%|] -> True
-    [UTF16.unit1|&|] -> True
-    [UTF16.unit1|*|] -> True
-    [UTF16.unit1|+|] -> True
-    [UTF16.unit1|,|] -> True
-    [UTF16.unit1|-|] -> True
-    [UTF16.unit1|.|] -> True
-    [UTF16.unit1|/|] -> True
-    [UTF16.unit1|:|] -> True
-    [UTF16.unit1|;|] -> True
-    [UTF16.unit1|<|] -> True
-    [UTF16.unit1|=|] -> True
-    [UTF16.unit1|>|] -> True
-    [UTF16.unit1|?|] -> True
-    [UTF16.unit1|@|] -> True
-    [UTF16.unit1|\|] -> True
-    [UTF16.unit1|^|] -> True
-    [UTF16.unit1|`|] -> True
-    [UTF16.unit1|||] -> True
-    [UTF16.unit1|~|] -> True
+    [UTF8.unit1|!|] -> True
+    [UTF8.unit1|#|] -> True
+    [UTF8.unit1|$|] -> True
+    [UTF8.unit1|%|] -> True
+    [UTF8.unit1|&|] -> True
+    [UTF8.unit1|*|] -> True
+    [UTF8.unit1|+|] -> True
+    [UTF8.unit1|,|] -> True
+    [UTF8.unit1|-|] -> True
+    [UTF8.unit1|.|] -> True
+    [UTF8.unit1|/|] -> True
+    [UTF8.unit1|:|] -> True
+    [UTF8.unit1|;|] -> True
+    [UTF8.unit1|<|] -> True
+    [UTF8.unit1|=|] -> True
+    [UTF8.unit1|>|] -> True
+    [UTF8.unit1|?|] -> True
+    [UTF8.unit1|@|] -> True
+    [UTF8.unit1|\|] -> True
+    [UTF8.unit1|^|] -> True
+    [UTF8.unit1|`|] -> True
+    [UTF8.unit1|||] -> True
+    [UTF8.unit1|~|] -> True
     _ -> False
 
 -------------------------------------------------------------------------------
@@ -284,44 +253,13 @@ identifier
 identifier !startPosition !startLineColumn state@State {..}
   | position >= end =
       identifierToken input startPosition startLineColumn position Empty
-  | otherwise =
-      case index input position of
-        c
-          | isASCIIIdentifierCont c ->
-              identifier startPosition startLineColumn state1
-        [UTF16.unit1|.|] ->
-          dotIdentifier startPosition startLineColumn position lineColumn state1
-        c
-          | Utf16.validate1 c
-          , Char.isAlpha $ Char.unsafeChr c ->
-              identifier startPosition startLineColumn state1
-        c1
-          | position1 < end
-          , c2 <- index input position1
-          , Utf16.validate2 c1 c2
-          , Char.isAlpha $ Utf16.chr2 c1 c2 ->
-              identifier startPosition startLineColumn state2
-        _ ->
-          identifierToken input startPosition startLineColumn position $
-            lex state
-  where
-    state1 =
-      state
-        { position = position1
-        , lineColumn = Position.addColumns lineColumn 1
-        }
-
-    state2 =
-      state
-        { position = position2
-        , lineColumn = Position.addColumns lineColumn 2
-        }
-
-    position1 =
-      Position.add position 1
-
-    position2 =
-      Position.add position 2
+  | otherwise = case index input position of
+      [UTF8.unit1|.|] ->
+        dotIdentifier startPosition startLineColumn position lineColumn $ incColumn 1 state
+      c | Just n <- satisfy c isASCIIIdentifierCont Char.isAlpha state -> identifier startPosition startLineColumn $ incColumn n state
+      _ ->
+        identifierToken input startPosition startLineColumn position $
+          lex state
 
 dotIdentifier
   :: Position.Absolute
@@ -332,64 +270,17 @@ dotIdentifier
   -> TokenList
 dotIdentifier !startPosition !startLineColumn !dotPosition !dotLineColumn state@State {..}
   | position >= end =
-      identifierToken input startPosition startLineColumn position $
+      identifierToken input startPosition startLineColumn dotPosition $
         Token dotLineColumn (Span.Absolute dotPosition position) Dot Empty
-  | otherwise =
-      case index input position of
-        c
-          | isASCIIIdentifierCont c ->
-              identifier startPosition startLineColumn state1
-        c
-          | isASCIIOperator c ->
-              operator startPosition startLineColumn state1
-        c
-          | c >= 128
-          , Utf16.validate1 c
-          , c' <- Char.unsafeChr c
-          , Char.isAlpha c' ->
-              identifier startPosition startLineColumn state1
-        c
-          | c >= 128
-          , Utf16.validate1 c
-          , c' <- Char.unsafeChr c
-          , Char.isSymbol c' || Char.isPunctuation c' ->
-              operator startPosition startLineColumn state1
-        c1
-          | position1 < end
-          , c2 <- index input position1
-          , Utf16.validate2 c1 c2
-          , c <- Utf16.chr2 c1 c2
-          , Char.isAlpha c ->
-              identifier startPosition startLineColumn state2
-        c1
-          | position1 < end
-          , c2 <- index input position1
-          , Utf16.validate2 c1 c2
-          , c <- Utf16.chr2 c1 c2
-          , Char.isSymbol c || Char.isPunctuation c ->
-              operator startPosition startLineColumn state2
-        _ ->
-          identifierToken input startPosition startLineColumn dotPosition $
-            Token dotLineColumn (Span.Absolute dotPosition position) Dot $
-              lex state
-  where
-    state1 =
-      state
-        { position = position1
-        , lineColumn = Position.addColumns lineColumn 1
-        }
-
-    state2 =
-      state
-        { position = position2
-        , lineColumn = Position.addColumns lineColumn 2
-        }
-
-    position1 =
-      Position.add position 1
-
-    position2 =
-      Position.add position 2
+  | otherwise = case index input position of
+      c
+        | Just n <- satisfy c isASCIIIdentifierCont Char.isAlpha state -> identifier startPosition startLineColumn $ incColumn n state
+        | Just n <- satisfy c isASCIIOperator (\c' -> Char.isSymbol c' || Char.isPunctuation c') state ->
+            identifierToken input startPosition startLineColumn dotPosition $ operator dotPosition dotLineColumn $ incColumn n state
+        | otherwise ->
+            identifierToken input startPosition startLineColumn dotPosition $
+              Token dotLineColumn (Span.Absolute dotPosition position) Dot $
+                lex state
 
 identifierToken
   :: Array
@@ -401,14 +292,14 @@ identifierToken
 identifierToken !input !startPosition !startLineColumn !position =
   Token startLineColumn (Span.Absolute startPosition position) $
     case index input startPosition of
-      [UTF16.unit1|_|] | len == 1 -> Underscore
-      [UTF16.unit1|l|] | "let" <- str -> Let
-      [UTF16.unit1|i|] | "in" <- str -> In
-      [UTF16.unit1|d|] | "data" <- str -> Data
-      [UTF16.unit1|w|] | "where" <- str -> Where
-      [UTF16.unit1|f|] | "forall" <- str -> Forall
-      [UTF16.unit1|c|] | "case" <- str -> Case
-      [UTF16.unit1|o|] | "of" <- str -> Of
+      [UTF8.unit1|_|] | len == 1 -> Underscore
+      [UTF8.unit1|l|] | "let" <- str -> Let
+      [UTF8.unit1|i|] | "in" <- str -> In
+      [UTF8.unit1|d|] | "data" <- str -> Data
+      [UTF8.unit1|w|] | "where" <- str -> Where
+      [UTF8.unit1|f|] | "forall" <- str -> Forall
+      [UTF8.unit1|c|] | "case" <- str -> Case
+      [UTF8.unit1|o|] | "of" <- str -> Of
       _ -> Identifier str
   where
     len =
@@ -428,47 +319,14 @@ operator
   -> State
   -> TokenList
 operator !startPosition !startLineColumn state@State {..}
-  | position >= end =
-      identifierToken input startPosition startLineColumn position Empty
-  | otherwise =
-      case index input position of
-        c
-          | isASCIIOperator c ->
-              operator startPosition lineColumn state1
-        c
-          | c >= 128
-          , Utf16.validate1 c
-          , c' <- Char.unsafeChr c
-          , Char.isSymbol c' || Char.isPunctuation c' ->
-              operator startPosition lineColumn state1
-        c1
-          | position1 < end
-          , c2 <- index input position1
-          , Utf16.validate2 c1 c2
-          , c <- Utf16.chr2 c1 c2
-          , Char.isSymbol c || Char.isPunctuation c ->
-              operator startPosition lineColumn state2
-        _ ->
-          operatorToken input startPosition startLineColumn position $
-            lex state
-  where
-    state1 =
-      state
-        { position = position1
-        , lineColumn = Position.addColumns lineColumn 1
-        }
-
-    state2 =
-      state
-        { position = position2
-        , lineColumn = Position.addColumns lineColumn 2
-        }
-
-    position1 =
-      Position.add position 1
-
-    position2 =
-      Position.add position 2
+  | position >= end = operatorToken input startPosition startLineColumn position Empty
+  | otherwise = case index input position of
+      c
+        | Just n <- satisfy c isASCIIOperator (\c' -> Char.isSymbol c' || Char.isPunctuation c') state ->
+            operator startPosition startLineColumn $ incColumn n state
+        | otherwise ->
+            operatorToken input startPosition startLineColumn position $
+              lex state
 
 operatorToken
   :: Array
@@ -480,13 +338,13 @@ operatorToken
 operatorToken !input !startPosition !startLineColumn !position =
   Token startLineColumn (Span.Absolute startPosition position) $
     case index input startPosition of
-      [UTF16.unit1|=|] | len == 1 -> Equals
-      [UTF16.unit1|.|] | len == 1 -> Dot
-      [UTF16.unit1|:|] | len == 1 -> Colon
-      [UTF16.unit1|||] | len == 1 -> Pipe
-      [UTF16.unit1|-|] | "->" <- str -> RightArrow
-      [UTF16.unit1|?|] | len == 1 -> QuestionMark
-      [UTF16.unit1|~|] | len == 1 -> Forced
+      [UTF8.unit1|=|] | len == 1 -> Equals
+      [UTF8.unit1|.|] | len == 1 -> Dot
+      [UTF8.unit1|:|] | len == 1 -> Colon
+      [UTF8.unit1|||] | len == 1 -> Pipe
+      [UTF8.unit1|-|] | "->" <- str -> RightArrow
+      [UTF8.unit1|?|] | len == 1 -> QuestionMark
+      [UTF8.unit1|~|] | len == 1 -> Forced
       _ -> Operator str
   where
     len =
@@ -515,8 +373,8 @@ number !startPosition !startLineColumn state@State {..} !shouldNegate !acc
         c
           | isNumeric c -> do
               let acc' =
-                    acc * 10 + fromIntegral (c - [UTF16.unit1|0|])
-              number startPosition startLineColumn state1 shouldNegate acc'
+                    acc * 10 + fromIntegral (c - [UTF8.unit1|0|])
+              number startPosition startLineColumn (incColumn 1 state) shouldNegate acc'
         _ ->
           token $ lex state
   where
@@ -524,12 +382,6 @@ number !startPosition !startLineColumn state@State {..} !shouldNegate !acc
       Token startLineColumn (Span.Absolute startPosition position) $
         Number $
           if shouldNegate then negate acc else acc
-
-    state1 =
-      state
-        { position = Position.add position 1
-        , lineColumn = Position.addColumns lineColumn 1
-        }
 
 -------------------------------------------------------------------------------
 
@@ -539,14 +391,11 @@ singleLineComment state@State {..}
       Empty
   | otherwise =
       case index input position of
-        [UTF16.unit1|
+        [UTF8.unit1|
 |] ->
-            lex state {lineColumn = Position.addLine lineColumn}
+            lex (incColumn 1 state) {lineColumn = Position.addLine lineColumn}
         _ ->
-          singleLineComment state1
-  where
-    state1 =
-      state {position = Position.add position 1}
+          singleLineComment $ incColumn 1 state
 
 multiLineComment :: State -> Int -> TokenList
 multiLineComment !state 0 =
@@ -556,41 +405,23 @@ multiLineComment state@State {..} !depth
       Empty
   | otherwise =
       case index input position of
-        [UTF16.unit1|{|]
-          | position1 < end
-          , [UTF16.unit1|-|] <- index input position1 ->
-              multiLineComment state2 $ depth + 1
-        [UTF16.unit1|-|]
-          | position1 < end
-          , [UTF16.unit1|}|] <- index input position1 ->
-              multiLineComment state2 (depth - 1)
-        [UTF16.unit1|
+        [UTF8.unit1|{|]
+          | position + 1 < end
+          , [UTF8.unit1|-|] <- index input (position + 1) ->
+              multiLineComment (incColumn 2 state) $ depth + 1
+        [UTF8.unit1|-|]
+          | position + 1 < end
+          , [UTF8.unit1|}|] <- index input (position + 1) ->
+              multiLineComment (incColumn 2 state) (depth - 1)
+        [UTF8.unit1|
 |] ->
             multiLineComment
-              state1
+              (incColumn 1 state)
                 { lineColumn = Position.addLine lineColumn
                 }
               depth
         _ ->
-          multiLineComment state1 depth
-  where
-    state1 =
-      state
-        { position = position1
-        , lineColumn = Position.addColumns lineColumn 1
-        }
-
-    state2 =
-      state
-        { position = position2
-        , lineColumn = Position.addColumns lineColumn 2
-        }
-
-    position1 =
-      Position.add position 1
-
-    position2 =
-      Position.add position 2
+          multiLineComment (incColumn 1 state) depth
 
 -- TODO: Fuzz tests for
 --  length, line column

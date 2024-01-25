@@ -67,7 +67,7 @@ implicitPi :: Binding -> Type v -> Plicity -> Scope Type v -> Type v
 implicitPi name type_ plicity =
   Pi name type_ (implicitise plicity)
 
-apps :: Foldable f => Term v -> f (Plicity, Term v) -> Term v
+apps :: (Foldable f) => Term v -> f (Plicity, Term v) -> Term v
 apps =
   foldl (\fun (plicity, arg) -> App fun plicity arg)
 
@@ -105,7 +105,7 @@ varView term =
     _ ->
       Nothing
 
-funs :: Foldable f => f (Term v) -> Plicity -> Term v -> Term v
+funs :: (Foldable f) => f (Term v) -> Plicity -> Term v -> Term v
 funs args plicity res =
   foldr (\a b -> Fun a plicity b) res args
 

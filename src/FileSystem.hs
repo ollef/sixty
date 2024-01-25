@@ -29,7 +29,7 @@ newtype Watcher a = Watcher
   }
   deriving (Functor)
 
-instance Monoid a => Semigroup (Watcher a) where
+instance (Monoid a) => Semigroup (Watcher a) where
   Watcher watcher1 <> Watcher watcher2 =
     Watcher \manager onChange -> do
       valuesVar <- newMVar mempty
@@ -43,7 +43,7 @@ instance Monoid a => Semigroup (Watcher a) where
         onChange value
       pure $ stopListening1 <> stopListening2
 
-instance Monoid a => Monoid (Watcher a) where
+instance (Monoid a) => Monoid (Watcher a) where
   mempty =
     Watcher mempty
 
@@ -183,7 +183,7 @@ fileWatcher filePath = Watcher \manager onChange -> do
         onChange maybeText
     )
 
-jsonFileWatcher :: Aeson.FromJSON a => FilePath -> Watcher (Maybe a)
+jsonFileWatcher :: (Aeson.FromJSON a) => FilePath -> Watcher (Maybe a)
 jsonFileWatcher filePath = Watcher \manager onChange -> do
   maybeOriginalValue <- readFileJSON filePath
   onChange maybeOriginalValue
@@ -239,7 +239,7 @@ readFileText file =
     `catch` \(_ :: IOException) ->
       pure Nothing
 
-readFileJSON :: Aeson.FromJSON a => FilePath -> IO (Maybe a)
+readFileJSON :: (Aeson.FromJSON a) => FilePath -> IO (Maybe a)
 readFileJSON file =
   Aeson.decodeFileStrict file
     `catch` \(_ :: IOException) ->

@@ -23,7 +23,7 @@ instance (Enum k, Hashable k, Hashable v) => Hashable (EnumMap k v) where
 instance (Enum k, Hashable k) => Hashable (EnumSet k) where
   hashWithSalt s = hashWithSalt s . EnumSet.toList
 
-instance Hashable k => Hashable (IntervalMap.Interval k) where
+instance (Hashable k) => Hashable (IntervalMap.Interval k) where
   hashWithSalt s (IntervalMap.Interval a b) =
     hashWithSalt s (a, b)
 

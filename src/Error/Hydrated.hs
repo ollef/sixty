@@ -27,10 +27,11 @@ import qualified Query
 import Rock
 import qualified Span
 import qualified System.Directory as Directory
+import qualified UTF16
 
 data Hydrated = Hydrated
   { filePath :: FilePath
-  , lineColumn :: !Span.LineColumn
+  , lineColumn :: !UTF16.LineColumns
   , lineText :: !Text
   , error :: !Error
   }
@@ -53,10 +54,10 @@ headingAndBody error =
       (filePath, maybeOldSpan) <- fetch $ Query.DefinitionPosition definitionKind name
       text <- fetch $ Query.FileText filePath
       let (lineColumn, _) =
-            Position.lineColumn (fromMaybe 0 maybeOldSpan) text
+            UTF16.lineColumn (fromMaybe 0 maybeOldSpan) text
       pure
         ( "Duplicate name:" <+> Doc.pretty name
-        , Doc.pretty name <+> "has already been defined at" <+> Doc.pretty (Span.LineColumns lineColumn lineColumn) <> "."
+        , Doc.pretty name <+> "has already been defined at" <+> Doc.pretty (UTF16.LineColumns lineColumn lineColumn) <> "."
         )
     Error.ImportNotFound _ import_ ->
       let prettyModule = Doc.pretty import_.module_
@@ -111,7 +112,7 @@ headingAndBody error =
           (filePath, maybeDefSpan) <- fetch $ Query.DefinitionPosition definitionKind definitionName
           text <- fetch $ Query.FileText filePath
           let (previousLineColumn, _) =
-                Span.lineColumn (Span.absoluteFrom (fromMaybe 0 maybeDefSpan) previousSpan) text
+                UTF16.lineColumns (Span.absoluteFrom (fromMaybe 0 maybeDefSpan) previousSpan) text
           pure
             ( "Duplicate name in let block:" <+> Doc.pretty name
             , Doc.pretty name <+> "has already been defined at" <+> Doc.pretty previousLineColumn <> "."
@@ -239,31 +240,34 @@ pretty h = do
   filePath <- liftIO $ Directory.makeRelativeToCurrentDirectory h.filePath
   (heading, body) <- headingAndBody h.error
   pure $
-    Doc.pretty filePath <> ":" <> Doc.pretty h.lineColumn <> ":"
+    Doc.pretty filePath
+      <> ":"
+      <> Doc.pretty h.lineColumn
+      <> ":"
       <+> heading
-        <> line
-        <> line
-        <> body
-        <> line
-        <> line
-        <> spannedLine
+      <> line
+      <> line
+      <> body
+      <> line
+      <> line
+      <> spannedLine
   where
     spannedLine =
-      let Span.LineColumns
-            (Position.LineColumn startLineNumber startColumnNumber)
-            (Position.LineColumn endLineNumber endColumnNumber) = h.lineColumn
+      let UTF16.LineColumns
+            (UTF16.LineColumn startLineNumber startColumnNumber)
+            (UTF16.LineColumn endLineNumber endColumnNumber) = h.lineColumn
 
           lineNumberText =
             show (startLineNumber + 1)
 
           lineNumberTextLength =
-            Text.lengthWord16 lineNumberText
+            Text.lengthWord8 lineNumberText
 
           (spanLength, spanEnding)
             | startLineNumber == endLineNumber =
                 (endColumnNumber - startColumnNumber, mempty)
             | otherwise =
-                (Text.lengthWord16 h.lineText - startColumnNumber, "...")
+                (UTF16.length h.lineText - startColumnNumber, "...")
        in Doc.pretty (Text.replicate (lineNumberTextLength + 1) " ")
             <> "| "
             <> line
@@ -273,7 +277,7 @@ pretty h = do
             <> line
             <> Doc.pretty (Text.replicate (lineNumberTextLength + 1) " ")
             <> "| "
-            <> Doc.pretty (Text.replicate startColumnNumber " " <> "^" <> Text.replicate (spanLength - 1) "~" <> spanEnding)
+            <> Doc.pretty (Text.replicate (UTF16.toInt startColumnNumber) " " <> "^" <> Text.replicate (UTF16.toInt spanLength - 1) "~" <> spanEnding)
 
 fromError :: Error -> Task Query Hydrated
 fromError err = do
@@ -302,10 +306,10 @@ fromError err = do
         case eofOrSpan of
           Left Error.Parsing.EOF -> do
             let eofPos =
-                  Position.Absolute $ Text.lengthWord16 text
-            Span.lineColumn (Span.Absolute eofPos eofPos) text
+                  Position.Absolute $ Text.lengthWord8 text
+            UTF16.lineColumns (Span.Absolute eofPos eofPos) text
           Right span ->
-            Span.lineColumn span text
+            UTF16.lineColumns span text
   pure
     Hydrated
       { filePath = filePath
@@ -319,9 +323,9 @@ fromError err = do
 lineNumber :: Hydrated -> Int
 lineNumber err = l
   where
-    Span.LineColumns (Position.LineColumn l _) _ = err.lineColumn
+    UTF16.LineColumns (UTF16.LineColumn l _) _ = err.lineColumn
 
-prettyPrettyableTerm :: MonadFetch Query m => Int -> Error.PrettyableTerm -> m (Doc ann)
+prettyPrettyableTerm :: (MonadFetch Query m) => Int -> Error.PrettyableTerm -> m (Doc ann)
 prettyPrettyableTerm prec (Error.PrettyableTerm moduleName_ names term) = do
   env <- Pretty.emptyM moduleName_
   pure $ go names env
@@ -336,7 +340,7 @@ prettyPrettyableTerm prec (Error.PrettyableTerm moduleName_ names term) = do
                 Pretty.extend env' name
            in go names'' env''
 
-prettyPrettyablePattern :: MonadFetch Query m => Int -> (Plicity, Error.PrettyablePattern) -> m (Doc ann)
+prettyPrettyablePattern :: (MonadFetch Query m) => Int -> (Plicity, Error.PrettyablePattern) -> m (Doc ann)
 prettyPrettyablePattern prec (plicity, Error.PrettyablePattern moduleName_ names pattern_) = do
   env <- Pretty.emptyM moduleName_
   pure $ go names env

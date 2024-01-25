@@ -245,7 +245,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                   [] ->
                     []
                   [(loc, (name, def))] ->
-                    [((Surface.definitionKind def, name), Span.Absolute loc $ Position.Absolute $ Text.lengthWord16 text)]
+                    [((Surface.definitionKind def, name), Span.Absolute loc $ Position.Absolute $ Text.lengthWord8 text)]
                   (loc1, (name, def)) : defs'@((loc2, _) : _) ->
                     ((Surface.definitionKind def, name), Span.Absolute loc1 loc2) : go defs'
 
@@ -487,13 +487,13 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
 
         pure $ AssemblyToLLVM.assembleModule [(Name.Lifted "$module_init" 0, assemblyDefinition)]
   where
-    input :: Functor m => m a -> m ((a, TaskKind), [Error])
+    input :: (Functor m) => m a -> m ((a, TaskKind), [Error])
     input = fmap ((,mempty) . (,Input))
 
-    noError :: Functor m => m a -> m ((a, TaskKind), [Error])
+    noError :: (Functor m) => m a -> m ((a, TaskKind), [Error])
     noError = fmap ((,mempty) . (,NonInput))
 
-    nonInput :: Functor m => m (a, [Error]) -> m ((a, TaskKind), [Error])
+    nonInput :: (Functor m) => m (a, [Error]) -> m ((a, TaskKind), [Error])
     nonInput = fmap (first (,NonInput))
 
     runElaboratorWithDefault

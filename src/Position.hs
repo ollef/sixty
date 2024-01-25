@@ -6,8 +6,6 @@
 
 module Position where
 
-import qualified Data.Text as Text
-import qualified Data.Text.Unsafe as Text
 import Protolude
 
 newtype Absolute = Absolute Int
@@ -35,32 +33,3 @@ addLine (LineColumn line _) =
 addColumns :: LineColumn -> Int -> LineColumn
 addColumns (LineColumn line column) delta =
   LineColumn line $ column + delta
-
-lineColumn :: Absolute -> Text -> (LineColumn, Text)
-lineColumn (Absolute index) text =
-  let prefix =
-        Text.takeWord16 index text
-
-      suffix =
-        Text.dropWord16 index text
-
-      linePrefixLength =
-        Text.lengthWord16 $ Text.takeWhileEnd (/= '\n') prefix
-
-      lineSuffixLength =
-        Text.lengthWord16 $ Text.takeWhile (/= '\n') suffix
-
-      lineStart =
-        index - linePrefixLength
-
-      lineLength =
-        linePrefixLength + lineSuffixLength
-
-      line =
-        Text.takeWord16 lineLength $
-          Text.dropWord16 lineStart text
-   in ( LineColumn
-          (Text.count "\n" prefix)
-          linePrefixLength
-      , line
-      )

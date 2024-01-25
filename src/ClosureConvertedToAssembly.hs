@@ -83,10 +83,10 @@ emit :: Assembly.Instruction -> Builder ()
 emit instruction =
   modify \s -> s {instructions = s.instructions Tsil.:> instruction}
 
-tagBytes :: Num a => a
+tagBytes :: (Num a) => a
 tagBytes = wordBytes
 
-wordBytes :: Num a => a
+wordBytes :: (Num a) => a
 wordBytes = 8
 
 -------------------------------------------------------------------------------
@@ -503,7 +503,7 @@ forceDirect operand =
 
 -------------------------------------------------------------------------------
 
-pointerBytes :: Num a => a
+pointerBytes :: (Num a) => a
 pointerBytes =
   8
 
