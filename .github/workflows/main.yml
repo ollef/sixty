@@ -17,6 +17,11 @@ jobs:
         restore-keys: |
           ${{ runner.OS }}-stack-
 
+    - name: Install LLVM and Clang
+      uses: KyleMayes/install-llvm-action@v1
+      with:
+        version: "17.0"
+
     - name: Add ~/.local/bin to PATH
       run: echo "$HOME/.local/bin" >> $GITHUB_PATH
 
