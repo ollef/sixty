@@ -55,6 +55,7 @@ Might go into [Sixten](https://github.com/ollef/sixten) one day.
   - [x] Redundant pattern check
   - [x] Clause elaboration
   - [x] Pattern lambdas
+  - [x] Smart case
 - [x] Inductive families
 - [x] Glued evaluation
 - [x] Let definitions by clauses
