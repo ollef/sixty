@@ -56,15 +56,14 @@ evaluate env term =
       let var =
             Environment.lookupIndexVar index env
 
-      pure $
-        case Environment.lookupVarValue var env of
-          Nothing ->
-            Domain.var var
-          Just value
-            | Index.Succ index > Environment.glueableBefore env ->
-                Domain.Glued (Domain.Var var) mempty value
-            | otherwise ->
-                value
+      pure case Environment.lookupVarValue var env of
+        Nothing ->
+          Domain.var var
+        Just value
+          | Index.Succ index > Environment.glueableBefore env ->
+              Domain.Glued (Domain.Var var) mempty value
+          | otherwise ->
+              value
     Syntax.Global name -> do
       result <- try $ fetch $ Query.ElaboratedDefinition name
       case result of
@@ -212,7 +211,7 @@ apply fun plicity arg =
       appliedValue <- apply value plicity arg
       pure $ Domain.Glued hd (spine Domain.:> Domain.App plicity arg) appliedValue
     Domain.Lazy lazyValue -> do
-      lazyValue' <- lazy $ do
+      lazyValue' <- lazy do
         value' <- force lazyValue
         apply value' plicity arg
       pure $ Domain.Lazy lazyValue'
@@ -234,7 +233,7 @@ case_ scrutinee branches@(Domain.Branches env branches' defaultBranch) =
       casedValue <- case_ value branches
       pure $ Domain.Glued hd (spine Domain.:> Domain.Case branches) casedValue
     (Domain.Lazy lazyValue, _) -> do
-      lazyValue' <- lazy $ do
+      lazyValue' <- lazy do
         value' <- force lazyValue
         case_ value' branches
       pure $ Domain.Lazy lazyValue'

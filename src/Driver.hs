@@ -83,8 +83,8 @@ runTask sourceDirectories files prettyError task = do
               Rules.rules sourceDirectories files \file ->
                 Right <$> readFile file `catch` \(_ :: IOException) -> pure mempty
 
-  Rock.runTask rules $ do
-    -- Rock.runMemoisedTask startedVar rules $ do
+  Rock.runTask rules do
+    -- Rock.runMemoisedTask startedVar rules do
     result <- task
     errorsMap <- readIORef errorsVar
     let errors =
@@ -133,55 +133,54 @@ runIncrementalTask
   -> Task Query a
   -> IO (a, [err])
 runIncrementalTask state changedFiles sourceDirectories files prettyError prune task =
-  handleEx $ do
-    do
-      reverseDependencies <- readIORef state.reverseDependenciesVar
-      started <- readIORef state.startedVar
-      hashes <- readIORef state.hashesVar
+  handleEx do
+    reverseDependencies <- readIORef state.reverseDependenciesVar
+    started <- readIORef state.startedVar
+    hashes <- readIORef state.hashesVar
 
-      case DHashMap.lookup Query.InputFiles started of
-        Just (Done inputFiles) -> do
-          -- TODO find a nicer way to do this
-          builtinFile <- Paths.getDataFileName "builtin/Builtin.vix"
-          if inputFiles /= HashSet.insert builtinFile (HashSet.fromMap $ void files)
-            then do
-              atomicWriteIORef state.reverseDependenciesVar mempty
-              atomicWriteIORef state.startedVar mempty
-              atomicWriteIORef state.hashesVar mempty
-            else do
-              changedFiles' <- flip filterM (toList changedFiles) \file ->
-                pure $ case (HashMap.lookup file files, DHashMap.lookup (Query.FileRope file) started, DHashMap.lookup (Query.FileText file) started) of
-                  (Just (Left rope), Just (Done rope'), _) -> rope /= rope'
-                  (Just (Left rope), _, Just (Done text')) -> Rope.toText rope /= text'
-                  (Just (Right text), _, Just (Done text')) -> text /= text'
-                  (Just (Right text), Just (Done rope'), _) -> text /= Rope.toText rope'
-                  _ -> True
-              let (keysToInvalidate, reverseDependencies') =
-                    foldl'
-                      ( \(keysToInvalidate_, reverseDependencies_) file ->
-                          first (<> keysToInvalidate_) $ reachableReverseDependencies (Query.FileText file) reverseDependencies_
-                      )
-                      (mempty, reverseDependencies)
-                      changedFiles'
-              let started' =
-                    DHashMap.difference started keysToInvalidate
+    case DHashMap.lookup Query.InputFiles started of
+      Just (Done inputFiles) -> do
+        -- TODO find a nicer way to do this
+        builtinFile <- Paths.getDataFileName "builtin/Builtin.vix"
+        if inputFiles /= HashSet.insert builtinFile (HashSet.fromMap $ void files)
+          then do
+            atomicWriteIORef state.reverseDependenciesVar mempty
+            atomicWriteIORef state.startedVar mempty
+            atomicWriteIORef state.hashesVar mempty
+          else do
+            changedFiles' <- flip filterM (toList changedFiles) \file ->
+              pure case (HashMap.lookup file files, DHashMap.lookup (Query.FileRope file) started, DHashMap.lookup (Query.FileText file) started) of
+                (Just (Left rope), Just (Done rope'), _) -> rope /= rope'
+                (Just (Left rope), _, Just (Done text')) -> Rope.toText rope /= text'
+                (Just (Right text), _, Just (Done text')) -> text /= text'
+                (Just (Right text), Just (Done rope'), _) -> text /= Rope.toText rope'
+                _ -> True
+            let (keysToInvalidate, reverseDependencies') =
+                  foldl'
+                    ( \(keysToInvalidate_, reverseDependencies_) file ->
+                        first (<> keysToInvalidate_) $ reachableReverseDependencies (Query.FileText file) reverseDependencies_
+                    )
+                    (mempty, reverseDependencies)
+                    changedFiles'
+            let started' =
+                  DHashMap.difference started keysToInvalidate
 
-                  hashes' =
-                    DHashMap.difference hashes keysToInvalidate
-              -- Text.hPutStrLn stderr $ "keysToInvalidate " <> show (DHashMap.size keysToInvalidate)
-              -- Text.hPutStrLn stderr $ "Started " <> show (DHashMap.size started) <> " -> " <> show (DHashMap.size started')
-              -- Text.hPutStrLn stderr $ "Hashes " <> show (DHashMap.size hashes) <> " -> " <> show (DHashMap.size hashes')
-              -- Text.hPutStrLn stderr $ "ReverseDependencies " <> show (Map.size reverseDependencies) <> " -> " <> show (Map.size reverseDependencies')
+                hashes' =
+                  DHashMap.difference hashes keysToInvalidate
+            -- Text.hPutStrLn stderr $ "keysToInvalidate " <> show (DHashMap.size keysToInvalidate)
+            -- Text.hPutStrLn stderr $ "Started " <> show (DHashMap.size started) <> " -> " <> show (DHashMap.size started')
+            -- Text.hPutStrLn stderr $ "Hashes " <> show (DHashMap.size hashes) <> " -> " <> show (DHashMap.size hashes')
+            -- Text.hPutStrLn stderr $ "ReverseDependencies " <> show (Map.size reverseDependencies) <> " -> " <> show (Map.size reverseDependencies')
 
-              atomicWriteIORef state.startedVar started'
-              atomicWriteIORef state.hashesVar hashes'
-              atomicWriteIORef state.reverseDependenciesVar reverseDependencies'
+            atomicWriteIORef state.startedVar started'
+            atomicWriteIORef state.hashesVar hashes'
+            atomicWriteIORef state.reverseDependenciesVar reverseDependencies'
 
-        -- printVar <- newMVar 0
-        _ -> do
-          atomicWriteIORef state.reverseDependenciesVar mempty
-          atomicWriteIORef state.startedVar mempty
-          atomicWriteIORef state.hashesVar mempty
+      -- printVar <- newMVar 0
+      _ -> do
+        atomicWriteIORef state.reverseDependenciesVar mempty
+        atomicWriteIORef state.startedVar mempty
+        atomicWriteIORef state.hashesVar mempty
 
     threadDepsVar <- newIORef mempty
     let readSourceFile_ file
@@ -231,15 +230,15 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
             $ Rules.rules sourceDirectories (HashSet.fromMap $ void files) readSourceFile_
     -- result <- Rock.runMemoisedTask (_startedVar state) rules task
     result <- Rock.runTask rules task
-    started <- readIORef state.startedVar
+    started' <- readIORef state.startedVar
     errorsMap <- case prune of
       Don'tPrune ->
         readIORef state.errorsVar
       Prune -> do
         atomicModifyIORef' state.tracesVar $
-          (,()) . DHashMap.intersectionWithKey (\_ _ t -> t) started
+          (,()) . DHashMap.intersectionWithKey (\_ _ t -> t) started'
         atomicModifyIORef' state.errorsVar \errors -> do
-          let errors' = DHashMap.intersectionWithKey (\_ _ e -> e) started errors
+          let errors' = DHashMap.intersectionWithKey (\_ _ e -> e) started' errors
           (errors', errors')
     let errors = do
           (_ :=> Const errs) <- DHashMap.toList errorsMap

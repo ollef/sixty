@@ -106,7 +106,7 @@ emptyEnvironment =
 extend :: Environment v -> Syntax.Type v -> Operand -> Builder (Environment (Succ v))
 extend env type_ location =
   Builder $
-    lift $ do
+    lift do
       type' <- Evaluation.evaluate (Context.toEnvironment env.context) type_
       (context', var) <- Context.extend env.context type'
       pure
@@ -176,7 +176,7 @@ getFreeShadowStackSlot = do
 
 shadowStackInit :: Assembly.Operand -> Builder (Bool, [Assembly.Instruction])
 shadowStackInit shadowStackParameterOperand =
-  subBuilder $ do
+  subBuilder do
     slotCount <- gets (.shadowStackSlotCount)
     case slotCount of
       0 ->
@@ -203,10 +203,10 @@ indexOperand index env = do
 globalConstantOperand :: Name.Lifted -> Builder Operand
 globalConstantOperand name = do
   signature <- fetch $ Query.ClosureConvertedSignature name
-  pure $ case signature of
+  pure case signature of
     Representation.ConstantSignature representation ->
       Indirect $
-        Assembly.GlobalConstant name $ case representation of
+        Assembly.GlobalConstant name case representation of
           Representation.Empty -> Assembly.WordPointer
           Representation.Direct Representation.Doesn'tContainHeapPointers -> Assembly.Word
           Representation.Direct Representation.MightContainHeapPointers -> Assembly.WordPointer
@@ -263,7 +263,7 @@ extractHeapPointerConstructorTag nameSuggestion location = do
 typeOf :: Environment v -> Syntax.Term v -> Builder (Operand, Representation)
 typeOf env term = do
   (type_, typeRepresentation) <- Builder $
-    lift $ do
+    lift do
       value <- Evaluation.evaluate (Context.toEnvironment env.context) term
       typeValue <- TypeOf.typeOf env.context value
       typeRepresentation <- ClosureConverted.Representation.typeRepresentation (Context.toEnvironment env.context) typeValue
@@ -286,7 +286,7 @@ switch returnType scrutinee branches defaultBranch = do
   initialNextShadowStackSlot <- gets (.nextShadowStackSlot)
   initialHeapPointer <- gets (.heapPointer)
   initialHeapLimit <- gets (.heapLimit)
-  let wrapBranch branch = subBuilder $ do
+  let wrapBranch branch = subBuilder do
         modify \s ->
           s
             { nextShadowStackSlot = initialNextShadowStackSlot
@@ -535,7 +535,7 @@ initDefinitionName (Name.Lifted (Name.Qualified moduleName (Name.Name name)) m) 
 
 generateModuleInits :: [Name.Module] -> M Assembly.Definition
 generateModuleInits moduleNames =
-  runBuilder $ do
+  runBuilder do
     Assembly.LocalOperand heapPointerParameter <- gets (.heapPointer)
     Assembly.LocalOperand heapLimitParameter <- gets (.heapLimit)
     globalPointer <- freshLocal "globals"
@@ -556,7 +556,7 @@ generateModuleInit
   -> [(Name.Lifted, Assembly.Definition)]
   -> M [(Name.Lifted, Assembly.Definition)]
 generateModuleInit moduleName definitions =
-  runBuilder $ do
+  runBuilder do
     Assembly.LocalOperand heapPointerParameter <- gets (.heapPointer)
     Assembly.LocalOperand heapLimitParameter <- gets (.heapLimit)
     globalBasePointer <- freshLocal "globals_base"
@@ -609,7 +609,7 @@ generateModuleInit moduleName definitions =
     initImport globalBasePointer globalPointer import_ =
       callInitFunction
         "globals"
-        (moduleInitName $ import_.module_)
+        (moduleInitName import_.module_)
         [(Assembly.WordPointer, globalBasePointer), (Assembly.WordPointer, globalPointer)]
 
     initDefinition globalBasePointer globalPointer (name, definition) =
@@ -638,7 +638,8 @@ withFunctionDefinitionParameters m = do
             Assembly.Return type_ -> Assembly.Return $ Assembly.Struct [type_, Assembly.WordPointer, Assembly.WordPointer]
         )
         ((Assembly.WordPointer, heapPointerParameter) : (Assembly.WordPointer, heapLimitParameter) : parameters)
-        ( Assembly.BasicBlock instructions $
+        ( Assembly.BasicBlock
+            instructions
             case returnOperand of
               Assembly.Void -> Assembly.Return $ Assembly.StructOperand [heapPointer, heapLimit]
               Assembly.Return operand -> Assembly.Return $ Assembly.StructOperand [operand, heapPointer, heapLimit]
@@ -648,7 +649,7 @@ generateDefinition :: Name.Lifted -> Syntax.Definition -> M (Maybe Assembly.Defi
 generateDefinition name@(Name.Lifted qualifiedName _) definition = do
   signature <- fetch $ Query.ClosureConvertedSignature name
   let env = emptyEnvironment
-  runBuilder $ do
+  runBuilder do
     case (definition, signature) of
       (Syntax.TypeDeclaration _, _) ->
         pure Nothing
@@ -783,19 +784,19 @@ generateFunction env returnRepresentation tele parameterRepresentations params =
     (Telescope.Empty term, []) ->
       case returnRepresentation of
         Representation.Empty ->
-          makeFunctionDefinition Assembly.Void (toList params) $ do
+          makeFunctionDefinition Assembly.Void (toList params) do
             (_, deallocateTerm) <- generateTypedTerm env term (Direct emptyTypeOperand) returnRepresentation
             sequence_ deallocateTerm
             pure Assembly.Void
         Representation.Direct _ ->
-          makeFunctionDefinition (Assembly.Return Assembly.Word) (toList params) $ do
+          makeFunctionDefinition (Assembly.Return Assembly.Word) (toList params) do
             (result, deallocateTerm) <- generateTypedTerm env term (Direct directTypeOperand) returnRepresentation
             directResult <- forceDirect result
             sequence_ deallocateTerm
             pure $ Assembly.Return directResult
         Representation.Indirect _ -> do
           returnLocation <- freshLocal "return_location"
-          makeFunctionDefinition Assembly.Void ((Assembly.WordPointer, returnLocation) : toList params) $ do
+          makeFunctionDefinition Assembly.Void ((Assembly.WordPointer, returnLocation) : toList params) do
             (type_, _representation) <- typeOf env term
             storeTerm env term (Assembly.LocalOperand returnLocation) type_
             pure Assembly.Void
@@ -845,7 +846,8 @@ makeFunctionDefinition returnType parameters m = do
           : (Assembly.WordPointer, heapLimitParameter)
           : parameters
       )
-      ( Assembly.BasicBlock (shadowStackInitInstructions <> toList instructions) $
+      ( Assembly.BasicBlock
+          (shadowStackInitInstructions <> toList instructions)
           case returnOperand of
             Assembly.Void -> Assembly.Return $ Assembly.StructOperand [heapPointer, heapLimit]
             Assembly.Return operand -> Assembly.Return $ Assembly.StructOperand [operand, heapPointer, heapLimit]
@@ -877,7 +879,7 @@ generateTypedTerm env term type_ representation = do
         storeTerm env term termLocation type_
         pure
           ( Indirect termLocation
-          , Just $ do
+          , Just do
               unregisterShadowStackSlot
               restoreStack stack
           )
@@ -965,7 +967,7 @@ storeTerm env term returnLocation returnType =
                 location <- constructLocation
                 (argType, _argRepresentation) <- typeOf env arg
                 storeTerm env arg location argType
-                pure $ do
+                pure do
                   argTypeSize <- sizeOfType argType
                   addPointer "constructor_argument_offset" location argTypeSize
           foldM_ go (pure returnLocation) tagArgs
@@ -1157,7 +1159,7 @@ storeBoxedBranch env constructorBasePointerBuilder constructorFieldOffsetBuilder
       stack <- saveStack
       stackConstructorField <- stackAllocate (Assembly.NameSuggestion $ name <> "_stack") typeSize
       typeRepresentation <- Builder $
-        lift $ do
+        lift do
           typeValue <- Evaluation.evaluate (Context.toEnvironment env.context) type_
           ClosureConverted.Representation.typeRepresentation (Context.toEnvironment env.context) typeValue
       unregisterShadowStackSlot <- case Representation.containsHeapPointers typeRepresentation of

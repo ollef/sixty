@@ -66,7 +66,7 @@ checkFiles sourceDirectories files = do
   let prettyError err = do
         p <- Error.Hydrated.pretty err
         pure (err, p)
-  (moduleSources, errs) <- Driver.runTask (HashSet.fromList sourceDirectories) (HashSet.fromList files) prettyError $ do
+  (moduleSources, errs) <- Driver.runTask (HashSet.fromList sourceDirectories) (HashSet.fromList files) prettyError do
     Driver.checkAll
     forM files \filePath -> do
       moduleSource <- fetch $ Query.FileText filePath
@@ -87,7 +87,7 @@ compileFiles optimisationLevel sourceDirectories files = do
         pure (err, p)
   Command.Compile.withOutputFile Nothing \outputExecutableFile ->
     Command.Compile.withAssemblyDirectory Nothing \assemblyDir -> do
-      (moduleSources, errs) <- Driver.runTask (HashSet.fromList sourceDirectories) (HashSet.fromList files) prettyError $ do
+      (moduleSources, errs) <- Driver.runTask (HashSet.fromList sourceDirectories) (HashSet.fromList files) prettyError do
         Driver.checkAll
         Compiler.compile assemblyDir False outputExecutableFile optimisationLevel
         forM files \filePath -> do
@@ -103,7 +103,7 @@ compileFiles optimisationLevel sourceDirectories files = do
               filter ((filePath ==) . (.filePath) . fst) errs
         verifyErrors filePath moduleErrs expectedErrors
         let expectedOutput = expectedOutputFromSource moduleSource
-        unless (null expectedOutput) $ do
+        unless (null expectedOutput) do
           verifyExecutableOutput filePath (toS executableOutput) $ Text.unlines expectedOutput
 
 verifyErrors :: FilePath -> [(Error.Hydrated, Doc ann)] -> HashMap Int [ExpectedError] -> IO ()
@@ -278,8 +278,8 @@ expectedOutputFromSource sourceText =
 listDirectoryRecursive :: (FilePath -> Bool) -> FilePath -> IO [FilePath]
 listDirectoryRecursive p dir = do
   files <- listDirectory dir
-  fmap concat $
-    forM files \file -> do
+  concat
+    <$> forM files \file -> do
       let path = dir </> file
       isDir <- doesDirectoryExist path
       if isDir
@@ -297,9 +297,10 @@ listDirectoriesWithFilesMatching p dir = do
     then do
       recursiveFiles <- listDirectoryRecursive p dir
       pure [(dir, recursiveFiles)]
-    else fmap concat $
-      forM paths \path -> do
-        isDir <- doesDirectoryExist path
-        if isDir
-          then listDirectoriesWithFilesMatching p path
-          else pure []
+    else
+      concat
+        <$> forM paths \path -> do
+          isDir <- doesDirectoryExist path
+          if isDir
+            then listDirectoriesWithFilesMatching p path
+            else pure []

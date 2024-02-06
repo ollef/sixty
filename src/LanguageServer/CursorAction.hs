@@ -4,7 +4,6 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
 module LanguageServer.CursorAction where
@@ -76,12 +75,12 @@ cursorAction
   -> Task Query (Maybe a)
 cursorAction filePath (UTF16.LineColumn line column) k =
   runM $
-    runMaybeT $ do
+    runMaybeT do
       (moduleName, moduleHeader, _) <- fetch $ Query.ParsedFile filePath
       spans <- fetch $ Query.ModuleSpanMap moduleName
       contents <- fetch $ Query.FileRope filePath
       let pos =
-            Position.Absolute $
+            Position.Absolute
               case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral $ UTF16.toInt column)) contents of
                 Nothing -> 0
                 Just (rope, _) -> fromIntegral $ Rope.utf8Length rope

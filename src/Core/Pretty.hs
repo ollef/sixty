@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -121,14 +122,15 @@ prettyTerm prec env term =
       prettyParen (prec > funPrec) $
         prettyPiTerm env Explicit term " ->"
     Syntax.Pi binding type_ plicity scope ->
-      prettyParen (prec > funPrec) $
+      prettyParen
+        (prec > funPrec)
         let (env', name) = extendBinding env binding
          in Plicity.prettyAnnotation plicity
               <> lparen
               <> pretty name
               <+> ":"
               <+> prettyTerm 0 env type_
-              <> rparen
+                <> rparen
               <+> "->"
               <+> prettyTerm funPrec env' scope
     Syntax.Fun domain plicity target ->
@@ -145,26 +147,27 @@ prettyTerm prec env term =
         "case"
           <+> prettyTerm 0 env scrutinee
           <+> "of"
-          <> line
-          <> indent
-            2
-            ( vcat $
-                case branches of
-                  Syntax.ConstructorBranches constructorTypeName constructorBranches ->
-                    [ prettyConstr env (Name.QualifiedConstructor constructorTypeName constr) <+> prettyBranch env tele
-                    | (constr, (_, tele)) <- OrderedHashMap.toList constructorBranches
-                    ]
-                  Syntax.LiteralBranches literalBranches ->
-                    [ pretty lit <+> "->" <+> prettyTerm 0 env body
-                    | (lit, (_, body)) <- OrderedHashMap.toList literalBranches
-                    ]
-                  <> [ "_"
-                      <+> "->"
-                      <> line
-                      <> indent 2 (prettyTerm casePrec env branch)
-                     | Just branch <- [defaultBranch]
-                     ]
-            )
+            <> line
+            <> indent
+              2
+              ( vcat $
+                  ( case branches of
+                      Syntax.ConstructorBranches constructorTypeName constructorBranches ->
+                        [ prettyConstr env (Name.QualifiedConstructor constructorTypeName constr) <+> prettyBranch env tele
+                        | (constr, (_, tele)) <- OrderedHashMap.toList constructorBranches
+                        ]
+                      Syntax.LiteralBranches literalBranches ->
+                        [ pretty lit <+> "->" <+> prettyTerm 0 env body
+                        | (lit, (_, body)) <- OrderedHashMap.toList literalBranches
+                        ]
+                  )
+                    <> [ "_"
+                        <+> "->"
+                          <> line
+                          <> indent 2 (prettyTerm casePrec env branch)
+                       | Just branch <- [defaultBranch]
+                       ]
+              )
     Syntax.Spanned _ term' ->
       prettyTerm prec env term'
 
@@ -220,8 +223,8 @@ prettyLamTerm env term =
             <> pretty name
             <+> ":"
             <+> prettyTerm 0 env type_
-            <> rparen
-            <> prettyLamTerm env' scope
+              <> rparen
+              <> prettyLamTerm env' scope
     Syntax.Spanned _ term' ->
       prettyLamTerm env term'
     t ->
@@ -237,8 +240,8 @@ prettyPiTerm env plicity term separator =
                 <> pretty name
                 <+> ":"
                 <+> prettyTerm 0 env type_
-                <> rparen
-                <> prettyPiTerm env' plicity scope separator
+                  <> rparen
+                  <> prettyPiTerm env' plicity scope separator
     Syntax.Spanned _ term' ->
       prettyPiTerm env plicity term' separator
     t ->
@@ -252,14 +255,14 @@ prettyLets env lets =
        in pretty name
             <+> ":"
             <+> prettyTerm letPrec env type_
-            <> line
-            <> prettyLets env' lets'
+              <> line
+              <> prettyLets env' lets'
     Syntax.Let _ index term lets' ->
       prettyTerm letPrec env (Syntax.Var index)
         <+> "="
         <+> prettyTerm letPrec env term
-        <> line
-        <> prettyLets env lets'
+          <> line
+          <> prettyLets env lets'
     Syntax.In term ->
       "in"
         <> line
@@ -280,7 +283,7 @@ prettyBranch env tele =
             <> pretty name
             <+> ":"
             <+> prettyTerm 0 env type_
-            <> ")"
+              <> ")"
             <+> prettyBranch env' tele'
 
 -------------------------------------------------------------------------------
@@ -320,7 +323,7 @@ prettyConstructorDefinitions env tele =
             <> pretty name
             <+> ":"
             <+> prettyTerm 0 env type_
-            <> ")"
+              <> ")"
             <+> prettyConstructorDefinitions env' tele'
 
 prettyConstructorDefinitionsImplicit
@@ -337,9 +340,9 @@ prettyConstructorDefinitionsImplicit env tele =
             <> pretty name
             <+> ":"
             <+> prettyTerm 0 env type_
-            <> rparen
-            <> prettyConstructorDefinitionsImplicit env' tele'
-    Telescope.Extend _ _ _ _ ->
+              <> rparen
+              <> prettyConstructorDefinitionsImplicit env' tele'
+    Telescope.Extend {} ->
       "." <+> prettyConstructorDefinitions env tele
 
 -------------------------------------------------------------------------------

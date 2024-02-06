@@ -200,7 +200,7 @@ evaluate baseName env term args =
     Syntax.Var index -> do
       let var =
             Environment.lookupIndexVar index env
-      applyArgs $
+      applyArgs
         case Environment.lookupVarValue var env of
           Just (Just value, _) ->
             pure value

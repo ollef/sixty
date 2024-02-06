@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module Elaboration.ZonkPostponedChecks where
 
 import qualified Core.Syntax as Syntax

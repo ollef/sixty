@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Assembly.HeapAllocates where
@@ -17,7 +18,7 @@ type HeapAllocates = MaybeT M ()
 run :: HeapAllocates -> M Bool
 run ha = do
   result <- runMaybeT ha
-  pure $ case result of
+  pure case result of
     Nothing -> True
     Just () -> False
 

@@ -25,7 +25,7 @@ highlights filePath (UTF16.LineColumn line column) = do
   spans <- fetch $ Query.ModuleSpanMap moduleName
   contents <- fetch $ Query.FileRope filePath
   let pos =
-        Position.Absolute $
+        Position.Absolute
           case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral $ UTF16.toInt column)) contents of
             Nothing -> 0
             Just (rope, _) -> fromIntegral $ Rope.utf8Length rope
@@ -33,16 +33,16 @@ highlights filePath (UTF16.LineColumn line column) = do
   toLineColumns <- LineColumns.fromAbsolute moduleName
 
   let itemSpans item =
-        fmap concat $
-          forM (HashMap.toList spans) \((definitionKind, name), Span.Absolute defPos _) -> do
+        concat
+          <$> forM (HashMap.toList spans) \((definitionKind, name), Span.Absolute defPos _) -> do
             occurrenceIntervals <-
               fetch $
                 Query.Occurrences definitionKind $
                   Name.Qualified moduleName name
             pure $ toLineColumns . Span.absoluteFrom defPos <$> Intervals.itemSpans item occurrenceIntervals
 
-  fmap concat $
-    forM (HashMap.toList spans) \((definitionKind, name), span@(Span.Absolute defPos _)) ->
+  concat
+    <$> forM (HashMap.toList spans) \((definitionKind, name), span@(Span.Absolute defPos _)) ->
       if span `Span.contains` pos
         then do
           occurrenceIntervals <-
@@ -55,8 +55,8 @@ highlights filePath (UTF16.LineColumn line column) = do
               items =
                 Intervals.intersect relativePos occurrenceIntervals
 
-          fmap concat $
-            forM items \item ->
+          concat
+            <$> forM items \item ->
               case item of
                 Intervals.Var var ->
                   pure $ toLineColumns . Span.absoluteFrom defPos <$> Intervals.varSpans var relativePos occurrenceIntervals

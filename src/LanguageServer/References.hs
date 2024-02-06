@@ -31,15 +31,15 @@ references filePath (UTF16.LineColumn line column) = do
               moduleName == definingModule
                 || any ((==) definingModule . (.module_)) header.imports
         inputFiles <- fetch Query.InputFiles
-        fmap concat $
-          forM (HashSet.toList inputFiles) \inputFile -> do
+        concat
+          <$> forM (HashSet.toList inputFiles) \inputFile -> do
             (moduleName, header, _) <- fetch $ Query.ParsedFile inputFile
             if mightUseDefiningModule moduleName header
               then do
                 spans <- fetch $ Query.ModuleSpanMap moduleName
                 toLineColumns <- LineColumns.fromAbsolute moduleName
-                fmap concat $
-                  forM (HashMap.toList spans) \((definitionKind, name), Span.Absolute defPos _) -> do
+                concat
+                  <$> forM (HashMap.toList spans) \((definitionKind, name), Span.Absolute defPos _) -> do
                     occurrenceIntervals <-
                       fetch $
                         Query.Occurrences definitionKind $
@@ -49,14 +49,14 @@ references filePath (UTF16.LineColumn line column) = do
 
   contents <- fetch $ Query.FileRope filePath
   let pos =
-        Position.Absolute $
+        Position.Absolute
           case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral $ UTF16.toInt column)) contents of
             Nothing -> 0
             Just (rope, _) -> fromIntegral $ Rope.utf8Length rope
   toLineColumns <- LineColumns.fromAbsolute originalModuleName
   spans <- fetch $ Query.ModuleSpanMap originalModuleName
-  fmap concat $
-    forM (HashMap.toList spans) \((definitionKind, name), span@(Span.Absolute defPos _)) ->
+  concat
+    <$> forM (HashMap.toList spans) \((definitionKind, name), span@(Span.Absolute defPos _)) ->
       if span `Span.contains` pos
         then do
           occurrenceIntervals <-

@@ -498,7 +498,7 @@ elaborateWith context spannedTerm@(Surface.Term span term) mode canPostpone = do
                       -- Approximate polymorphic variable inference
                       Domain.Neutral (Domain.Meta _) _ -> do
                         success <- Context.try_ context $ Unification.unify context Flexibility.Rigid type' expectedType
-                        term' <- readback context $ if success then value else Builtin.Unknown expectedType
+                        term' <- readback context if success then value else Builtin.Unknown expectedType
                         pure $ Checked $ Syntax.Spanned span term'
                       _ ->
                         checkUnderBinder
@@ -981,7 +981,7 @@ resolveConstructor constructorCandidates dataCandidates getExpectedTypeName_ =
       pure $ Right $ ResolvedData data_
     _ -> do
       maybeExpectedTypeName <- getExpectedTypeName_
-      pure $ case maybeExpectedTypeName of
+      pure case maybeExpectedTypeName of
         Nothing ->
           Right $ Ambiguous constructorCandidates dataCandidates
         Just (Left blockingMeta) ->

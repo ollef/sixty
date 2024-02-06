@@ -71,7 +71,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
   case query of
     SourceDirectories ->
       input $
-        pure $
+        pure
           case (HashSet.toList sourceDirectories, HashSet.toList files) of
             -- A little hack to allow opening single source files without a project file
             ([], [file]) ->
@@ -79,28 +79,28 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             (sourceDirectoriesList, _) ->
               sourceDirectoriesList
     InputFiles ->
-      input $ do
+      input do
         builtinFile <- liftIO $ Paths.getDataFileName "builtin/Builtin.vix"
         pure $ HashSet.insert builtinFile files
     FileText filePath ->
       input $
-        liftIO $ do
+        liftIO do
           result <- readFile_ filePath
-          pure $ case result of
+          pure case result of
             Left rope -> Rope.toText rope
             Right text -> text
     FileRope filePath ->
       input $
-        liftIO $ do
+        liftIO do
           result <- readFile_ filePath
-          pure $ case result of
+          pure case result of
             Left rope -> rope
             Right text -> Rope.fromText text
     ModuleFile Builtin.Module ->
       noError $
         Just <$> liftIO (Paths.getDataFileName "builtin/Builtin.vix")
     ModuleFile moduleName@(Name.Module moduleNameText) ->
-      nonInput $ do
+      nonInput do
         files_ <- fetch InputFiles
         sourceDirectories_ <- fetch SourceDirectories
         let candidates =
@@ -111,7 +111,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
               , candidate `HashSet.member` files_
               ]
 
-        pure $
+        pure
           case candidates of
             [] ->
               (Nothing, mempty)
@@ -124,7 +124,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
               , [Error.MultipleFilesWithModuleName moduleName filePath1 filePath2]
               )
     ParsedFile filePath ->
-      nonInput $ do
+      nonInput do
         text <- fetch $ FileText filePath
         fileModuleName <- moduleNameFromFilePath
         case Parser.parseTokens Parser.module_ $ Lexer.lexText text of
@@ -146,7 +146,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                           : header.imports
                     }
 
-            pure $
+            pure
               case maybeModuleName of
                 Nothing ->
                   ((fileModuleName, headerImportingBuiltins, definitions), errors)
@@ -176,33 +176,34 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                 ]
 
           pure $
-            Name.Module $
+            Name.Module
               case candidates of
                 [] ->
                   toS filePath
                 firstCandidate : _ ->
                   firstCandidate
     ModuleDefinitions module_ ->
-      noError $ do
+      noError do
         maybeFile <- fetch $ ModuleFile module_
-        fmap (OrderedHashSet.fromList . fold) $
-          forM maybeFile \file -> do
+        OrderedHashSet.fromList . fold
+          <$> forM maybeFile \file -> do
             (_, _, defs) <- fetch $ ParsedFile file
             pure $ fst . snd <$> defs
     ModuleHeader module_ ->
-      nonInput $ do
+      nonInput do
         maybeFilePath <- fetch $ Query.ModuleFile module_
-        fmap fold $
-          forM maybeFilePath \filePath -> do
+        fold
+          <$> forM maybeFilePath \filePath -> do
             (_, header, _) <- fetch $ ParsedFile filePath
-            errors <- fmap concat $
-              forM header.imports \import_ -> do
-                maybeModuleFile <- fetch $ Query.ModuleFile import_.module_
-                pure [Error.ImportNotFound module_ import_ | isNothing maybeModuleFile]
+            errors <-
+              concat
+                <$> forM header.imports \import_ -> do
+                  maybeModuleFile <- fetch $ Query.ModuleFile import_.module_
+                  pure [Error.ImportNotFound module_ import_ | isNothing maybeModuleFile]
             pure (header, errors)
     ImportedNames module_ subQuery ->
       noError $
-        Mapped.rule (ImportedNames module_) subQuery $ do
+        Mapped.rule (ImportedNames module_) subQuery do
           header <- fetch $ ModuleHeader module_
           scopes <- forM header.imports \import_ -> do
             importedHeader <- fetch $ ModuleHeader import_.module_
@@ -213,16 +214,16 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
 
           pure $ foldl' (HashMap.unionWith (<>)) mempty scopes
     NameAliases module_ ->
-      noError $ do
+      noError do
         importedNames <- fetch $ ImportedNames module_ Mapped.Map
         (localScope, _) <- fetch $ ModuleScope module_
         pure $ Scope.aliases $ HashMap.unionWith (<>) localScope importedNames
     ParsedDefinition module_ subQuery ->
       noError $
-        Mapped.rule (ParsedDefinition module_) subQuery $ do
+        Mapped.rule (ParsedDefinition module_) subQuery do
           maybeFilePath <- fetch $ Query.ModuleFile module_
-          fmap fold $
-            forM maybeFilePath \filePath -> do
+          fold
+            <$> forM maybeFilePath \filePath -> do
               (_, _, defs) <- fetch $ ParsedFile filePath
               pure $
                 HashMap.fromListWith
@@ -231,14 +232,14 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                   | (_, (name, def)) <- defs
                   ]
     ModulePositionMap module_ ->
-      noError $ do
+      noError do
         spans <- fetch $ ModuleSpanMap module_
         pure $ (\(Span.Absolute start _) -> start) <$> spans
     ModuleSpanMap module_ ->
-      noError $ do
+      noError do
         maybeFilePath <- fetch $ Query.ModuleFile module_
-        fmap fold $
-          forM maybeFilePath \filePath -> do
+        fold
+          <$> forM maybeFilePath \filePath -> do
             text <- fetch $ FileText filePath
             (_, _, defs) <- fetch $ ParsedFile filePath
             let go = \case
@@ -251,19 +252,19 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
 
             pure $ HashMap.fromListWith (\_new old -> old) $ go defs
     ModuleScope module_ ->
-      nonInput $ do
+      nonInput do
         maybeFilePath <- fetch $ Query.ModuleFile module_
-        fmap fold $
-          forM maybeFilePath \filePath -> do
+        fold
+          <$> forM maybeFilePath \filePath -> do
             (_, _, defs) <- fetch $ ParsedFile filePath
             pure $ Resolution.moduleScopes module_ defs
     ResolvedName module_ surfaceName ->
-      noError $ do
+      noError do
         (privateScope, _) <- fetch $ ModuleScope module_
         importedScopeEntry <- fetchImportedName module_ surfaceName
         pure $ importedScopeEntry <> HashMap.lookup surfaceName privateScope
     ElaboratingDefinition definitionKind qualifiedName@(Name.Qualified module_ name) ->
-      nonInput $ do
+      nonInput do
         mdef <- fetch $ ParsedDefinition module_ $ Mapped.Query (definitionKind, name)
         case mdef of
           Nothing ->
@@ -278,7 +279,10 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                   forM mtype \_ ->
                     fetch $ ElaboratedType qualifiedName
 
-            runElaboratorWithDefault Nothing definitionKind qualifiedName $
+            runElaboratorWithDefault
+              Nothing
+              definitionKind
+              qualifiedName
               case mtype of
                 Nothing ->
                   first Just <$> Elaboration.inferTopLevelDefinition definitionKind qualifiedName def
@@ -290,7 +294,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
       nonInput $
         pure (Syntax.Global Builtin.TypeName, mempty)
     ElaboratedType qualifiedName ->
-      nonInput $ do
+      nonInput do
         mtypeDecl <- fetch $ ElaboratingDefinition Scope.Type qualifiedName
         case mtypeDecl of
           Nothing -> do
@@ -303,14 +307,14 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             (typeDecl', errs) <-
               runElaboratorWithDefault (Syntax.TypeDeclaration $ Builtin.unknown Builtin.type_, Builtin.unknown Builtin.type_) Scope.Type qualifiedName $
                 Elaboration.checkDefinitionMetaSolutions Scope.Type qualifiedName typeDecl type_ metaVars
-            pure $
+            pure
               case typeDecl' of
                 (Syntax.TypeDeclaration result, _) ->
                   (result, errs)
                 _ ->
                   panic "ElaboratedType: Not a type declaration"
     ElaboratedDefinition qualifiedName ->
-      nonInput $ do
+      nonInput do
         maybeDef <- fetch $ ElaboratingDefinition Scope.Definition qualifiedName
         case maybeDef of
           Nothing -> do
@@ -322,12 +326,12 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
               Elaboration.checkDefinitionMetaSolutions Scope.Definition qualifiedName def type_ metaVars
     Dependencies qualifiedName subQuery ->
       noError $
-        Mapped.rule (Dependencies qualifiedName) subQuery $ do
+        Mapped.rule (Dependencies qualifiedName) subQuery do
           (def, type_) <- fetch $ ElaboratedDefinition qualifiedName
           pure $ HashSet.toMap $ Syntax.definitionDependencies def <> Syntax.dependencies type_
     TransitiveDependencies qualifiedName subQuery ->
       noError $
-        Mapped.rule (TransitiveDependencies qualifiedName) subQuery $ do
+        Mapped.rule (TransitiveDependencies qualifiedName) subQuery do
           let go [] done = pure done
               go (dep : todo) done
                 | dep `HashSet.member` done = go todo done
@@ -340,7 +344,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
               (HashMap.keys deps)
               (HashSet.singleton qualifiedName)
     ConstructorType (Name.QualifiedConstructor dataTypeName constr) ->
-      noError $ do
+      noError do
         (def, _) <- fetch $ ElaboratedDefinition dataTypeName
         let fail =
               Builtin.unknown $ Builtin.unknown Builtin.type_
@@ -363,7 +367,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
           _ ->
             pure $ Telescope.Empty fail
     DefinitionPosition definitionKind (Name.Qualified module_ name) ->
-      noError $ do
+      noError do
         positions <- fetch $ ModulePositionMap module_
         maybeFilePath <- fetch $ Query.ModuleFile module_
         pure
@@ -379,13 +383,13 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
               definitionKind
               name
     LambdaLifted qualifiedName ->
-      noError $ do
+      noError do
         (definition, _) <- fetch $ ElaboratedDefinition qualifiedName
         runM $ LambdaLifting.liftDefinition qualifiedName definition
     LambdaLiftedDefinition (Name.Lifted qualifiedName index) ->
-      noError $ do
+      noError do
         (def, liftedDefs) <- fetch $ LambdaLifted qualifiedName
-        pure $
+        pure
           case index of
             0 -> def
             _ ->
@@ -395,24 +399,24 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
                   index
                   liftedDefs
     LambdaLiftedModuleDefinitions module_ ->
-      noError $ do
+      noError do
         names <- fetch $ ModuleDefinitions module_
-        fmap (OrderedHashSet.fromList . concat) $
-          forM (toList names) \name -> do
+        OrderedHashSet.fromList . concat
+          <$> forM (toList names) \name -> do
             let qualifiedName =
                   Name.Qualified module_ name
             (_, extras) <- fetch $ LambdaLifted qualifiedName
             pure $ Name.Lifted qualifiedName <$> 0 : EnumMap.keys extras
     ClosureConverted name ->
-      noError $ do
+      noError do
         definition <- fetch $ LambdaLiftedDefinition name
         ClosureConversion.convertDefinition definition
     ClosureConvertedType name ->
-      noError $ do
+      noError do
         definition <- fetch $ ClosureConverted name
         runM $ ClosureConverted.typeOfDefinition ClosureConverted.Context.empty definition
     ClosureConvertedConstructorType (Name.QualifiedConstructor dataTypeName constr) ->
-      noError $ do
+      noError do
         definition <- fetch $ ClosureConverted $ Name.Lifted dataTypeName 0
         case definition of
           ClosureConverted.Syntax.DataDefinition _ (ClosureConverted.Syntax.ConstructorDefinitions constrs) ->
@@ -441,43 +445,44 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
           _ ->
             panic "ClosureConvertedConstructorType: none-datatype"
     ClosureConvertedSignature name ->
-      noError $ do
+      noError do
         definition <- fetch $ ClosureConverted name
         runM $ ClosureConverted.Representation.signature definition
     ConstructorRepresentations dataTypeName ->
       noError $ ClosureConverted.Representation.constructorRepresentations dataTypeName
     ConstructorRepresentation (Name.QualifiedConstructor dataTypeName constr) ->
-      noError $ do
+      noError do
         (boxity, maybeTags) <- fetch $ ConstructorRepresentations dataTypeName
         pure (boxity, (HashMap.! constr) <$> maybeTags)
     Assembly name ->
-      noError $ do
+      noError do
         definition <- fetch $ ClosureConverted name
         runM $ ClosureConvertedToAssembly.generateDefinition name definition
     HeapAllocates name ->
-      noError $ do
+      noError do
         maybeAssembly <- fetch $ Assembly name
         case maybeAssembly of
           Nothing -> pure False
           Just assembly ->
             runM $ Assembly.HeapAllocates.run $ Assembly.definitionHeapAllocates assembly
     AssemblyModule module_ ->
-      noError $ do
+      noError do
         names <- fetch $ LambdaLiftedModuleDefinitions module_
-        assemblyDefinitions <- fmap concat $
-          forM (toList names) \name -> do
-            maybeAssembly <- fetch $ Assembly name
-            pure $ toList $ (name,) <$> maybeAssembly
+        assemblyDefinitions <-
+          concat
+            <$> forM (toList names) \name -> do
+              maybeAssembly <- fetch $ Assembly name
+              pure $ toList $ (name,) <$> maybeAssembly
         moduleInitDefs <-
           runM $
             ClosureConvertedToAssembly.generateModuleInit module_ assemblyDefinitions
         pure $ moduleInitDefs <> assemblyDefinitions
     LLVMModule module_ ->
-      noError $ do
+      noError do
         assemblyDefinitions <- fetch $ AssemblyModule module_
         pure $ AssemblyToLLVM.assembleModule assemblyDefinitions
     LLVMModuleInitModule ->
-      noError $ do
+      noError do
         inputFiles <- fetch Query.InputFiles
         moduleNames <- forM (toList inputFiles) \filePath -> do
           (moduleName, _, _) <- fetch $ Query.ParsedFile filePath
@@ -504,7 +509,7 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
       -> Task Query (a, [Error])
     runElaboratorWithDefault default_ definitionKind defName m = do
       eitherResult <- try $ runM m
-      pure $
+      pure
         case eitherResult of
           Left err ->
             ( default_

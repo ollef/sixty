@@ -205,17 +205,16 @@ handle logger =
             Hover.hover (uriToFilePath uri) (positionFromPosition position)
 
         let response =
-              foreach maybeAnnotation $
-                \(span, doc) ->
-                  LSP.Hover
-                    { _contents =
-                        LSP.InL
-                          LSP.MarkupContent
-                            { _kind = LSP.MarkupKind_PlainText
-                            , _value = show doc
-                            }
-                    , _range = Just $ spanToRange span
-                    }
+              foreach maybeAnnotation \(span, doc) ->
+                LSP.Hover
+                  { _contents =
+                      LSP.InL
+                        LSP.MarkupContent
+                          { _kind = LSP.MarkupKind_PlainText
+                          , _value = show doc
+                          }
+                  , _range = Just $ spanToRange span
+                  }
 
         respond $ Right $ LSP.maybeToNull response
     , LSP.requestHandler LSP.SMethod_TextDocumentDefinition \message respond -> do
@@ -247,12 +246,11 @@ handle logger =
             maybeContext = message ^. LSP.params . LSP.context
 
         (completions, _) <-
-          runTask Driver.Don'tPrune $
-            case maybeContext of
-              Just (LSP.CompletionContext LSP.CompletionTriggerKind_TriggerCharacter (Just "?")) ->
-                Completion.questionMark (uriToFilePath uri) (positionFromPosition position)
-              _ ->
-                Completion.complete (uriToFilePath uri) (positionFromPosition position)
+          runTask Driver.Don'tPrune case maybeContext of
+            Just (LSP.CompletionContext LSP.CompletionTriggerKind_TriggerCharacter (Just "?")) ->
+              Completion.questionMark (uriToFilePath uri) (positionFromPosition position)
+            _ ->
+              Completion.complete (uriToFilePath uri) (positionFromPosition position)
 
         logger <& ("handle CompletionResponse: " <> show completions) `WithSeverity` Info
 

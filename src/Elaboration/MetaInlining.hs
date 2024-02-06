@@ -545,7 +545,7 @@ inlineArguments value@(Value innerValue _) type_@(Value innerType _) args subst 
       case (innerValue, innerType) of
         (Lam name var argType plicity1 body, Pi name' var' domain plicity2 target)
           | plicity1 == plicity2 ->
-              sharing (value, type_) $ do
+              sharing (value, type_) do
                 argType' <- substitute subst argType
                 domain' <- substitute subst domain
                 (body', target') <- inlineArguments body target args' subst
@@ -563,69 +563,66 @@ substitute subst
   | otherwise =
       go
   where
-    go value@(Value innerValue occs) =
-      sharing value $
-        case innerValue of
-          Var var ->
-            case EnumMap.lookup var subst of
-              Nothing ->
-                pure value
-              Just value' -> do
-                modified
-                pure value'
-          Global _ ->
+    go value@(Value innerValue occs) = sharing value case innerValue of
+      Var var ->
+        case EnumMap.lookup var subst of
+          Nothing ->
             pure value
-          Con _ ->
-            pure value
-          Lit _ ->
-            pure value
-          Meta index args ->
-            makeMeta index <$> mapM go args
-          PostponedCheck index value' ->
-            makePostponedCheck index <$> go value'
-          LetsValue lets ->
-            makeLets <$> goLets (Lets lets occs)
-          Pi name var domain plicity target ->
-            makePi name var <$> go domain <*> pure plicity <*> go target
-          Fun domain plicity target ->
-            makeFun <$> go domain <*> pure plicity <*> go target
-          Lam name var type_ plicity body ->
-            makeLam name var <$> go type_ <*> pure plicity <*> go body
-          App function plicity argument ->
-            makeApp <$> go function <*> pure plicity <*> go argument
-          Case scrutinee branches defaultBranch ->
-            makeCase
-              <$> go scrutinee
-              <*> ( case branches of
-                      ConstructorBranches constructorTypeName constructorBranches ->
-                        ConstructorBranches constructorTypeName
-                          <$> OrderedHashMap.forMUnordered
-                            constructorBranches
-                            ( \(span, (bindings, body)) -> do
-                                bindings' <- forM bindings \(name, var, type_, plicity) ->
-                                  (name,var,,plicity) <$> go type_
+          Just value' -> do
+            modified
+            pure value'
+      Global _ ->
+        pure value
+      Con _ ->
+        pure value
+      Lit _ ->
+        pure value
+      Meta index args ->
+        makeMeta index <$> mapM go args
+      PostponedCheck index value' ->
+        makePostponedCheck index <$> go value'
+      LetsValue lets ->
+        makeLets <$> goLets (Lets lets occs)
+      Pi name var domain plicity target ->
+        makePi name var <$> go domain <*> pure plicity <*> go target
+      Fun domain plicity target ->
+        makeFun <$> go domain <*> pure plicity <*> go target
+      Lam name var type_ plicity body ->
+        makeLam name var <$> go type_ <*> pure plicity <*> go body
+      App function plicity argument ->
+        makeApp <$> go function <*> pure plicity <*> go argument
+      Case scrutinee branches defaultBranch ->
+        makeCase
+          <$> go scrutinee
+          <*> ( case branches of
+                  ConstructorBranches constructorTypeName constructorBranches ->
+                    ConstructorBranches constructorTypeName
+                      <$> OrderedHashMap.forMUnordered
+                        constructorBranches
+                        ( \(span, (bindings, body)) -> do
+                            bindings' <- forM bindings \(name, var, type_, plicity) ->
+                              (name,var,,plicity) <$> go type_
 
-                                body' <- go body
-                                pure (span, (bindings', body'))
-                            )
-                      LiteralBranches literalBranches ->
-                        LiteralBranches
-                          <$> OrderedHashMap.mapMUnordered (mapM go) literalBranches
-                  )
-              <*> mapM go defaultBranch
-          Spanned span value' ->
-            makeSpanned span <$> go (Value value' occs)
+                            body' <- go body
+                            pure (span, (bindings', body'))
+                        )
+                  LiteralBranches literalBranches ->
+                    LiteralBranches
+                      <$> OrderedHashMap.mapMUnordered (mapM go) literalBranches
+              )
+          <*> mapM go defaultBranch
+      Spanned span value' ->
+        makeSpanned span <$> go (Value value' occs)
 
     goLets :: Lets -> Shared Lets
     goLets lets@(Lets innerLets occs) =
-      sharing lets $
-        case innerLets of
-          LetType name var type_ lets' ->
-            makeLetType name var <$> go type_ <*> goLets lets'
-          Let name var value lets' ->
-            makeLet name var <$> go value <*> goLets lets'
-          In value ->
-            makeIn <$> go (Value value occs)
+      sharing lets case innerLets of
+        LetType name var type_ lets' ->
+          makeLetType name var <$> go type_ <*> goLets lets'
+        Let name var value lets' ->
+          makeLet name var <$> go value <*> goLets lets'
+        In value ->
+          makeIn <$> go (Value value occs)
 
 data Shared a = Shared !Bool a
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
@@ -649,10 +646,7 @@ modified =
 
 sharing :: a -> Shared a -> Shared a
 sharing a (Shared modified_ a') =
-  Shared modified_ $
-    if modified_
-      then a'
-      else a
+  Shared modified_ if modified_ then a' else a
 
 unShared :: Shared a -> a
 unShared (Shared _ a) =
@@ -681,7 +675,7 @@ inlineIndex index targetScope solution@(solutionVar, occurrenceCount, duplicable
                   <$> filter
                     (isNothing . fst)
                     (zip (duplicableArgs <> repeat Nothing) (toList args))
-          pure $ foldl' (\v1 v2 -> makeApp v1 Explicit v2) solutionValue remainingArgs
+          pure $ foldl' (`makeApp` Explicit) solutionValue remainingArgs
     _
       | EnumSet.null targetScope && occurrenceCount > 1 ->
           if index `EnumMap.member` occurrencesMap value
@@ -728,8 +722,8 @@ inlineIndex index targetScope solution@(solutionVar, occurrenceCount, duplicable
       scrutinee' <- recurse scrutinee
       branches' <- case branches of
         ConstructorBranches constructorTypeName constructorBranches ->
-          fmap (ConstructorBranches constructorTypeName) $
-            OrderedHashMap.forMUnordered constructorBranches \(span, (bindings, body)) -> do
+          ConstructorBranches constructorTypeName
+            <$> OrderedHashMap.forMUnordered constructorBranches \(span, (bindings, body)) -> do
               let go targetScope' bindings' =
                     case bindings' of
                       [] -> do
@@ -751,20 +745,19 @@ inlineIndex index targetScope solution@(solutionVar, occurrenceCount, duplicable
 
 inlineLetsIndex :: Meta.Index -> EnumSet Var -> (Var, Int, [Maybe DuplicableValue], Value, Value) -> Lets -> Shared Lets
 inlineLetsIndex index targetScope solution lets@(Lets innerLets occs) =
-  sharing lets $
-    case innerLets of
-      LetType name var type_ lets' ->
-        makeLetType name var <$> recurseValue type_ <*> recurseScope var lets'
-      Let name var value lets' ->
-        makeLet name var <$> recurseValue value <*> recurseLets lets'
-      In value ->
-        makeIn <$> recurseValue (Value value occs)
+  sharing lets case innerLets of
+    LetType name var type_ lets' ->
+      makeLetType name var <$> recurseValue type_ <*> recurseScope var lets'
+    Let name var value lets' ->
+      makeLet name var <$> recurseValue value <*> recurseLets lets'
+    In value ->
+      makeIn <$> recurseValue (Value value occs)
   where
-    recurseLets lets' =
-      inlineLetsIndex index targetScope solution lets'
+    recurseLets =
+      inlineLetsIndex index targetScope solution
 
-    recurseScope var lets' =
-      inlineLetsIndex index (EnumSet.delete var targetScope) solution lets'
+    recurseScope var =
+      inlineLetsIndex index (EnumSet.delete var targetScope) solution
 
-    recurseValue value =
-      inlineIndex index targetScope solution value
+    recurseValue =
+      inlineIndex index targetScope solution

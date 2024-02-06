@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE FlexibleContexts #-}
 
 module ClosureConversion where
@@ -101,20 +102,19 @@ convertGlobal global args = do
         applyArgs args $ pure $ ClosureConverted.Global global
 
       functionCase tele =
-        pure $
-          case (Telescope.length tele, length args) of
-            (arity, numArgs)
-              | arity == numArgs ->
-                  ClosureConverted.Apply global args
-              | arity < numArgs -> do
-                  let (preArgs, postArgs) =
-                        splitAt arity args
+        pure case (Telescope.length tele, length args) of
+          (arity, numArgs)
+            | arity == numArgs ->
+                ClosureConverted.Apply global args
+            | arity < numArgs -> do
+                let (preArgs, postArgs) =
+                      splitAt arity args
 
-                  ClosureConverted.ApplyClosure
-                    (ClosureConverted.Apply global preArgs)
-                    postArgs
-              | otherwise ->
-                  ClosureConverted.Closure global args
+                ClosureConverted.ApplyClosure
+                  (ClosureConverted.Apply global preArgs)
+                  postArgs
+            | otherwise ->
+                ClosureConverted.Closure global args
 
   case definition of
     LambdaLifted.TypeDeclaration type_ ->

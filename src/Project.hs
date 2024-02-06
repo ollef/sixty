@@ -30,8 +30,8 @@ filesFromArguments files = do
       workingDirectory <- Directory.getCurrentDirectory
       filesFromProjectInDirectory workingDirectory
     _ ->
-      fmap mconcat $
-        forM files' \file -> do
+      mconcat
+        <$> forM files' \file -> do
           isDir <- Directory.doesDirectoryExist file
           isFile <- Directory.doesFileExist file
           case () of
@@ -98,8 +98,8 @@ listProject file project = do
 listDirectoryRecursive :: (FilePath -> Bool) -> FilePath -> IO (HashSet FilePath)
 listDirectoryRecursive p dir = do
   files <- Directory.listDirectory dir
-  fmap mconcat $
-    forM files \file -> do
+  mconcat
+    <$> forM files \file -> do
       let path = dir FilePath.</> file
       isDir <- Directory.doesDirectoryExist path
       if isDir

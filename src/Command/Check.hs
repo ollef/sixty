@@ -25,7 +25,10 @@ check argumentFiles printElaborated = do
   startTime <- getCurrentTime
   (sourceDirectories, filePaths) <- Project.filesFromArguments argumentFiles
   ((), errs) <-
-    Driver.runTask sourceDirectories filePaths Error.Hydrated.pretty $
+    Driver.runTask
+      sourceDirectories
+      filePaths
+      Error.Hydrated.pretty
       if printElaborated
         then withAsync (void Driver.checkAll) \checkedAll -> do
           inputFiles <- fetch Query.InputFiles
@@ -40,7 +43,7 @@ check argumentFiles printElaborated = do
               type_ <- fetch $ Query.ElaboratedType name
               liftIO $ putDoc $ Pretty.prettyDefinition emptyPrettyEnv name (Syntax.TypeDeclaration type_) <> line
               (definition, _) <- fetch $ Query.ElaboratedDefinition name
-              liftIO $ do
+              liftIO do
                 case definition of
                   Syntax.TypeDeclaration {} -> pure ()
                   _ -> putDoc $ Pretty.prettyDefinition emptyPrettyEnv name definition <> line

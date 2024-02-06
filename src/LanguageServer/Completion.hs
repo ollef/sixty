@@ -90,8 +90,8 @@ questionMark filePath (UTF16.LineColumn line column) =
 
         metasBefore <- readIORef context.metas
         lift $
-          fmap concat $
-            forM names \(name, value, kind) -> do
+          concat
+            <$> forM names \(name, value, kind) -> do
               writeIORef context.metas metasBefore
               type_ <- TypeOf.typeOf context value
               (maxArgs, _) <- Elaboration.insertMetas context Elaboration.UntilTheEnd type_
@@ -102,12 +102,12 @@ questionMark filePath (UTF16.LineColumn line column) =
                     writeIORef context.metas metasBefore'
                     appliedValue <- lift $ foldM (\fun (plicity, arg) -> Evaluation.apply fun plicity arg) value args
                     appliedType <- lift $ TypeOf.typeOf context appliedValue
-                    MaybeT $ do
+                    MaybeT do
                       isSubtype <- Elaboration.isSubtype context appliedType typeUnderCursor
-                      pure $ if isSubtype then Just () else Nothing
+                      pure if isSubtype then Just () else Nothing
                     pure args
 
-              pure $ case maybeArgs of
+              pure case maybeArgs of
                 Nothing ->
                   -- typeUnderCursor' <- Elaboration.readback context typeUnderCursor
                   -- type' <- Elaboration.readback context type_
@@ -117,8 +117,7 @@ questionMark filePath (UTF16.LineColumn line column) =
                   -- Text.hPutStrLn stderr $ "nothing toc " <> show prettyTypeUnderCursor
                   []
                 Just args -> do
-                  let explicitArgs =
-                        filter ((== Explicit) . fst) args
+                  let explicitArgs = filter ((== Explicit) . fst) args
                   pure
                     LSP.CompletionItem
                       { _label = name
@@ -213,11 +212,12 @@ getUsableNames itemContext context varPositions = do
       Scope.Constructors constrs datas -> do
         let go =
               pure $
-                case toList datas of
-                  [data_] ->
-                    [(name, Domain.global data_, LSP.CompletionItemKind_Enum)]
-                  _ ->
-                    []
+                ( case toList datas of
+                    [data_] ->
+                      [(name, Domain.global data_, LSP.CompletionItemKind_Enum)]
+                    _ ->
+                      []
+                )
                   <> [ (name, Domain.con con, LSP.CompletionItemKind_EnumMember)
                      | con <- toList constrs
                      ]

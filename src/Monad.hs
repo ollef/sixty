@@ -1,6 +1,5 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE OverloadedStrings #-}
 
 module Monad where
 
@@ -25,6 +24,8 @@ data Lazy a = Lazy a
 force :: Lazy a -> M a
 force (Lazy a) =
   liftIO $ evaluate a
+
+{-# ANN module "HLint: ignore Use newtype instead of data" #-}
 
 {-# NOINLINE lazy #-}
 lazy :: M a -> M (Lazy a)

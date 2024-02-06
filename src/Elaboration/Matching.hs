@@ -155,8 +155,8 @@ resolvePattern context unspannedPattern type_ canPostpone = do
       pure Wildcard
     Surface.LitPattern lit ->
       pure $ Lit lit
-    Surface.Anno pattern annoType ->
-      pure $ Anno pattern annoType
+    Surface.Anno pat annoType ->
+      pure $ Anno pat annoType
     Surface.Forced term ->
       pure $ Forced term
 
@@ -269,7 +269,7 @@ check context config canPostpone = do
   case clauses of
     [] -> do
       exhaustive <- anyM (uninhabitedScrutinee context . snd) config.scrutinees
-      unless exhaustive $ do
+      unless exhaustive do
         scrutinees <- forM config.scrutinees \(plicity, scrutinee) -> do
           patterns <- uncoveredScrutineePatterns context scrutinee
           pure $ (,) plicity <$> (Context.toPrettyablePattern context <$> patterns)
@@ -446,7 +446,7 @@ simplifyMatch context canPostpone match@(Match value forcedValue plicity pat typ
       case (forcedValue', unspannedPattern) of
         (Domain.Con constr args, Con _ constr' pats)
           | constr == constr' -> do
-              matches' <- lift $ do
+              matches' <- lift do
                 constrType <- fetch $ Query.ConstructorType constr
                 (patsType, patSpine) <-
                   instantiateConstructorType
@@ -603,7 +603,7 @@ expandAnnotations context matches =
         Nothing ->
           case match of
             Match value forcedValue plicity (Pattern span (Anno pat annoType)) type_ -> do
-              lift $ do
+              lift do
                 annoType' <- Elaboration.check context annoType Builtin.Type
                 annoType'' <- Elaboration.evaluate context annoType'
                 let context' =
@@ -709,7 +709,7 @@ splitConstructor outerContext config scrutineeValue scrutineeHead scrutineeSpine
             OrderedHashMap.fromListWith (<>)
               . concat
               <$> mapWhileM
-                (fmap $ \xs -> if null xs then Nothing else Just xs)
+                (fmap \xs -> if null xs then Nothing else Just xs)
                 (findConstructorMatches context scrutineeHead scrutineeSpine . (.matches) <$> config.clauses)
 
           branches <- forM (OrderedHashMap.toList matchedConstructors) \(qualifiedConstr@(Name.QualifiedConstructor _ constr), patterns) -> do
@@ -836,7 +836,7 @@ splitLiteral context config scrutineeValue scrutineeHead scrutineeSpine span lit
   matchedLiterals <-
     OrderedHashMap.fromListWith (<>) . concat
       <$> mapWhileM
-        (fmap $ \xs -> if null xs then Nothing else Just xs)
+        (fmap \xs -> if null xs then Nothing else Just xs)
         (findLiteralMatches context scrutineeHead scrutineeSpine . (.matches) <$> config.clauses)
 
   f <- Unification.tryUnify (Context.spanned span context) (Elaboration.inferLiteral lit) outerType
@@ -960,7 +960,7 @@ uninhabitedType context fuel covered type_ = do
   case type' of
     Builtin.Equals _ value1 value2 -> do
       result <- try $ Equation.equate context Flexibility.Rigid value1 value2
-      pure $ case result of
+      pure case result of
         Left Equation.Nope ->
           True
         Left Equation.Dunno ->

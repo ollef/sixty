@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -85,12 +86,11 @@ definitionConstructorSpans
   -> m [(Span.Relative, Name.QualifiedConstructor)]
 definitionConstructorSpans definitionKind qualifiedName@(Name.Qualified moduleName name) = do
   maybeParsedDefinition <- fetch $ Query.ParsedDefinition moduleName $ Mapped.Query (definitionKind, name)
-  pure $
-    case maybeParsedDefinition of
-      Nothing ->
-        []
-      Just parsedDefinition ->
-        second (Name.QualifiedConstructor qualifiedName) <$> Surface.constructorSpans parsedDefinition
+  pure case maybeParsedDefinition of
+    Nothing ->
+      []
+    Just parsedDefinition ->
+      second (Name.QualifiedConstructor qualifiedName) <$> Surface.constructorSpans parsedDefinition
 
 termOccurrences
   :: Domain.Environment v

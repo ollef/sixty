@@ -107,7 +107,7 @@ varView term =
 
 funs :: (Foldable f) => f (Term v) -> Plicity -> Term v -> Term v
 funs args plicity res =
-  foldr (\a b -> Fun a plicity b) res args
+  foldr (`Fun` plicity) res args
 
 succ :: Term v -> Term (Succ v)
 succ =

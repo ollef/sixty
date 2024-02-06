@@ -47,7 +47,7 @@ compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel = d
   -- TODO configurable clang path
   let optimisationArgs =
         maybe [] (\o -> ["-O" <> o]) maybeOptimisationLevel
-  liftIO $
+  liftIO
     if saveAssembly
       then do
         let linkedProgramName =

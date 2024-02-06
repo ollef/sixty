@@ -150,7 +150,7 @@ freshName (Assembly.NameSuggestion nameSuggestion) = do
     s
       { usedNames = HashMap.insert bsName (i + 1) usedNames
       }
-  pure $ Name $ if i == 0 then bsName else bsName <> "$" <> ShortByteString.toShort (toUtf8 (show i :: Text))
+  pure $ Name if i == 0 then bsName else bsName <> "$" <> ShortByteString.toShort (toUtf8 (show i :: Text))
 
 activateLocal :: Assembly.Type -> Assembly.Local -> Assembler Name
 activateLocal type_ local@(Assembly.Local _ nameSuggestion) = do
@@ -203,8 +203,8 @@ assembleModule definitions = do
 
 assembleDefinition :: Name.Lifted -> Assembly.Definition -> ([(Name, Builder)], HashMap Name Builder)
 assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
-  second (.usedGlobals)
-    $ flip
+  second (.usedGlobals) $
+    flip
       runState
       AssemblerState
         { locals = mempty
@@ -214,77 +214,77 @@ assembleDefinition name@(Name.Lifted _ liftedNameNumber) definition =
         , basicBlocks = mempty
         , basicBlockName = panic "AssemblyToLLVM: not in a basic block"
         }
-    $ case definition of
-      Assembly.KnownConstantDefinition type_ (Literal.Integer value) isConstant -> do
-        let type' = llvmType type_
-        pure
-          [
-            ( name'
-            , globalName name'
-                <> " = unnamed_addr "
-                <> linkage
-                <> (if isConstant then "constant " else "global ")
-                <> type'
-                <> " "
-                <> Builder.integerDec value
-            )
-          ]
-      Assembly.ConstantDefinition type_ functionReturnType parameters basicBlock -> do
-        let type' = llvmType type_
-            initName = assembleName $ ClosureConvertedToAssembly.initDefinitionName name
-        parameters' <- mapM (uncurry activateLocal) parameters
-        assembleBasicBlockReturningResult functionReturnType basicBlock
-        basicBlocks <- gets (.basicBlocks)
-        pure
-          [
-            ( name'
-            , globalName name' <> " = unnamed_addr " <> linkage <> "global " <> type' <> " undef"
-            )
-          ,
-            ( initName
-            , "define private fastcc "
-                <> llvmReturnType functionReturnType
-                <> " "
-                <> globalName initName
-                <> parens [typedOperand TypedOperand {type_ = pointer, operand = Local p} | p <- parameters']
-                <> " align "
-                <> Builder.intDec alignment
-                <> " {"
-                <> basicBlocks
-                <> "\n}"
-            )
-          ]
-      Assembly.FunctionDefinition returnType parameters basicBlock -> do
-        parameters' <- mapM (uncurry activateLocal) parameters
-        assembleBasicBlockReturningResult returnType basicBlock
-        basicBlocks <- gets (.basicBlocks)
-        pure
-          [
-            ( name'
-            , "define "
-                <> linkage
-                <> "fastcc "
-                <> llvmReturnType returnType
-                <> " "
-                <> globalName (assembleName name)
-                <> parens
-                  [ separate
-                    " "
-                    ( concat
-                        [ [llvmType type_]
-                        , parameterAttributes type_
-                        , [localName parameter]
-                        ]
-                    )
-                  | ((type_, _), parameter) <- zip parameters parameters'
-                  ]
-                <> " align "
-                <> Builder.intDec alignment
-                <> " {"
-                <> basicBlocks
-                <> "\n}"
-            )
-          ]
+      case definition of
+        Assembly.KnownConstantDefinition type_ (Literal.Integer value) isConstant -> do
+          let type' = llvmType type_
+          pure
+            [
+              ( name'
+              , globalName name'
+                  <> " = unnamed_addr "
+                  <> linkage
+                  <> (if isConstant then "constant " else "global ")
+                  <> type'
+                  <> " "
+                  <> Builder.integerDec value
+              )
+            ]
+        Assembly.ConstantDefinition type_ functionReturnType parameters basicBlock -> do
+          let type' = llvmType type_
+              initName = assembleName $ ClosureConvertedToAssembly.initDefinitionName name
+          parameters' <- mapM (uncurry activateLocal) parameters
+          assembleBasicBlockReturningResult functionReturnType basicBlock
+          basicBlocks <- gets (.basicBlocks)
+          pure
+            [
+              ( name'
+              , globalName name' <> " = unnamed_addr " <> linkage <> "global " <> type' <> " undef"
+              )
+            ,
+              ( initName
+              , "define private fastcc "
+                  <> llvmReturnType functionReturnType
+                  <> " "
+                  <> globalName initName
+                  <> parens [typedOperand TypedOperand {type_ = pointer, operand = Local p} | p <- parameters']
+                  <> " align "
+                  <> Builder.intDec alignment
+                  <> " {"
+                  <> basicBlocks
+                  <> "\n}"
+              )
+            ]
+        Assembly.FunctionDefinition returnType parameters basicBlock -> do
+          parameters' <- mapM (uncurry activateLocal) parameters
+          assembleBasicBlockReturningResult returnType basicBlock
+          basicBlocks <- gets (.basicBlocks)
+          pure
+            [
+              ( name'
+              , "define "
+                  <> linkage
+                  <> "fastcc "
+                  <> llvmReturnType returnType
+                  <> " "
+                  <> globalName (assembleName name)
+                  <> parens
+                    [ separate
+                      " "
+                      ( concat
+                          [ [llvmType type_]
+                          , parameterAttributes type_
+                          , [localName parameter]
+                          ]
+                      )
+                    | ((type_, _), parameter) <- zip parameters parameters'
+                    ]
+                  <> " align "
+                  <> Builder.intDec alignment
+                  <> " {"
+                  <> basicBlocks
+                  <> "\n}"
+              )
+            ]
   where
     name' = assembleName name
     linkage =

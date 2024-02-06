@@ -71,7 +71,7 @@ instance Monad Watcher where
         modifyMVar_ stopListening2Var \stopListening2 -> do
           stopListening2
           runWatcher (f value1) manager onChange
-      pure $ do
+      pure do
         stopListening1
         modifyMVar_ stopListening2Var \stopListening2 -> do
           stopListening2
@@ -147,8 +147,8 @@ watcherFromArguments files =
           projectFile' <- Directory.canonicalizePath projectFile
           pure $ projectWatcher projectFile'
     _ ->
-      fmap mconcat $
-        forM files \file -> do
+      mconcat
+        <$> forM files \file -> do
           file' <- Directory.canonicalizePath file
           isDir <- Directory.doesDirectoryExist file'
           case () of
@@ -241,8 +241,8 @@ directoryWatcher predicate directory = Watcher \manager onChange -> do
 listDirectoryRecursive :: (FilePath -> Bool) -> FilePath -> IO (HashMap FilePath Text)
 listDirectoryRecursive predicate directory = do
   files <- Directory.listDirectory directory
-  fmap mconcat $
-    forM files \file -> do
+  mconcat
+    <$> forM files \file -> do
       path <- Directory.canonicalizePath $ directory FilePath.</> file
       isDir <- Directory.doesDirectoryExist path
       if isDir

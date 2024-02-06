@@ -224,7 +224,7 @@ solutionMetas metaIndex state = do
       | EnumSet.null metas.unsolved ->
           pure (Just metas, state)
       | otherwise ->
-          flip runStateT state $ do
+          flip runStateT state do
             indirects <- forM (EnumSet.toList metas.unsolved) \i ->
               (,) i <$> StateT (solutionMetas i)
 

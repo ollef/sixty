@@ -1,5 +1,4 @@
 {-# LANGUAGE BlockArguments #-}
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedRecordDot #-}
@@ -189,7 +188,7 @@ headingAndBody error =
                 <+> "applies or not, because the unification of a constructor type's indices failed to produce a definite result."
             )
         Error.PlicityMismatch fieldOrArg plicityMismatch ->
-          pure $ case plicityMismatch of
+          pure case plicityMismatch of
             Error.Mismatch expected_ actual ->
               ( "Plicity mismatch"
               , "Expected an"
@@ -245,12 +244,12 @@ pretty h = do
       <> Doc.pretty h.lineColumn
       <> ":"
       <+> heading
-      <> line
-      <> line
-      <> body
-      <> line
-      <> line
-      <> spannedLine
+        <> line
+        <> line
+        <> body
+        <> line
+        <> line
+        <> spannedLine
   where
     spannedLine =
       let UTF16.LineColumns
@@ -293,7 +292,7 @@ fromError err = do
         pure (fromMaybe "<no file>" maybeModuleFile, Right span)
       Error.ImportNotFound module_ import_ -> do
         maybeModuleFile <- fetch $ Query.ModuleFile module_
-        pure (fromMaybe "<no file>" maybeModuleFile, Right $ import_.span)
+        pure (fromMaybe "<no file>" maybeModuleFile, Right import_.span)
       Error.MultipleFilesWithModuleName _ _ file2 ->
         pure (file2, Right $ Span.Absolute 0 0)
       Error.ModuleFileNameMismatch _ _ span file ->

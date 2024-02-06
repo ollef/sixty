@@ -1,5 +1,4 @@
 {-# LANGUAGE BlockArguments #-}
-{-# LANGUAGE OverloadedStrings #-}
 
 module LanguageServer.CodeLens where
 
@@ -22,36 +21,34 @@ import qualified Surface.Syntax as Surface
 import qualified UTF16
 
 codeLens :: FilePath -> Task Query [(UTF16.LineColumns, Doc ann)]
-codeLens filePath =
-  runM $ do
-    (moduleName, _, defs) <- fetch $ Query.ParsedFile filePath
+codeLens filePath = runM do
+  (moduleName, _, defs) <- fetch $ Query.ParsedFile filePath
 
-    toLineColumns <- LineColumns.fromAbsolute moduleName
-    let previousDefs =
-          Nothing : fmap Just defs
-    fmap concat $
-      forM (zip previousDefs defs) \(previousDef, (pos, (name@(Name nameText), def))) -> do
-        let qualifiedName =
-              Name.Qualified moduleName name
+  toLineColumns <- LineColumns.fromAbsolute moduleName
+  let previousDefs = Nothing : fmap Just defs
+  concat
+    <$> forM (zip previousDefs defs) \(previousDef, (pos, (name@(Name nameText), def))) -> do
+      let qualifiedName =
+            Name.Qualified moduleName name
 
-            go = do
-              context <- Context.empty Scope.Definition qualifiedName
-              type_ <- fetch $ Query.ElaboratedType qualifiedName
-              prettyType <- Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context type_
-              pure
-                [
-                  ( toLineColumns $ Span.Absolute pos $ pos + Position.Absolute (Text.lengthWord8 nameText)
-                  , prettyType
-                  )
-                ]
+          go = do
+            context <- Context.empty Scope.Definition qualifiedName
+            type_ <- fetch $ Query.ElaboratedType qualifiedName
+            prettyType <- Error.prettyPrettyableTerm 0 =<< Context.toPrettyableTerm context type_
+            pure
+              [
+                ( toLineColumns $ Span.Absolute pos $ pos + Position.Absolute (Text.lengthWord8 nameText)
+                , prettyType
+                )
+              ]
 
-        case (previousDef, def) of
-          (Just (_, (previousName, Surface.TypeDeclaration {})), _)
-            | previousName == name ->
-                pure []
-          (_, Surface.TypeDeclaration {}) ->
-            pure []
-          (_, Surface.ConstantDefinition {}) ->
-            go
-          (_, Surface.DataDefinition {}) ->
-            go
+      case (previousDef, def) of
+        (Just (_, (previousName, Surface.TypeDeclaration {})), _)
+          | previousName == name ->
+              pure []
+        (_, Surface.TypeDeclaration {}) ->
+          pure []
+        (_, Surface.ConstantDefinition {}) ->
+          go
+        (_, Surface.DataDefinition {}) ->
+          go

@@ -8,4 +8,4 @@ import System.Process
 
 run :: Command.Compile.Options -> IO ()
 run =
-  Command.Compile.withCompiledExecutable \exe -> callProcess exe []
+  Command.Compile.withCompiledExecutable (`callProcess` [])

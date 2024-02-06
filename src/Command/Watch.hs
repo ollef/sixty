@@ -32,9 +32,9 @@ watch argumentFiles = do
             }
       void $ tryPutMVar signalChangeVar ()
 
-    (`finally` stopListening) $ do
+    (`finally` stopListening) do
       driverState <- Driver.initialState
-      forever $ do
+      forever do
         projectFiles <- waitForChanges signalChangeVar fileStateVar driverState
         checkAndPrintErrors driverState projectFiles
 

@@ -28,7 +28,7 @@ goToDefinition filePath (UTF16.LineColumn line column) = do
   spans <- fetch $ Query.ModuleSpanMap moduleName
   rope <- fetch $ Query.FileRope filePath
   let pos =
-        Position.Absolute $
+        Position.Absolute
           case Rope.splitAtPosition (Rope.Position (fromIntegral line) (fromIntegral $ UTF16.toInt column)) rope of
             Nothing -> 0
             Just (rope', _) -> fromIntegral $ Rope.utf8Length rope'

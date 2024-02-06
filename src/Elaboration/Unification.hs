@@ -62,7 +62,7 @@ tryUnify context value1 value2 = do
 tryUnifyD :: Context v -> Domain.Value -> Domain.Value -> M (Domain.Value -> Domain.Value)
 tryUnifyD context value1 value2 = do
   success <- Context.try_ context $ unify context Flexibility.Rigid value1 value2
-  pure $
+  pure
     if success
       then identity
       else const $ Builtin.Unknown value2
@@ -225,11 +225,11 @@ unify context flexibility unforcedValue1 unforcedValue2 = catchAndAdd $ go unfor
         (Domain.Neutral head1 spine1@(Domain.Spine args1 ((branches1, _) Seq.:<| _)), Domain.Neutral head2 spine2)
           | head1 == head2 ->
               unifySpines context Flexibility.Flexible spine1 spine2 `catch` \(_ :: Error.Elaboration) ->
-                withBranches context head1 args1 branches1 $ \context' -> unify context' flexibility value1' value2
+                withBranches context head1 args1 branches1 \context' -> unify context' flexibility value1' value2
         (Domain.Neutral head (Domain.Spine args ((branches, _) Seq.:<| _)), _) ->
-          withBranches context head args branches $ \context' -> unify context' flexibility value1' value2
+          withBranches context head args branches \context' -> unify context' flexibility value1' value2
         (_, Domain.Neutral head (Domain.Spine args ((branches, _) Seq.:<| _))) ->
-          withBranches context head args branches $ \context' -> unify context' flexibility value1 value2'
+          withBranches context head args branches \context' -> unify context' flexibility value1 value2'
         -- Failure terms mean that there has been an earlier error that's already
         -- been reported, so let's not trigger more errors from them.
         (Domain.Neutral (Domain.Global Builtin.UnknownName) _, _) ->
@@ -541,19 +541,20 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
             then Just Nothing
             else Nothing
 
-  branches' <- fmap catMaybes $
+  branches' <- fmap
+    catMaybes
     case branches of
       Syntax.ConstructorBranches constructorTypeName constructorBranches ->
         forM (OrderedHashMap.toList constructorBranches) \(constr, (_, tele)) -> do
           isMatch <- branchMatches outerContext resultValue' outerEnv tele
-          pure $
+          pure
             if isMatch
               then Just $ Just $ Left $ Name.QualifiedConstructor constructorTypeName constr
               else Nothing
       Syntax.LiteralBranches literalBranches ->
         forM (OrderedHashMap.toList literalBranches) \(int, (_, branch)) -> do
           isMatch <- branchMatches outerContext resultValue' outerEnv $ Telescope.Empty branch
-          pure $
+          pure
             if isMatch
               then Just $ Just $ Right int
               else Nothing

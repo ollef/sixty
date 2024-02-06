@@ -1,5 +1,4 @@
 {-# LANGUAGE BlockArguments #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
@@ -161,7 +160,7 @@ unboxedDataRepresentation dataTypeName env (Syntax.ConstructorDefinitions constr
         constructorFieldRepresentation env type' mempty
       | (_, type_) <- OrderedHashMap.toList constructors
       ]
-  pure $ case maybeTags of
+  pure case maybeTags of
     Nothing -> fieldRepresentation
     Just _ -> constructorTagRepresentation <> fieldRepresentation
   where
@@ -210,7 +209,7 @@ compileData env dataTypeName (Syntax.ConstructorDefinitions constructors) = do
               (\a b -> Syntax.Apply (Name.Lifted Builtin.MaxRepresentationName 0) [a, b])
               (Syntax.Global $ Name.Lifted Builtin.EmptyRepresentationName 0)
               compiledConstructorFields
-      pure $ case maybeTags of
+      pure case maybeTags of
         Nothing -> maxFieldSize
         Just _ ->
           Syntax.Apply
@@ -301,7 +300,7 @@ compileBranches branches =
       pure $ LiteralBranches literalBranches
     Syntax.ConstructorBranches typeName constructorBranches -> do
       (boxity, maybeTags) <- fetch $ Query.ConstructorRepresentations typeName
-      pure $ case (maybeTags, OrderedHashMap.toList constructorBranches) of
+      pure case (maybeTags, OrderedHashMap.toList constructorBranches) of
         (Nothing, [(_, constructorBranch)]) -> UntaggedConstructorBranch boxity constructorBranch
         (Nothing, _) -> panic "ClosureConverted.Representation.compileBranches: Untagged constructor branch length mismatch"
         (Just tags, constructorBranchesList) ->
@@ -312,7 +311,7 @@ compileBranches branches =
 constructorRepresentations :: Name.Qualified -> Task Query (Boxity, Maybe (HashMap Name.Constructor Int))
 constructorRepresentations name = do
   (definition, _) <- fetch $ Query.ElaboratedDefinition name
-  pure $ case definition of
+  pure case definition of
     Core.Syntax.DataDefinition boxity tele ->
       ( boxity
       , Telescope.under tele \(Core.Syntax.ConstructorDefinitions constructors) ->

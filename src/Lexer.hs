@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -290,7 +291,9 @@ identifierToken
   -> TokenList
   -> TokenList
 identifierToken !input !startPosition !startLineColumn !position =
-  Token startLineColumn (Span.Absolute startPosition position) $
+  Token
+    startLineColumn
+    (Span.Absolute startPosition position)
     case index input startPosition of
       [UTF8.unit1|_|] | len == 1 -> Underscore
       [UTF8.unit1|l|] | "let" <- str -> Let
@@ -336,7 +339,9 @@ operatorToken
   -> TokenList
   -> TokenList
 operatorToken !input !startPosition !startLineColumn !position =
-  Token startLineColumn (Span.Absolute startPosition position) $
+  Token
+    startLineColumn
+    (Span.Absolute startPosition position)
     case index input startPosition of
       [UTF8.unit1|=|] | len == 1 -> Equals
       [UTF8.unit1|.|] | len == 1 -> Dot
@@ -380,8 +385,7 @@ number !startPosition !startLineColumn state@State {..} !shouldNegate !acc
   where
     token =
       Token startLineColumn (Span.Absolute startPosition position) $
-        Number $
-          if shouldNegate then negate acc else acc
+        Number if shouldNegate then negate acc else acc
 
 -------------------------------------------------------------------------------
 
