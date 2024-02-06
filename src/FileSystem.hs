@@ -1,6 +1,7 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -120,7 +121,20 @@ bindForM (Watcher watchKeys) watchKey =
 
 -------------------------------------------------------------------------------
 
-watcherFromArguments :: [FilePath] -> IO (Watcher (HashSet FilePath, [Directory], HashMap FilePath Text))
+data ProjectFiles = ProjectFiles
+  { sourceDirectories :: [Directory]
+  , fileContents :: HashMap FilePath Text
+  , changedFiles :: HashSet FilePath
+  }
+
+instance Semigroup ProjectFiles where
+  ProjectFiles a1 b1 c1 <> ProjectFiles a2 b2 c2 =
+    ProjectFiles (a1 <> a2) (b1 <> b2) (c1 <> c2)
+
+instance Monoid ProjectFiles where
+  mempty = ProjectFiles mempty mempty mempty
+
+watcherFromArguments :: [FilePath] -> IO (Watcher ProjectFiles)
 watcherFromArguments files =
   case files of
     [] -> do
@@ -142,10 +156,11 @@ watcherFromArguments files =
               | isDir ->
                   pure $
                     ( \(changedFiles, files') ->
-                        ( changedFiles
-                        , [file']
-                        , files'
-                        )
+                        ProjectFiles
+                          { sourceDirectories = [file']
+                          , fileContents = files'
+                          , changedFiles
+                          }
                     )
                       <$> directoryWatcher Project.isSourcePath file'
               | Project.isProjectPath file' ->
@@ -153,22 +168,28 @@ watcherFromArguments files =
               | Project.isSourcePath file' ->
                   pure $
                     ( \maybeText ->
-                        ( HashSet.singleton file'
-                        , [FilePath.takeDirectory file']
-                        , foldMap (HashMap.singleton file') maybeText
-                        )
+                        ProjectFiles
+                          { sourceDirectories = [FilePath.takeDirectory file']
+                          , fileContents = foldMap (HashMap.singleton file') maybeText
+                          , changedFiles = HashSet.singleton file'
+                          }
                     )
                       <$> fileWatcher file'
               | otherwise ->
                   -- TODO report error?
                   mempty
 
-projectWatcher :: FilePath -> Watcher (HashSet FilePath, [Directory], HashMap FilePath Text)
+projectWatcher :: FilePath -> Watcher ProjectFiles
 projectWatcher file =
   bindForM (foldMap (HashSet.fromList . (.sourceDirectories)) <$> jsonFileWatcher @Project file) \sourceDirectory -> do
     sourceDirectory' <- liftIO $ Directory.canonicalizePath sourceDirectory
-    (changedFiles, files) <- directoryWatcher Project.isSourcePath sourceDirectory'
-    pure (changedFiles, [sourceDirectory'], files)
+    (changedFiles, fileContents) <- directoryWatcher Project.isSourcePath sourceDirectory'
+    pure
+      ProjectFiles
+        { sourceDirectories = [sourceDirectory']
+        , fileContents
+        , changedFiles
+        }
 
 fileWatcher :: FilePath -> Watcher (Maybe Text)
 fileWatcher filePath = Watcher \manager onChange -> do

@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -37,8 +38,12 @@ commands =
 
 languageServerCommand :: ParserInfo (IO ())
 languageServerCommand =
-  info (pure LanguageServer.run) $
-    fullDesc
+  info
+    ( pure do
+        ret <- LanguageServer.run
+        when (ret /= 0) $ exitWith $ ExitFailure ret
+    )
+    $ fullDesc
       <> progDesc "Start a language server"
 
 checkCommand :: ParserInfo (IO ())

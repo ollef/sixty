@@ -46,6 +46,7 @@ library:
     - aeson-casing
     - ansi-terminal
     - bytestring
+    - co-log-core
     - constraints
     - constraints-extras
     - containers

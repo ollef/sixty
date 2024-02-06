@@ -1,10 +1,9 @@
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Command.Watch where
 
-import Data.HashMap.Lazy (HashMap)
-import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.Text as Text
 import Data.Time.Clock
@@ -24,47 +23,49 @@ watch argumentFiles = do
   signalChangeVar <- newEmptyMVar
   fileStateVar <- newMVar mempty
   FSNotify.withManager \manager -> do
-    stopListening <- FileSystem.runWatcher watcher manager \(changedFiles, sourceDirectories, files) -> do
-      modifyMVar_ fileStateVar \(changedFiles', _, _) ->
-        pure (changedFiles <> changedFiles', sourceDirectories, files)
+    stopListening <- FileSystem.runWatcher watcher manager \projectFiles -> do
+      modifyMVar_ fileStateVar \projectFiles' ->
+        pure
+          projectFiles
+            { FileSystem.changedFiles =
+                projectFiles.changedFiles <> projectFiles'.changedFiles
+            }
       void $ tryPutMVar signalChangeVar ()
 
     (`finally` stopListening) $ do
       driverState <- Driver.initialState
       forever $ do
-        (changedFiles, sourceDirectories, files) <- waitForChanges signalChangeVar fileStateVar driverState
-        checkAndPrintErrors driverState changedFiles sourceDirectories files
+        projectFiles <- waitForChanges signalChangeVar fileStateVar driverState
+        checkAndPrintErrors driverState projectFiles
 
 waitForChanges
   :: MVar ()
-  -> MVar (HashSet FilePath, [FileSystem.Directory], HashMap FilePath Text)
+  -> MVar FileSystem.ProjectFiles
   -> Driver.State (Doc ann)
-  -> IO (HashSet FilePath, [FileSystem.Directory], HashMap FilePath Text)
+  -> IO FileSystem.ProjectFiles
 waitForChanges signalChangeVar fileStateVar driverState = do
-  (changedFiles, sourceDirectories, files) <-
-    modifyMVar fileStateVar \(changedFiles, sourceDirectories, files) ->
-      pure ((mempty, sourceDirectories, files), (changedFiles, sourceDirectories, files))
+  projectFiles <-
+    modifyMVar fileStateVar \projectFiles ->
+      pure (projectFiles {FileSystem.changedFiles = mempty}, projectFiles)
 
-  if HashSet.null changedFiles
+  if HashSet.null projectFiles.changedFiles
     then do
       takeMVar signalChangeVar
       waitForChanges signalChangeVar fileStateVar driverState
-    else pure (changedFiles, sourceDirectories, files)
+    else pure projectFiles
 
 checkAndPrintErrors
   :: Driver.State (Doc ann)
-  -> HashSet FilePath
-  -> [FileSystem.Directory]
-  -> HashMap FilePath Text
+  -> FileSystem.ProjectFiles
   -> IO ()
-checkAndPrintErrors driverState changedFiles sourceDirectories files = do
+checkAndPrintErrors driverState projectFiles = do
   startTime <- getCurrentTime
   (_, errs) <-
     Driver.runIncrementalTask
       driverState
-      changedFiles
-      (HashSet.fromList sourceDirectories)
-      (fmap Right files)
+      projectFiles.changedFiles
+      (HashSet.fromList projectFiles.sourceDirectories)
+      (fmap Right projectFiles.fileContents)
       Error.Hydrated.pretty
       Driver.Prune
       Driver.checkAll
