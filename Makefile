@@ -55,11 +55,11 @@ lint: hlint weeder
 
 .PHONY: hlint
 hlint:
-	$(STACK) --package hlint -- hlint .
+	$(STACK) exec --package hlint -- hlint .
 
 .PHONY: weeder
 weeder:
-	$(STACK) --package weeder -- weeder
+	$(STACK) exec --package weeder -- weeder
 
 .PHONY: format
 format:
