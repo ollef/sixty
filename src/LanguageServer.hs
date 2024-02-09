@@ -352,7 +352,7 @@ handle logger =
                     Just
                       LSP.Command
                         { _title = show doc
-                        , _command = ""
+                        , _command = "type" -- coc.nvim doesn't seem to show these with an empty command
                         , _arguments = Nothing
                         }
                 , _data_ = Nothing
