@@ -18,10 +18,12 @@ import qualified Colog.Core as Colog
 import Control.Concurrent.STM as STM
 import Control.Lens
 import Data.Default (def)
+import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.HashSet as HashSet
 import qualified Data.Map as Map
 import qualified Data.Text as Text
+import qualified Data.Text.Utf16.Rope as Utf16
 import qualified Driver
 import qualified Error.Hydrated
 import qualified Error.Hydrated as Error (Hydrated)
@@ -58,6 +60,7 @@ run = flip
   do
     messageQueue <- newTQueueIO
     diskStateVar <- newTVarIO mempty
+    dirtyVar <- newEmptyTMVarIO
     stopListeningVar <- newMVar mempty
     let stderrLogger :: MonadIO m => Colog.LogAction m (WithSeverity Text)
         stderrLogger = Colog.cmap show Colog.logStringStderr
@@ -77,8 +80,10 @@ run = flip
                       projectFile' <- Directory.canonicalizePath projectFile
                       FSNotify.withManager \manager -> do
                         stopListening <- FileSystem.runWatcher (FileSystem.projectWatcher projectFile') manager \newState -> do
-                          atomically $ modifyTVar' diskStateVar \state ->
-                            newState {FileSystem.changedFiles = state.changedFiles <> newState.changedFiles}
+                          atomically do
+                            modifyTVar' diskStateVar \state -> newState {FileSystem.changedFiles = state.changedFiles <> newState.changedFiles}
+                            _ <- tryPutTMVar dirtyVar ()
+                            pure ()
 
                         join $ swapMVar stopListeningVar stopListening
 
@@ -87,6 +92,7 @@ run = flip
                       State
                         { driverState
                         , diskStateVar
+                        , dirtyVar
                         }
                 _ <- forkIO $ LSP.runLspT env $ runReaderT (reactor stderrLogger $ readTQueue messageQueue) state
                 pure $ Right (env, state)
@@ -134,6 +140,7 @@ type StateM = ReaderT State (LSP.LspT () IO)
 data State = State
   { driverState :: !(Driver.State (Error.Hydrated, Doc Void))
   , diskStateVar :: !(TVar FileSystem.ProjectFiles)
+  , dirtyVar :: !(TMVar ())
   }
 
 type ReactorMessage = StateM ()
@@ -146,11 +153,7 @@ reactor logger receiveMessage = do
       liftIO $
         atomically $
           receiveMessage
-            <|> checkAllAndPublishDiagnostics logger <$ hasChangedFiles state
-  where
-    hasChangedFiles state = do
-      diskState <- readTVar state.diskStateVar
-      guard $ not $ HashSet.null diskState.changedFiles
+            <|> checkAllAndPublishDiagnostics logger <$ takeTMVar state.dirtyVar
 
 lspHandlers :: Colog.LogAction StateM (WithSeverity Text) -> TQueue ReactorMessage -> LSP.Handlers StateM
 lspHandlers logger messageQueue = LSP.mapHandlers goReq goNot $ handle logger
@@ -163,45 +166,46 @@ lspHandlers logger messageQueue = LSP.mapHandlers goReq goNot $ handle logger
     goNot f msg =
       liftIO $ atomically $ writeTQueue messageQueue $ f msg
 
+fileChanged :: LSP.Uri -> StateM ()
+fileChanged uri = do
+  state <- ask
+  liftIO do
+    filePath <- Directory.canonicalizePath $ uriToFilePath uri
+    atomically do
+      modifyTVar state.diskStateVar \diskState ->
+        diskState {FileSystem.changedFiles = HashSet.insert filePath diskState.changedFiles}
+      _ <- tryPutTMVar state.dirtyVar ()
+      pure ()
+
 handle :: Colog.LogAction StateM (WithSeverity Text) -> LSP.Handlers StateM
 handle logger =
   mconcat
-    [ LSP.notificationHandler LSP.SMethod_TextDocumentDidOpen \message -> do
-        state <- ask
+    [ LSP.notificationHandler LSP.SMethod_Initialized \_message -> pure ()
+    , LSP.notificationHandler LSP.SMethod_WorkspaceDidChangeConfiguration \_message -> pure ()
+    , LSP.notificationHandler LSP.SMethod_TextDocumentDidOpen \message -> do
         let document = message ^. LSP.params . LSP.textDocument
             uri = document ^. LSP.uri
-        filePath <- liftIO $ Directory.canonicalizePath $ uriToFilePath uri
-        liftIO $ atomically $ modifyTVar state.diskStateVar \diskState ->
-          diskState {FileSystem.changedFiles = HashSet.insert filePath diskState.changedFiles}
+        fileChanged uri
     , LSP.notificationHandler LSP.SMethod_TextDocumentDidChange \message -> do
-        state <- ask
         let document = message ^. LSP.params . LSP.textDocument
             uri = document ^. LSP.uri
-        filePath <- liftIO $ Directory.canonicalizePath $ uriToFilePath uri
-        liftIO $ atomically $ modifyTVar state.diskStateVar \diskState ->
-          diskState {FileSystem.changedFiles = HashSet.insert filePath diskState.changedFiles}
+        fileChanged uri
     , LSP.notificationHandler LSP.SMethod_TextDocumentDidSave \message -> do
-        state <- ask
         let document = message ^. LSP.params . LSP.textDocument
             uri = document ^. LSP.uri
-        filePath <- liftIO $ Directory.canonicalizePath $ uriToFilePath uri
-        liftIO $ atomically $ modifyTVar state.diskStateVar \diskState ->
-          diskState {FileSystem.changedFiles = HashSet.insert filePath diskState.changedFiles}
+        fileChanged uri
     , LSP.notificationHandler LSP.SMethod_TextDocumentDidClose \message -> do
-        state <- ask
         let document = message ^. LSP.params . LSP.textDocument
             uri = document ^. LSP.uri
-        filePath <- liftIO $ Directory.canonicalizePath $ uriToFilePath uri
-        liftIO $ atomically $ modifyTVar state.diskStateVar \diskState ->
-          diskState {FileSystem.changedFiles = HashSet.insert filePath diskState.changedFiles}
+        fileChanged uri
     , LSP.requestHandler LSP.SMethod_TextDocumentHover \message respond -> do
         logger <& ("handle HoverRequest: " <> show message) `WithSeverity` Info
         let document = message ^. LSP.params . LSP.textDocument
             uri = document ^. LSP.uri
             position = message ^. LSP.params . LSP.position
 
-        (maybeAnnotation, _) <-
-          runTask Driver.Don'tPrune $
+        (maybeAnnotation, _, _) <-
+          runTask logger Driver.Don'tPrune $
             Hover.hover (uriToFilePath uri) (positionFromPosition position)
 
         let response =
@@ -223,8 +227,8 @@ handle logger =
             uri = document ^. LSP.uri
             position = message ^. LSP.params . LSP.position
 
-        (maybeLocation, _) <-
-          runTask Driver.Don'tPrune $
+        (maybeLocation, _, _) <-
+          runTask logger Driver.Don'tPrune $
             GoToDefinition.goToDefinition (uriToFilePath uri) (positionFromPosition position)
 
         case maybeLocation of
@@ -245,8 +249,8 @@ handle logger =
             position = message ^. LSP.params . LSP.position
             maybeContext = message ^. LSP.params . LSP.context
 
-        (completions, _) <-
-          runTask Driver.Don'tPrune case maybeContext of
+        (completions, _, _) <-
+          runTask logger Driver.Don'tPrune case maybeContext of
             Just (LSP.CompletionContext LSP.CompletionTriggerKind_TriggerCharacter (Just "?")) ->
               Completion.questionMark (uriToFilePath uri) (positionFromPosition position)
             _ ->
@@ -268,8 +272,8 @@ handle logger =
             uri = document ^. LSP.uri
             position = message ^. LSP.params . LSP.position
 
-        (highlights, _) <-
-          runTask Driver.Don'tPrune $
+        (highlights, _, _) <-
+          runTask logger Driver.Don'tPrune $
             DocumentHighlights.highlights (uriToFilePath uri) (positionFromPosition position)
 
         let response =
@@ -288,8 +292,8 @@ handle logger =
             uri = document ^. LSP.uri
             position = message ^. LSP.params . LSP.position
 
-        (references, _) <-
-          runTask Driver.Don'tPrune $
+        (references, _, _) <-
+          runTask logger Driver.Don'tPrune $
             References.references (uriToFilePath uri) (positionFromPosition position)
 
         let response =
@@ -310,8 +314,8 @@ handle logger =
             position = message ^. LSP.params . LSP.position
             newName = message ^. LSP.params . LSP.newName
 
-        (references, _) <-
-          runTask Driver.Don'tPrune $
+        (references, _, _) <-
+          runTask logger Driver.Don'tPrune $
             References.references (uriToFilePath uri) (positionFromPosition position)
 
         let response =
@@ -341,8 +345,8 @@ handle logger =
         let document = message ^. LSP.params . LSP.textDocument
             uri = document ^. LSP.uri
 
-        (codeLenses, _) <-
-          runTask Driver.Don'tPrune $
+        (codeLenses, _, _) <-
+          runTask logger Driver.Don'tPrune $
             CodeLens.codeLens $
               uriToFilePath uri
         let response =
@@ -359,6 +363,7 @@ handle logger =
                 }
               | (span, doc) <- codeLenses
               ]
+        logger <& ("handle CodeLens: " <> show response) `WithSeverity` Info
         respond $ Right $ LSP.InL response
     ]
 
@@ -366,41 +371,34 @@ handle logger =
 
 checkAllAndPublishDiagnostics :: Colog.LogAction StateM (WithSeverity Text) -> StateM ()
 checkAllAndPublishDiagnostics logger = do
-  state <- ask
-  diskState <- liftIO $ atomically do
-    diskState <- readTVar state.diskStateVar
-    writeTVar state.diskStateVar diskState {FileSystem.changedFiles = mempty}
-    pure diskState
-  logger <& ("checkAllAndPublishDiagnostics changed files " <> show diskState.changedFiles) `WithSeverity` Info
-  vfs <- LSP.getVirtualFiles
-  let allFiles =
-        fmap mempty (HashMap.fromList $ fmap (bimap (uriToFilePath . LSP.fromNormalizedUri) (view LSP.file_text)) $ Map.toList $ vfs ^. LSP.vfsMap) <> fmap mempty diskState.fileContents
-  (_, errors) <- runTask Driver.Prune Driver.checkAll
+  (_, errors, files) <- runTask logger Driver.Prune Driver.checkAll
   let errorsByFilePath =
         HashMap.fromListWith
           (<>)
           [ (error.filePath, [errorToDiagnostic error errorDoc])
           | (error, errorDoc) <- errors
           ]
-          <> allFiles
+          <> (mempty <$> files)
 
   forM_ (HashMap.toList errorsByFilePath) \(filePath, diagnostics) -> do
     let uri = LSP.filePathToUri filePath
     versionedDoc <- LSP.getVersionedTextDoc $ LSP.TextDocumentIdentifier uri
-
     publishDiagnostics (LSP.toNormalizedUri uri) (versionedDoc ^. LSP.version) diagnostics
 
 runTask
-  :: Driver.Prune
+  :: Colog.LogAction StateM (WithSeverity Text)
+  -> Driver.Prune
   -> Task Query a
-  -> StateM (a, [(Error.Hydrated, Doc Void)])
-runTask prune task = do
+  -> StateM (a, [(Error.Hydrated, Doc Void)], HashMap FilePath (Either Utf16.Rope Text))
+runTask logger prune task = do
   state <- ask
-  diskState <- liftIO $ atomically do
+  env <- LSP.getLspEnv
+  (diskState, vfs) <- liftIO $ atomically do
     diskState <- readTVar state.diskStateVar
     writeTVar state.diskStateVar diskState {FileSystem.changedFiles = mempty}
-    pure diskState
-  vfs <- LSP.getVirtualFiles
+    vfs <- LSP.snapshotVirtualFiles env
+    pure (diskState, vfs)
+  logger <& ("runTask changed files " <> show diskState.changedFiles) `WithSeverity` Info
   let prettyError :: Error.Hydrated -> Task Query (Error.Hydrated, Doc ann)
       prettyError err = do
         (heading, body) <- Error.Hydrated.headingAndBody err.error
@@ -408,16 +406,19 @@ runTask prune task = do
 
       files =
         HashMap.fromList (fmap (bimap (uriToFilePath . LSP.fromNormalizedUri) (Left . view LSP.file_text)) $ Map.toList $ vfs ^. LSP.vfsMap) <> fmap Right diskState.fileContents
+  logger <& ("runTask files " <> show files) `WithSeverity` Info
 
-  liftIO $
-    Driver.runIncrementalTask
-      state.driverState
-      diskState.changedFiles
-      (HashSet.fromList diskState.sourceDirectories)
-      files
-      prettyError
-      prune
-      task
+  (a, errors) <-
+    liftIO $
+      Driver.runIncrementalTask
+        state.driverState
+        diskState.changedFiles
+        (HashSet.fromList diskState.sourceDirectories)
+        files
+        prettyError
+        prune
+        task
+  pure (a, errors, files)
 
 -------------------------------------------------------------------------------
 
