@@ -158,7 +158,9 @@ runIncrementalTask state changedFiles sourceDirectories files prettyError prune 
             let (keysToInvalidate, reverseDependencies') =
                   foldl'
                     ( \(keysToInvalidate_, reverseDependencies_) file ->
-                        first (<> keysToInvalidate_) $ reachableReverseDependencies (Query.FileText file) reverseDependencies_
+                        first (<> keysToInvalidate_) $
+                          reachableReverseDependencies (Query.FileText file) reverseDependencies_
+                            <> reachableReverseDependencies (Query.FileRope file) reverseDependencies_
                     )
                     (mempty, reverseDependencies)
                     changedFiles'
