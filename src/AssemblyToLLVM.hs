@@ -424,32 +424,22 @@ assembleInstruction instruction =
       argument' <- assembleOperandAndCastTo Assembly.WordPointer argument
       declare "llvm.stackrestore" $ "declare ccc void @llvm.stackrestore" <> parens [pointer]
       emitInstruction $ "call ccc void @llvm.stackrestore" <> parens [typedOperand argument']
-    Assembly.HeapAllocate {destination, shadowStack, heapPointer, heapLimit, constructorTag, size} -> do
-      destination' <- activateLocal (Assembly.Struct [Assembly.Word, Assembly.WordPointer, Assembly.WordPointer]) destination
-      shadowStack' <- assembleOperandAndCastTo Assembly.WordPointer shadowStack
-      heapPointer' <- assembleOperandAndCastTo Assembly.WordPointer heapPointer
-      heapLimit' <- assembleOperandAndCastTo Assembly.WordPointer heapLimit
+    Assembly.HeapAllocate {destination, constructorTag, size} -> do
+      destination' <- activateLocal Assembly.Word destination
       size' <- assembleOperandAndCastTo Assembly.Word size
       declare
         "__regcall3__heap_alloc"
         $ "declare x86_regcallcc "
-          <> braces [wordSizedInt, pointer, pointer]
+          <> wordSizedInt
           <> " @__regcall3__heap_alloc"
-          <> parens [pointer, pointer, pointer, "i8", wordSizedInt]
+          <> parens ["i8", wordSizedInt]
       emitInstruction $
         localName destination'
           <> " = call x86_regcallcc "
-          <> braces
-            [ wordSizedInt
-            , pointer
-            , pointer
-            ]
+          <> wordSizedInt
           <> "@__regcall3__heap_alloc"
           <> parens
-            [ typedOperand shadowStack'
-            , typedOperand heapPointer'
-            , typedOperand heapLimit'
-            , "i8 " <> Builder.word8Dec constructorTag
+            [ "i8 " <> Builder.word8Dec constructorTag
             , typedOperand size'
             ]
     Assembly.ExtractHeapPointer destination pointer_ -> do
