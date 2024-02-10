@@ -60,10 +60,10 @@ signature def =
         returnRepresentation <- typeRepresentation env' type_
         pure $ Representation.FunctionSignature parameterRepresentations returnRepresentation
     Syntax.DataDefinition {} ->
-      pure $ Representation.ConstantSignature $ Representation.Direct Representation.Doesn'tContainHeapPointers
+      pure $ Representation.ConstantSignature Representation.Direct
     Syntax.ParameterisedDataDefinition _boxity tele ->
-      telescopeSignature context tele mempty \_ _ parameterRepresentations -> do
-        pure $ Representation.FunctionSignature parameterRepresentations $ Representation.Direct Representation.Doesn'tContainHeapPointers
+      telescopeSignature context tele mempty \_ _ parameterRepresentations ->
+        pure $ Representation.FunctionSignature parameterRepresentations Representation.Direct
   where
     context =
       Context.empty
@@ -95,38 +95,38 @@ typeRepresentation :: Environment v -> Domain.Type -> M Representation
 typeRepresentation env type_ =
   case type_ of
     Domain.Neutral (Domain.Var _) _ ->
-      pure $ Representation.Indirect Representation.MightContainHeapPointers
+      pure Representation.Indirect
     -- TODO: Handle these special cases in a nicer way
     Domain.Neutral (Domain.Global (Name.Lifted Builtin.TypeName 0)) Tsil.Empty ->
-      pure $ Representation.Direct Representation.Doesn'tContainHeapPointers
+      pure Representation.Direct
     Domain.Neutral (Domain.Global (Name.Lifted Builtin.IntName 0)) Tsil.Empty ->
-      pure $ Representation.Direct Representation.Doesn'tContainHeapPointers
+      pure Representation.Direct
     Domain.Neutral (Domain.Global global) (Domain.groupSpine -> [Domain.GroupedApps args]) -> do
       globalCase global args
     Domain.Neutral (Domain.Global global) (Domain.groupSpine -> []) -> do
       globalCase global []
     Domain.Neutral {} ->
-      pure $ Representation.Indirect Representation.MightContainHeapPointers
+      pure Representation.Indirect
     Domain.Con {} ->
-      pure $ Representation.Indirect Representation.MightContainHeapPointers
+      pure Representation.Indirect
     Domain.Lit {} ->
-      pure $ Representation.Indirect Representation.MightContainHeapPointers
+      pure Representation.Indirect
     Domain.Glued _ _ type' ->
       typeRepresentation env type'
     Domain.Lazy lazyType -> do
       type' <- force lazyType
       typeRepresentation env type'
     Domain.Pi {} ->
-      pure $ Representation.Direct Representation.MightContainHeapPointers
+      pure Representation.Direct
     Domain.Function {} ->
-      pure $ Representation.Direct Representation.Doesn'tContainHeapPointers
+      pure Representation.Direct
   where
     globalCase global@(Name.Lifted qualifiedName liftedNameNumber) args = do
       -- TODO caching
       definition <- fetch $ Query.ClosureConverted global
       case definition of
         Syntax.TypeDeclaration _ ->
-          pure $ Representation.Indirect Representation.MightContainHeapPointers
+          pure Representation.Indirect
         Syntax.ConstantDefinition term -> do
           value <- Evaluation.evaluate Environment.empty term
           type' <- Evaluation.apply env value args
@@ -135,20 +135,20 @@ typeRepresentation env type_ =
           maybeType' <- Evaluation.applyFunction env (Telescope.fromVoid tele) args
           case maybeType' of
             Nothing ->
-              pure $ Representation.Direct Representation.MightContainHeapPointers -- a closure
+              pure Representation.Direct -- a closure
             Just type' ->
               typeRepresentation env type'
         Syntax.DataDefinition Boxed _ ->
-          pure $ Representation.Direct Representation.MightContainHeapPointers
+          pure Representation.Direct
         Syntax.DataDefinition Unboxed constructors -> do
           unless (liftedNameNumber == 0) $ panic "ClosureConverted.Representation. Data with name number /= 0"
           unboxedDataRepresentation qualifiedName Environment.empty constructors
         Syntax.ParameterisedDataDefinition Boxed _ ->
-          pure $ Representation.Direct Representation.MightContainHeapPointers
+          pure Representation.Direct
         Syntax.ParameterisedDataDefinition Unboxed tele -> do
           unless (liftedNameNumber == 0) $ panic "ClosureConverted.Representation. Data with name number /= 0"
           maybeResult <- Evaluation.applyTelescope env (Telescope.fromVoid tele) args $ unboxedDataRepresentation qualifiedName
-          pure $ fromMaybe (Representation.Indirect Representation.MightContainHeapPointers) maybeResult
+          pure $ fromMaybe Representation.Indirect maybeResult
 
 unboxedDataRepresentation :: Name.Qualified -> Environment v -> Syntax.ConstructorDefinitions v -> M Representation
 unboxedDataRepresentation dataTypeName env (Syntax.ConstructorDefinitions constructors) = do
@@ -164,8 +164,7 @@ unboxedDataRepresentation dataTypeName env (Syntax.ConstructorDefinitions constr
     Nothing -> fieldRepresentation
     Just _ -> constructorTagRepresentation <> fieldRepresentation
   where
-    constructorTagRepresentation =
-      Representation.Direct Representation.Doesn'tContainHeapPointers
+    constructorTagRepresentation = Representation.Direct
 
 constructorFieldRepresentation :: Environment v -> Domain.Type -> Representation -> M Representation
 constructorFieldRepresentation env type_ accumulatedRepresentation = do
@@ -174,8 +173,8 @@ constructorFieldRepresentation env type_ accumulatedRepresentation = do
     Domain.Pi _ fieldType closure -> do
       fieldRepresentation <- typeRepresentation env fieldType
       case accumulatedRepresentation <> fieldRepresentation of
-        representation@(Representation.Indirect Representation.MightContainHeapPointers) ->
-          pure representation
+        Representation.Indirect ->
+          pure Representation.Indirect
         accumulatedRepresentation' -> do
           (context', var) <- Environment.extend env
           type'' <- Evaluation.evaluateClosure closure $ Domain.var var

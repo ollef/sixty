@@ -55,9 +55,6 @@ data Instruction
   | RestoreStack !Operand
   | HeapAllocate
       { destination :: !Local
-      , shadowStack :: !Operand
-      , heapPointer :: !Operand
-      , heapLimit :: !Operand
       , constructorTag :: !Word8
       , size :: !Operand
       }
@@ -153,8 +150,8 @@ instance Pretty Instruction where
         returningInstr dst "savestack" ([] :: [Operand])
       RestoreStack o ->
         voidInstr "restorestack" [o]
-      HeapAllocate dst a b c d e ->
-        returningInstr dst "gcmalloc" [a, b, c, Lit $ Literal.Integer $ fromIntegral d, e]
+      HeapAllocate dst a b ->
+        returningInstr dst "heap_alloc" [Lit $ Literal.Integer $ fromIntegral a, b]
       ExtractHeapPointer dst a ->
         returningInstr dst "extract heap pointer" [a]
       ExtractHeapPointerConstructorTag dst a ->
@@ -167,21 +164,21 @@ instance Pretty Instruction where
           Return local -> pretty local <+> "= "
           <> "switch"
           <+> pretty scrutinee
-          <> line
-          <> indent
-            2
-            ( vsep
-                [ pretty i
-                  <+> "->"
+            <> line
+            <> indent
+              2
+              ( vsep
+                  [ pretty i
+                    <+> "->"
+                      <> line
+                      <> indent 2 (pretty basicBlock)
+                  | (i, basicBlock) <- branches
+                  ]
                   <> line
-                  <> indent 2 (pretty basicBlock)
-                | (i, basicBlock) <- branches
-                ]
-                <> line
-                <> "_ -> "
-                <> line
-                <> indent 2 (pretty default_)
-            )
+                  <> "_ -> "
+                  <> line
+                  <> indent 2 (pretty default_)
+              )
     where
       voidInstr name args =
         name <+> hsep (pretty <$> args)
@@ -197,23 +194,23 @@ instance Pretty Definition where
           <+> pretty type_
           <+> "constant"
           <+> "="
-          <> line
-          <> indent 2 (pretty knownConstant)
+            <> line
+            <> indent 2 (pretty knownConstant)
       ConstantDefinition type_ returnType constantParameters basicBlock ->
         pretty type_
           <+> "constant"
           <+> pretty returnType
           <+> tupled (pretty <$> constantParameters)
           <+> "="
-          <> line
-          <> indent 2 (pretty basicBlock)
+            <> line
+            <> indent 2 (pretty basicBlock)
       FunctionDefinition returnType args basicBlock ->
         "function"
           <+> pretty returnType
           <+> tupled (pretty <$> args)
           <+> "="
-          <> line
-          <> indent 2 (pretty basicBlock)
+            <> line
+            <> indent 2 (pretty basicBlock)
 
 instance Pretty BasicBlock where
   pretty (BasicBlock instrs result) =
