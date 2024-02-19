@@ -1,0 +1,21 @@
+data List a = Nil | Cons a (List a)
+
+map : forall a b. (a -> b) -> List a -> List b
+map f Nil = Nil
+map f (Cons a as) = Cons (f a) (map f as)
+
+map2 : forall a b. (a -> b) -> List a -> List b
+map2 f Nil = Nil
+map2 f (Cons a as) = Cons (f a) (map2 f as)
+
+data Equals forall A. (a b : A) where
+  Refl : Equals a a
+
+test : forall a b (f : a -> b) as. Equals (map f as) (map2 f as)
+test = Refl --loops
+
+test2 : forall a b (f : a -> b) as. Equals (map f as) (map2 f as)
+test2 @{f, as} = case as of
+  Nil -> Refl
+  Cons a as' -> case test2 @{f, as=as'} of
+    Refl -> Refl -- readback error
