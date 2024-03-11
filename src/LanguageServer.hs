@@ -62,7 +62,7 @@ run = flip
     diskStateVar <- newTVarIO mempty
     dirtyVar <- newEmptyTMVarIO
     stopListeningVar <- newMVar mempty
-    let stderrLogger :: MonadIO m => Colog.LogAction m (WithSeverity Text)
+    let stderrLogger :: (MonadIO m) => Colog.LogAction m (WithSeverity Text)
         stderrLogger = Colog.cmap show Colog.logStringStderr
         clientLogger :: (LSP.MonadLsp c m) => Colog.LogAction m (WithSeverity Text)
         clientLogger = LSP.defaultClientLogger

@@ -244,12 +244,12 @@ pretty h = do
       <> Doc.pretty h.lineColumn
       <> ":"
       <+> heading
-        <> line
-        <> line
-        <> body
-        <> line
-        <> line
-        <> spannedLine
+      <> line
+      <> line
+      <> body
+      <> line
+      <> line
+      <> spannedLine
   where
     spannedLine =
       let UTF16.LineColumns
