@@ -9,6 +9,7 @@ module Elaboration.MetaInlining where
 import Core.Binding (Binding)
 import Core.Bindings (Bindings)
 import qualified Core.Domain as Domain
+import qualified Core.Environment
 import qualified Core.Syntax as Syntax
 import Data.EnumMap (EnumMap)
 import qualified Data.EnumMap as EnumMap
@@ -40,9 +41,10 @@ inlineSolutions
   -> Syntax.Type Void
   -> M (Syntax.Definition, Syntax.Type Void)
 inlineSolutions solutions def type_ = do
+  let emptyEnv = Core.Environment.empty
   solutionValues <- forM solutions \(metaTerm, metaType, metaOccurrences) -> do
-    metaValue <- evaluate Environment.empty metaTerm
-    metaType' <- evaluate Environment.empty metaType
+    metaValue <- evaluate emptyEnv metaTerm
+    metaType' <- evaluate emptyEnv metaType
     pure (metaValue, metaType', metaOccurrences)
 
   let sortedSolutions =
@@ -117,12 +119,12 @@ inlineSolutions solutions def type_ = do
             pure $ Telescope.Empty (Syntax.ConstructorDefinitions constrs')
           Telescope.Extend name paramType plicity tele' -> do
             paramType' <- inlineTermSolutions env paramType
-            (env', _) <- Environment.extend env
+            (env', _) <- Core.Environment.extend env
             tele'' <- inlineTeleSolutions env' tele'
             pure $ Telescope.Extend name paramType' plicity tele''
 
-  inlinedType <- inlineTermSolutions Environment.empty type_
-  inlinedDef <- inlineDefSolutions Environment.empty def
+  inlinedType <- inlineTermSolutions emptyEnv type_
+  inlinedDef <- inlineDefSolutions emptyEnv def
 
   pure
     ( inlinedDef
@@ -335,7 +337,7 @@ evaluate :: Domain.Environment v -> Syntax.Term v -> M Value
 evaluate env term =
   case term of
     Syntax.Var index ->
-      pure $ makeVar $ Environment.lookupIndexVar index env
+      pure $ makeVar $ Core.Environment.lookupIndexVar index env
     Syntax.Global global ->
       pure $ makeGlobal global
     Syntax.Con con ->
@@ -349,7 +351,7 @@ evaluate env term =
     Syntax.Lets lets ->
       makeLets <$> evaluateLets env lets
     Syntax.Pi name domain plicity target -> do
-      (env', var) <- Environment.extend env
+      (env', var) <- Core.Environment.extend env
       makePi name var
         <$> evaluate env domain
         <*> pure plicity
@@ -360,7 +362,7 @@ evaluate env term =
         <*> pure plicity
         <*> evaluate env target
     Syntax.Lam name type_ plicity body -> do
-      (env', var) <- Environment.extend env
+      (env', var) <- Core.Environment.extend env
       makeLam name var
         <$> evaluate env type_
         <*> pure plicity
@@ -382,12 +384,12 @@ evaluateLets :: Domain.Environment v -> Syntax.Lets v -> M Lets
 evaluateLets env lets =
   case lets of
     Syntax.LetType name type_ lets' -> do
-      (env', var) <- Environment.extend env
+      (env', var) <- Core.Environment.extend env
       makeLetType name var
         <$> evaluate env type_
         <*> evaluateLets env' lets'
     Syntax.Let name index value lets' ->
-      makeLet name (Environment.lookupIndexVar index env)
+      makeLet name (Core.Environment.lookupIndexVar index env)
         <$> evaluate env value
         <*> evaluateLets env lets'
     Syntax.In term ->
@@ -415,7 +417,7 @@ evaluateTelescope env tele =
       pure ([], body')
     Telescope.Extend name type_ plicity tele' -> do
       type' <- evaluate env type_
-      (env', var) <- Environment.extend env
+      (env', var) <- Core.Environment.extend env
       (bindings, body) <- evaluateTelescope env' tele'
       pure ((name, var, type', plicity) : bindings, body)
 
@@ -425,7 +427,7 @@ readback env metas (Value value occs) =
     Var var ->
       Syntax.Var $
         fromMaybe (panic "Elaboration.MetaInlining.readback Var") $
-          Environment.lookupVarIndex var env
+          Core.Environment.lookupVarIndex var env
     Global global ->
       Syntax.Global global
     Con con ->
@@ -441,7 +443,7 @@ readback env metas (Value value occs) =
        in Syntax.apps
             ( Syntax.Var $
                 fromMaybe (panic $ "Elaboration.MetaInlining.readback Meta " <> show index) $
-                  Environment.lookupVarIndex var env
+                  Core.Environment.lookupVarIndex var env
             )
             ((,) Explicit . readback env metas <$> arguments')
     PostponedCheck index value' ->
@@ -453,7 +455,7 @@ readback env metas (Value value occs) =
         name
         (readback env metas domain)
         plicity
-        (readback (Environment.extendVar env var) metas target)
+        (readback (Core.Environment.extendVar env var) metas target)
     Fun domain plicity target ->
       Syntax.Fun (readback env metas domain) plicity (readback env metas target)
     Lam name var type_ plicity body ->
@@ -461,7 +463,7 @@ readback env metas (Value value occs) =
         name
         (readback env metas type_)
         plicity
-        (readback (Environment.extendVar env var) metas body)
+        (readback (Core.Environment.extendVar env var) metas body)
     App function plicity argument ->
       Syntax.App (readback env metas function) plicity (readback env metas argument)
     Case scrutinee branches defaultBranch ->
@@ -483,11 +485,11 @@ readbackLets env metas (Lets lets occs) =
       Syntax.LetType
         name
         (readback env metas type_)
-        (readbackLets (Environment.extendVar env var) metas lets')
+        (readbackLets (Core.Environment.extendVar env var) metas lets')
     Let name var value lets' ->
       Syntax.Let
         name
-        (fromMaybe (panic "Elaboration.MetaInlining: indexless let") $ Environment.lookupVarIndex var env)
+        (fromMaybe (panic "Elaboration.MetaInlining: indexless let") $ Core.Environment.lookupVarIndex var env)
         (readback env metas value)
         (readbackLets env metas lets')
     In term ->
@@ -518,8 +520,7 @@ readbackTelescope env metas bindings body =
     [] ->
       Telescope.Empty $ readback env metas body
     (name, var, type_, plicity) : bindings' -> do
-      let env' =
-            Environment.extendVar env var
+      let env' = Core.Environment.extendVar env var
       Telescope.Extend name (readback env metas type_) plicity (readbackTelescope env' metas bindings' body)
 
 inlineArguments

@@ -8,10 +8,9 @@ module Occurrences where
 import Core.Binding (Binding)
 import Core.Bindings (Bindings)
 import qualified Core.Domain as Domain
+import qualified Core.Environment as Environment
 import qualified Core.Syntax as Syntax
 import Data.OrderedHashMap as OrderedHashMap
-import Environment (Environment)
-import qualified Environment
 import qualified Index
 import Literal (Literal)
 import qualified Monad
@@ -42,8 +41,8 @@ instance (Monoid a) => Monoid (M a) where
     pure mempty
 
 extend
-  :: Environment value v
-  -> M (Environment value (Index.Succ v), Var)
+  :: Domain.Environment v
+  -> M (Domain.Environment (Index.Succ v), Var)
 extend =
   M . Environment.extend
 

@@ -9,12 +9,12 @@ module Core.Domain where
 
 import Core.Binding (Binding)
 import Core.Bindings (Bindings)
+import {-# SOURCE #-} qualified Core.Environment (Environment)
 import qualified Core.Syntax as Syntax
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
-import qualified Environment
 import Flexibility (Flexibility)
 import qualified Flexibility
 import Index
@@ -44,13 +44,13 @@ data Head
   | Meta !Meta.Index
   deriving (Show, Eq, Generic, Hashable)
 
-type Environment = Environment.Environment Value
-
 data Closure where
   Closure :: Environment v -> Scope Syntax.Term v -> Closure
 
 data Branches where
   Branches :: Environment v -> Syntax.Branches v -> Maybe (Syntax.Term v) -> Branches
+
+type Environment = Core.Environment.Environment
 
 var :: Var -> Value
 var v = Neutral (Var v) mempty

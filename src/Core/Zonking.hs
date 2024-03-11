@@ -5,11 +5,11 @@ module Core.Zonking where
 import Core.Binding (Binding)
 import Core.Bindings (Bindings)
 import qualified Core.Domain as Domain
+import qualified Core.Environment as Environment
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
 import qualified Data.OrderedHashMap as OrderedHashMap
-import qualified Environment
 import qualified Meta
 import Monad
 import qualified Postponement

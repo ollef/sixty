@@ -5,10 +5,10 @@ module Core.Readback where
 
 import Core.Bindings (Bindings)
 import qualified Core.Domain as Domain
+import qualified Core.Environment as Environment
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Syntax as Syntax
 import qualified Data.OrderedHashMap as OrderedHashMap
-import qualified Environment
 import Index
 import Monad
 import Protolude hiding (IntMap, Seq, evaluate, force, head)

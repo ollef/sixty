@@ -22,6 +22,7 @@ import Core.Bindings (Bindings)
 import qualified Core.Bindings as Bindings
 import qualified Core.Domain as Domain
 import Core.Domain.Pattern (Pattern)
+import qualified Core.Environment as Environment
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
@@ -43,8 +44,6 @@ import Elaboration.Context.Type
 import qualified Elaboration.Meta as Meta
 import qualified Elaboration.Postponed as Postponed
 import {-# SOURCE #-} Elaboration.Unification as Unification
-import Environment (Environment (Environment))
-import qualified Environment
 import qualified Error
 import qualified Error.Hydrated as Error
 import qualified Error.Parsing as Error
@@ -75,36 +74,29 @@ toEnvironment
   :: Context v
   -> Domain.Environment v
 toEnvironment context =
-  Environment
-    { indices = context.indices
-    , values = context.values
-    , glueableBefore = Index.Zero
-    }
+  context.environment {Environment.glueableBefore = Index.Zero}
 
 empty :: (MonadBase IO m) => Scope.DefinitionKind -> Name.Qualified -> m (Context Void)
 empty definitionKind definitionName = do
-  ms <- newIORef Meta.empty
-  es <- newIORef mempty
-  ps <- newIORef Postponed.empty
-  cs <- newIORef mempty
+  metas <- newIORef Meta.empty
+  errors <- newIORef mempty
+  postponed <- newIORef Postponed.empty
+  coverageChecks <- newIORef mempty
   pure
     Context
       { definitionKind
       , definitionName
       , definitionType = Nothing
       , span = Span.Relative 0 0
+      , environment = Environment.empty
       , surfaceNames = mempty
       , varNames = mempty
-      , indices = Index.Map.Empty
       , types = mempty
       , boundVars = mempty
-      , metas = ms
-      , postponed = ps
-      , values = mempty
-      , equal = mempty
-      , notEqual = mempty
-      , coverageChecks = cs
-      , errors = es
+      , metas
+      , postponed
+      , coverageChecks
+      , errors
       }
 
 emptyFrom :: Context v -> Context Void
@@ -115,15 +107,12 @@ emptyFrom context =
     , definitionType = context.definitionType
     , span = context.span
     , surfaceNames = mempty
+    , environment = Environment.empty
     , varNames = mempty
-    , indices = Index.Map.Empty
     , types = mempty
     , boundVars = mempty
     , metas = context.metas
     , postponed = context.postponed
-    , values = mempty
-    , equal = mempty
-    , notEqual = mempty
     , coverageChecks = context.coverageChecks
     , errors = context.errors
     }
@@ -137,7 +126,7 @@ spanned s context =
 -------------------------------------------------------------------------------
 coveredConstructorsAndLiterals :: Context v -> Domain.Head -> Domain.Spine -> M (HashSet Name.QualifiedConstructor, HashSet Literal)
 coveredConstructorsAndLiterals context head_ spine =
-  case HashMap.lookup head_ context.notEqual of
+  case HashMap.lookup head_ context.environment.notEqual of
     Nothing -> pure mempty
     Just spines ->
       fold
@@ -157,19 +146,25 @@ coveredLiterals context head_ spine = snd <$> coveredConstructorsAndLiterals con
 withCoveredConstructors :: Context v -> Domain.Head -> Domain.Spine -> HashSet Name.QualifiedConstructor -> Context v
 withCoveredConstructors context head_ spine constructors =
   context
-    { notEqual =
-        HashMap.insertWith (<>) head_ [(spine, constructors, mempty)] context.notEqual
+    { environment =
+        context.environment
+          { Environment.notEqual =
+              HashMap.insertWith (<>) head_ [(spine, constructors, mempty)] context.environment.notEqual
+          }
     }
 
 withCoveredLiterals :: Context v -> Domain.Head -> Domain.Spine -> HashSet Literal -> Context v
 withCoveredLiterals context head_ spine literals =
   context
-    { notEqual =
-        HashMap.insertWith
-          (<>)
-          head_
-          [(spine, mempty, literals)]
-          context.notEqual
+    { environment =
+        context.environment
+          { Environment.notEqual =
+              HashMap.insertWith
+                (<>)
+                head_
+                [(spine, mempty, literals)]
+                context.environment.notEqual
+          }
     }
 
 -------------------------------------------------------------------------------
@@ -181,12 +176,12 @@ extendSurface
   -> Domain.Type
   -> M (Context (Succ v), Var)
 extendSurface context name@(Name.Surface nameText) type_ = do
-  var <- freshVar
+  (env', var) <- Environment.extend context.environment
   pure
     ( context
-        { surfaceNames = HashMap.insert name (Domain.var var, type_) context.surfaceNames
+        { environment = env'
+        , surfaceNames = HashMap.insert name (Domain.var var, type_) context.surfaceNames
         , varNames = EnumMap.insert var (Name nameText) context.varNames
-        , indices = context.indices Index.Map.:> var
         , types = EnumMap.insert var type_ context.types
         , boundVars = context.boundVars IntSeq.:> var
         }
@@ -199,11 +194,11 @@ extend
   -> Domain.Type
   -> M (Context (Succ v), Var)
 extend context name type_ = do
-  var <- freshVar
+  (env', var) <- Environment.extend context.environment
   pure
     ( context
-        { varNames = EnumMap.insert var name context.varNames
-        , indices = context.indices Index.Map.:> var
+        { environment = env'
+        , varNames = EnumMap.insert var name context.varNames
         , types = EnumMap.insert var type_ context.types
         , boundVars = context.boundVars IntSeq.:> var
         }
@@ -217,13 +212,12 @@ extendSurfaceDef
   -> Domain.Type
   -> M (Context (Succ v), Var)
 extendSurfaceDef context surfaceName@(Name.Surface nameText) value type_ = do
-  var <- freshVar
+  (env', var) <- Environment.extendValue context.environment value
   pure
     ( context
-        { surfaceNames = HashMap.insert surfaceName (Domain.var var, type_) context.surfaceNames
+        { environment = env'
+        , surfaceNames = HashMap.insert surfaceName (Domain.var var, type_) context.surfaceNames
         , varNames = EnumMap.insert var (Name nameText) context.varNames
-        , indices = context.indices Index.Map.:> var
-        , values = EnumMap.insert var value context.values
         , types = EnumMap.insert var type_ context.types
         }
     , var
@@ -242,12 +236,11 @@ extendDef
   -> Domain.Type
   -> M (Context (Succ v), Var)
 extendDef context name value type_ = do
-  var <- freshVar
+  (env', var) <- Environment.extendValue context.environment value
   pure
     ( context
-        { varNames = EnumMap.insert var name context.varNames
-        , indices = context.indices Index.Map.:> var
-        , values = EnumMap.insert var value context.values
+        { environment = env'
+        , varNames = EnumMap.insert var name context.varNames
         , types = EnumMap.insert var type_ context.types
         }
     , var
@@ -260,11 +253,11 @@ extendBefore
   -> Domain.Type
   -> M (Context (Succ v), Var)
 extendBefore context beforeVar binding type_ = do
-  var <- freshVar
+  (env', var) <- Environment.extend context.environment
   pure
     ( context
-        { varNames = EnumMap.insert var (Bindings.toName binding) context.varNames
-        , indices = context.indices Index.Map.:> var
+        { environment = env'
+        , varNames = EnumMap.insert var (Bindings.toName binding) context.varNames
         , types = EnumMap.insert var type_ context.types
         , boundVars =
             case IntSeq.elemIndex beforeVar context.boundVars of
@@ -275,14 +268,9 @@ extendBefore context beforeVar binding type_ = do
     )
 
 defineWellOrdered :: Context v -> Domain.Head -> Domain.Spine -> Domain.Value -> Context v
-defineWellOrdered context (Domain.Var var) Domain.Empty value =
-  context
-    { values = EnumMap.insert var value context.values
-    , boundVars = IntSeq.delete var context.boundVars
-    }
 defineWellOrdered context head_ spine value =
   context
-    { equal = HashMap.insertWith (<>) head_ [(spine, value)] context.equal
+    { environment = Environment.define context.environment head_ spine value
     }
 
 skip :: Context v -> M (Context (Succ v))
@@ -420,7 +408,7 @@ lookupSurfaceName surfaceName context =
 
 lookupVarIndex :: Var -> Context v -> Maybe (Index v)
 lookupVarIndex var context =
-  Index.Map.elemIndex var context.indices
+  Environment.lookupVarIndex var context.environment
 
 lookupVarName :: Var -> Context v -> Name
 lookupVarName var context =
@@ -428,7 +416,7 @@ lookupVarName var context =
 
 lookupIndexVar :: Index v -> Context v -> Var
 lookupIndexVar index context =
-  Index.Map.index context.indices index
+  Environment.lookupIndexVar index context.environment
 
 lookupIndexType :: Index v -> Context v -> Domain.Type
 lookupIndexType index context =
@@ -463,17 +451,9 @@ dumpValue context value = do
   term <- Readback.readback env value
   dumpTerm context term
   putText ""
-  unless (HashMap.null context.equal && EnumMap.null context.values) $
+  unless (HashMap.null context.environment.equal) $
     putText "  where"
-  forM_ (EnumMap.toList context.values) \(var, value') -> do
-    lhsTerm <- Readback.readback env (Domain.Neutral (Domain.Var var) mempty)
-    rhsTerm <- Readback.readback env value'
-    putStr ("    " :: Text)
-    dumpTerm context lhsTerm
-    putStr (" = " :: Text)
-    dumpTerm context rhsTerm
-    putText ""
-  forM_ (HashMap.toList context.equal) \(head_, argValues) ->
+  forM_ (HashMap.toList context.environment.equal) \(head_, argValues) ->
     forM_ argValues \(spine, eqValue) -> do
       lhsTerm <- Readback.readback env (Domain.Neutral head_ spine)
       rhsTerm <- Readback.readback env eqValue
@@ -489,7 +469,7 @@ toPrettyableTerm context term = do
   pure $
     Error.PrettyableTerm
       (moduleName context)
-      ((`lookupVarName` context) <$> toList context.indices)
+      ((`lookupVarName` context) <$> toList context.environment.indices)
       (Syntax.coerce term')
 
 toPrettyableValue :: Context v -> Domain.Value -> M Error.PrettyableTerm
@@ -506,7 +486,7 @@ toPrettyablePattern :: Context v -> Pattern -> Error.PrettyablePattern
 toPrettyablePattern context = do
   Error.PrettyablePattern
     (moduleName context)
-    ((`lookupVarName` context) <$> toList context.indices)
+    ((`lookupVarName` context) <$> toList context.environment.indices)
 
 -------------------------------------------------------------------------------
 -- Meta variables

@@ -29,16 +29,13 @@ data Context (v :: Data.Kind.Type) = Context
   , definitionName :: !Name.Qualified
   , definitionType :: Maybe Domain.Type
   , span :: !Span.Relative
-  , indices :: Index.Map v Var
+  , environment :: !(Domain.Environment v)
   , surfaceNames :: HashMap Name.Surface (Domain.Value, Domain.Type)
   , varNames :: EnumMap Var Name
   , types :: EnumMap Var Domain.Type
   , boundVars :: IntSeq Var
   , metas :: !(IORef (Meta.State M))
   , postponed :: !(IORef Postponed.Checks)
-  , values :: EnumMap Var Domain.Value
-  , equal :: HashMap Domain.Head [(Domain.Spine, Domain.Value)]
-  , notEqual :: HashMap Domain.Head [(Domain.Spine, HashSet Name.QualifiedConstructor, HashSet Literal)]
   , coverageChecks :: !(IORef (Tsil CoverageCheck))
   , errors :: !(IORef (Tsil Error))
   }

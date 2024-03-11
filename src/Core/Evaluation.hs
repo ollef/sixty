@@ -13,13 +13,13 @@ import Core.Bindings (Bindings)
 import qualified Core.Domain as Domain
 import qualified Core.Domain.Telescope as Domain (Telescope)
 import qualified Core.Domain.Telescope as Domain.Telescope
+import qualified Core.Environment as Environment
 import qualified Core.Syntax as Syntax
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Some (Some)
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
-import qualified Environment
 import qualified Index
 import Literal (Literal)
 import Monad
@@ -130,7 +130,7 @@ evaluateLets env boundTerms lets =
     defines =
       foldr' \(var, value) env' ->
         if isJust $ Environment.lookupVarIndex var env'
-          then Environment.define env' var value
+          then Environment.define env' (Domain.Var var) Domain.Empty value
           else env'
 
 chooseConstructorBranch

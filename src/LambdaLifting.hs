@@ -9,6 +9,7 @@ import qualified Core.Binding as Binding
 import Core.Bindings (Bindings)
 import qualified Core.Bindings as Bindings
 import qualified Core.Domain as Domain
+import qualified Core.Environment
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
@@ -285,19 +286,11 @@ saturatedConstructorApp
   -> Lift Value
 saturatedConstructorApp baseName env con args = do
   constructorTele <- fetch $ Query.ConstructorType con
-  let constructorType =
-        Telescope.fold Syntax.Pi constructorTele
-
-      paramCount =
-        Telescope.length constructorTele
-
-      emptyEnv =
-        Environment.empty
-
+  let constructorType = Telescope.fold Syntax.Pi constructorTele
+      paramCount = Telescope.length constructorTele
+  emptyEnv <- lift $ Core.Environment.empty
   constructorTypeValue <- lift $ Evaluation.evaluate emptyEnv constructorType
-
   arity <- lift $ typeArity emptyEnv constructorTypeValue
-
   if length args < arity
     then do
       lambdas <- lift $ makeConstructorFunction con emptyEnv constructorTypeValue mempty
@@ -318,7 +311,7 @@ makeConstructorFunction con env type_ spine = do
   type' <- Evaluation.forceHead env type_
   case type' of
     Domain.Pi binding domain plicity targetClosure -> do
-      (env', var) <- Environment.extend env
+      (env', var) <- Core.Environment.extend env
       let arg =
             Domain.var var
       target <- Evaluation.evaluateClosure targetClosure arg
@@ -326,7 +319,7 @@ makeConstructorFunction con env type_ spine = do
       domain' <- Readback.readback env domain
       pure $ Syntax.Lam (Bindings.Unspanned $ Binding.toName binding) domain' plicity body
     Domain.Fun domain plicity target -> do
-      (env', var) <- Environment.extend env
+      (env', var) <- Core.Environment.extend env
       body <- makeConstructorFunction con env' target $ spine Tsil.:> (plicity, Domain.var var)
       domain' <- Readback.readback env domain
       pure $ Syntax.Lam "x" domain' plicity body
@@ -341,7 +334,7 @@ typeArity env type_ = do
   type' <- Evaluation.forceHead env type_
   case type' of
     Domain.Pi _ _ _ targetClosure -> do
-      (env', var) <- Environment.extend env
+      (env', var) <- Core.Environment.extend env
       target <- Evaluation.evaluateClosure targetClosure $ Domain.var var
       targetArity <- typeArity env' target
       pure $ targetArity + 1
