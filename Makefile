@@ -8,7 +8,7 @@ endif
 STACK_BUILD := $(STACK_TEST) --no-run-tests
 STACK_INSTALL := $(STACK_BUILD) --copy-bins
 HASKELL_SOURCE_DIRECTORIES = $$(yq -r '.. | .["source-dirs"]? | select(. != null)' package.yaml)
-HASKELL_SOURCE_FILES = $$(find $(HASKELL_SOURCE_DIRECTORIES) -name "*.hs")
+HASKELL_SOURCE_FILES = $$(find $(HASKELL_SOURCE_DIRECTORIES) -name "*.hs*")
 
 .PHONY: install
 install:
