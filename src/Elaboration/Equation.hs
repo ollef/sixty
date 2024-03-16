@@ -70,7 +70,7 @@ equateM flexibility unforcedValue1 unforcedValue2 = go unforcedValue1 unforcedVa
         (_, Domain.Glued _ _ value2'') ->
           go value1' value2''
         -- Same heads
-        (Domain.Neutral head1 spine1, Domain.Neutral head2 spine2)
+        (Domain.AnyNeutral head1 spine1, Domain.AnyNeutral head2 spine2)
           | head1 == head2 -> do
               let flexibility' = max (Domain.headFlexibility head1) flexibility
               equateSpines flexibility' spine1 spine2
@@ -91,7 +91,7 @@ equateM flexibility unforcedValue1 unforcedValue2 = go unforcedValue1 unforcedVa
               equateM flexibility target1 target2
 
         -- Neutrals
-        (Domain.Neutral head1 spine1, Domain.Neutral head2 spine2)
+        (Domain.AnyNeutral head1 spine1, Domain.AnyNeutral head2 spine2)
           | Flexibility.Rigid <- max (Domain.headFlexibility head1) flexibility
           , Flexibility.Rigid <- max (Domain.headFlexibility head2) flexibility -> do
               -- TODO: check both directions?
@@ -100,10 +100,10 @@ equateM flexibility unforcedValue1 unforcedValue2 = go unforcedValue1 unforcedVa
                 LT -> solve head2 spine2 unforcedValue1
                 GT -> solve head1 spine1 unforcedValue2
                 EQ -> solve head2 spine2 unforcedValue1
-        (Domain.Neutral head1 spine1, _)
+        (Domain.AnyNeutral head1 spine1, _)
           | Flexibility.Rigid <- max (Domain.headFlexibility head1) flexibility ->
               solve head1 spine1 unforcedValue2
-        (_, Domain.Neutral head2 spine2)
+        (_, Domain.AnyNeutral head2 spine2)
           | Flexibility.Rigid <- max (Domain.headFlexibility head2) flexibility ->
               solve head2 spine2 unforcedValue1
         _ ->
@@ -151,7 +151,7 @@ occurs :: Context v -> (Domain.Head -> Bool) -> Flexibility -> Domain.Value -> M
 occurs context occ flexibility value = do
   value' <- Context.forceHeadGlue context value
   case value' of
-    Domain.Neutral hd spine -> do
+    Domain.AnyNeutral hd spine -> do
       occursHead occ flexibility hd
       occursSpine context occ (max (Domain.headFlexibility hd) flexibility) spine
     Domain.Con _ args ->

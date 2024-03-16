@@ -207,6 +207,8 @@ apply fun plicity arg =
           panic "Core.Evaluation: plicity mismatch"
     Domain.Neutral hd spine ->
       pure $ Domain.Neutral hd $ spine Domain.:> Domain.App plicity arg
+    Domain.Stuck hd args value spine ->
+      pure $ Domain.Stuck hd args value $ spine Domain.:> Domain.App plicity arg
     Domain.Glued hd spine value -> do
       appliedValue <- apply value plicity arg
       pure $ Domain.Glued hd (spine Domain.:> Domain.App plicity arg) appliedValue
@@ -229,6 +231,8 @@ case_ scrutinee branches@(Domain.Branches env branches' defaultBranch) =
       chooseLiteralBranch env lit literalBranches defaultBranch
     (Domain.Neutral head spine, _) ->
       pure $ Domain.Neutral head $ spine Domain.:> Domain.Case branches
+    (Domain.Stuck head args value spine, _) ->
+      pure $ Domain.Stuck head args value $ spine Domain.:> Domain.Case branches
     (Domain.Glued hd spine value, _) -> do
       casedValue <- case_ value branches
       pure $ Domain.Glued hd (spine Domain.:> Domain.Case branches) casedValue

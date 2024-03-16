@@ -94,7 +94,7 @@ unify context flexibility unforcedValue1 unforcedValue2 = catchAndAdd $ go unfor
         (_, Domain.Glued _ _ value2'') ->
           go value1' value2''
         -- Both metas
-        (Domain.Neutral (Domain.Meta metaIndex1) (Domain.Apps args1), Domain.Neutral (Domain.Meta metaIndex2) (Domain.Apps args2))
+        (Domain.AnyNeutral (Domain.Meta metaIndex1) (Domain.Apps args1), Domain.AnyNeutral (Domain.Meta metaIndex2) (Domain.Apps args2))
           | Flexibility.Rigid <- flexibility -> do
               args1' <- mapM (mapM $ Context.forceHead context) args1
               args2' <- mapM (mapM $ Context.forceHead context) args2
@@ -133,7 +133,7 @@ unify context flexibility unforcedValue1 unforcedValue2 = catchAndAdd $ go unfor
                       can'tUnify
 
         -- Same heads
-        (Domain.Neutral head1 (Domain.Apps args1), Domain.Neutral head2 (Domain.Apps args2))
+        (Domain.AnyNeutral head1 (Domain.Apps args1), Domain.AnyNeutral head2 (Domain.Apps args2))
           | head1 == head2
           , (fst <$> args1) == (fst <$> args2) -> do
               let flexibility' =
@@ -222,13 +222,13 @@ unify context flexibility unforcedValue1 unforcedValue2 = catchAndAdd $ go unfor
           | Flexibility.Rigid <- flexibility -> do
               matches <- potentiallyMatchingBranches context value1' branches
               invertCase meta spine args matches
-        (Domain.Neutral head1 spine1@(Domain.Spine args1 ((branches1, _) Seq.:<| _)), Domain.Neutral head2 spine2)
+        (Domain.AnyNeutral head1 spine1@(Domain.Spine args1 ((branches1, _) Seq.:<| _)), Domain.AnyNeutral head2 spine2)
           | head1 == head2 ->
               unifySpines context Flexibility.Flexible spine1 spine2 `catch` \(_ :: Error.Elaboration) ->
                 withBranches context head1 args1 branches1 \context' -> unify context' flexibility value1' value2
-        (Domain.Neutral head (Domain.Spine args ((branches, _) Seq.:<| _)), _) ->
+        (Domain.AnyNeutral head (Domain.Spine args ((branches, _) Seq.:<| _)), _) ->
           withBranches context head args branches \context' -> unify context' flexibility value1' value2
-        (_, Domain.Neutral head (Domain.Spine args ((branches, _) Seq.:<| _))) ->
+        (_, Domain.AnyNeutral head (Domain.Spine args ((branches, _) Seq.:<| _))) ->
           withBranches context head args branches \context' -> unify context' flexibility value1 value2'
         -- Failure terms mean that there has been an earlier error that's already
         -- been reported, so let's not trigger more errors from them.
@@ -575,10 +575,10 @@ potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv b
           case (body'', resultValue') of
             (Domain.Neutral (Domain.Meta _) (Domain.Apps _), _) ->
               pure True
-            (Domain.Neutral _ (_ Domain.:> Domain.Case branches'), _) -> do
+            (Domain.AnyNeutral _ (_ Domain.:> Domain.Case branches'), _) -> do
               matches <- potentiallyMatchingBranches context resultValue branches'
               pure $ not $ null matches
-            (Domain.Neutral head1 (Domain.Apps _), Domain.Neutral head2 (Domain.Apps _)) ->
+            (Domain.AnyNeutral head1 (Domain.Apps _), Domain.AnyNeutral head2 (Domain.Apps _)) ->
               pure $ head1 == head2
             (Domain.Con con1 _, Domain.Con con2 _) ->
               pure $ con1 == con2
@@ -655,7 +655,7 @@ shouldKeepMetaArgument value1 value2 =
       case value of
         Domain.Con _ Tsil.Empty ->
           True
-        Domain.Neutral hd Domain.Empty ->
+        Domain.AnyNeutral hd Domain.Empty ->
           case hd of
             Domain.Var _ ->
               False
@@ -744,15 +744,15 @@ renameValue
 renameValue outerContext renaming value = do
   value' <- Context.forceHeadGlue outerContext value
   case value' of
-    Domain.Neutral (Domain.Var var) spine ->
+    Domain.AnyNeutral (Domain.Var var) spine ->
       case Environment.lookupVarIndex var $ environment renaming of
         Nothing ->
           throwIO $ Error.TypeMismatch mempty
         Just i ->
           renameSpine outerContext renaming (Syntax.Var i) spine
-    Domain.Neutral (Domain.Global global) spine ->
+    Domain.AnyNeutral (Domain.Global global) spine ->
       renameSpine outerContext renaming (Syntax.Global global) spine
-    Domain.Neutral (Domain.Meta meta) spine
+    Domain.AnyNeutral (Domain.Meta meta) spine
       | Just meta == occurs renaming ->
           throwIO $ Error.OccursCheck mempty
       | otherwise ->

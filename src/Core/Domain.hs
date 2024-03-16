@@ -28,6 +28,7 @@ import Var (Var)
 
 data Value
   = Neutral !Head Spine
+  | Stuck !Head Args !Value Spine
   | Con !Name.QualifiedConstructor (Tsil (Plicity, Value))
   | Lit !Literal
   | Glued !Head Spine !Value
@@ -43,6 +44,17 @@ data Head
   | Global !Name.Qualified
   | Meta !Meta.Index
   deriving (Show, Eq, Generic, Hashable)
+
+anyNeutralView :: Value -> Maybe (Head, Spine)
+anyNeutralView = \case
+  Neutral hd spine -> Just (hd, spine)
+  Stuck hd args _ spine -> Just (hd, Apps args <> spine)
+  _ -> Nothing
+
+pattern AnyNeutral :: Head -> Spine -> Value
+pattern AnyNeutral hd spine <- (anyNeutralView -> Just (hd, spine))
+
+{-# COMPLETE AnyNeutral, Con, Lit, Glued, Core.Domain.Lazy, Lam, Pi, Fun #-}
 
 type Environment = Environment.Environment Value
 

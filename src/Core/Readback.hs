@@ -20,7 +20,7 @@ import qualified Telescope
 readback :: Domain.Environment v -> Domain.Value -> M (Syntax.Term v)
 readback env value =
   case value of
-    Domain.Neutral head spine ->
+    Domain.AnyNeutral head spine ->
       case head of
         Domain.Var v ->
           case (Environment.lookupVarIndex v env, Environment.lookupVarValue v env) of

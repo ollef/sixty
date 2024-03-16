@@ -992,11 +992,11 @@ getExpectedTypeName
 getExpectedTypeName context type_ = do
   type' <- Context.forceHead context type_
   case type' of
-    Domain.Neutral (Domain.Meta blockingMeta) _ ->
+    Domain.AnyNeutral (Domain.Meta blockingMeta) _ ->
       pure $ Just $ Left blockingMeta
-    Domain.Neutral (Domain.Global name) _ ->
+    Domain.AnyNeutral (Domain.Global name) _ ->
       pure $ Just $ Right name
-    Domain.Neutral (Domain.Var _) _ ->
+    Domain.AnyNeutral (Domain.Var _) _ ->
       pure Nothing
     Domain.Con {} ->
       pure Nothing

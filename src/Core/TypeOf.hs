@@ -27,7 +27,7 @@ import qualified Telescope
 typeOf :: Context v -> Domain.Value -> M Domain.Type
 typeOf context value =
   case value of
-    Domain.Neutral hd spine -> do
+    Domain.AnyNeutral hd spine -> do
       headType <- typeOfHead context hd
       typeOfSpineApplication context headType spine
     Domain.Lit lit ->

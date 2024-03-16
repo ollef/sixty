@@ -343,7 +343,7 @@ uncoveredScrutineePatterns
 uncoveredScrutineePatterns context value = do
   value' <- Context.forceHead context value
   case value' of
-    Domain.Neutral head_ spine -> do
+    Domain.AnyNeutral head_ spine -> do
       covered <- Context.coveredConstructors context head_ spine
       case HashSet.toList covered of
         [] ->
@@ -467,12 +467,12 @@ simplifyMatch context canPostpone match@(Match value forcedValue plicity pat typ
               pure []
           | otherwise ->
               fail "Literal mismatch"
-        (Domain.Neutral head_ spine, Con _ constr _) -> do
+        (Domain.AnyNeutral head_ spine, Con _ constr _) -> do
           covered <- lift $ Context.coveredConstructors context head_ spine
           if HashSet.member constr covered
             then fail "Constructor already covered"
             else pure [match']
-        (Domain.Neutral head_ spine, Lit lit) -> do
+        (Domain.AnyNeutral head_ spine, Lit lit) -> do
           covered <- lift $ Context.coveredLiterals context head_ spine
           if HashSet.member lit covered
             then fail "Literal already covered"
@@ -649,10 +649,10 @@ splitConstructorOr context config matches canPostpone k =
           | Flexibility.Flexible <- Domain.headFlexibility head_
           , Postponement.CanPostpone <- canPostpone ->
               splitConstructorOr context config matches' canPostpone k
-        Match scrutinee (Domain.Neutral head_ spine) _ (Pattern span (Con _ constr _)) type_
+        Match scrutinee (Domain.AnyNeutral head_ spine) _ (Pattern span (Con _ constr _)) type_
           | Flexibility.Rigid <- Domain.headFlexibility head_ ->
               splitConstructor context config scrutinee head_ spine span constr type_
-        Match scrutinee (Domain.Neutral head_ spine) _ (Pattern span (Lit lit)) type_
+        Match scrutinee (Domain.AnyNeutral head_ spine) _ (Pattern span (Lit lit)) type_
           | Flexibility.Rigid <- Domain.headFlexibility head_ ->
               splitLiteral context config scrutinee head_ spine span lit type_
         _ ->
@@ -816,7 +816,7 @@ findConstructorMatches context head_ spine matches =
   case matches of
     [] ->
       pure []
-    Match _ (Domain.Neutral head' spine') _ (Pattern _ (Con span constr patterns)) _ : matches'
+    Match _ (Domain.AnyNeutral head' spine') _ (Pattern _ (Con span constr patterns)) _ : matches'
       | head_ == head' -> do
           eq <- Unification.equalSpines context spine spine'
           if eq
@@ -871,7 +871,7 @@ findLiteralMatches context head_ spine matches =
   case matches of
     [] ->
       pure []
-    Match _ (Domain.Neutral head' spine') _ (Pattern span (Lit lit)) _ : matches'
+    Match _ (Domain.AnyNeutral head' spine') _ (Pattern span (Lit lit)) _ : matches'
       | head_ == head' -> do
           eq <- Unification.equalSpines context spine spine'
           if eq
@@ -896,7 +896,7 @@ splitEqualityOr context config matches k =
       case match of
         Match
           scrutineeValue
-          scrutineeValue'@Domain.Neutral {}
+          scrutineeValue'@Domain.AnyNeutral {}
           _
           (Pattern _ Wildcard)
           (Builtin.Equals type_ value1 value2) -> do

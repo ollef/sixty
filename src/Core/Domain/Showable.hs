@@ -19,6 +19,7 @@ import Protolude hiding (IntMap, Type, force, to)
 
 data Value
   = Neutral !Domain.Head Spine
+  | Stuck !Domain.Head (Seq (Plicity, Value)) Value Spine
   | Con !Name.QualifiedConstructor (Tsil (Plicity, Value))
   | Lit !Literal
   | Glued !Domain.Head Spine !Value
@@ -54,6 +55,8 @@ to value =
   case value of
     Domain.Neutral hd spine ->
       Neutral hd <$> Domain.mapM eliminationTo spine
+    Domain.Stuck hd args value' spine ->
+      Stuck hd <$> mapM (mapM to) args <*> to value' <*> Domain.mapM eliminationTo spine
     Domain.Con con args ->
       Con con <$> mapM (mapM to) args
     Domain.Lit lit ->

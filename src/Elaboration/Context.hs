@@ -319,7 +319,7 @@ freeVars
 freeVars context value = do
   value' <- lift $ forceHeadGlue context value
   case value' of
-    Domain.Neutral hd spine -> do
+    Domain.AnyNeutral hd spine -> do
       hdVars <- headVars hd
       elimVars <- Domain.mapM eliminationVars spine
       pure $ hdVars <> fold elimVars
@@ -700,6 +700,8 @@ forceHead context value =
           forceHead context value''
         Nothing ->
           pure value
+    Domain.Stuck head_ args value' spine ->
+      undefined -- TODO
     Domain.Glued _ _ value' ->
       forceHead context value'
     Domain.Lazy lazyValue -> do
@@ -724,6 +726,8 @@ forceHeadGlue context value =
           pure $ Domain.Glued head_ spine $ Domain.Lazy lazyValue
         Nothing ->
           pure value
+    Domain.Stuck head_ args value' spine ->
+      undefined -- TODO
     Domain.Lazy lazyValue -> do
       value' <- force lazyValue
       forceHeadGlue context value'
