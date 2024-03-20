@@ -274,29 +274,26 @@ extendBefore context beforeVar binding type_ = do
     , var
     )
 
-defineWellOrdered :: Context v -> Domain.Head -> Domain.Spine -> Domain.Value -> Context v
-defineWellOrdered context (Domain.Var var) Domain.Empty value =
+defineWellOrdered :: Context v -> Var -> Domain.Value -> Context v
+defineWellOrdered context var value =
   context
     { values = EnumMap.insert var value context.values
     , boundVars = IntSeq.delete var context.boundVars
     }
-defineWellOrdered context head_ spine value =
+
+rewrite :: Context v -> Domain.Head -> Domain.Spine -> Domain.Value -> Context v
+rewrite context head_ spine value =
   context
     { equal = HashMap.insertWith (<>) head_ [(spine, value)] context.equal
     }
 
-skip :: Context v -> M (Context (Succ v))
-skip context = do
-  (context', _) <- extendDef context "skip" Builtin.Type Builtin.Type
-  pure context'
-
 define :: Context v -> Domain.Head -> Domain.Spine -> Domain.Value -> M (Context v)
-define context head_ spine value = do
+define context (Domain.Var var) Domain.Empty value = do
   -- putText "define"
   -- dumpValue context (Domain.Neutral head_ spine)
   -- dumpValue context value
   deps <- evalStateT (freeVars context value) mempty
-  let context' = defineWellOrdered context head_ spine value
+  let context' = defineWellOrdered context var value
       context''
         | EnumSet.null deps = context'
         | otherwise =
@@ -306,6 +303,13 @@ define context head_ spine value = do
               }
       (pre, post) = Tsil.partition (`EnumSet.member` deps) $ IntSeq.toTsil context'.boundVars
   pure context''
+define context head_ spine value =
+  pure $ rewrite context head_ spine value
+
+skip :: Context v -> M (Context (Succ v))
+skip context = do
+  (context', _) <- extendDef context "skip" Builtin.Type Builtin.Type
+  pure context'
 
 -- TODO: Move
 freeVars

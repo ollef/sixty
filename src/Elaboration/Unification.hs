@@ -329,7 +329,7 @@ withBranches context head args (Domain.Branches env brs maybeDefaultBranch) k =
       covered <- Context.coveredLiterals context head $ Domain.Apps args
       forM_ (OrderedHashMap.keys lbrs) \lit -> do
         unless (HashSet.member lit covered) do
-          let context' = Context.defineWellOrdered context head (Domain.Apps args) $ Domain.Lit lit
+          context' <- Context.define context head (Domain.Apps args) $ Domain.Lit lit
           k context'
       when (isJust maybeDefaultBranch) do
         let covered' = HashSet.fromMap $ void $ OrderedHashMap.toMap lbrs
@@ -374,7 +374,7 @@ withConstructorBranch context env head args constr constrArgs tele k =
       case maybeBranchContext of
         Nothing -> pure ()
         Just context' -> do
-          let context'' = Context.defineWellOrdered context' head (Domain.Apps args) $ Domain.Con constr constrArgs
+          context'' <- Context.define context' head (Domain.Apps args) $ Domain.Con constr constrArgs
           k context''
     Telescope.Extend bindings type_ plicity tele' -> do
       type' <- Evaluation.evaluate env type_

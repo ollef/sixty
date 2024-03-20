@@ -842,7 +842,7 @@ splitLiteral context config scrutineeValue scrutineeHead scrutineeSpine span lit
   f <- Unification.tryUnify (Context.spanned span context) (Elaboration.inferLiteral lit) outerType
 
   branches <- forM (OrderedHashMap.toList matchedLiterals) \(int, spans) -> do
-    let context' = Context.defineWellOrdered context scrutineeHead scrutineeSpine $ Domain.Lit int
+    context' <- Context.define context scrutineeHead scrutineeSpine $ Domain.Lit int
     result <- check context' config Postponement.CanPostpone
     pure (int, (spans, f result))
 
