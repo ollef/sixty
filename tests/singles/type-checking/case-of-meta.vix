@@ -5,6 +5,6 @@ f =
   let x : Bool
       x = _ -- unsolved meta error expected
   in
-  case x of
-    False -> True
-    True -> False
+  case x of -- indeterminate index unification error expected
+    False -> True -- redundant match error expected
+    True -> False -- redundant match error expected

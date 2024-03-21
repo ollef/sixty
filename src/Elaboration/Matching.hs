@@ -645,13 +645,16 @@ splitConstructorOr context config matches canPostpone k =
       k
     match : matches' ->
       case match of
-        Match _ (Domain.Neutral (Domain.Meta _) _) _ _ _
-          | Postponement.CanPostpone <- canPostpone ->
+        Match _ (Domain.Neutral head_ _) _ _ _
+          | Flexibility.Flexible <- Domain.headFlexibility head_
+          , Postponement.CanPostpone <- canPostpone ->
               splitConstructorOr context config matches' canPostpone k
-        Match scrutinee (Domain.Neutral head_ spine) _ (Pattern span (Con _ constr _)) type_ ->
-          splitConstructor context config scrutinee head_ spine span constr type_
-        Match scrutinee (Domain.Neutral head_ spine) _ (Pattern span (Lit lit)) type_ ->
-          splitLiteral context config scrutinee head_ spine span lit type_
+        Match scrutinee (Domain.Neutral head_ spine) _ (Pattern span (Con _ constr _)) type_
+          | Flexibility.Rigid <- Domain.headFlexibility head_ ->
+              splitConstructor context config scrutinee head_ spine span constr type_
+        Match scrutinee (Domain.Neutral head_ spine) _ (Pattern span (Lit lit)) type_
+          | Flexibility.Rigid <- Domain.headFlexibility head_ ->
+              splitLiteral context config scrutinee head_ spine span lit type_
         _ ->
           splitConstructorOr context config matches' canPostpone k
 
