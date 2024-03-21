@@ -897,10 +897,10 @@ splitEqualityOr context config matches k =
           _
           (Pattern _ Wildcard)
           (Builtin.Equals type_ value1 value2) -> do
-            unificationResult <- try do
+            equationResult <- try do
               context' <- Equation.equate context Flexibility.Rigid value1 value2
               Equation.equate context' Flexibility.Rigid scrutineeValue' $ Builtin.Refl type_ value1 value2
-            case unificationResult of
+            case equationResult of
               Left Equation.Nope -> do
                 check context config {clauses = drop 1 config.clauses} Postponement.CanPostpone
               Left Equation.Dunno -> do
