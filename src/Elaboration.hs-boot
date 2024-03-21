@@ -1,12 +1,8 @@
 module Elaboration where
 
-import Protolude
-
-import Data.HashSet (HashSet)
-import Prettyprinter (Doc)
-
 import qualified Core.Domain as Domain
 import qualified Core.Syntax as Syntax
+import Data.HashSet (HashSet)
 import Elaboration.Context (Context)
 import Literal (Literal)
 import qualified Meta
@@ -15,6 +11,8 @@ import Name (Name)
 import qualified Name
 import Plicity
 import qualified Postponement
+import Prettyprinter (Doc)
+import Protolude
 import qualified Surface.Syntax as Surface
 
 check
@@ -22,19 +20,15 @@ check
   -> Surface.Term
   -> Domain.Type
   -> M (Syntax.Term v)
-
 inferLiteral :: Literal -> Domain.Type
-
 evaluate
   :: Context v
   -> Syntax.Term v
   -> M Domain.Value
-
 readback
   :: Context v
   -> Domain.Value
   -> M (Syntax.Term v)
-
 getExpectedTypeName
   :: Context v
   -> Domain.Type
@@ -50,7 +44,6 @@ resolveConstructor
   -> HashSet Name.Qualified
   -> M (Maybe (Either Meta.Index Name.Qualified))
   -> M (Either Meta.Index ResolvedConstructor)
-
 inferenceFailed
   :: Context v
   -> M (Syntax.Term v, Domain.Type)
@@ -65,9 +58,7 @@ insertMetas
   -> InsertUntil
   -> Domain.Type
   -> M ([(Plicity, Domain.Value)], Domain.Type)
-
 prettyValue :: Context v -> Domain.Value -> M (Doc ann)
-
 postpone
   :: Context v
   -> Domain.Type
