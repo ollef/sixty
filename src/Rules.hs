@@ -7,6 +7,7 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 
 module Rules where
@@ -31,6 +32,7 @@ import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.OrderedHashSet as OrderedHashSet
+import Data.Some (Some)
 import qualified Data.Text as Text
 import qualified Data.Text.Unsafe as Text
 import Data.Text.Utf16.Rope (Rope)
@@ -336,13 +338,17 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
               go (dep : todo) done
                 | dep `HashSet.member` done = go todo done
                 | otherwise = do
-                    depDeps <- fetch $ TransitiveDependencies dep Mapped.Map
+                    transitiveDeps <- try $ fetch $ TransitiveDependencies dep Mapped.Map
+                    depDeps <- case transitiveDeps of
+                      Left (Cyclic (_ :: Some Query)) -> fetch $ Dependencies dep Mapped.Map
+                      Right depDeps -> pure depDeps
+
                     go todo $ HashSet.insert dep done <> HashSet.fromMap depDeps
           deps <- fetch $ Dependencies qualifiedName Mapped.Map
           HashSet.toMap
             <$> go
               (HashMap.keys deps)
-              (HashSet.singleton qualifiedName)
+              mempty
     ConstructorType (Name.QualifiedConstructor dataTypeName constr) ->
       noError do
         (def, _) <- fetch $ ElaboratedDefinition dataTypeName
