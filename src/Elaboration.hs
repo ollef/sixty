@@ -1,10 +1,10 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -602,7 +602,7 @@ elaborateWith context spannedTerm@(Surface.Term span term) mode canPostpone = do
     (Surface.Lit lit, _) ->
       result context mode (Syntax.Spanned span $ Syntax.Lit lit) (inferLiteral lit)
     (Surface.Lets lets body, _) ->
-      map Syntax.Lets <$> elaborateLets context mempty mempty mempty lets body mode
+      map Syntax.Lets <$> elaborateLets context mempty mempty 0 lets body mode
     (Surface.Pi spannedName@(Surface.SpannedName _ name) plicity domain target, _) -> do
       domain' <- check context domain Builtin.Type
       domain'' <- lazyEvaluate context domain'
@@ -680,12 +680,12 @@ elaborateLets
   => Context v
   -> HashMap Name.Surface (Span.Relative, Var)
   -> EnumMap Var (Span.Relative, Name.Surface)
-  -> Tsil (Var, LetBoundTerm)
+  -> Int
   -> [Surface.Let]
   -> Surface.Term
   -> Mode result
   -> M (result (Syntax.Lets v))
-elaborateLets context declaredNames undefinedVars definedVars lets body mode = do
+elaborateLets context declaredNames undefinedVars !definedVars lets body mode = do
   case lets of
     [] -> do
       body' <- elaborate context body mode
@@ -703,8 +703,8 @@ elaborateLets context declaredNames undefinedVars definedVars lets body mode = d
     -- Optimisation: No need to consider the rest of the bindings to be mutuals if they're all defined
     _
       | EnumMap.null undefinedVars
-      , not (Tsil.null definedVars) -> do
-          lets' <- elaborateLets context mempty mempty mempty lets body mode
+      , definedVars > 0 -> do
+          lets' <- elaborateLets context mempty mempty 0 lets body mode
           pure $ Syntax.In . Syntax.Lets <$> lets'
     Surface.LetType spannedName@(Surface.SpannedName span surfaceName) type_ : lets' ->
       case HashMap.lookup surfaceName declaredNames of
@@ -715,29 +715,18 @@ elaborateLets context declaredNames undefinedVars definedVars lets body mode = d
           typeTerm <- check context type_ Builtin.Type
           typeValue <- lazyEvaluate context typeTerm
           (context', var) <- Context.extendSurface context surfaceName typeValue
-          let declaredNames' =
-                HashMap.insert surfaceName (span, var) declaredNames
-
-              undefinedVars' =
-                EnumMap.insert var (span, surfaceName) undefinedVars
+          let declaredNames' = HashMap.insert surfaceName (span, var) declaredNames
+              undefinedVars' = EnumMap.insert var (span, surfaceName) undefinedVars
           lets'' <- elaborateLets context' declaredNames' undefinedVars' definedVars lets' body mode
           pure $ Syntax.LetType (Binding.fromSurface spannedName) typeTerm <$> lets''
     Surface.Let surfaceName@(Name.Surface nameText) clauses : lets' -> do
-      let clauses' =
-            [Clauses.Clause clause mempty | (_, clause) <- clauses]
-
-          name =
-            Name.Name nameText
-
-          bindings =
-            Bindings.fromName (map fst clauses) name
-
+      let clauses' = [Clauses.Clause clause mempty | (_, clause) <- clauses]
+          name = Name.Name nameText
+          bindings = Bindings.fromName (map fst clauses) name
           span =
             case clauses of
-              (span_, _) : _ ->
-                span_
-              _ ->
-                panic "elaborateLets: Clauseless Surface.Let"
+              (span_, _) : _ -> span_
+              _ -> panic "elaborateLets: Clauseless Surface.Let"
 
       case HashMap.lookup surfaceName declaredNames of
         Nothing -> do
@@ -746,11 +735,8 @@ elaborateLets context declaredNames undefinedVars definedVars lets body mode = d
           typeTerm <- readback context typeValue
           boundValue <- lazyEvaluate skipContext boundTerm
           (context', var) <- Context.extendSurfaceDef context surfaceName boundValue typeValue
-          let declaredNames' =
-                HashMap.insert surfaceName (span, var) declaredNames
-
-              definedVars' =
-                definedVars Tsil.:> (var, LetBoundTerm skipContext boundTerm)
+          let declaredNames' = HashMap.insert surfaceName (span, var) declaredNames
+              definedVars' = definedVars + 1
           lets'' <- elaborateLets context' declaredNames' undefinedVars definedVars' lets' body mode
           pure $
             Syntax.LetType (Binding.Unspanned name) typeTerm
@@ -760,33 +746,18 @@ elaborateLets context declaredNames undefinedVars definedVars lets body mode = d
           value <- Context.forceHead context (Domain.Neutral (Domain.Var var) Domain.Empty)
           case value of
             (Domain.Neutral (Domain.Var sameVar) Domain.Empty) | var == sameVar -> do
-              let type_ =
-                    Context.lookupVarType var context
+              let type_ = Context.lookupVarType var context
               boundTerm <- Clauses.check context clauses' type_
-              let index =
-                    fromMaybe (panic "elaborateLets: indexless var") $ Context.lookupVarIndex var context
-
-                  undefinedVars' =
-                    EnumMap.delete var undefinedVars
-
-                  definedVars' =
-                    definedVars Tsil.:> (var, LetBoundTerm context boundTerm)
-              redefinedContext <- mdo
-                values <- forM definedVars' \(var', LetBoundTerm context' boundTerm') ->
-                  (var',) <$> lazyEvaluate (defines context' values) boundTerm'
-                pure $ defines context values
-              lets'' <- elaborateLets redefinedContext declaredNames undefinedVars' definedVars' lets' body mode
+              boundValue <- lazyEvaluate context boundTerm
+              let context' = Context.defineWellOrdered context var boundValue
+              let index = fromMaybe (panic "elaborateLets: indexless var") $ Context.lookupVarIndex var context
+                  undefinedVars' = EnumMap.delete var undefinedVars
+                  definedVars' = definedVars + 1
+              lets'' <- elaborateLets context' declaredNames undefinedVars' definedVars' lets' body mode
               pure $ Syntax.Let bindings index boundTerm <$> lets''
             _ -> do
               Context.report (Context.spanned span context) $ Error.DuplicateLetName surfaceName previousSpan
               elaborateLets context declaredNames undefinedVars definedVars lets' body mode
-  where
-    defines :: Context v -> Tsil (Var, Domain.Value) -> Context v
-    defines =
-      foldr' \(var, value) context' ->
-        if isJust $ Context.lookupVarIndex var context'
-          then Context.defineWellOrdered context' var value
-          else context'
 
 forceExpectedTypeHead :: Context v -> Mode result -> M (Mode result)
 forceExpectedTypeHead context mode =
