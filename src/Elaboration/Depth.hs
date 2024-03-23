@@ -22,7 +22,7 @@ compareHeadDepths head1 head2 =
         (Just _, Nothing) -> GT
         (Nothing, Just _) -> LT
         _ -> EQ
-    (_, Domain.Global _) -> pure LT
-    (Domain.Global _, _) -> pure GT
+    (_, Domain.Global _) -> pure GT
+    (Domain.Global _, _) -> pure LT
     (Domain.Var v1, Domain.Var v2) -> pure $ compare v1 v2
     _ -> pure EQ
