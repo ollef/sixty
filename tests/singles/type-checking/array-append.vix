@@ -6,9 +6,6 @@ add : Nat -> Nat -> Nat
 add Z n = n
 add (S m) n = S (add m n)
 
-data Unit = Unit
-data Product A B = Product A B
-
 data Vector n A where
   Nil : Vector Z A
   Cons : forall n. A -> Vector n A -> Vector (S n) A
