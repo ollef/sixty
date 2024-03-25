@@ -647,7 +647,7 @@ forceNeutral context head_ spine
     chooseDefaultBranch =
       case spine of
         (Domain.Spine _ (_ Seq.:<| _))
-          | Just spineInequalities <- HashMap.lookup head_ context.notEqual -> do
+          | Just spineInequalities <- HashMap.lookup head_ context.notEqual ->
               findMatchingDefaultBranch spineInequalities
         _ -> metaSolution
 
