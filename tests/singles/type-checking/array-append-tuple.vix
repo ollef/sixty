@@ -1,0 +1,48 @@
+data Nat = Z | S Nat
+
+add : Nat -> Nat -> Nat
+add Z n = n
+add (S m) n = S (add m n)
+data Unit = Unit
+data Tuple A B = Tuple A B
+
+Vector : Nat -> Type -> Type
+Vector Z T = Unit
+Vector (S n) T = Tuple T (Vector n T)
+
+boxed
+data Array T where
+  Array : forall n. Vector n T -> Array T
+
+map_vector : forall A B n. (A -> B) -> Vector n A -> Vector n B
+map_vector @{n = Z} f Unit = Unit
+map_vector @{n = S n} f (Tuple a as) = Tuple (f a) (map_vector @{n} f as)
+
+append_vector : forall A m n. Vector m A -> Vector n A -> Vector (add m n) A
+append_vector @{m = Z} Unit ys = ys
+append_vector @{m = S m} (Tuple x xs) ys = Tuple x (append_vector xs ys)
+
+map_array : forall A B. (A -> B) -> Array A -> Array B
+map_array f (Array v) = Array (map_vector f v)
+
+append_array : forall A. Array A -> Array A -> Array A
+append_array (Array xs) (Array ys) = Array (append_vector xs ys)
+
+data Bool = False | True
+
+filter_length : forall n A. (A -> Bool) -> Vector n A -> Nat
+filter_length @{n = Z} p Unit = Z
+filter_length @{n = S n} p (Tuple a as) =
+  case p a of
+    False -> filter_length @{n} p as
+    True -> S (filter_length @{n} p as)
+
+filter_vector : forall n A. (p : A -> Bool)(v : Vector n A) -> Vector (filter_length p v) A
+filter_vector @{n = Z} p Unit = Unit
+filter_vector @{n = S n} p (Tuple a as) =
+  case p a of
+    False -> filter_vector p as
+    True -> Tuple a (filter_vector p as)
+
+filter_array : forall A. (A -> Bool) -> Array A -> Array A
+filter_array p (Array v) = Array (filter_vector p v)
