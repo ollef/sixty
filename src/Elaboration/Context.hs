@@ -684,6 +684,40 @@ forceNeutral context head_ spine
             pure Nothing
       _ -> pure Nothing
 
+isStuck :: Context v -> Domain.Value -> M Bool
+isStuck outerContext outerHeadApp =
+  fmap (either identity (\() -> False)) $ runExceptT $ go True outerContext outerHeadApp
+  where
+    go :: Bool -> Context v -> Domain.Value -> ExceptT Bool M ()
+    go lamIsStuck context headApp = do
+      headApp' <- lift $ forceHeadGlue context headApp
+      -- putText "isStuck.go:"
+      -- lift $ dumpValue context headApp'
+      case headApp' of
+        Domain.Glued _ (Domain.Apps args) value -> do
+          argsStuck <- lift $ fmap (either identity (\() -> False)) $ runExceptT $ mapM_ (mapM_ $ go False context) args
+          if not argsStuck
+            then pure ()
+            else go False context value
+        Domain.Glued _ _ value ->
+          go False context value
+        Domain.AnyNeutral _ (Domain.Apps args) -> mapM_ (mapM_ $ go False context) args
+        Domain.Con _ args -> mapM_ (mapM_ $ go False context) args
+        Domain.Lit {} -> pure ()
+        Domain.Pi binding domain _ targetClosure -> do
+          go False context domain
+          (context', var) <- lift $ extend context (Binding.toName binding) domain
+          target <- lift $ Evaluation.evaluateClosure targetClosure $ Domain.var var
+          go False context' target
+        Domain.Fun domain _ target -> do
+          go False context domain
+          go False context target
+        Domain.Lam {} | not lamIsStuck -> pure ()
+        _ -> do
+          -- putText "isStuck.stuck:"
+          -- lift $ dumpValue context headApp'
+          throwError True
+
 -- | Evaluate the head of a value further, if (now) possible due to meta
 -- solutions or new value bindings. Also evaluates through glued values.
 forceHead
@@ -692,16 +726,16 @@ forceHead
   -> M Domain.Value
 forceHead context value =
   case value of
-    Domain.Neutral head_ spine -> do
-      maybeEqValue <- forceNeutral context head_ spine
-      case maybeEqValue of
-        Just meqValue -> do
-          value'' <- meqValue
-          forceHead context value''
-        Nothing ->
-          pure value
-    Domain.Stuck head_ args value' spine ->
-      undefined -- TODO
+    Domain.Neutral head_ spine -> neutral head_ spine
+    Domain.Stuck head_ args headApp spine -> do
+      stuck <- isStuck context headApp
+      if stuck
+        then neutral head_ $ Domain.Apps args <> spine
+        else do
+          -- putText "forceHead.unstuck:"
+          -- dumpValue context headApp
+          value' <- Evaluation.applySpine headApp spine
+          forceHead context value'
     Domain.Glued _ _ value' ->
       forceHead context value'
     Domain.Lazy lazyValue -> do
@@ -709,6 +743,15 @@ forceHead context value =
       forceHead context value'
     _ ->
       pure value
+  where
+    neutral head_ spine = do
+      maybeEqValue <- forceNeutral context head_ spine
+      case maybeEqValue of
+        Just meqValue -> do
+          value' <- meqValue
+          forceHead context value'
+        Nothing ->
+          pure value
 
 -- | Evaluate the head of a value further, if (now) possible due to meta
 -- solutions or new value bindings, returning glued values.
@@ -718,7 +761,24 @@ forceHeadGlue
   -> M Domain.Value
 forceHeadGlue context value =
   case value of
-    Domain.Neutral head_ spine -> do
+    Domain.Neutral head_ spine -> neutral head_ spine
+    Domain.Stuck head_ args headApp spine -> do
+      let spine' = Domain.Apps args <> spine
+      stuck <- isStuck context headApp
+      if stuck
+        then neutral head_ spine'
+        else do
+          -- putText "forceHeadGlue.unstuck:"
+          -- dumpValue context headApp
+          value' <- Evaluation.applySpine headApp spine
+          forceHeadGlue context value'
+    Domain.Lazy lazyValue -> do
+      value' <- force lazyValue
+      forceHeadGlue context value'
+    _ ->
+      pure value
+  where
+    neutral head_ spine = do
       maybeEqValue <- forceNeutral context head_ spine
       case maybeEqValue of
         Just meqValue -> do
@@ -726,13 +786,6 @@ forceHeadGlue context value =
           pure $ Domain.Glued head_ spine $ Domain.Lazy lazyValue
         Nothing ->
           pure value
-    Domain.Stuck head_ args value' spine ->
-      undefined -- TODO
-    Domain.Lazy lazyValue -> do
-      value' <- force lazyValue
-      forceHeadGlue context value'
-    _ ->
-      pure value
 
 instantiateType
   :: Context v

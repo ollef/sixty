@@ -16,6 +16,7 @@ import qualified Core.Domain.Telescope as Domain.Telescope
 import qualified Core.Syntax as Syntax
 import Data.OrderedHashMap (OrderedHashMap)
 import qualified Data.OrderedHashMap as OrderedHashMap
+import qualified Data.Sequence as Seq
 import Data.Some (Some)
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
@@ -28,6 +29,7 @@ import Plicity
 import Protolude hiding (IntMap, Seq, evaluate, force, head, try)
 import Query (Query)
 import qualified Query
+import qualified Query.Mapped as Mapped
 import Rock
 import Telescope (Telescope)
 import qualified Telescope
@@ -61,15 +63,19 @@ evaluate env term =
           Domain.var var
         Just value
           | Index.Succ index > Environment.glueableBefore env ->
-              Domain.Glued (Domain.Var var) mempty value
+              Domain.Glued (Domain.Var var) mempty $ Domain.Stuck (Domain.Var var) mempty value mempty
           | otherwise ->
               value
     Syntax.Global name -> do
       result <- try $ fetch $ Query.ElaboratedDefinition name
       case result of
         Right (Syntax.ConstantDefinition term', _) -> do
+          recursive <- fetch $ Query.TransitiveDependencies name $ Mapped.Query name
           value <- lazyEvaluate Environment.empty term'
-          pure $ Domain.Glued (Domain.Global name) mempty value
+          pure
+            if isJust recursive
+              then Domain.Glued (Domain.Global name) mempty $ Domain.Stuck (Domain.Global name) mempty value mempty
+              else Domain.Glued (Domain.Global name) mempty value
         Left (Cyclic (_ :: Some Query)) ->
           pure $ Domain.global name
         _ ->
@@ -207,6 +213,9 @@ apply fun plicity arg =
           panic "Core.Evaluation: plicity mismatch"
     Domain.Neutral hd spine ->
       pure $ Domain.Neutral hd $ spine Domain.:> Domain.App plicity arg
+    Domain.Stuck hd args headApp Domain.Empty -> do
+      headApp' <- apply headApp plicity arg
+      pure $ Domain.Stuck hd (args Seq.:|> (plicity, arg)) headApp' Domain.Empty
     Domain.Stuck hd args value spine ->
       pure $ Domain.Stuck hd args value $ spine Domain.:> Domain.App plicity arg
     Domain.Glued hd spine value -> do
