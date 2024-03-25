@@ -222,6 +222,26 @@ unify context flexibility unforcedValue1 unforcedValue2 = catchAndAdd $ go unfor
           | Flexibility.Rigid <- flexibility -> do
               matches <- potentiallyMatchingBranches context value1' branches
               invertCase meta spine args matches
+        (Domain.Stuck _ _ headApp Domain.Empty, _)
+          | Flexibility.Rigid <- flexibility -> do
+              headApp' <- Context.forceHead context headApp
+              case headApp' of
+                Domain.Neutral (Domain.Meta meta) (spine@(Domain.Apps args) Domain.:> Domain.Case branches) -> do
+                  matches <- potentiallyMatchingBranches context value2' branches
+                  invertCase meta spine args matches
+                _ ->
+                  can'tUnify
+        (_, Domain.Stuck _ _ headApp Domain.Empty)
+          | Flexibility.Rigid <- flexibility -> do
+              headApp' <- Context.forceHead context headApp
+              case headApp' of
+                Domain.Neutral (Domain.Meta meta) (spine@(Domain.Apps args) Domain.:> Domain.Case branches) -> do
+                  matches <- potentiallyMatchingBranches context value1' branches
+                  invertCase meta spine args matches
+                _ ->
+                  can'tUnify
+
+        -- Branches
         (Domain.AnyNeutral head1 spine1@(Domain.Spine args1 ((branches1, _) Seq.:<| _)), Domain.AnyNeutral head2 spine2)
           | head1 == head2 ->
               unifySpines context Flexibility.Flexible spine1 spine2 `catch` \(_ :: Error.Elaboration) ->
