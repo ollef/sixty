@@ -18,4 +18,4 @@ test2 : forall a b (f : a -> b) as. Equals (map f as) (map2 f as)
 test2 @{f, as} = case as of
   Nil -> Refl
   Cons a as' -> case test2 @{f, as=as'} of
-    Refl -> Refl -- readback error
+    Refl -> Refl
