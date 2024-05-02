@@ -1,6 +1,7 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
 
@@ -21,6 +22,8 @@ import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Environment
 import Extra
+import qualified Index.Map
+import qualified Index.Map as Index (Map)
 import Literal (Literal)
 import qualified Meta
 import Monad
@@ -91,7 +94,7 @@ inlineSolutions solutions def type_ = do
         value <- evaluate env term
         (inlinedValue, metaVars) <- foldrM go (value, mempty) sortedSolutions
         pure $
-          readback env (lookupMetaIndex metaVars) inlinedValue
+          readback env.indices (lookupMetaIndex metaVars) inlinedValue
 
       inlineDefSolutions :: Domain.Environment Void -> Syntax.Definition -> M Syntax.Definition
       inlineDefSolutions env def' =
@@ -419,13 +422,13 @@ evaluateTelescope env tele =
       (bindings, body) <- evaluateTelescope env' tele'
       pure ((name, var, type', plicity) : bindings, body)
 
-readback :: Domain.Environment v -> (Meta.Index -> (Var, [Maybe x])) -> Value -> Syntax.Term v
+readback :: Index.Map v Var -> (Meta.Index -> (Var, [Maybe x])) -> Value -> Syntax.Term v
 readback env metas (Value value occs) =
   case value of
     Var var ->
       Syntax.Var $
         fromMaybe (panic "Elaboration.MetaInlining.readback Var") $
-          Environment.lookupVarIndex var env
+          Index.Map.elemIndex var env
     Global global ->
       Syntax.Global global
     Con con ->
@@ -441,7 +444,7 @@ readback env metas (Value value occs) =
        in Syntax.apps
             ( Syntax.Var $
                 fromMaybe (panic $ "Elaboration.MetaInlining.readback Meta " <> show index) $
-                  Environment.lookupVarIndex var env
+                  Index.Map.elemIndex var env
             )
             ((,) Explicit . readback env metas <$> arguments')
     PostponedCheck index value' ->
@@ -453,7 +456,7 @@ readback env metas (Value value occs) =
         name
         (readback env metas domain)
         plicity
-        (readback (Environment.extendVar env var) metas target)
+        (readback (env Index.Map.:> var) metas target)
     Fun domain plicity target ->
       Syntax.Fun (readback env metas domain) plicity (readback env metas target)
     Lam name var type_ plicity body ->
@@ -461,7 +464,7 @@ readback env metas (Value value occs) =
         name
         (readback env metas type_)
         plicity
-        (readback (Environment.extendVar env var) metas body)
+        (readback (env Index.Map.:> var) metas body)
     App function plicity argument ->
       Syntax.App (readback env metas function) plicity (readback env metas argument)
     Case scrutinee branches defaultBranch ->
@@ -473,7 +476,7 @@ readback env metas (Value value occs) =
       Syntax.Spanned span (readback env metas (Value value' occs))
 
 readbackLets
-  :: Domain.Environment v
+  :: Index.Map v Var
   -> (Meta.Index -> (Var, [Maybe var]))
   -> Lets
   -> Syntax.Lets v
@@ -483,18 +486,18 @@ readbackLets env metas (Lets lets occs) =
       Syntax.LetType
         name
         (readback env metas type_)
-        (readbackLets (Environment.extendVar env var) metas lets')
+        (readbackLets (env Index.Map.:> var) metas lets')
     Let name var value lets' ->
       Syntax.Let
         name
-        (fromMaybe (panic "Elaboration.MetaInlining: indexless let") $ Environment.lookupVarIndex var env)
+        (fromMaybe (panic "Elaboration.MetaInlining: indexless let") $ Index.Map.elemIndex var env)
         (readback env metas value)
         (readbackLets env metas lets')
     In term ->
       Syntax.In $ readback env metas $ Value term occs
 
 readbackBranches
-  :: Domain.Environment v
+  :: Index.Map v Var
   -> (Meta.Index -> (Var, [Maybe var]))
   -> Branches
   -> Syntax.Branches v
@@ -508,7 +511,7 @@ readbackBranches env metas branches =
         fmap (readback env metas) <$> literalBranches
 
 readbackTelescope
-  :: Domain.Environment v
+  :: Index.Map v Var
   -> (Meta.Index -> (Var, [Maybe var]))
   -> [(Bindings, Var, Type, Plicity)]
   -> Value
@@ -518,8 +521,7 @@ readbackTelescope env metas bindings body =
     [] ->
       Telescope.Empty $ readback env metas body
     (name, var, type_, plicity) : bindings' -> do
-      let env' =
-            Environment.extendVar env var
+      let env' = env Index.Map.:> var
       Telescope.Extend name (readback env metas type_) plicity (readbackTelescope env' metas bindings' body)
 
 inlineArguments
