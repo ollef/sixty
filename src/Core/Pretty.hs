@@ -142,11 +142,13 @@ prettyTerm prec env term =
     Syntax.App t1 plicity t2 ->
       prettyParen (prec > appPrec) $
         prettyTerm appPrec env t1 <+> Plicity.prettyAnnotation plicity <> prettyTerm (appPrec + 1) env t2
-    Syntax.Case scrutinee branches defaultBranch ->
+    Syntax.Case scrutinee type_ branches defaultBranch ->
       prettyParen (prec > casePrec) $
         "case"
           <+> prettyTerm 0 env scrutinee
           <+> "of"
+          <+> "->"
+          <+> prettyTerm 0 env type_
           <> line
           <> indent
             2

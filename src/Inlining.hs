@@ -73,7 +73,7 @@ data Value
   | Fun !Type !Plicity !Type
   | Lam !Bindings !Var !Type !Plicity !Value
   | App !Value !Plicity !Value
-  | Case !Value Branches !(Maybe Value)
+  | Case !Value !Type Branches !(Maybe Value)
   | Spanned !Span.Relative !Value
   deriving (Show)
 
@@ -140,11 +140,12 @@ evaluate dup env term =
         <*> evaluate dup env' body
     Syntax.App fun plicity arg ->
       App <$> evaluate dup env fun <*> pure plicity <*> evaluate dup env arg
-    Syntax.Case scrutinee branches defaultBranch -> do
-      scrutinee' <- evaluate dup env scrutinee
+    Syntax.Case scrutinee type_ branches defaultBranch ->
       -- TODO choose branch if variable is inlined to constructor
-      Case scrutinee'
-        <$> evaluateBranches dup env branches
+      Case
+        <$> evaluate dup env scrutinee
+        <*> evaluate dup env type_
+        <*> evaluateBranches dup env branches
         <*> mapM (evaluate dup env) defaultBranch
     Syntax.Spanned span term' ->
       Spanned span <$> evaluate dup env term'
@@ -232,9 +233,10 @@ readback env value =
       Syntax.Lam name (readback env type_) plicity (readback env' body)
     App fun plicity arg ->
       Syntax.App (readback env fun) plicity (readback env arg)
-    Case scrutinee branches defaultBranch ->
+    Case scrutinee type_ branches defaultBranch ->
       Syntax.Case
         (readback env scrutinee)
+        (readback env type_)
         (readbackBranches env branches)
         (map (readback env) defaultBranch)
     Spanned span value' ->

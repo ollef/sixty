@@ -77,7 +77,8 @@ readbackElimination env eliminee elimination =
     Domain.App plicity arg -> do
       arg' <- readback env arg
       pure $ Syntax.App eliminee plicity arg'
-    Domain.Case (Domain.Branches env' branches defaultBranch) -> do
+    Domain.Case (Domain.Branches type_ env' branches defaultBranch) -> do
+      type' <- readback env type_
       branches' <- case branches of
         Syntax.ConstructorBranches constructorTypeName constructorBranches ->
           Syntax.ConstructorBranches constructorTypeName <$> OrderedHashMap.forMUnordered constructorBranches (mapM $ readbackConstructorBranch env env')
@@ -92,7 +93,7 @@ readbackElimination env eliminee elimination =
       defaultBranch' <- forM defaultBranch \branch -> do
         branch' <- Evaluation.evaluate env' branch
         readback env branch'
-      pure $ Syntax.Case eliminee branches' defaultBranch'
+      pure $ Syntax.Case eliminee type' branches' defaultBranch'
 
 readbackSpine :: Domain.Environment v -> Syntax.Term v -> Domain.Spine -> M (Syntax.Term v)
 readbackSpine =

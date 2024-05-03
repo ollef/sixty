@@ -152,7 +152,7 @@ data InnerValue
   | Fun !Type !Plicity !Type
   | Lam !Bindings !Var !Type !Plicity !Value
   | App !Value !Plicity !Value
-  | Case !Value Branches !(Maybe Value)
+  | Case !Value !Type Branches !(Maybe Value)
   | Spanned !Span.Relative !InnerValue
   deriving (Show)
 
@@ -310,9 +310,9 @@ makeApp fun plicity arg =
     occurrences fun
       <> occurrences arg
 
-makeCase :: Value -> Branches -> Maybe Value -> Value
-makeCase scrutinee branches defaultBranch =
-  Value (Case scrutinee branches defaultBranch) $
+makeCase :: Value -> Type -> Branches -> Maybe Value -> Value
+makeCase scrutinee type_ branches defaultBranch =
+  Value (Case scrutinee type_ branches defaultBranch) $
     occurrences scrutinee
       <> branchOccurrences branches
       <> foldMap occurrences defaultBranch
@@ -373,9 +373,10 @@ evaluate env term =
         <$> evaluate env function
         <*> pure plicity
         <*> evaluate env argument
-    Syntax.Case scrutinee branches defaultBranch ->
+    Syntax.Case scrutinee type_ branches defaultBranch ->
       makeCase
         <$> evaluate env scrutinee
+        <*> evaluate env type_
         <*> evaluateBranches env branches
         <*> mapM (evaluate env) defaultBranch
     Syntax.Spanned span term' ->
@@ -467,9 +468,10 @@ readback env metas (Value value occs) =
         (readback (env Index.Map.:> var) metas body)
     App function plicity argument ->
       Syntax.App (readback env metas function) plicity (readback env metas argument)
-    Case scrutinee branches defaultBranch ->
+    Case scrutinee type_ branches defaultBranch ->
       Syntax.Case
         (readback env metas scrutinee)
+        (readback env metas type_)
         (readbackBranches env metas branches)
         (readback env metas <$> defaultBranch)
     Spanned span value' ->
@@ -593,17 +595,18 @@ substitute subst
         makeLam name var <$> go type_ <*> pure plicity <*> go body
       App function plicity argument ->
         makeApp <$> go function <*> pure plicity <*> go argument
-      Case scrutinee branches defaultBranch ->
+      Case scrutinee type_ branches defaultBranch ->
         makeCase
           <$> go scrutinee
+          <*> go type_
           <*> ( case branches of
                   ConstructorBranches constructorTypeName constructorBranches ->
                     ConstructorBranches constructorTypeName
                       <$> OrderedHashMap.forMUnordered
                         constructorBranches
                         ( \(span, (bindings, body)) -> do
-                            bindings' <- forM bindings \(name, var, type_, plicity) ->
-                              (name,var,,plicity) <$> go type_
+                            bindings' <- forM bindings \(name, var, bindingType, plicity) ->
+                              (name,var,,plicity) <$> go bindingType
 
                             body' <- go body
                             pure (span, (bindings', body'))
@@ -720,8 +723,9 @@ inlineIndex index targetScope solution@(solutionVar, occurrenceCount, duplicable
       function' <- recurse function
       argument' <- recurse argument
       pure $ makeApp function' plicity argument'
-    Case scrutinee branches defaultBranch -> do
+    Case scrutinee type_ branches defaultBranch -> do
       scrutinee' <- recurse scrutinee
+      type' <- recurse type_
       branches' <- case branches of
         ConstructorBranches constructorTypeName constructorBranches ->
           ConstructorBranches constructorTypeName
@@ -731,17 +735,17 @@ inlineIndex index targetScope solution@(solutionVar, occurrenceCount, duplicable
                       [] -> do
                         body' <- sharing body $ inlineIndex index targetScope' solution body
                         pure ([], body')
-                      (name, var, type_, plicity) : bindings'' -> do
-                        type' <- sharing type_ $ inlineIndex index targetScope' solution type_
+                      (name, var, bindingType, plicity) : bindings'' -> do
+                        bindingType' <- sharing bindingType $ inlineIndex index targetScope' solution bindingType
                         (bindings''', body') <- go (EnumSet.delete var targetScope') bindings''
-                        pure ((name, var, type', plicity) : bindings''', body')
+                        pure ((name, var, bindingType', plicity) : bindings''', body')
 
               (bindings', body') <- go targetScope bindings
               pure (span, (bindings', body'))
         LiteralBranches literalBranches ->
           LiteralBranches <$> OrderedHashMap.mapMUnordered (mapM recurse) literalBranches
       defaultBranch' <- forM defaultBranch recurse
-      pure $ makeCase scrutinee' branches' defaultBranch'
+      pure $ makeCase scrutinee' type' branches' defaultBranch'
     Spanned span value' ->
       makeSpanned span <$> recurse (Value value' occs)
 

@@ -62,12 +62,13 @@ readbackGlobal env global spine =
       readbackGroupedSpine env global' groupedSpine
 
 readbackGroupedElimination :: Domain.Environment v -> Syntax.Term v -> Domain.GroupedElimination -> M (Syntax.Term v)
-readbackGroupedElimination env eliminee elimination =
+readbackGroupedElimination env eliminee elimination = do
   case elimination of
     Domain.GroupedApps args -> do
       args' <- mapM (readback env) args
       ClosureConversion.applyArgs args' $ pure eliminee
-    Domain.GroupedCase (Domain.Branches env' branches defaultBranch) -> do
+    Domain.GroupedCase (Domain.Branches type_ env' branches defaultBranch) -> do
+      type' <- readback env type_
       branches' <- case branches of
         Syntax.ConstructorBranches constructorTypeName constructorBranches ->
           Syntax.ConstructorBranches constructorTypeName <$> OrderedHashMap.forMUnordered constructorBranches (readbackConstructorBranch env env')
@@ -82,7 +83,7 @@ readbackGroupedElimination env eliminee elimination =
       defaultBranch' <- forM defaultBranch \branch -> do
         branch' <- Evaluation.evaluate env' branch
         readback env branch'
-      pure $ Syntax.Case eliminee branches' defaultBranch'
+      pure $ Syntax.Case eliminee type' branches' defaultBranch'
 
 readbackGroupedSpine :: (Foldable f) => Domain.Environment v -> Syntax.Term v -> f Domain.GroupedElimination -> M (Syntax.Term v)
 readbackGroupedSpine =

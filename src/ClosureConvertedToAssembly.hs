@@ -1038,7 +1038,7 @@ storeTerm env term returnLocation returnType =
       panic "st c" -- TODO
     Syntax.ApplyClosure {} ->
       panic $ "st ac " <> show term -- TODO
-    Syntax.Case scrutinee branches maybeDefaultBranch -> do
+    Syntax.Case scrutinee _type branches maybeDefaultBranch -> do
       let defaultBranch =
             fromMaybe
               (Syntax.Apply (Name.Lifted Builtin.UnknownName 0) [Syntax.Global $ Name.Lifted Builtin.UnitName 0])

@@ -327,7 +327,7 @@ equalSpines context spine1 spine2 =
 -- Branch unification
 
 withBranches :: Context v -> Domain.Head -> Domain.Args -> Domain.Branches -> (forall v'. Context v' -> M ()) -> M ()
-withBranches context head args (Domain.Branches env brs maybeDefaultBranch) k =
+withBranches context head args (Domain.Branches type_ env brs maybeDefaultBranch) k =
   case brs of
     Syntax.ConstructorBranches typeName cbrs -> do
       headType_ <- typeOfHead context head
@@ -439,8 +439,8 @@ unifyBranches
 unifyBranches
   outerContext
   flexibility
-  (Domain.Branches outerEnv1 branches1 defaultBranch1)
-  (Domain.Branches outerEnv2 branches2 defaultBranch2) =
+  (Domain.Branches type1 outerEnv1 branches1 defaultBranch1)
+  (Domain.Branches type2 outerEnv2 branches2 defaultBranch2) =
     case (branches1, branches2) of
       (Syntax.ConstructorBranches conTypeName1 conBranches1, Syntax.ConstructorBranches conTypeName2 conBranches2)
         | conTypeName1 == conTypeName2 ->
@@ -550,7 +550,7 @@ potentiallyMatchingBranches
   -> Domain.Value
   -> Domain.Branches
   -> M [Maybe (Either Name.QualifiedConstructor Literal)]
-potentiallyMatchingBranches outerContext resultValue (Domain.Branches outerEnv branches defaultBranch) = do
+potentiallyMatchingBranches outerContext resultValue (Domain.Branches type_ outerEnv branches defaultBranch) = do
   resultValue' <- Context.forceHead outerContext resultValue
   defaultBranch' <-
     catMaybes . toList
@@ -870,7 +870,8 @@ renameElimination outerContext renaming eliminee elimination =
     Domain.App plicity arg ->
       Syntax.App eliminee plicity
         <$> renameValue outerContext renaming arg
-    Domain.Case (Domain.Branches env' branches defaultBranch) -> do
+    Domain.Case (Domain.Branches type_ env' branches defaultBranch) -> do
+      type' <- renameValue outerContext renaming type_
       branches' <- case branches of
         Syntax.ConstructorBranches constructorTypeName constructorBranches ->
           fmap (Syntax.ConstructorBranches constructorTypeName) $
@@ -887,7 +888,7 @@ renameElimination outerContext renaming eliminee elimination =
       defaultBranch' <- forM defaultBranch \branch -> do
         branch' <- Evaluation.evaluate env' branch
         renameValue outerContext renaming branch'
-      pure $ Syntax.Case eliminee branches' defaultBranch'
+      pure $ Syntax.Case eliminee type' branches' defaultBranch'
 
 renameBranch
   :: Context outer

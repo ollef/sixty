@@ -9,7 +9,6 @@ import qualified Core.Bindings as Bindings
 import qualified Core.Domain as Domain
 import qualified Core.Evaluation as Evaluation
 import qualified Core.Syntax as Syntax
-import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
 import qualified Elaboration
 import Elaboration.Context (Context)
@@ -71,30 +70,12 @@ typeOfHead context hd =
       Evaluation.evaluate Environment.empty $ Meta.entryType solution
 
 typeOfElimination :: Context v -> Domain.Type -> Domain.Elimination -> M Domain.Type
-typeOfElimination context type_ elimination =
+typeOfElimination context headType elimination =
   case elimination of
     Domain.App plicity arg -> do
-      typeOfApplication context type_ plicity arg
-    Domain.Case (Domain.Branches env branches defaultBranch) ->
-      case defaultBranch of
-        Just term -> do
-          value' <- Evaluation.evaluate env term
-          typeOf context value'
-        Nothing ->
-          case branches of
-            Syntax.ConstructorBranches _ constructorBranches ->
-              case OrderedHashMap.elems constructorBranches of
-                (_, branchTele) : _ ->
-                  typeOfTelescope context env branchTele
-                [] ->
-                  panic "TODO type of branchless case"
-            Syntax.LiteralBranches literalBranches ->
-              case OrderedHashMap.elems literalBranches of
-                (_, body) : _ -> do
-                  body' <- Evaluation.evaluate env body
-                  typeOf context body'
-                [] ->
-                  panic "TODO type of branchless case"
+      typeOfApplication context headType plicity arg
+    Domain.Case (Domain.Branches type_ _ _ _) ->
+      pure type_
 
 typeOfSpineApplication :: Context v -> Domain.Type -> Domain.Spine -> M Domain.Type
 typeOfSpineApplication =

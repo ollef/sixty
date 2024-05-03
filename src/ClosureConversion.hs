@@ -84,10 +84,11 @@ convertAppliedTerm term args =
     LambdaLifted.App fun arg -> do
       arg' <- convertTerm arg
       convertAppliedTerm fun $ arg' : args
-    LambdaLifted.Case scrutinee branches defaultBranch ->
+    LambdaLifted.Case scrutinee type_ branches defaultBranch ->
       applyArgs args $
         ClosureConverted.Case
           <$> convertTerm scrutinee
+          <*> convertTerm type_
           <*> convertBranches branches
           <*> mapM convertTerm defaultBranch
 

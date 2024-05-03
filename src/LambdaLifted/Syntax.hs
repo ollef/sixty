@@ -30,7 +30,7 @@ data Term v
   | Let !Name !(Term v) !(Type v) !(Scope Term v)
   | Pi !Name !(Type v) !(Scope Type v)
   | App !(Term v) !(Term v)
-  | Case !(Term v) (Branches v) !(Maybe (Term v))
+  | Case !(Term v) !(Type v) (Branches v) !(Maybe (Term v))
   deriving (Eq, Show, Generic, Hashable)
 
 type Type = Term

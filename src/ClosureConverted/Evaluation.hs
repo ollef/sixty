@@ -71,9 +71,10 @@ evaluate env term =
       fun' <- evaluate env fun
       args' <- mapM (evaluate env) args
       apply env fun' args'
-    Syntax.Case scrutinee branches defaultBranch -> do
+    Syntax.Case scrutinee type_ branches defaultBranch -> do
       scrutineeValue <- evaluate env scrutinee
-      case_ scrutineeValue $ Domain.Branches env branches defaultBranch
+      type' <- lazy $ evaluate env type_
+      case_ scrutineeValue $ Domain.Branches (Domain.Lazy type') env branches defaultBranch
 
 chooseConstructorBranch
   :: Domain.Environment v
@@ -190,7 +191,7 @@ applyTelescope env tele args k =
       pure Nothing
 
 case_ :: Domain.Value -> Domain.Branches -> M Domain.Value
-case_ scrutinee branches@(Domain.Branches env branches' defaultBranch) =
+case_ scrutinee branches@(Domain.Branches _ env branches' defaultBranch) =
   case (scrutinee, branches') of
     (Domain.Con constr _params args, Syntax.ConstructorBranches _ constructorBranches) ->
       chooseConstructorBranch env constr args constructorBranches defaultBranch

@@ -39,7 +39,7 @@ data Term v
   | Fun !(Type v) !Plicity !(Type v)
   | Lam !Bindings !(Type v) !Plicity !(Scope Term v)
   | App !(Term v) !Plicity !(Term v)
-  | Case !(Term v) (Branches v) !(Maybe (Term v))
+  | Case !(Term v) !(Type v) (Branches v) !(Maybe (Term v))
   | Spanned !Span.Relative !(Term v)
   deriving (Eq, Show, Generic, Hashable)
 
@@ -160,8 +160,11 @@ dependencies term =
     Fun domain _ target -> dependencies domain <> dependencies target
     Lam _ type_ _ body -> dependencies type_ <> dependencies body
     App function _ argument -> dependencies function <> dependencies argument
-    Case scrutinee branches defaultBranch ->
-      dependencies scrutinee <> branchesDependencies branches <> foldMap dependencies defaultBranch
+    Case scrutinee type_ branches defaultBranch ->
+      dependencies scrutinee
+        <> dependencies type_
+        <> branchesDependencies branches
+        <> foldMap dependencies defaultBranch
     Spanned _ term' -> dependencies term'
 
 letsDependencies :: Lets v -> HashSet Name.Qualified

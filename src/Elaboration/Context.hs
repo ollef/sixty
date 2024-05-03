@@ -347,10 +347,11 @@ freeVars context value = do
       case elimination of
         Domain.App _plicity arg ->
           freeVars context arg
-        Domain.Case (Domain.Branches env branches defaultBranch) -> do
+        Domain.Case (Domain.Branches type_ env branches defaultBranch) -> do
+          typeVars <- freeVars context type_
           defaultBranchVars <- mapM (freeVars context <=< lift . Evaluation.evaluate env) defaultBranch
           brVars <- branchVars context env branches
-          pure $ fold defaultBranchVars <> brVars
+          pure $ typeVars <> fold defaultBranchVars <> brVars
 
     abstractionVars name type' closure = do
       typeVars <- freeVars context type'
@@ -655,14 +656,14 @@ forceNeutral context head_ spine
     findMatchingDefaultBranch ((eqSpine, coveredConstrs, coveredLits) : rest)
       | Just (spinePrefix, Domain.Spine Seq.Empty spineSuffix) <- Domain.matchSpinePrefix spine eqSpine =
           case spineSuffix of
-            (Domain.Branches env (Syntax.ConstructorBranches typeName cbrs) (Just defaultBranch), args) Seq.:<| spineSuffix' -> do
+            (Domain.Branches type_ env (Syntax.ConstructorBranches typeName cbrs) (Just defaultBranch), args) Seq.:<| spineSuffix' -> do
               eq <- Unification.equalSpines context spinePrefix eqSpine
               if eq && all (\c -> HashSet.member (Name.QualifiedConstructor typeName c) coveredConstrs) (OrderedHashMap.keys cbrs)
                 then pure $ Just do
                   branchValue <- Evaluation.evaluate env defaultBranch
                   Evaluation.applySpine branchValue $ Domain.Spine args spineSuffix'
                 else findMatchingDefaultBranch rest
-            (Domain.Branches env (Syntax.LiteralBranches lbrs) (Just defaultBranch), args) Seq.:<| spineSuffix' -> do
+            (Domain.Branches type_ env (Syntax.LiteralBranches lbrs) (Just defaultBranch), args) Seq.:<| spineSuffix' -> do
               eq <- Unification.equalSpines context spinePrefix eqSpine
               if eq && all (`HashSet.member` coveredLits) (OrderedHashMap.keys lbrs)
                 then pure $ Just do

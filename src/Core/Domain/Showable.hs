@@ -46,7 +46,7 @@ data Closure where
 deriving instance Show Closure
 
 data Branches where
-  Branches :: Environment v -> Syntax.Branches v -> Maybe (Syntax.Term v) -> Branches
+  Branches :: Type -> Environment v -> Syntax.Branches v -> Maybe (Syntax.Term v) -> Branches
 
 deriving instance Show Branches
 
@@ -89,9 +89,10 @@ closureTo (Domain.Closure env term) =
   flip Closure term <$> environmentTo env
 
 branchesTo :: Domain.Branches -> M Branches
-branchesTo (Domain.Branches env branches defaultBranch) = do
+branchesTo (Domain.Branches type_ env branches defaultBranch) = do
+  type' <- to type_
   env' <- environmentTo env
-  pure $ Branches env' branches defaultBranch
+  pure $ Branches type' env' branches defaultBranch
 
 environmentTo :: Domain.Environment v -> M (Environment v)
 environmentTo env = do

@@ -104,9 +104,10 @@ evaluate env term =
       fun' <- evaluate env fun
       arg' <- evaluate env arg
       apply fun' plicity arg'
-    Syntax.Case scrutinee branches defaultBranch -> do
+    Syntax.Case scrutinee type_ branches defaultBranch -> do
       scrutineeValue <- evaluate env scrutinee
-      case_ scrutineeValue $ Domain.Branches env branches defaultBranch
+      type' <- lazyEvaluate env type_
+      case_ scrutineeValue $ Domain.Branches type' env branches defaultBranch
     Syntax.Spanned _ term' ->
       evaluate env term'
 
@@ -232,7 +233,7 @@ apply fun plicity arg =
       panic "applying non-function"
 
 case_ :: Domain.Value -> Domain.Branches -> M Domain.Value
-case_ scrutinee branches@(Domain.Branches env branches' defaultBranch) =
+case_ scrutinee branches@(Domain.Branches _ env branches' defaultBranch) =
   case (scrutinee, branches') of
     (Domain.Con constr args, Syntax.ConstructorBranches _ constructorBranches) ->
       chooseConstructorBranch env constr (toList args) constructorBranches defaultBranch

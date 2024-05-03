@@ -740,8 +740,9 @@ splitConstructor outerContext config scrutineeValue scrutineeHead scrutineeSpine
                 Just <$> check context' config Postponement.CanPostpone
 
           scrutinee <- Elaboration.readback context scrutineeValue
+          expectedType <- Elaboration.readback context config.expectedType
 
-          pure $ Syntax.Case scrutinee (Syntax.ConstructorBranches typeName $ OrderedHashMap.fromList branches) defaultBranch
+          pure $ Syntax.Case scrutinee expectedType (Syntax.ConstructorBranches typeName $ OrderedHashMap.fromList branches) defaultBranch
         ((plicity1, param) : params', Domain.Telescope.Extend _ _ plicity2 targetClosure)
           | plicity1 == plicity2 -> do
               target <- targetClosure param
@@ -858,8 +859,9 @@ splitLiteral context config scrutineeValue scrutineeHead scrutineeSpine span lit
     Just <$> check context' config Postponement.CanPostpone
 
   scrutinee <- Elaboration.readback context scrutineeValue
+  expectedType <- Elaboration.readback context config.expectedType
 
-  pure $ f $ Syntax.Case scrutinee (Syntax.LiteralBranches $ OrderedHashMap.fromList branches) defaultBranch
+  pure $ f $ Syntax.Case scrutinee expectedType (Syntax.LiteralBranches $ OrderedHashMap.fromList branches) defaultBranch
 
 findLiteralMatches
   :: Context v
@@ -911,9 +913,11 @@ splitEqualityOr context config matches k =
               Right context' -> do
                 result <- check context' config Postponement.CanPostpone
                 scrutinee <- Elaboration.readback context' scrutineeValue
+                expectedType <- Elaboration.readback context' config.expectedType
                 pure $
                   Syntax.Case
                     scrutinee
+                    expectedType
                     ( Syntax.ConstructorBranches
                         Builtin.EqualsName
                         (OrderedHashMap.fromList [(Name.unqualifyConstructor Builtin.ReflName, ([], Telescope.Empty result))])

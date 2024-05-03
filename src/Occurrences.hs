@@ -133,8 +133,9 @@ termOccurrences env maybeSpan term =
         else do
           intervals1 <- termOccurrences env Nothing t1
           pure $ intervals1 <> intervals2
-    Syntax.Case scrutinee branches defaultBranch ->
+    Syntax.Case scrutinee type_ branches defaultBranch ->
       termOccurrences env Nothing scrutinee
+        <> termOccurrences env Nothing type_
         <> branchesOccurrences env branches
         <> foldMap (termOccurrences env Nothing) defaultBranch
     Syntax.Spanned span term' ->

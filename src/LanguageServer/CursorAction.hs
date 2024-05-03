@@ -235,8 +235,9 @@ termAction k env term =
     Syntax.App t1 _ t2 ->
       termAction k env t1
         <|> termAction k env t2
-    Syntax.Case scrutinee branches defaultBranch ->
+    Syntax.Case scrutinee type_ branches defaultBranch ->
       termAction k env scrutinee
+        <|> termAction k env type_
         <|> branchesAction k env scrutinee branches
         <|> asum (termAction k env <$> defaultBranch)
     Syntax.Spanned span term' ->

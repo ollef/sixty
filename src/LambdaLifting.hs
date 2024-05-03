@@ -77,7 +77,7 @@ data InnerValue
   | Let !Name !Var !Value !Type !Value
   | Pi !Name !Var !Type !Type
   | App !Value !Value
-  | Case !Value !Branches !(Maybe Value)
+  | Case !Value !Type !Branches !(Maybe Value)
   deriving (Show)
 
 type Type = Value
@@ -136,10 +136,11 @@ makeApps :: (Foldable f) => Value -> f Value -> Value
 makeApps =
   foldl makeApp
 
-makeCase :: Value -> Branches -> Maybe Value -> Value
-makeCase scrutinee branches defaultBranch =
-  Value (Case scrutinee branches defaultBranch) $
+makeCase :: Value -> Type -> Branches -> Maybe Value -> Value
+makeCase scrutinee type_ branches defaultBranch =
+  Value (Case scrutinee type_ branches defaultBranch) $
     occurrences scrutinee
+      <> occurrences type_
       <> branchOccurrences branches
       <> foldMap occurrences defaultBranch
 
@@ -244,10 +245,11 @@ evaluate baseName env term args =
       pure $ makeApps (makeGlobal liftedName) $ makeVar env <$> argVars
     Syntax.App function plicity argument ->
       evaluate baseName env function ((plicity, argument) : args)
-    Syntax.Case scrutinee branches defaultBranch ->
+    Syntax.Case scrutinee type_ branches defaultBranch ->
       applyArgs $
         makeCase
           <$> evaluate baseName env scrutinee []
+          <*> evaluate baseName env type_ []
           <*> evaluateBranches baseName env branches
           <*> mapM (\branch -> evaluate baseName env branch []) defaultBranch
     Syntax.Spanned _ term' ->
@@ -474,9 +476,10 @@ readback env (Value value _) =
         (readback (Environment.extendVar env var) target)
     App function argument ->
       LambdaLifted.App (readback env function) (readback env argument)
-    Case scrutinee branches defaultBranch ->
+    Case scrutinee type_ branches defaultBranch ->
       LambdaLifted.Case
         (readback env scrutinee)
+        (readback env type_)
         (readbackBranches env branches)
         (readback env <$> defaultBranch)
 

@@ -202,7 +202,8 @@ occursElimination context occ flexibility elimination =
     Domain.Case branches -> occursBranches context occ flexibility branches
 
 occursBranches :: Context v -> (Domain.Head -> Bool) -> Flexibility -> Domain.Branches -> M ()
-occursBranches context occ flexibility (Domain.Branches outerEnv branches defaultBranch) = do
+occursBranches context occ flexibility (Domain.Branches type_ outerEnv branches defaultBranch) = do
+  occurs context occ flexibility type_
   case branches of
     Syntax.ConstructorBranches _ constructorBranches ->
       forM_ constructorBranches $ mapM_ $ occursTele context outerEnv

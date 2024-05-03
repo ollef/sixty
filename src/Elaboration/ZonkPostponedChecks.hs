@@ -58,8 +58,12 @@ zonkTerm postponed term =
       Syntax.Lam binding (zonkTerm postponed type_) plicity (zonkTerm postponed bodyScope)
     Syntax.App fun plicity arg ->
       Syntax.App (zonkTerm postponed fun) plicity (zonkTerm postponed arg)
-    Syntax.Case scrutinee branches defaultBranch ->
-      Syntax.Case (zonkTerm postponed scrutinee) (zonkBranches postponed branches) (zonkTerm postponed <$> defaultBranch)
+    Syntax.Case scrutinee type_ branches defaultBranch ->
+      Syntax.Case
+        (zonkTerm postponed scrutinee)
+        (zonkTerm postponed type_)
+        (zonkBranches postponed branches)
+        (zonkTerm postponed <$> defaultBranch)
     Syntax.Spanned span term' ->
       Syntax.Spanned span $ zonkTerm postponed term'
 

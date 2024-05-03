@@ -57,7 +57,7 @@ data Term v
   | Pi !Name !(Type v) !(Scope Type v)
   | Closure !Name.Lifted [Term v]
   | ApplyClosure !(Term v) [Term v]
-  | Case !(Term v) (Branches v) !(Maybe (Term v))
+  | Case !(Term v) !(Type v) (Branches v) !(Maybe (Term v))
   deriving (Eq, Show, Generic, Hashable)
 
 type Type = Term

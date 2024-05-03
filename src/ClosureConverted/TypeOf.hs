@@ -10,7 +10,6 @@ import qualified ClosureConverted.Domain as Domain
 import qualified ClosureConverted.Evaluation as Evaluation
 import qualified ClosureConverted.Readback as Readback
 import qualified ClosureConverted.Syntax as Syntax
-import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Environment
 import qualified Literal
 import Monad
@@ -68,7 +67,7 @@ typeOf context value =
   case value of
     Domain.Neutral head spine -> do
       headType <- typeOfHead context head
-      typeOfSpineApplication context headType spine
+      typeOfSpineApplication headType spine
     Domain.Con con params args -> do
       conType <- fetch $ Query.ClosureConvertedConstructorType con
       conType' <-
@@ -113,38 +112,19 @@ typeOfHead context head =
 
 typeOfSpineApplication
   :: (Foldable f)
-  => Context v
-  -> Domain.Type
+  => Domain.Type
   -> f Domain.Elimination
   -> M Domain.Type
 typeOfSpineApplication =
-  foldlM . typeOfElimination
+  foldlM typeOfElimination
 
-typeOfElimination :: Context v -> Domain.Type -> Domain.Elimination -> M Domain.Type
-typeOfElimination context type_ elimination =
+typeOfElimination :: Domain.Type -> Domain.Elimination -> M Domain.Type
+typeOfElimination headType elimination =
   case elimination of
     Domain.App arg ->
-      typeOfApplication type_ arg
-    Domain.Case (Domain.Branches env branches defaultBranch) ->
-      case defaultBranch of
-        Just term -> do
-          value' <- Evaluation.evaluate env term
-          typeOf context value'
-        Nothing ->
-          case branches of
-            Syntax.ConstructorBranches _ constructorBranches ->
-              case OrderedHashMap.elems constructorBranches of
-                branchTele : _ ->
-                  typeOfTelescope context env branchTele
-                [] ->
-                  panic "TODO closure converted type of branchless case"
-            Syntax.LiteralBranches literalBranches ->
-              case OrderedHashMap.elems literalBranches of
-                body : _ -> do
-                  body' <- Evaluation.evaluate env body
-                  typeOf context body'
-                [] ->
-                  panic "TODO closure converted type of branchless case"
+      typeOfApplication headType arg
+    Domain.Case (Domain.Branches type_ _ _ _) ->
+      pure type_
 
 typeOfApplication
   :: Domain.Type

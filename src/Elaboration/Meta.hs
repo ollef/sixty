@@ -304,8 +304,9 @@ termMetas term =
       termMetas type_ <> termMetas body
     Syntax.App function _plicity argument ->
       termMetas function <> termMetas argument
-    Syntax.Case scrutinee branches maybeDefaultBranch ->
+    Syntax.Case scrutinee type_ branches maybeDefaultBranch ->
       termMetas scrutinee
+        <> termMetas type_
         <> case branches of
           Syntax.LiteralBranches literalBranches ->
             foldMap (foldMap termMetas) literalBranches

@@ -32,7 +32,7 @@ data Head
 type Type = Value
 
 data Branches where
-  Branches :: Environment v -> Syntax.Branches v -> Maybe (Syntax.Term v) -> Branches
+  Branches :: Type -> Environment v -> Syntax.Branches v -> Maybe (Syntax.Term v) -> Branches
 
 data Closure where
   Closure :: Environment v -> Scope Syntax.Term v -> Closure

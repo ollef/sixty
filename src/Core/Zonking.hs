@@ -144,10 +144,11 @@ zonk env metas postponed term =
         Right fun' -> do
           result <- Syntax.App fun' plicity <$> zonkTerm env metas postponed arg
           pure $ Right result
-    Syntax.Case scrutinee branches defaultBranch -> do
+    Syntax.Case scrutinee type_ branches defaultBranch -> do
       result <-
         Syntax.Case
           <$> zonkTerm env metas postponed scrutinee
+          <*> zonkTerm env metas postponed type_
           <*> zonkBranches env metas postponed branches
           <*> forM defaultBranch (zonkTerm env metas postponed)
       pure $ Right result
