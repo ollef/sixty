@@ -1,0 +1,30 @@
+data Empty where
+
+data Bool = False | True
+
+absurd : Empty -> Bool
+absurd e = case e of
+
+data Equals forall A. (a b : A) where
+  Refl : Equals a a
+
+trans : forall A (a b c : A). Equals a b -> Equals b c -> Equals a c
+trans Refl Refl = Refl
+
+sym : forall A (a b : A). Equals a b -> Equals b a
+sym Refl = Refl
+
+lol1 : (e : Empty) -> Equals (absurd e) True
+lol1 e = Refl
+
+lol2 : (e : Empty) -> Equals (absurd e) False
+lol2 e = Refl
+
+lol3 : Empty -> Equals True False
+lol3 e = Refl -- type mismatch error expected
+
+lol4 : Empty -> Equals True False
+lol4 e = case e of
+
+lol5 : Empty -> Equals True False
+lol5 e = trans (sym (lol1 e)) (lol2 e)
