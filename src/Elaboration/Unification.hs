@@ -327,7 +327,7 @@ equalSpines context spine1 spine2 =
 -- Branch unification
 
 withBranches :: Context v -> Domain.Head -> Domain.Args -> Domain.Branches -> (forall v'. Context v' -> M ()) -> M ()
-withBranches context head args (Domain.Branches type_ env brs maybeDefaultBranch) k =
+withBranches context head args (Domain.Branches _type env brs maybeDefaultBranch) k =
   case brs of
     Syntax.ConstructorBranches typeName cbrs -> do
       headType_ <- typeOfHead context head
@@ -439,8 +439,8 @@ unifyBranches
 unifyBranches
   outerContext
   flexibility
-  (Domain.Branches type1 outerEnv1 branches1 defaultBranch1)
-  (Domain.Branches type2 outerEnv2 branches2 defaultBranch2) =
+  (Domain.Branches _type1 outerEnv1 branches1 defaultBranch1)
+  (Domain.Branches _type2 outerEnv2 branches2 defaultBranch2) =
     case (branches1, branches2) of
       (Syntax.ConstructorBranches conTypeName1 conBranches1, Syntax.ConstructorBranches conTypeName2 conBranches2)
         | conTypeName1 == conTypeName2 ->
@@ -550,7 +550,7 @@ potentiallyMatchingBranches
   -> Domain.Value
   -> Domain.Branches
   -> M [Maybe (Either Name.QualifiedConstructor Literal)]
-potentiallyMatchingBranches outerContext resultValue (Domain.Branches type_ outerEnv branches defaultBranch) = do
+potentiallyMatchingBranches outerContext resultValue (Domain.Branches _type outerEnv branches defaultBranch) = do
   resultValue' <- Context.forceHead outerContext resultValue
   defaultBranch' <-
     catMaybes . toList

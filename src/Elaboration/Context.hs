@@ -656,14 +656,14 @@ forceNeutral context head_ spine
     findMatchingDefaultBranch ((eqSpine, coveredConstrs, coveredLits) : rest)
       | Just (spinePrefix, Domain.Spine Seq.Empty spineSuffix) <- Domain.matchSpinePrefix spine eqSpine =
           case spineSuffix of
-            (Domain.Branches type_ env (Syntax.ConstructorBranches typeName cbrs) (Just defaultBranch), args) Seq.:<| spineSuffix' -> do
+            (Domain.Branches _type env (Syntax.ConstructorBranches typeName cbrs) (Just defaultBranch), args) Seq.:<| spineSuffix' -> do
               eq <- Unification.equalSpines context spinePrefix eqSpine
               if eq && all (\c -> HashSet.member (Name.QualifiedConstructor typeName c) coveredConstrs) (OrderedHashMap.keys cbrs)
                 then pure $ Just do
                   branchValue <- Evaluation.evaluate env defaultBranch
                   Evaluation.applySpine branchValue $ Domain.Spine args spineSuffix'
                 else findMatchingDefaultBranch rest
-            (Domain.Branches type_ env (Syntax.LiteralBranches lbrs) (Just defaultBranch), args) Seq.:<| spineSuffix' -> do
+            (Domain.Branches _type env (Syntax.LiteralBranches lbrs) (Just defaultBranch), args) Seq.:<| spineSuffix' -> do
               eq <- Unification.equalSpines context spinePrefix eqSpine
               if eq && all (`HashSet.member` coveredLits) (OrderedHashMap.keys lbrs)
                 then pure $ Just do
