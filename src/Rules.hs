@@ -19,6 +19,7 @@ import qualified Builtin
 import qualified ClosureConversion
 import qualified ClosureConverted.Context
 import qualified ClosureConverted.Representation
+import qualified ClosureConverted.Representation2
 import qualified ClosureConverted.Syntax
 import qualified ClosureConverted.TypeOf as ClosureConverted
 import qualified ClosureConvertedToAssembly
@@ -454,6 +455,10 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
       noError do
         definition <- fetch $ ClosureConverted name
         runM $ ClosureConverted.Representation.signature definition
+    LowSignature name ->
+      noError do
+        definition <- fetch $ ClosureConverted name
+        runM $ ClosureConverted.Representation2.signature definition
     ConstructorRepresentations dataTypeName ->
       noError $ ClosureConverted.Representation.constructorRepresentations dataTypeName
     ConstructorRepresentation (Name.QualifiedConstructor dataTypeName constr) ->

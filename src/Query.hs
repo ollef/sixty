@@ -34,6 +34,7 @@ import qualified Elaboration.Meta
 import Extra
 import qualified FileSystem
 import qualified LambdaLifted.Syntax as LambdaLifted
+import qualified Low.Syntax
 import qualified Module
 import Name (Name)
 import qualified Name
@@ -80,6 +81,7 @@ data Query a where
   ClosureConvertedType :: Name.Lifted -> Query (ClosureConverted.Type Void)
   ClosureConvertedConstructorType :: Name.QualifiedConstructor -> Query (Telescope Name ClosureConverted.Type ClosureConverted.Type Void)
   ClosureConvertedSignature :: Name.Lifted -> Query Representation.Signature
+  LowSignature :: Name.Lifted -> Query Low.Syntax.Signature
   ConstructorRepresentations :: Name.Qualified -> Query (Boxity, Maybe (HashMap Name.Constructor Int))
   ConstructorRepresentation :: Name.QualifiedConstructor -> Query (Boxity, Maybe Int)
   Assembly :: Name.Lifted -> Query (Maybe Assembly.Definition)
@@ -141,13 +143,14 @@ instance Hashable (Query a) where
       ClosureConvertedType a -> h 27 a
       ClosureConvertedConstructorType a -> h 28 a
       ClosureConvertedSignature a -> h 29 a
-      ConstructorRepresentations a -> h 30 a
-      ConstructorRepresentation a -> h 31 a
-      Assembly a -> h 32 a
-      HeapAllocates a -> h 33 a
-      AssemblyModule a -> h 34 a
-      LLVMModule a -> h 35 a
-      LLVMModuleInitModule -> h 36 ()
+      LowSignature a -> h 30 a
+      ConstructorRepresentations a -> h 31 a
+      ConstructorRepresentation a -> h 32 a
+      Assembly a -> h 33 a
+      HeapAllocates a -> h 34 a
+      AssemblyModule a -> h 35 a
+      LLVMModule a -> h 36 a
+      LLVMModuleInitModule -> h 37 ()
     where
       {-# INLINE h #-}
       h :: (Hashable b) => Int -> b -> Int
