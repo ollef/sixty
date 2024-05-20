@@ -45,6 +45,7 @@ import qualified Error
 import qualified LambdaLifted.Syntax as LambdaLifted
 import qualified LambdaLifting
 import qualified Lexer
+import qualified Lower
 import qualified Module
 import Monad
 import qualified Name
@@ -459,6 +460,10 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
       noError do
         definition <- fetch $ ClosureConverted name
         runM $ ClosureConverted.Representation2.signature definition
+    LoweredDefinition name ->
+      noError do
+        definition <- fetch $ ClosureConverted name
+        runM $ Lower.definition name definition
     ConstructorRepresentations dataTypeName ->
       noError $ ClosureConverted.Representation.constructorRepresentations dataTypeName
     ConstructorRepresentation (Name.QualifiedConstructor dataTypeName constr) ->

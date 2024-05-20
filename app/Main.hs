@@ -94,6 +94,10 @@ compileOptions =
             <> help "Set the optimisation level to LEVEL"
             <> completeWith ["0", "1", "2", "3"]
       )
+    <*> switch
+      ( long "print-lowered"
+          <> help "Print lowered syntax"
+      )
 
 compileCommand :: ParserInfo (IO ())
 compileCommand =

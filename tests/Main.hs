@@ -89,7 +89,8 @@ compileFiles optimisationLevel sourceDirectories files = do
     Command.Compile.withAssemblyDirectory Nothing \assemblyDir -> do
       (moduleSources, errs) <- Driver.runTask (HashSet.fromList sourceDirectories) (HashSet.fromList files) prettyError do
         Driver.checkAll
-        Compiler.compile assemblyDir False outputExecutableFile optimisationLevel
+        let printLowered = False
+        Compiler.compile assemblyDir False outputExecutableFile optimisationLevel printLowered
         forM files \filePath -> do
           moduleSource <- fetch $ Query.FileText filePath
           pure (filePath, moduleSource)

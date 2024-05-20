@@ -23,6 +23,7 @@ data Options = Options
   , maybeAssemblyDir :: Maybe FilePath
   , maybeOutputFile :: Maybe FilePath
   , maybeOptimisationLevel :: Maybe FilePath
+  , printLowered :: Bool
   }
 
 compile :: Options -> IO ()
@@ -37,7 +38,7 @@ withCompiledExecutable k Options {..} = do
     withOutputFile maybeOutputFile \outputFile -> do
       ((), errs) <-
         Driver.runTask sourceDirectories filePaths Error.Hydrated.pretty $
-          Compiler.compile assemblyDir (isJust maybeAssemblyDir) outputFile maybeOptimisationLevel
+          Compiler.compile assemblyDir (isJust maybeAssemblyDir) outputFile maybeOptimisationLevel printLowered
       endTime <- getCurrentTime
       let errorCount =
             length errs

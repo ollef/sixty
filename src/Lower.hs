@@ -133,9 +133,9 @@ addRepresentation :: Operand -> Operand -> Value
 addRepresentation x y =
   Call (Name.Lifted Builtin.AddRepresentationName 0) [x, y]
 
-definition :: Name.Lifted -> CC.Syntax.Definition -> M [Low.Syntax.Definition]
+definition :: Name.Lifted -> CC.Syntax.Definition -> M (Maybe Low.Syntax.Definition)
 definition name = \case
-  CC.Syntax.TypeDeclaration _ -> pure mempty
+  CC.Syntax.TypeDeclaration _ -> pure Nothing
   CC.Syntax.ConstantDefinition term -> constantDefinition term
   CC.Syntax.FunctionDefinition tele -> functionDefinition tele
   CC.Syntax.DataDefinition _boxity constrDefs -> do
@@ -155,7 +155,7 @@ definition name = \case
         Low.Syntax.ConstantSignature _ -> do
           value <- runCollect $ storeTerm CC.empty mempty (Global name) term
           let term' = readback Index.Map.Empty value
-          pure [Low.Syntax.ConstantDefinition term']
+          pure $ Just $ Low.Syntax.ConstantDefinition term'
         _ -> panic "Constant without constant signature"
 
     functionDefinition tele = do
@@ -166,7 +166,7 @@ definition name = \case
             genRunCollect (\(_, _, result) -> Operand result) (\(params, returns, _) body -> Function (returns <> params) body) $
               lowerFunction CC.empty mempty passArgsBy passReturnBy tele
           let function = readbackFunction Index.Map.Empty functionValue
-          pure [Low.Syntax.FunctionDefinition function]
+          pure $ Just $ Low.Syntax.FunctionDefinition function
         _ -> panic "Function without function signature"
 
 lowerFunction

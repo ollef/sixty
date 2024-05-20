@@ -82,6 +82,7 @@ data Query a where
   ClosureConvertedConstructorType :: Name.QualifiedConstructor -> Query (Telescope Name ClosureConverted.Type ClosureConverted.Type Void)
   ClosureConvertedSignature :: Name.Lifted -> Query Representation.Signature
   LowSignature :: Name.Lifted -> Query Low.Syntax.Signature
+  LoweredDefinition :: Name.Lifted -> Query (Maybe Low.Syntax.Definition)
   ConstructorRepresentations :: Name.Qualified -> Query (Boxity, Maybe (HashMap Name.Constructor Int))
   ConstructorRepresentation :: Name.QualifiedConstructor -> Query (Boxity, Maybe Int)
   Assembly :: Name.Lifted -> Query (Maybe Assembly.Definition)
@@ -144,13 +145,14 @@ instance Hashable (Query a) where
       ClosureConvertedConstructorType a -> h 28 a
       ClosureConvertedSignature a -> h 29 a
       LowSignature a -> h 30 a
-      ConstructorRepresentations a -> h 31 a
-      ConstructorRepresentation a -> h 32 a
-      Assembly a -> h 33 a
-      HeapAllocates a -> h 34 a
-      AssemblyModule a -> h 35 a
-      LLVMModule a -> h 36 a
-      LLVMModuleInitModule -> h 37 ()
+      LoweredDefinition a -> h 31 a
+      ConstructorRepresentations a -> h 32 a
+      ConstructorRepresentation a -> h 33 a
+      Assembly a -> h 34 a
+      HeapAllocates a -> h 35 a
+      AssemblyModule a -> h 36 a
+      LLVMModule a -> h 37 a
+      LLVMModuleInitModule -> h 38 ()
     where
       {-# INLINE h #-}
       h :: (Hashable b) => Int -> b -> Int
