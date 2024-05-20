@@ -92,7 +92,7 @@ prettyTerm prec env = \case
         <+> prettyTerm 0 env term
           <> line
           <> "in"
-        <+> prettyTerm letPrec env' body
+        <+> indent 2 (prettyTerm letPrec env' body)
   Syntax.Seq term1 term2 ->
     prettyParen (prec > seqPrec) $
       prettyTerm (seqPrec + 1) env term1
@@ -208,15 +208,15 @@ prettyDefinition env name def = do
   signature <- fetch $ Query.LowSignature name
   pure case (def, signature) of
     (Syntax.ConstantDefinition term, Syntax.ConstantSignature repr) ->
-      prettyLiftedGlobal env name <+> prettyRepresentation repr <+> "=" <+> prettyTerm 0 env term
+      prettyLiftedGlobal env name <+> prettyRepresentation repr <+> "=" <> line <> indent 2 (prettyTerm 0 env term)
     (Syntax.ConstantDefinition _, _) -> panic "definition signature mismatch"
     (Syntax.FunctionDefinition function, Syntax.FunctionSignature passArgsBy passReturnBy) ->
-      prettyLiftedGlobal env name <+> prettyPassBy passReturnBy <+> "=" <+> "\\" <+> prettyFunction env passArgsBy function
+      prettyLiftedGlobal env name <+> prettyPassBy passReturnBy <+> "=" <> "\\" <> prettyFunction env passArgsBy function
     (Syntax.FunctionDefinition _, _) -> panic "definition signature mismatch"
 
 prettyFunction :: Environment v -> [PassBy] -> Syntax.Function v -> Doc ann
 prettyFunction env passArgsBy function = case (passArgsBy, function) of
-  ([], Syntax.Body body) -> " ->" <> line <> prettyTerm 0 env body
+  ([], Syntax.Body body) -> " ->" <> line <> indent 2 (prettyTerm 0 env body)
   ([], _) -> panic "function signature mismatch"
   (passArgBy : passArgsBy', Syntax.Parameter name function') -> do
     let (env', name') = extend env name
