@@ -243,7 +243,7 @@ storeTerm
   -> Collect Operand
 storeTerm context indices dst = \case
   CC.Syntax.Var (Index.Index index) -> do
-    let src = Seq.index indices index
+    let src = Seq.index indices $ Seq.length indices - index - 1
     storeOperand dst src
   CC.Syntax.Global global -> do
     signature <- fetch $ Query.LowSignature global
@@ -383,7 +383,7 @@ generateTerm
   -> CC.Domain.Type
   -> Collect OperandStorage
 generateTerm context indices term typeValue = case term of
-  CC.Syntax.Var (Index.Index index) -> pure $ Seq.index indices index
+  CC.Syntax.Var (Index.Index index) -> pure $ Seq.index indices $ Seq.length indices - index - 1
   CC.Syntax.Global global -> do
     signature <- fetch $ Query.LowSignature global
     case signature of
