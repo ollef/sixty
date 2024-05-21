@@ -446,7 +446,7 @@ generateTerm context indices term typeValue = case term of
                 forceReference operand
           letValue returnRepr "call_result" $ Call function callArgs
         pure $ OperandStorage callResult $ Value returnRepr
-      Low.Syntax.FunctionSignature passArgsBy passReturnBy -> do
+      Low.Syntax.FunctionSignature passArgsBy passReturnBy@PassBy.Reference -> do
         type_ <- lift $ Readback.readback (CC.toEnvironment context) typeValue
         size <- generateTypeSize context indices type_
         callResult <- letReference "call_destination" $ StackAllocate size
