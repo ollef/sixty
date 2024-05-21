@@ -1,10 +1,13 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
 
 module Low.Representation where
 
+import Prettyprinter
 import Protolude hiding (repr)
 
 data Representation = Representation
@@ -22,6 +25,13 @@ instance Semigroup Representation where
 
 instance Monoid Representation where
   mempty = Empty
+
+instance Pretty Representation where
+  pretty = \case
+    Representation {pointers = 0, nonPointerBytes = 0} -> "empty"
+    Representation {pointers = 0, nonPointerBytes = np} -> "b" <> pretty np
+    Representation {pointers = p, nonPointerBytes = 0} -> "p" <> pretty p
+    Representation {pointers = p, nonPointerBytes = np} -> "p" <> pretty p <> "b" <> pretty np
 
 pattern Empty :: Representation
 pattern Empty = Representation {pointers = 0, nonPointerBytes = 0}

@@ -2,7 +2,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Low.Pretty where
@@ -17,8 +16,6 @@ import qualified Data.Text.Unsafe as Text
 import Index
 import Low.PassBy (PassBy)
 import qualified Low.PassBy as PassBy
-import Low.Representation (Representation)
-import qualified Low.Representation as Representation
 import qualified Low.Syntax as Syntax
 import Name (Name (Name))
 import qualified Name
@@ -127,9 +124,9 @@ prettyTerm prec env = \case
   Syntax.Copy dst src size ->
     "#copy" <> encloseSep lparen rparen comma [prettyOperand env dst, prettyOperand env src, prettyOperand env size]
   Syntax.Store dst src repr ->
-    "#store" <> encloseSep lparen rparen comma [prettyOperand env dst, prettyRepresentation repr <+> prettyOperand env src]
+    "#store" <> encloseSep lparen rparen comma [prettyOperand env dst, pretty repr <+> prettyOperand env src]
   Syntax.Load src repr ->
-    "#load" <> lparen <> prettyRepresentation repr <+> prettyOperand env src <> rparen
+    "#load" <> lparen <> pretty repr <+> prettyOperand env src <> rparen
 
 prettySeq :: Environment v -> Syntax.Term v -> Doc ann
 prettySeq env = \case
@@ -157,7 +154,7 @@ prettyOperand env = \case
       Seq.index (varNames env) (Seq.length (varNames env) - i - 1)
   Syntax.Global global -> prettyLiftedGlobal env global
   Syntax.Literal lit -> pretty lit
-  Syntax.Representation repr -> prettyRepresentation repr
+  Syntax.Representation repr -> pretty repr
   Syntax.Tag constr -> prettyConstr env constr
 
 prettyGlobal :: Environment v -> Name.Qualified -> Doc ann
@@ -179,12 +176,8 @@ prettyLiftedGlobal env = \case
 
 prettyPassBy :: PassBy -> Doc ann
 prettyPassBy = \case
-  PassBy.Value repr -> prettyRepresentation repr
+  PassBy.Value repr -> pretty repr
   PassBy.Reference -> "ref"
-
-prettyRepresentation :: Representation -> Doc ann
-prettyRepresentation repr =
-  "p" <> pretty repr.pointers <> "b" <> pretty repr.nonPointerBytes
 
 prettyConstr :: Environment v -> Name.QualifiedConstructor -> Doc ann
 prettyConstr env constr = do
@@ -223,7 +216,7 @@ prettyDefinition env name def = do
   signature <- fetch $ Query.LowSignature name
   pure case (def, signature) of
     (Syntax.ConstantDefinition term, Syntax.ConstantSignature repr) ->
-      prettyLiftedGlobal env name <+> prettyRepresentation repr <+> "=" <> line <> indent 2 (prettyTerm 0 env term)
+      prettyLiftedGlobal env name <+> pretty repr <+> "=" <> line <> indent 2 (prettyTerm 0 env term)
     (Syntax.ConstantDefinition _, _) -> panic "definition signature mismatch"
     (Syntax.FunctionDefinition function, Syntax.FunctionSignature passArgsBy passReturnBy) ->
       prettyLiftedGlobal env name <+> "=" <+> "\\" <> prettyFunction env passArgsBy passReturnBy function
