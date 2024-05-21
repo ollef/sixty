@@ -110,7 +110,8 @@ prettyTerm prec env = \case
             )
   Syntax.Call function args ->
     "call"
-      <+> commaSep (prettyLiftedGlobal env function : (prettyOperand env <$> args))
+      <+> prettyLiftedGlobal env function
+      <+> commaSep (prettyOperand env <$> args)
   Syntax.StackAllocate operand ->
     "stack_allocate" <+> prettyOperand env operand
   Syntax.HeapAllocate con operand ->
@@ -124,7 +125,7 @@ prettyTerm prec env = \case
   Syntax.Copy dst src size ->
     "copy" <+> commaSep [prettyOperand env dst, prettyOperand env src, prettyOperand env size]
   Syntax.Store dst src repr ->
-    "store" <> commaSep [prettyOperand env dst, pretty repr <+> prettyOperand env src]
+    "store" <+> commaSep [prettyOperand env dst, pretty repr <+> prettyOperand env src]
   Syntax.Load src repr ->
     "load" <+> pretty repr <+> prettyOperand env src
 
