@@ -126,12 +126,10 @@ prettySeq env = \case
       <+> pretty name'
       <+> "="
       <+> prettyTerm env term
-        <> ";"
         <> line
         <> prettySeq env' body
   Syntax.Seq term1 term2 ->
     prettyTerm env term1
-      <> ";"
       <> line
       <> prettySeq env term2
   term -> prettyTerm env term
