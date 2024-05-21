@@ -14,7 +14,6 @@ import qualified Data.Kind
 import qualified Data.Sequence as Seq
 import qualified Data.Text.Unsafe as Text
 import Index
-import Low.PassBy (PassBy)
 import qualified Low.Syntax as Syntax
 import Name (Name (Name))
 import qualified Name
@@ -196,26 +195,20 @@ prettyBranch env = \case
 
 -------------------------------------------------------------------------------
 
-prettyDefinition :: (MonadFetch Query m) => Environment Void -> Name.Lifted -> Syntax.Definition -> m (Doc ann)
-prettyDefinition env name def = do
-  signature <- fetch $ Query.LowSignature name
-  pure case (def, signature) of
-    (Syntax.ConstantDefinition term, Syntax.ConstantSignature repr) ->
-      prettyLiftedGlobal env name <+> pretty repr <+> "=" <+> prettyTerm env term
-    (Syntax.ConstantDefinition _, _) -> panic "definition signature mismatch"
-    (Syntax.FunctionDefinition function, Syntax.FunctionSignature passArgsBy passReturnBy) ->
-      prettyLiftedGlobal env name <+> "=" <+> "\\" <> prettyFunction env passArgsBy passReturnBy function
-    (Syntax.FunctionDefinition _, _) -> panic "definition signature mismatch"
+prettyDefinition :: Environment Void -> Name.Lifted -> Syntax.Definition -> Doc ann
+prettyDefinition env name = \case
+  Syntax.ConstantDefinition repr term ->
+    prettyLiftedGlobal env name <+> pretty repr <+> "=" <+> prettyTerm env term
+  Syntax.FunctionDefinition function ->
+    prettyLiftedGlobal env name <+> "=" <+> "\\" <> prettyFunction env function
 
-prettyFunction :: Environment v -> [PassBy] -> PassBy -> Syntax.Function v -> Doc ann
-prettyFunction env passArgsBy passReturnBy function = case (passArgsBy, function) of
-  ([], Syntax.Body body) -> " ->" <+> pretty passReturnBy <+> prettyTerm env body
-  ([], _) -> panic "function signature mismatch"
-  (passArgBy : passArgsBy', Syntax.Parameter name function') -> do
+prettyFunction :: Environment v -> Syntax.Function v -> Doc ann
+prettyFunction env = \case
+  Syntax.Body passReturnBy body -> " ->" <+> pretty passReturnBy <+> prettyTerm env body
+  Syntax.Parameter name passArgBy function' -> do
     let (env', name') = extend env name
     "("
       <> pretty passArgBy
       <+> pretty name'
         <> ")"
-        <> prettyFunction env' passArgsBy' passReturnBy function'
-  (_ : _, _) -> panic "function signature mismatch"
+        <> prettyFunction env' function'

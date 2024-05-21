@@ -41,14 +41,14 @@ data Branch v
   deriving (Eq, Show, Generic, Hashable)
 
 data Function v
-  = Body !(Term v)
-  | Parameter !Name !(Scope Function v)
+  = Body !PassBy !(Term v)
+  | Parameter !Name !PassBy !(Scope Function v)
   deriving (Eq, Show, Generic, Hashable)
 
 type Type = Term
 
 data Definition
-  = ConstantDefinition !(Term Void)
+  = ConstantDefinition !Representation !(Term Void)
   | FunctionDefinition !(Function Void)
   deriving (Eq, Show, Generic, Hashable)
 

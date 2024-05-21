@@ -35,9 +35,8 @@ compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel pri
       emptyPrettyEnv <- Pretty.emptyM moduleName
       forM_ defNames \defName -> do
         maybeLoweredDef <- fetch $ Query.LoweredDefinition defName
-        forM_ maybeLoweredDef \loweredDef -> do
-          prettyDef <- Pretty.prettyDefinition emptyPrettyEnv defName loweredDef
-          liftIO $ putDocW 120 $ prettyDef <> line
+        forM_ maybeLoweredDef \loweredDef ->
+          liftIO $ putDocW 120 $ Pretty.prettyDefinition emptyPrettyEnv defName loweredDef <> line
 
     llvmModule <- fetch $ Query.LLVMModule moduleName
     let llvmFileName = moduleAssemblyDir </> toS moduleNameText <.> "ll"

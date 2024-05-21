@@ -32,6 +32,7 @@ import qualified Low.Syntax
 import Monad
 import Name (Name)
 import qualified Name
+import Prettyprinter
 import Protolude hiding (nonEmpty, repr)
 import qualified Query
 import Rock.Core
@@ -81,7 +82,7 @@ data Collectible
   | CollectibleSeq !Value
   deriving (Show)
 
-data Function = Function [(Name, Var)] !Value
+data Function = Function [(Name, PassBy, Var)] !PassBy !Value
 
 type Collect = StateT (Tsil Collectible) M
 
@@ -155,10 +156,10 @@ definition name = \case
     constantDefinition term = do
       signature <- fetch $ Query.LowSignature name
       case signature of
-        Low.Syntax.ConstantSignature _ -> do
+        Low.Syntax.ConstantSignature repr -> do
           value <- runCollect $ storeTerm CC.empty mempty (Global name) term
           let term' = readback Index.Map.Empty value
-          pure $ Just $ Low.Syntax.ConstantDefinition term'
+          pure $ Just $ Low.Syntax.ConstantDefinition repr term'
         _ -> panic "Constant without constant signature"
 
     functionDefinition tele = do
@@ -166,7 +167,7 @@ definition name = \case
       case signature of
         Low.Syntax.FunctionSignature passArgsBy passReturnBy -> do
           functionValue <-
-            genRunCollect (\(_, _, result) -> Operand result) (\(params, returns, _) body -> Function (returns <> params) body) $
+            genRunCollect (\(_, _, result) -> Operand result) (\(params, returns, _) body -> Function (returns <> params) passReturnBy body) $
               lowerFunction CC.empty mempty passArgsBy passReturnBy tele
           let function = readbackFunction Index.Map.Empty functionValue
           pure $ Just $ Low.Syntax.FunctionDefinition function
@@ -178,7 +179,7 @@ lowerFunction
   -> [PassBy]
   -> PassBy
   -> Telescope Name CC.Syntax.Type CC.Syntax.Term v
-  -> Collect ([(Name, Var)], [(Name, Var)], Operand)
+  -> Collect ([(Name, PassBy, Var)], [(Name, PassBy, Var)], Operand)
 lowerFunction context indices passArgsBy passReturnBy tele = case (tele, passArgsBy) of
   (Telescope.Empty body, []) -> case passReturnBy of
     PassBy.Value repr -> do
@@ -188,7 +189,7 @@ lowerFunction context indices passArgsBy passReturnBy tele = case (tele, passArg
     PassBy.Reference -> do
       dst <- lift freshVar
       result <- storeTerm context indices (Var dst) body
-      pure ([], [("return", dst)], result)
+      pure ([], [("return", PassBy.Reference, dst)], result)
   (Telescope.Empty _, _) -> panic "Function signature mismatch"
   (Telescope.Extend name type_ _plicity tele', passArgBy : passArgsBy') -> do
     type' <- lift $ Evaluation.evaluate (CC.toEnvironment context) type_
@@ -200,7 +201,7 @@ lowerFunction context indices passArgsBy passReturnBy tele = case (tele, passArg
     (context', var) <- lift $ CC.extend context type'
     let indices' = indices Seq.:|> OperandStorage (Var var) operandRepr
     (params, returns, result) <- lowerFunction context' indices' passArgsBy' passReturnBy tele'
-    pure ((name, var) : params, returns, result)
+    pure ((name, passArgBy, var) : params, returns, result)
   (Telescope.Extend {}, _) -> panic "Function signature mismatch"
 
 storeOperand
@@ -491,7 +492,7 @@ storeCall context indices dst function args passArgsBy passReturnBy = do
         callResult <- letValue repr "call_result" $ Call function callArgs
         storeOperand dst $ OperandStorage callResult $ Value repr
       PassBy.Reference ->
-        letReference "call_result_size" $ Call function (dst : callArgs)
+        letValue Representation.type_ "call_result_size" $ Call function (dst : callArgs)
 
 storeBranch
   :: CC.Context v
@@ -531,13 +532,13 @@ boxedConstructorSize env con params args = do
 -------------------------------------------------------------------------------
 
 readbackFunction :: Index.Map v Var -> Function -> Low.Syntax.Function v
-readbackFunction outerEnv (Function params body) =
+readbackFunction outerEnv (Function params returnRepr body) =
   go outerEnv params
   where
-    go :: Index.Map v Var -> [(Name, Var)] -> Low.Syntax.Function v
-    go env [] = Low.Syntax.Body $ readback env body
-    go env ((name, var) : params') =
-      Low.Syntax.Parameter name $ go (env Index.Map.:> var) params'
+    go :: Index.Map v Var -> [(Name, PassBy, Var)] -> Low.Syntax.Function v
+    go env [] = Low.Syntax.Body returnRepr $ readback env body
+    go env ((name, passParamBy, var) : params') =
+      Low.Syntax.Parameter name passParamBy $ go (env Index.Map.:> var) params'
 
 readback :: Index.Map v Var -> Value -> Low.Syntax.Term v
 readback env = \case
