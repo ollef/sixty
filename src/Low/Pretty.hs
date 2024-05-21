@@ -15,7 +15,6 @@ import qualified Data.Sequence as Seq
 import qualified Data.Text.Unsafe as Text
 import Index
 import Low.PassBy (PassBy)
-import qualified Low.PassBy as PassBy
 import qualified Low.Syntax as Syntax
 import Name (Name (Name))
 import qualified Name
@@ -133,7 +132,7 @@ prettySeq env = \case
   Syntax.Let passBy name term body -> do
     let (env', name') = extend env name
     "let"
-      <+> prettyPassBy passBy
+      <+> pretty passBy
       <+> pretty name'
       <+> "="
       <+> prettyTerm 0 env term
@@ -173,11 +172,6 @@ prettyLiftedGlobal :: Environment v -> Name.Lifted -> Doc ann
 prettyLiftedGlobal env = \case
   Name.Lifted global 0 -> prettyGlobal env global
   Name.Lifted global n -> prettyGlobal env global <> "$" <> pretty n
-
-prettyPassBy :: PassBy -> Doc ann
-prettyPassBy = \case
-  PassBy.Value repr -> pretty repr
-  PassBy.Reference -> "ref"
 
 prettyConstr :: Environment v -> Name.QualifiedConstructor -> Doc ann
 prettyConstr env constr = do
@@ -224,12 +218,12 @@ prettyDefinition env name def = do
 
 prettyFunction :: Environment v -> [PassBy] -> PassBy -> Syntax.Function v -> Doc ann
 prettyFunction env passArgsBy passReturnBy function = case (passArgsBy, function) of
-  ([], Syntax.Body body) -> " ->" <+> prettyPassBy passReturnBy <+> prettyTerm 0 env body
+  ([], Syntax.Body body) -> " ->" <+> pretty passReturnBy <+> prettyTerm 0 env body
   ([], _) -> panic "function signature mismatch"
   (passArgBy : passArgsBy', Syntax.Parameter name function') -> do
     let (env', name') = extend env name
     "("
-      <> prettyPassBy passArgBy
+      <> pretty passArgBy
       <+> pretty name'
         <> ")"
         <> prettyFunction env' passArgsBy' passReturnBy function'
