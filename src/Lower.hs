@@ -123,11 +123,14 @@ genRunCollect f g m = do
     g result $
       foldr
         ( \case
-            CollectibleLet repr n var value -> Let repr n var value
+            CollectibleLet repr n var value -> mkLet repr n var value
             CollectibleSeq value -> Seq value
         )
         (f result)
         collectibles
+  where
+    mkLet _repr _name var value (Operand (Var var')) | var == var' = value
+    mkLet repr name var value body = Let repr name var value body
 
 addRepresentation :: Operand -> Operand -> Value
 addRepresentation x y =
