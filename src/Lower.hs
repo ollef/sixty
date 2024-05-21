@@ -167,7 +167,7 @@ definition name = \case
       case signature of
         Low.Syntax.FunctionSignature passArgsBy passReturnBy -> do
           functionValue <-
-            genRunCollect (\(_, _, result) -> Operand result) (\(params, returns, _) body -> Function (returns <> params) passReturnBy body) $
+            genRunCollect (\(_, _, _, result) -> Operand result) (\(params, returns, passReturnBy', _) body -> Function (returns <> params) passReturnBy' body) $
               lowerFunction CC.empty mempty passArgsBy passReturnBy tele
           let function = readbackFunction Index.Map.Empty functionValue
           pure $ Just $ Low.Syntax.FunctionDefinition function
@@ -179,17 +179,17 @@ lowerFunction
   -> [PassBy]
   -> PassBy
   -> Telescope Name CC.Syntax.Type CC.Syntax.Term v
-  -> Collect ([(Name, PassBy, Var)], [(Name, PassBy, Var)], Operand)
+  -> Collect ([(Name, PassBy, Var)], [(Name, PassBy, Var)], PassBy, Operand)
 lowerFunction context indices passArgsBy passReturnBy tele = case (tele, passArgsBy) of
   (Telescope.Empty body, []) -> case passReturnBy of
     PassBy.Value repr -> do
       result <- generateTermWithoutType context indices body
       resultValue <- forceValue repr result
-      pure ([], [], resultValue)
+      pure ([], [], passReturnBy, resultValue)
     PassBy.Reference -> do
       dst <- lift freshVar
       result <- storeTerm context indices (Var dst) body
-      pure ([], [("return", PassBy.Reference, dst)], result)
+      pure ([], [("return", PassBy.Reference, dst)], PassBy.Value Representation.type_, result)
   (Telescope.Empty _, _) -> panic "Function signature mismatch"
   (Telescope.Extend name type_ _plicity tele', passArgBy : passArgsBy') -> do
     type' <- lift $ Evaluation.evaluate (CC.toEnvironment context) type_
@@ -200,8 +200,8 @@ lowerFunction context indices passArgsBy passReturnBy tele = case (tele, passArg
         pure $ Reference size
     (context', var) <- lift $ CC.extend context type'
     let indices' = indices Seq.:|> OperandStorage (Var var) operandRepr
-    (params, returns, result) <- lowerFunction context' indices' passArgsBy' passReturnBy tele'
-    pure ((name, passArgBy, var) : params, returns, result)
+    (params, returns, passReturnBy', result) <- lowerFunction context' indices' passArgsBy' passReturnBy tele'
+    pure ((name, passArgBy, var) : params, returns, passReturnBy', result)
   (Telescope.Extend {}, _) -> panic "Function signature mismatch"
 
 storeOperand
