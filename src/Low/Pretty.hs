@@ -109,23 +109,24 @@ prettyTerm prec env = \case
                      ]
             )
   Syntax.Call function args ->
-    prettyLiftedGlobal env function <> encloseSep lparen rparen comma (prettyOperand env <$> args)
+    "call"
+      <+> commaSep (prettyLiftedGlobal env function : (prettyOperand env <$> args))
   Syntax.StackAllocate operand ->
-    "#stack_allocate" <> lparen <> prettyOperand env operand <> rparen
+    "stack_allocate" <+> prettyOperand env operand
   Syntax.HeapAllocate con operand ->
-    "#heap_allocate" <> encloseSep lparen rparen comma [prettyConstr env con, prettyOperand env operand]
+    "heap_allocate" <+> commaSep [prettyConstr env con, prettyOperand env operand]
   Syntax.Dereference operand ->
     "*" <> prettyOperand env operand
   Syntax.PointerTag operand ->
-    "#pointer_tag" <> lparen <> prettyOperand env operand <> rparen
+    "pointer_tag" <+> prettyOperand env operand
   Syntax.Offset operand1 operand2 ->
     prettyOperand env operand1 <+> "+" <+> prettyOperand env operand2
   Syntax.Copy dst src size ->
-    "#copy" <> encloseSep lparen rparen comma [prettyOperand env dst, prettyOperand env src, prettyOperand env size]
+    "copy" <+> commaSep [prettyOperand env dst, prettyOperand env src, prettyOperand env size]
   Syntax.Store dst src repr ->
-    "#store" <> encloseSep lparen rparen comma [prettyOperand env dst, pretty repr <+> prettyOperand env src]
+    "store" <> commaSep [prettyOperand env dst, pretty repr <+> prettyOperand env src]
   Syntax.Load src repr ->
-    "#load" <> lparen <> pretty repr <+> prettyOperand env src <> rparen
+    "load" <+> pretty repr <+> prettyOperand env src
 
 prettySeq :: Environment v -> Syntax.Term v -> Doc ann
 prettySeq env = \case
@@ -145,6 +146,9 @@ prettySeq env = \case
       <> line
       <> prettySeq env term2
   term -> prettyTerm 0 env term
+
+commaSep :: [Doc ann] -> Doc ann
+commaSep = hcat . punctuate (comma <> space)
 
 prettyOperand :: Environment v -> Syntax.Operand v -> Doc ann
 prettyOperand env = \case
