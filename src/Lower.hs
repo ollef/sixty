@@ -87,10 +87,12 @@ data Function = Function [(Name, PassBy, Var)] !PassBy !Value
 type Collect = StateT (Tsil Collectible) M
 
 let_ :: PassBy -> Name -> Value -> Collect Operand
-let_ repr name value = do
-  var <- lift freshVar
-  modify (Tsil.:> CollectibleLet repr name var value)
-  pure $ Var var
+let_ repr name = \case
+  Operand operand -> pure operand
+  value -> do
+    var <- lift freshVar
+    modify (Tsil.:> CollectibleLet repr name var value)
+    pure $ Var var
 
 letReference :: Name -> Value -> Collect Operand
 letReference = let_ PassBy.Reference
@@ -104,9 +106,7 @@ seq_ value = modify (Tsil.:> CollectibleSeq value)
 collect :: PassBy -> Name -> Collect Operand -> Collect Operand
 collect repr name m = do
   result <- lift $ runCollect m
-  case result of
-    Operand operand -> pure operand
-    _ -> let_ repr name result
+  let_ repr name result
 
 collectReference :: Name -> Collect Operand -> Collect Operand
 collectReference = collect PassBy.Reference
@@ -133,9 +133,31 @@ genRunCollect f g m = do
     mkLet _repr _name var value (Operand (Var var')) | var == var' = value
     mkLet repr name var value body = Let repr name var value body
 
+mkCall :: Name.Lifted -> [Operand] -> Value
+mkCall = \cases
+  (Name.Lifted Builtin.AddRepresentationName 0) [Representation x, Representation y] -> Operand $ Representation $ x <> y
+  (Name.Lifted Builtin.AddRepresentationName 0) [Representation x, y] | x == mempty -> Operand y
+  (Name.Lifted Builtin.AddRepresentationName 0) [x, Representation y] | y == mempty -> Operand x
+  (Name.Lifted Builtin.MaxRepresentationName 0) [Representation x, Representation y] -> Operand $ Representation $ Representation.leastUpperBound x y
+  (Name.Lifted Builtin.MaxRepresentationName 0) [Representation x, y] | x == mempty -> Operand y
+  (Name.Lifted Builtin.MaxRepresentationName 0) [x, Representation y] | y == mempty -> Operand x
+  name operands -> Call name operands
+
+mkLoad :: Operand -> Representation -> Value
+mkLoad = \cases
+  (Global (Name.Lifted Builtin.EmptyRepresentationName 0)) _ -> Operand $ Representation mempty
+  (Global (Name.Lifted Builtin.UnitName 0)) _ -> Operand $ Representation mempty
+  (Global (Name.Lifted Builtin.IntName 0)) _ -> Operand $ Representation Representation.int
+  operand repr -> Load operand repr
+
 addRepresentation :: Operand -> Operand -> Value
 addRepresentation x y =
-  Call (Name.Lifted Builtin.AddRepresentationName 0) [x, y]
+  mkCall (Name.Lifted Builtin.AddRepresentationName 0) [x, y]
+
+mkOffset :: Operand -> Operand -> Value
+mkOffset base = \case
+  Representation x | x == mempty -> Operand base
+  offset -> Offset base offset
 
 definition :: Name.Lifted -> CC.Syntax.Definition -> M (Maybe Low.Syntax.Definition)
 definition name = \case
@@ -227,7 +249,7 @@ forceValue dstRepr (OperandStorage src srcOperandRepr) =
       when (dstRepr /= srcRepr) $ panic "repr mismatch"
       pure src
     Reference _srcReprValue ->
-      letValue dstRepr "loaded" $ Load src dstRepr
+      letValue dstRepr "loaded" $ mkLoad src dstRepr
 
 forceReference :: OperandStorage -> Collect Operand
 forceReference (OperandStorage src srcOperandRepr) =
@@ -264,7 +286,7 @@ storeTerm context indices dst = \case
     case boxity of
       Unboxed -> do
         let go argOffset arg = do
-              argDst <- letReference "constr_arg_dst" $ Offset dst argOffset
+              argDst <- letReference "constr_arg_dst" $ mkOffset dst argOffset
               argSize <- storeTerm context indices argDst arg
               letValue Representation.type_ "constr_arg_offset" $ addRepresentation argOffset argSize
         foldM go dst tagArgs
@@ -274,7 +296,7 @@ storeTerm context indices dst = \case
         pointer <- letValue Representation.pointer "boxed_constr" $ HeapAllocate con size
         constrDst <- letReference "payload" $ HeapPayload pointer
         let go argOffset arg = do
-              argDst <- letValue Representation.type_ "constr_arg_dst" $ Offset constrDst argOffset
+              argDst <- letValue Representation.type_ "constr_arg_dst" $ mkOffset constrDst argOffset
               argSize <- storeTerm context indices argDst arg
               letValue Representation.type_ "constr_arg_offset" $ addRepresentation argOffset argSize
         foldM_ go dst args
@@ -307,8 +329,8 @@ storeTerm context indices dst = \case
     case branches' of
       CC.Representation.TaggedConstructorBranches Unboxed constrBranches -> do
         scrutineeRef <- forceReference scrutinee'
-        tag <- letValue Representation.int "tag" $ Load scrutineeRef Representation.int
-        payload <- letReference "payload" $ Offset scrutineeRef $ Representation Representation.int
+        tag <- letValue Representation.int "tag" $ mkLoad scrutineeRef Representation.int
+        payload <- letReference "payload" $ mkOffset scrutineeRef $ Representation Representation.int
         constrBranches' <- forM constrBranches \(constr, constrBranch) ->
           map (ConstructorBranch constr) $
             lift $
@@ -406,7 +428,7 @@ generateTerm context indices term typeValue = case term of
         unboxedCon <- letReference "unboxed_constr" $ StackAllocate size
 
         let go argOffset arg = do
-              argDst <- letReference "constr_arg_dst" $ Offset unboxedCon argOffset
+              argDst <- letReference "constr_arg_dst" $ mkOffset unboxedCon argOffset
               argSize <- storeTerm context indices argDst arg
               letValue Representation.type_ "constr_arg_offset" $ addRepresentation argOffset argSize
         _ <- collectValue Representation.type_ "constr_fields" $ foldM go (Representation mempty) tagArgs
@@ -417,7 +439,7 @@ generateTerm context indices term typeValue = case term of
         pointer <- letValue Representation.pointer "boxed_constr" $ HeapAllocate con size
         constrDst <- letReference "deref_constr" $ HeapPayload pointer
         let go argOffset arg = do
-              argDst <- letReference "constr_arg_dst" $ Offset constrDst argOffset
+              argDst <- letReference "constr_arg_dst" $ mkOffset constrDst argOffset
               argSize <- storeTerm context indices argDst arg
               letValue Representation.type_ "constr_arg_offset" $ addRepresentation argOffset argSize
         _ <- collectValue Representation.type_ "constr_fields" $ foldM go (Representation mempty) args
@@ -445,7 +467,7 @@ generateTerm context indices term typeValue = case term of
                 forceValue repr operand
               PassBy.Reference ->
                 forceReference operand
-          letValue returnRepr "call_result" $ Call function callArgs
+          letValue returnRepr "call_result" $ mkCall function callArgs
         pure $ OperandStorage callResult $ Value returnRepr
       Low.Syntax.FunctionSignature passArgsBy passReturnBy@PassBy.Reference -> do
         type_ <- lift $ Readback.readback (CC.toEnvironment context) typeValue
@@ -508,7 +530,7 @@ storeBranch context indices dst payload = \case
     typeValue <- lift $ CC.Domain.Lazy <$> lazy (Evaluation.evaluate (CC.toEnvironment context) type_)
     (context', _) <- lift $ CC.extend context typeValue
     let indices' = indices Seq.:|> OperandStorage payload (Reference size)
-    payload' <- letReference "offset_payload" $ Offset payload size
+    payload' <- letReference "offset_payload" $ mkOffset payload size
     storeBranch context' indices' dst payload' tele
 
 boxedConstructorSize
