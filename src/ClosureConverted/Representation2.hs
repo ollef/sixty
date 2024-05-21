@@ -223,7 +223,7 @@ compileData env dataTypeName (Syntax.ConstructorDefinitions constructors) = do
   (boxity, maybeTags) <- fetch $ Query.ConstructorRepresentations dataTypeName
   case boxity of
     Boxed ->
-      pure $ Syntax.Global (Name.Lifted Builtin.WordRepresentationName 0)
+      pure $ Syntax.Global (Name.Lifted Builtin.PointerRepresentationName 0)
     Unboxed -> do
       compiledConstructorFields <- forM (OrderedHashMap.toList constructors) \(_, type_) -> do
         type' <- Evaluation.evaluate env type_
@@ -238,7 +238,7 @@ compileData env dataTypeName (Syntax.ConstructorDefinitions constructors) = do
         Just _ ->
           Syntax.Apply
             (Name.Lifted Builtin.AddRepresentationName 0)
-            [ Syntax.Global (Name.Lifted Builtin.WordRepresentationName 0)
+            [ Syntax.Global (Name.Lifted Builtin.IntName 0)
             , maxFieldSize
             ]
 

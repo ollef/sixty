@@ -146,6 +146,7 @@ mkCall = \cases
 mkLoad :: Operand -> Representation -> Value
 mkLoad = \cases
   (Global (Name.Lifted Builtin.EmptyRepresentationName 0)) _ -> Operand $ Representation mempty
+  (Global (Name.Lifted Builtin.PointerRepresentationName 0)) _ -> Operand $ Representation Representation.pointer
   (Global (Name.Lifted Builtin.UnitName 0)) _ -> Operand $ Representation mempty
   (Global (Name.Lifted Builtin.IntName 0)) _ -> Operand $ Representation Representation.int
   operand repr -> Load operand repr
