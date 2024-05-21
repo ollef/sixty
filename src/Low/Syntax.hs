@@ -19,7 +19,7 @@ data Term v
   | Call !Name.Lifted [Operand v]
   | StackAllocate !(Operand v)
   | HeapAllocate !Name.QualifiedConstructor !(Operand v)
-  | Dereference !(Operand v)
+  | HeapPayload !(Operand v)
   | PointerTag !(Operand v)
   | Offset !(Operand v) !(Operand v)
   | Copy !(Operand v) !(Operand v) !(Operand v)

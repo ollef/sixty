@@ -116,8 +116,8 @@ prettyTerm prec env = \case
     "stack_allocate" <+> prettyOperand env operand
   Syntax.HeapAllocate con operand ->
     "heap_allocate" <+> commaSep [prettyConstr env con, prettyOperand env operand]
-  Syntax.Dereference operand ->
-    "*" <> prettyOperand env operand
+  Syntax.HeapPayload operand ->
+    "heap_payload" <+> prettyOperand env operand
   Syntax.PointerTag operand ->
     "pointer_tag" <+> prettyOperand env operand
   Syntax.Offset operand1 operand2 ->

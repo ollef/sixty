@@ -47,7 +47,7 @@ data Value
   | Call !Name.Lifted [Operand]
   | StackAllocate !Operand
   | HeapAllocate !Name.QualifiedConstructor !Operand
-  | Dereference !Operand
+  | HeapPayload !Operand
   | PointerTag !Operand
   | Offset !Operand !Operand
   | Copy !Operand !Operand !Operand
@@ -271,7 +271,7 @@ storeTerm context indices dst = \case
         sizeTerm <- lift $ boxedConstructorSize (CC.toEnvironment context) con typeParams args
         size <- generateTypeSize context indices sizeTerm
         pointer <- letValue Representation.pointer "boxed_constr" $ HeapAllocate con size
-        constrDst <- letReference "deref_constr" $ Dereference pointer
+        constrDst <- letReference "payload" $ HeapPayload pointer
         let go argOffset arg = do
               argDst <- letValue Representation.type_ "constr_arg_dst" $ Offset constrDst argOffset
               argSize <- storeTerm context indices argDst arg
@@ -320,7 +320,7 @@ storeTerm context indices dst = \case
       CC.Representation.TaggedConstructorBranches Boxed constrBranches -> do
         scrutineeValue <- forceValue Representation.pointer scrutinee'
         tag <- letValue Representation.int "tag" $ PointerTag scrutineeValue
-        payload <- letReference "payload" $ Dereference scrutineeValue
+        payload <- letReference "payload" $ HeapPayload scrutineeValue
         constrBranches' <- forM constrBranches \(constr, constrBranch) ->
           map (ConstructorBranch constr) $ lift $ runCollect do
             storeBranch context indices dst payload constrBranch
@@ -331,7 +331,7 @@ storeTerm context indices dst = \case
         storeBranch context indices dst payload constrBranch
       CC.Representation.UntaggedConstructorBranch Boxed constrBranch -> do
         scrutineeValue <- forceValue Representation.pointer scrutinee'
-        payload <- letReference "payload" $ Dereference scrutineeValue
+        payload <- letReference "payload" $ HeapPayload scrutineeValue
         storeBranch context indices dst payload constrBranch
       CC.Representation.LiteralBranches litBranches -> do
         scrutineeValue <- forceValue Representation.int scrutinee'
@@ -414,7 +414,7 @@ generateTerm context indices term typeValue = case term of
         sizeTerm <- lift $ boxedConstructorSize (CC.toEnvironment context) con typeParams args
         size <- generateTypeSize context indices sizeTerm
         pointer <- letValue Representation.pointer "boxed_constr" $ HeapAllocate con size
-        constrDst <- letReference "deref_constr" $ Dereference pointer
+        constrDst <- letReference "deref_constr" $ HeapPayload pointer
         let go argOffset arg = do
               argDst <- letReference "constr_arg_dst" $ Offset constrDst argOffset
               argSize <- storeTerm context indices argDst arg
@@ -558,7 +558,7 @@ readback env = \case
   Call fun args -> Low.Syntax.Call fun $ readbackOperand env <$> args
   StackAllocate repr -> Low.Syntax.StackAllocate $ readbackOperand env repr
   HeapAllocate con repr -> Low.Syntax.HeapAllocate con $ readbackOperand env repr
-  Dereference operand -> Low.Syntax.Dereference $ readbackOperand env operand
+  HeapPayload operand -> Low.Syntax.HeapPayload $ readbackOperand env operand
   PointerTag operand -> Low.Syntax.PointerTag $ readbackOperand env operand
   Offset offset operand ->
     Low.Syntax.Offset
