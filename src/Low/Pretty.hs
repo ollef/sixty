@@ -75,39 +75,27 @@ emptyM module_ = do
 
 -------------------------------------------------------------------------------
 
-prettyTerm :: Int -> Environment v -> Syntax.Term v -> Doc ann
-prettyTerm prec env = \case
+prettyTerm :: Environment v -> Syntax.Term v -> Doc ann
+prettyTerm env = \case
   Syntax.Operand operand -> prettyOperand env operand
   term@Syntax.Let {} ->
-    line
-      <> indent
-        2
-        ( prettyParen
-            (prec > letPrec)
-            (prettySeq env term)
-        )
+    line <> indent 2 (prettySeq env term)
   term@Syntax.Seq {} ->
-    line
-      <> indent
-        2
-        ( prettyParen
-            (prec > letPrec)
-            (prettySeq env term)
-        )
+    line <> indent 2 (prettySeq env term)
   Syntax.Case scrutinee branches defaultBranch ->
-    prettyParen (prec > casePrec) $
-      "case"
-        <+> prettyOperand env scrutinee
-        <+> "of"
-          <> line
-          <> indent
-            2
-            ( vcat $
-                (prettyBranch env <$> branches)
-                  <> [ "_" <+> "->" <> prettyTerm casePrec env branch
-                     | Just branch <- [defaultBranch]
-                     ]
-            )
+    line
+      <> "case"
+      <+> prettyOperand env scrutinee
+      <+> "of"
+        <> line
+        <> indent
+          2
+          ( vcat $
+              (prettyBranch env <$> branches)
+                <> [ "_" <+> "->" <> prettyTerm env branch
+                   | Just branch <- [defaultBranch]
+                   ]
+          )
   Syntax.Call function args ->
     "call"
       <+> prettyLiftedGlobal env function
@@ -137,16 +125,16 @@ prettySeq env = \case
       <+> pretty passBy
       <+> pretty name'
       <+> "="
-      <+> prettyTerm 0 env term
+      <+> prettyTerm env term
         <> ";"
         <> line
         <> prettySeq env' body
   Syntax.Seq term1 term2 ->
-    prettyTerm (seqPrec + 1) env term1
+    prettyTerm env term1
       <> ";"
       <> line
       <> prettySeq env term2
-  term -> prettyTerm 0 env term
+  term -> prettyTerm env term
 
 commaSep :: [Doc ann] -> Doc ann
 commaSep = hcat . punctuate (comma <> space)
@@ -204,9 +192,9 @@ prettyBranch
   -> Doc ann
 prettyBranch env = \case
   Syntax.ConstructorBranch constr body ->
-    prettyConstr env constr <+> "->" <> prettyTerm casePrec env body
+    prettyConstr env constr <+> "->" <> prettyTerm env body
   Syntax.LiteralBranch lit body ->
-    pretty lit <+> "->" <> prettyTerm casePrec env body
+    pretty lit <+> "->" <> prettyTerm env body
 
 -------------------------------------------------------------------------------
 
@@ -215,7 +203,7 @@ prettyDefinition env name def = do
   signature <- fetch $ Query.LowSignature name
   pure case (def, signature) of
     (Syntax.ConstantDefinition term, Syntax.ConstantSignature repr) ->
-      prettyLiftedGlobal env name <+> pretty repr <+> "=" <> line <> indent 2 (prettyTerm 0 env term)
+      prettyLiftedGlobal env name <+> pretty repr <+> "=" <+> prettyTerm env term
     (Syntax.ConstantDefinition _, _) -> panic "definition signature mismatch"
     (Syntax.FunctionDefinition function, Syntax.FunctionSignature passArgsBy passReturnBy) ->
       prettyLiftedGlobal env name <+> "=" <+> "\\" <> prettyFunction env passArgsBy passReturnBy function
@@ -223,7 +211,7 @@ prettyDefinition env name def = do
 
 prettyFunction :: Environment v -> [PassBy] -> PassBy -> Syntax.Function v -> Doc ann
 prettyFunction env passArgsBy passReturnBy function = case (passArgsBy, function) of
-  ([], Syntax.Body body) -> " ->" <+> pretty passReturnBy <+> prettyTerm 0 env body
+  ([], Syntax.Body body) -> " ->" <+> pretty passReturnBy <+> prettyTerm env body
   ([], _) -> panic "function signature mismatch"
   (passArgBy : passArgsBy', Syntax.Parameter name function') -> do
     let (env', name') = extend env name
@@ -233,14 +221,3 @@ prettyFunction env passArgsBy passReturnBy function = case (passArgsBy, function
         <> ")"
         <> prettyFunction env' passArgsBy' passReturnBy function'
   (_ : _, _) -> panic "function signature mismatch"
-
--------------------------------------------------------------------------------
-
-prettyParen :: Bool -> Doc a -> Doc a
-prettyParen True doc = lparen <> doc <> rparen
-prettyParen False doc = doc
-
-letPrec, seqPrec, casePrec :: Int
-letPrec = 1
-seqPrec = 0
-casePrec = 1
