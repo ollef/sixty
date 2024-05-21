@@ -280,7 +280,7 @@ storeTerm context indices dst = \case
     typeValue <- lift $ CC.Domain.Lazy <$> lazy (Evaluation.evaluate (CC.toEnvironment context) type_)
     termOperand <- generateTerm context indices term typeValue
     (context', _) <- lift $ CC.extend context typeValue
-    storeTerm context' (termOperand Seq.:<| indices) dst body
+    storeTerm context' (indices Seq.:|> termOperand) dst body
   CC.Syntax.Function _ ->
     storeOperand dst $
       OperandStorage (Representation Representation.rawFunctionPointer) $
@@ -423,7 +423,7 @@ generateTerm context indices term typeValue = case term of
     type' <- lift $ CC.Domain.Lazy <$> lazy (Evaluation.evaluate (CC.toEnvironment context) type_)
     termOperand <- generateTerm context indices term type'
     (context', _) <- lift $ CC.extend context type'
-    generateTerm context' (termOperand Seq.:<| indices) body typeValue
+    generateTerm context' (indices Seq.:|> termOperand) body typeValue
   CC.Syntax.Function _tele ->
     pure $ OperandStorage (Representation Representation.rawFunctionPointer) $ Value Representation.type_
   CC.Syntax.Apply function args -> do
@@ -503,7 +503,7 @@ storeBranch context indices dst payload = \case
     size <- generateTypeSize context indices type_
     typeValue <- lift $ CC.Domain.Lazy <$> lazy (Evaluation.evaluate (CC.toEnvironment context) type_)
     (context', _) <- lift $ CC.extend context typeValue
-    let indices' = OperandStorage payload (Reference size) Seq.:<| indices
+    let indices' = indices Seq.:|> OperandStorage payload (Reference size)
     payload' <- letReference "offset_payload" $ Offset payload size
     storeBranch context' indices' dst payload' tele
 
