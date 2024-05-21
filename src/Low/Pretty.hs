@@ -82,23 +82,22 @@ emptyM module_ = do
 prettyTerm :: Int -> Environment v -> Syntax.Term v -> Doc ann
 prettyTerm prec env = \case
   Syntax.Operand operand -> prettyOperand env operand
-  Syntax.Let passBy name term body ->
-    prettyParen (prec > letPrec) do
-      let (env', name') = extend env name
-      "let"
-        <+> prettyPassBy passBy
-        <+> pretty name'
-        <+> "="
-        <+> prettyTerm 0 env term
-          <> line
-          <> "in"
-        <+> indent 2 (prettyTerm letPrec env' body)
-  Syntax.Seq term1 term2 ->
-    prettyParen (prec > seqPrec) $
-      prettyTerm (seqPrec + 1) env term1
-        <> ";"
-        <> line
-        <> prettyTerm seqPrec env term2
+  term@Syntax.Let {} ->
+    line
+      <> indent
+        2
+        ( prettyParen
+            (prec > letPrec)
+            (prettySeq env term)
+        )
+  term@Syntax.Seq {} ->
+    line
+      <> indent
+        2
+        ( prettyParen
+            (prec > letPrec)
+            (prettySeq env term)
+        )
   Syntax.Case scrutinee branches defaultBranch ->
     prettyParen (prec > casePrec) $
       "case"
@@ -109,10 +108,7 @@ prettyTerm prec env = \case
             2
             ( vcat $
                 (prettyBranch env <$> branches)
-                  <> [ "_"
-                      <+> "->"
-                        <> line
-                        <> indent 2 (prettyTerm casePrec env branch)
+                  <> [ "_" <+> "->" <> prettyTerm casePrec env branch
                      | Just branch <- [defaultBranch]
                      ]
             )
@@ -131,9 +127,28 @@ prettyTerm prec env = \case
   Syntax.Copy dst src size ->
     "#copy" <> encloseSep lparen rparen comma [prettyOperand env dst, prettyOperand env src, prettyOperand env size]
   Syntax.Store dst src repr ->
-    "#store" <+> prettyRepresentation repr <> encloseSep lparen rparen comma [prettyOperand env dst, prettyOperand env src]
+    "#store" <> encloseSep lparen rparen comma [prettyOperand env dst, prettyRepresentation repr <+> prettyOperand env src]
   Syntax.Load src repr ->
-    "#load" <+> prettyRepresentation repr <> lparen <> prettyOperand env src <> rparen
+    "#load" <> lparen <> prettyRepresentation repr <+> prettyOperand env src <> rparen
+
+prettySeq :: Environment v -> Syntax.Term v -> Doc ann
+prettySeq env = \case
+  Syntax.Let passBy name term body -> do
+    let (env', name') = extend env name
+    "let"
+      <+> prettyPassBy passBy
+      <+> pretty name'
+      <+> "="
+      <+> prettyTerm 0 env term
+        <> ";"
+        <> line
+        <> prettySeq env' body
+  Syntax.Seq term1 term2 ->
+    prettyTerm (seqPrec + 1) env term1
+      <> ";"
+      <> line
+      <> prettySeq env term2
+  term -> prettyTerm 0 env term
 
 prettyOperand :: Environment v -> Syntax.Operand v -> Doc ann
 prettyOperand env = \case
@@ -197,9 +212,9 @@ prettyBranch
   -> Doc ann
 prettyBranch env = \case
   Syntax.ConstructorBranch constr body ->
-    prettyConstr env constr <+> "->" <> line <> indent 2 (prettyTerm casePrec env body)
+    prettyConstr env constr <+> "->" <> prettyTerm casePrec env body
   Syntax.LiteralBranch lit body ->
-    pretty lit <+> "->" <> line <> indent 2 (prettyTerm casePrec env body)
+    pretty lit <+> "->" <> prettyTerm casePrec env body
 
 -------------------------------------------------------------------------------
 
@@ -211,12 +226,12 @@ prettyDefinition env name def = do
       prettyLiftedGlobal env name <+> prettyRepresentation repr <+> "=" <> line <> indent 2 (prettyTerm 0 env term)
     (Syntax.ConstantDefinition _, _) -> panic "definition signature mismatch"
     (Syntax.FunctionDefinition function, Syntax.FunctionSignature passArgsBy passReturnBy) ->
-      prettyLiftedGlobal env name <+> prettyPassBy passReturnBy <+> "=" <> "\\" <> prettyFunction env passArgsBy function
+      prettyLiftedGlobal env name <+> "=" <+> "\\" <> prettyFunction env passArgsBy passReturnBy function
     (Syntax.FunctionDefinition _, _) -> panic "definition signature mismatch"
 
-prettyFunction :: Environment v -> [PassBy] -> Syntax.Function v -> Doc ann
-prettyFunction env passArgsBy function = case (passArgsBy, function) of
-  ([], Syntax.Body body) -> " ->" <> line <> indent 2 (prettyTerm 0 env body)
+prettyFunction :: Environment v -> [PassBy] -> PassBy -> Syntax.Function v -> Doc ann
+prettyFunction env passArgsBy passReturnBy function = case (passArgsBy, function) of
+  ([], Syntax.Body body) -> " ->" <+> prettyPassBy passReturnBy <+> prettyTerm 0 env body
   ([], _) -> panic "function signature mismatch"
   (passArgBy : passArgsBy', Syntax.Parameter name function') -> do
     let (env', name') = extend env name
@@ -224,7 +239,7 @@ prettyFunction env passArgsBy function = case (passArgsBy, function) of
       <> prettyPassBy passArgBy
       <+> pretty name'
         <> ")"
-        <> prettyFunction env' passArgsBy' function'
+        <> prettyFunction env' passArgsBy' passReturnBy function'
   (_ : _, _) -> panic "function signature mismatch"
 
 -------------------------------------------------------------------------------

@@ -11,7 +11,7 @@ import Low.Pretty as Pretty
 import qualified Name
 import qualified Paths_sixty as Paths
 import Prettyprinter
-import Prettyprinter.Render.Text (putDoc)
+import Prettyprinter.Util (putDocW)
 import Protolude hiding (moduleName, wait, withAsync, (<.>))
 import Query (Query)
 import qualified Query
@@ -30,14 +30,14 @@ compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel pri
   moduleLLVMFiles <- forM (toList filePaths) \filePath -> do
     (moduleName@(Name.Module moduleNameText), _, _) <- fetch $ Query.ParsedFile filePath
     when printLowered do
-      liftIO $ putDoc $ "module" <+> pretty moduleName <> line <> line
+      liftIO $ putDocW 120 $ "module" <+> pretty moduleName <> line <> line
       defNames <- fetch $ Query.LambdaLiftedModuleDefinitions moduleName
       emptyPrettyEnv <- Pretty.emptyM moduleName
       forM_ defNames \defName -> do
         maybeLoweredDef <- fetch $ Query.LoweredDefinition defName
         forM_ maybeLoweredDef \loweredDef -> do
           prettyDef <- Pretty.prettyDefinition emptyPrettyEnv defName loweredDef
-          liftIO $ putDoc $ prettyDef <> line
+          liftIO $ putDocW 120 $ prettyDef <> line
 
     llvmModule <- fetch $ Query.LLVMModule moduleName
     let llvmFileName = moduleAssemblyDir </> toS moduleNameText <.> "ll"
