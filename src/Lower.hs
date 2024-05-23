@@ -157,6 +157,11 @@ mkLoad = \cases
   _ Representation.Empty -> Operand $ Undefined Representation.Empty
   operand repr -> Load operand repr
 
+mkStore :: Operand -> Operand -> Representation -> Maybe Value
+mkStore dst src = \case
+  Representation.Empty -> Nothing
+  repr -> Just $ Store dst src repr
+
 addRepresentation :: Operand -> Operand -> Value
 addRepresentation x y =
   mkCall (Name.Lifted Builtin.AddRepresentationName 0) [x, y]
@@ -240,7 +245,7 @@ storeOperand
 storeOperand dst (OperandStorage src srcOperandRepr) =
   case srcOperandRepr of
     Value srcRepr -> do
-      seq_ $ Store dst src srcRepr
+      mapM_ seq_ $ mkStore dst src srcRepr
       pure $ Representation srcRepr
     Reference srcRepr -> do
       seq_ $ Copy dst src srcRepr
