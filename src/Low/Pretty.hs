@@ -82,19 +82,18 @@ prettyTerm env = \case
   term@Syntax.Seq {} ->
     line <> indent 2 (prettySeq env term)
   Syntax.Case scrutinee branches defaultBranch ->
-    line
-      <> "case"
+    "case"
       <+> prettyOperand env scrutinee
       <+> "of"
-        <> line
-        <> indent
-          2
-          ( vcat $
-              (prettyBranch env <$> branches)
-                <> [ "_" <+> "->" <> prettyTerm env branch
-                   | Just branch <- [defaultBranch]
-                   ]
-          )
+      <> line
+      <> indent
+        2
+        ( vcat $
+            (prettyBranch env <$> branches)
+              <> [ "_" <+> "->" <> prettyTerm env branch
+                 | Just branch <- [defaultBranch]
+                 ]
+        )
   Syntax.Call function args ->
     "call"
       <+> prettyLiftedGlobal env function
