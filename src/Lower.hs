@@ -14,12 +14,12 @@ import qualified ClosureConverted.Representation2 as CC.Representation
 import qualified ClosureConverted.Syntax as CC.Syntax
 import qualified ClosureConverted.TypeOf as TypeOf
 import qualified Data.OrderedHashMap as OrderedHashMap
-import qualified Data.Sequence as Seq
 import Data.Tsil (Tsil)
+import qualified Index.Seq as Index (Seq)
+import qualified Index.Seq
 import qualified Data.Tsil as Tsil
 import qualified Environment
 import Index (Index)
-import qualified Index
 import qualified Index.Map
 import qualified Index.Map as Index (Map)
 import Literal (Literal)
@@ -100,9 +100,11 @@ letReference = let_ PassBy.Reference
 
 letValue :: Representation -> Name -> Value -> Collect Operand
 letValue repr name value = case repr of
-  Representation.Empty -> do
-    seq_ value
-    pure $ Undefined repr
+  Representation.Empty -> case value of
+    Operand _ -> pure $ Undefined repr
+    _ -> do
+      seq_ value
+      pure $ Undefined repr
   _ -> let_ (PassBy.Value repr) name value
 
 seq_ :: Value -> Collect ()
@@ -191,7 +193,7 @@ definition name = \case
       signature <- fetch $ Query.LowSignature name
       case signature of
         Low.Syntax.ConstantSignature repr -> do
-          value <- runCollect $ storeTerm CC.empty mempty (Global name) term
+          value <- runCollect $ storeTerm CC.empty Index.Seq.Empty (Global name) term
           let term' = readback Index.Map.Empty value
           pure $ Just $ Low.Syntax.ConstantDefinition repr term'
         _ -> panic "Constant without constant signature"
@@ -202,14 +204,14 @@ definition name = \case
         Low.Syntax.FunctionSignature passArgsBy passReturnBy -> do
           functionValue <-
             genRunCollect (\(_, _, _, result) -> Operand result) (\(params, returns, passReturnBy', _) body -> Function (returns <> params) passReturnBy' body) $
-              lowerFunction CC.empty mempty passArgsBy passReturnBy tele
+              lowerFunction CC.empty Index.Seq.Empty passArgsBy passReturnBy tele
           let function = readbackFunction Index.Map.Empty functionValue
           pure $ Just $ Low.Syntax.FunctionDefinition function
         _ -> panic "Function without function signature"
 
 lowerFunction
   :: CC.Context v
-  -> Seq OperandStorage
+  -> Index.Seq v OperandStorage
   -> [PassBy]
   -> PassBy
   -> Telescope Name CC.Syntax.Type CC.Syntax.Term v
@@ -233,7 +235,7 @@ lowerFunction context indices passArgsBy passReturnBy tele = case (tele, passArg
         size <- generateTypeSize context indices type_
         pure $ Reference size
     (context', var) <- lift $ CC.extend context type'
-    let indices' = indices Seq.:|> OperandStorage (Var var) operandRepr
+    let indices' = indices Index.Seq.:> OperandStorage (Var var) operandRepr
     (params, returns, passReturnBy', result) <- lowerFunction context' indices' passArgsBy' passReturnBy tele'
     pure ((name, passArgBy, var) : params, returns, passReturnBy', result)
   (Telescope.Extend {}, _) -> panic "Function signature mismatch"
@@ -275,13 +277,13 @@ forceReference (OperandStorage src srcOperandRepr) =
 
 storeTerm
   :: CC.Context v
-  -> Seq OperandStorage
+  -> Index.Seq v OperandStorage
   -> Operand
   -> CC.Syntax.Term v
   -> Collect Operand
 storeTerm context indices dst = \case
-  CC.Syntax.Var (Index.Index index) -> do
-    let src = Seq.index indices $ Seq.length indices - index - 1
+  CC.Syntax.Var index -> do
+    let src = Index.Seq.index indices index
     storeOperand dst src
   CC.Syntax.Global global -> do
     signature <- fetch $ Query.LowSignature global
@@ -296,29 +298,21 @@ storeTerm context indices dst = \case
           Nothing -> args
           Just tag -> CC.Syntax.Lit (Literal.Integer $ fromIntegral tag) : args
     case boxity of
-      Unboxed -> do
-        let go argOffset arg = do
-              argDst <- letReference "constr_arg_dst" $ mkOffset dst argOffset
-              argSize <- storeTerm context indices argDst arg
-              letValue Representation.type_ "constr_arg_offset" $ addRepresentation argOffset argSize
-        foldM go (Representation mempty) tagArgs
+      Unboxed ->
+        storeConstrArgs context indices (pure dst) (Representation mempty) tagArgs
       Boxed -> do
         sizeTerm <- lift $ boxedConstructorSize (CC.toEnvironment context) con typeParams args
         size <- generateTypeSize context indices sizeTerm
         pointer <- letValue Representation.pointer "boxed_constr" $ HeapAllocate con size
-        constrDst <- letReference "payload" $ HeapPayload pointer
-        let go argOffset arg = do
-              argDst <- letValue Representation.type_ "constr_arg_dst" $ mkOffset constrDst argOffset
-              argSize <- storeTerm context indices argDst arg
-              letValue Representation.type_ "constr_arg_offset" $ addRepresentation argOffset argSize
-        foldM_ go (Representation mempty) args
+        let constrDst = letReference "payload" $ HeapPayload pointer
+        storeConstrArgs_ context indices constrDst (pure $ Representation mempty) args
         storeOperand dst $ OperandStorage pointer $ Value Representation.pointer
   CC.Syntax.Lit lit@(Literal.Integer _) -> storeOperand dst $ OperandStorage (Literal lit) $ Value Representation.int
   CC.Syntax.Let _ term type_ body -> do
     typeValue <- lift $ CC.Domain.Lazy <$> lazy (Evaluation.evaluate (CC.toEnvironment context) type_)
     termOperand <- generateTerm context indices term typeValue
     (context', _) <- lift $ CC.extend context typeValue
-    storeTerm context' (indices Seq.:|> termOperand) dst body
+    storeTerm context' (indices Index.Seq.:> termOperand) dst body
   CC.Syntax.Function _ ->
     storeOperand dst $
       OperandStorage (Representation Representation.rawFunctionPointer) $
@@ -378,9 +372,42 @@ storeTerm context indices dst = \case
         defaultBranch <- forM maybeDefault $ lift . runCollect . storeTerm context indices dst
         letValue Representation.type_ "result" $ Case scrutineeValue litBranches' defaultBranch
 
+storeConstrArgs
+  :: CC.Context v
+  -> Index.Seq v OperandStorage
+  -> Collect Operand
+  -> Operand
+  -> [CC.Syntax.Term v]
+  -> Collect Operand
+storeConstrArgs context indices mdst offset = \case
+  [] -> pure offset
+  arg : args -> do
+    dst <- mdst
+    argDst <- letValue Representation.type_ "constr_arg_dst" $ mkOffset dst offset
+    argSize <- storeTerm context indices argDst arg
+    offset' <- letValue Representation.type_ "constr_arg_offset" $ addRepresentation offset argSize
+    storeConstrArgs context indices (pure dst) offset' args
+
+storeConstrArgs_
+  :: CC.Context v
+  -> Index.Seq v OperandStorage
+  -> Collect Operand
+  -> Collect Operand
+  -> [CC.Syntax.Term v]
+  -> Collect ()
+storeConstrArgs_ context indices mdst moffset = \case
+  [] -> pure ()
+  arg : args -> do
+    dst <- mdst
+    offset <- moffset
+    argDst <- letValue Representation.type_ "constr_arg_dst" $ mkOffset dst offset
+    argSize <- storeTerm context indices argDst arg
+    let offset' = letValue Representation.type_ "constr_arg_offset" $ addRepresentation offset argSize
+    storeConstrArgs_ context indices (pure dst) offset' args
+
 generateTypeSize
   :: CC.Context v
-  -> Seq OperandStorage
+  -> Index.Seq v OperandStorage
   -> CC.Syntax.Type v
   -> Collect Operand
 generateTypeSize context indices type_ =
@@ -390,7 +417,7 @@ generateTypeSize context indices type_ =
 
 generateTermWithType
   :: CC.Context v
-  -> Seq OperandStorage
+  -> Index.Seq v OperandStorage
   -> CC.Syntax.Term v
   -> CC.Syntax.Type v
   -> Collect OperandStorage
@@ -403,7 +430,7 @@ generateTermWithType context indices term type_ = do
 
 generateTermWithoutType
   :: CC.Context v
-  -> Seq OperandStorage
+  -> Index.Seq v OperandStorage
   -> CC.Syntax.Term v
   -> Collect OperandStorage
 generateTermWithoutType context indices term = do
@@ -416,12 +443,12 @@ generateTermWithoutType context indices term = do
 
 generateTerm
   :: CC.Context v
-  -> Seq OperandStorage
+  -> Index.Seq v OperandStorage
   -> CC.Syntax.Term v
   -> CC.Domain.Type
   -> Collect OperandStorage
 generateTerm context indices term typeValue = case term of
-  CC.Syntax.Var (Index.Index index) -> pure $ Seq.index indices $ Seq.length indices - index - 1
+  CC.Syntax.Var index -> pure $ Index.Seq.index indices index
   CC.Syntax.Global global -> do
     signature <- fetch $ Query.LowSignature global
     case signature of
@@ -438,30 +465,21 @@ generateTerm context indices term typeValue = case term of
         type_ <- lift $ Readback.readback (CC.toEnvironment context) typeValue
         size <- generateTypeSize context indices type_
         unboxedCon <- letReference "unboxed_constr" $ StackAllocate size
-
-        let go argOffset arg = do
-              argDst <- letReference "constr_arg_dst" $ mkOffset unboxedCon argOffset
-              argSize <- storeTerm context indices argDst arg
-              letValue Representation.type_ "constr_arg_offset" $ addRepresentation argOffset argSize
-        _ <- collectValue Representation.type_ "constr_fields" $ foldM go (Representation mempty) tagArgs
+        storeConstrArgs_ context indices (pure unboxedCon) (pure $ Representation mempty) tagArgs
         pure $ OperandStorage unboxedCon $ Reference size
       Boxed -> do
         sizeTerm <- lift $ boxedConstructorSize (CC.toEnvironment context) con typeParams args
         size <- generateTypeSize context indices sizeTerm
         pointer <- letValue Representation.pointer "boxed_constr" $ HeapAllocate con size
-        constrDst <- letReference "deref_constr" $ HeapPayload pointer
-        let go argOffset arg = do
-              argDst <- letReference "constr_arg_dst" $ mkOffset constrDst argOffset
-              argSize <- storeTerm context indices argDst arg
-              letValue Representation.type_ "constr_arg_offset" $ addRepresentation argOffset argSize
-        _ <- collectValue Representation.type_ "constr_fields" $ foldM go (Representation mempty) args
+        let constrPayload = letReference "constr_payload" $ HeapPayload pointer
+        storeConstrArgs_ context indices constrPayload (pure $ Representation mempty) args
         pure $ OperandStorage pointer $ Value Representation.pointer
   CC.Syntax.Lit lit@(Literal.Integer _) -> pure $ OperandStorage (Literal lit) $ Value Representation.int
   CC.Syntax.Let _name _term type_ body -> do
     type' <- lift $ CC.Domain.Lazy <$> lazy (Evaluation.evaluate (CC.toEnvironment context) type_)
     termOperand <- generateTerm context indices term type'
     (context', _) <- lift $ CC.extend context type'
-    generateTerm context' (indices Seq.:|> termOperand) body typeValue
+    generateTerm context' (indices Index.Seq.:> termOperand) body typeValue
   CC.Syntax.Function _tele ->
     pure $ OperandStorage (Representation Representation.rawFunctionPointer) $ Value Representation.type_
   CC.Syntax.Apply function args -> do
@@ -502,7 +520,7 @@ generateTerm context indices term typeValue = case term of
 
 storeCall
   :: CC.Context v
-  -> Seq OperandStorage
+  -> Index.Seq v OperandStorage
   -> Operand
   -> Name.Lifted
   -> [CC.Syntax.Term v]
@@ -530,7 +548,7 @@ storeCall context indices dst function args passArgsBy passReturnBy = do
 
 storeBranch
   :: CC.Context v
-  -> Seq OperandStorage
+  -> Index.Seq v OperandStorage
   -> Operand
   -> Collect Operand
   -> Telescope Name CC.Syntax.Type CC.Syntax.Term v
@@ -542,7 +560,7 @@ storeBranch context indices dst mpayload = \case
     size <- generateTypeSize context indices type_
     typeValue <- lift $ CC.Domain.Lazy <$> lazy (Evaluation.evaluate (CC.toEnvironment context) type_)
     (context', _) <- lift $ CC.extend context typeValue
-    let indices' = indices Seq.:|> OperandStorage payload (Reference size)
+    let indices' = indices Index.Seq.:> OperandStorage payload (Reference size)
     let payload' = letReference "offset_payload" $ mkOffset payload size
     storeBranch context' indices' dst payload' tele
 
