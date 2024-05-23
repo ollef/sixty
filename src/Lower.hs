@@ -301,7 +301,7 @@ storeTerm context indices dst = \case
               argDst <- letReference "constr_arg_dst" $ mkOffset dst argOffset
               argSize <- storeTerm context indices argDst arg
               letValue Representation.type_ "constr_arg_offset" $ addRepresentation argOffset argSize
-        foldM go dst tagArgs
+        foldM go (Representation mempty) tagArgs
       Boxed -> do
         sizeTerm <- lift $ boxedConstructorSize (CC.toEnvironment context) con typeParams args
         size <- generateTypeSize context indices sizeTerm
@@ -311,7 +311,7 @@ storeTerm context indices dst = \case
               argDst <- letValue Representation.type_ "constr_arg_dst" $ mkOffset constrDst argOffset
               argSize <- storeTerm context indices argDst arg
               letValue Representation.type_ "constr_arg_offset" $ addRepresentation argOffset argSize
-        foldM_ go dst args
+        foldM_ go (Representation mempty) args
         storeOperand dst $ OperandStorage pointer $ Value Representation.pointer
   CC.Syntax.Lit lit@(Literal.Integer _) -> storeOperand dst $ OperandStorage (Literal lit) $ Value Representation.int
   CC.Syntax.Let _ term type_ body -> do
