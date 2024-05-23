@@ -33,6 +33,7 @@ data Operand v
   | Literal !Literal
   | Representation !Representation
   | Tag !Name.QualifiedConstructor
+  | Undefined !Representation
   deriving (Eq, Show, Generic, Hashable)
 
 data Branch v

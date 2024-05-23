@@ -145,6 +145,7 @@ prettyOperand env = \case
   Syntax.Literal lit -> pretty lit
   Syntax.Representation repr -> pretty repr
   Syntax.Tag constr -> prettyConstr env constr
+  Syntax.Undefined repr -> pretty repr <+> "undefined"
 
 prettyGlobal :: Environment v -> Name.Qualified -> Doc ann
 prettyGlobal env global = do

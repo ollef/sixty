@@ -62,6 +62,7 @@ data Operand
   | Literal !Literal
   | Representation !Representation
   | Tag !Name.QualifiedConstructor
+  | Undefined !Representation
   deriving (Show)
 
 data Branch
@@ -98,7 +99,11 @@ letReference :: Name -> Value -> Collect Operand
 letReference = let_ PassBy.Reference
 
 letValue :: Representation -> Name -> Value -> Collect Operand
-letValue = let_ . PassBy.Value
+letValue repr name value = case repr of
+  Representation.Empty -> do
+    seq_ value
+    pure $ Undefined repr
+  _ -> let_ (PassBy.Value repr) name value
 
 seq_ :: Value -> Collect ()
 seq_ value = modify (Tsil.:> CollectibleSeq value)
@@ -149,6 +154,7 @@ mkLoad = \cases
   (Global (Name.Lifted Builtin.PointerRepresentationName 0)) _ -> Operand $ Representation Representation.pointer
   (Global (Name.Lifted Builtin.UnitName 0)) _ -> Operand $ Representation mempty
   (Global (Name.Lifted Builtin.IntName 0)) _ -> Operand $ Representation Representation.int
+  _ Representation.Empty -> Operand $ Undefined Representation.Empty
   operand repr -> Load operand repr
 
 addRepresentation :: Operand -> Operand -> Value
@@ -603,6 +609,7 @@ readbackOperand env = \case
   Literal lit -> Low.Syntax.Literal lit
   Representation repr -> Low.Syntax.Representation repr
   Tag tag -> Low.Syntax.Tag tag
+  Undefined repr -> Low.Syntax.Undefined repr
 
 readbackVar :: Index.Map v Var -> Var -> Index v
 readbackVar env var =
