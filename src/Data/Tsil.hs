@@ -55,6 +55,10 @@ instance Foldable Tsil where
       go acc Empty = acc
       go acc (xs :> x) = go (x : acc) xs
 
+toReverseList :: Tsil a -> [a]
+toReverseList Empty = []
+toReverseList (as :> a) = a : toReverseList as
+
 null :: Tsil a -> Bool
 null Empty = True
 null (_ :> _) = False
