@@ -342,7 +342,7 @@ storeTerm context indices dst = \case
       CC.Representation.TaggedConstructorBranches Unboxed constrBranches -> do
         scrutineeRef <- forceReference scrutinee'
         tag <- letValue Representation.int "tag" $ mkLoad scrutineeRef Representation.int
-        payload <- letReference "payload" $ mkOffset scrutineeRef $ Representation Representation.int
+        let payload = letReference "payload" $ mkOffset scrutineeRef $ Representation Representation.int
         constrBranches' <- forM constrBranches \(constr, constrBranch) ->
           map (ConstructorBranch constr) $
             lift $
@@ -355,18 +355,18 @@ storeTerm context indices dst = \case
       CC.Representation.TaggedConstructorBranches Boxed constrBranches -> do
         scrutineeValue <- forceValue Representation.pointer scrutinee'
         tag <- letValue Representation.int "tag" $ PointerTag scrutineeValue
-        payload <- letReference "payload" $ HeapPayload scrutineeValue
+        let payload = letReference "payload" $ HeapPayload scrutineeValue
         constrBranches' <- forM constrBranches \(constr, constrBranch) ->
           map (ConstructorBranch constr) $ lift $ runCollect do
             storeBranch context indices dst payload constrBranch
         defaultBranch <- forM maybeDefault $ lift . runCollect . storeTerm context indices dst
         letValue Representation.type_ "result" $ Case tag constrBranches' defaultBranch
       CC.Representation.UntaggedConstructorBranch Unboxed constrBranch -> do
-        payload <- forceReference scrutinee'
+        let payload = forceReference scrutinee'
         storeBranch context indices dst payload constrBranch
       CC.Representation.UntaggedConstructorBranch Boxed constrBranch -> do
         scrutineeValue <- forceValue Representation.pointer scrutinee'
-        payload <- letReference "payload" $ HeapPayload scrutineeValue
+        let payload = letReference "payload" $ HeapPayload scrutineeValue
         storeBranch context indices dst payload constrBranch
       CC.Representation.LiteralBranches litBranches -> do
         scrutineeValue <- forceValue Representation.int scrutinee'
@@ -523,26 +523,27 @@ storeCall context indices dst function args passArgsBy passReturnBy = do
           forceReference operand
     case passReturnBy of
       PassBy.Value repr -> do
-        callResult <- letValue repr "call_result" $ Call function callArgs
+        callResult <- letValue repr "call_result" $ mkCall function callArgs
         storeOperand dst $ OperandStorage callResult $ Value repr
       PassBy.Reference ->
-        letValue Representation.type_ "call_result_size" $ Call function (dst : callArgs)
+        letValue Representation.type_ "call_result_size" $ mkCall function (dst : callArgs)
 
 storeBranch
   :: CC.Context v
   -> Seq OperandStorage
   -> Operand
-  -> Operand
+  -> Collect Operand
   -> Telescope Name CC.Syntax.Type CC.Syntax.Term v
   -> Collect Operand
-storeBranch context indices dst payload = \case
+storeBranch context indices dst mpayload = \case
   Telescope.Empty term -> storeTerm context indices dst term
   Telescope.Extend _name type_ _plicity tele -> do
+    payload <- mpayload
     size <- generateTypeSize context indices type_
     typeValue <- lift $ CC.Domain.Lazy <$> lazy (Evaluation.evaluate (CC.toEnvironment context) type_)
     (context', _) <- lift $ CC.extend context typeValue
     let indices' = indices Seq.:|> OperandStorage payload (Reference size)
-    payload' <- letReference "offset_payload" $ mkOffset payload size
+    let payload' = letReference "offset_payload" $ mkOffset payload size
     storeBranch context' indices' dst payload' tele
 
 boxedConstructorSize
