@@ -9,7 +9,7 @@ import qualified Data.Sequence as Seq
 import Index
 import Protolude hiding (Seq)
 
-newtype Seq v a = Seq (Seq.Seq a)
+newtype Seq v a = Seq {toSeq :: Seq.Seq a}
   deriving (Show, Foldable)
 
 pattern Empty :: Seq Void a
