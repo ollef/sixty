@@ -125,8 +125,8 @@ prettySeq env = \case
       <+> pretty name'
       <+> "="
       <+> prettyTerm env term
-        <> line
-        <> prettySeq env' body
+      <> line
+      <> prettySeq env' body
   Syntax.Seq term1 term2 ->
     prettyTerm env term1
       <> line
@@ -211,5 +211,5 @@ prettyFunction env = \case
     "("
       <> pretty passArgBy
       <+> pretty name'
-        <> ")"
-        <> prettyFunction env' function'
+      <> ")"
+      <> prettyFunction env' function'
