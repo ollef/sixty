@@ -141,11 +141,11 @@ genRunCollect f g m = do
 mkCall :: Name.Lifted -> [Operand] -> Value
 mkCall = \cases
   (Name.Lifted Builtin.AddRepresentationName 0) [Representation x, Representation y] -> Operand $ Representation $ x <> y
-  (Name.Lifted Builtin.AddRepresentationName 0) [Representation x, y] | x == mempty -> Operand y
-  (Name.Lifted Builtin.AddRepresentationName 0) [x, Representation y] | y == mempty -> Operand x
+  (Name.Lifted Builtin.AddRepresentationName 0) [Representation Representation.Empty, y] -> Operand y
+  (Name.Lifted Builtin.AddRepresentationName 0) [x, Representation Representation.Empty] -> Operand x
   (Name.Lifted Builtin.MaxRepresentationName 0) [Representation x, Representation y] -> Operand $ Representation $ Representation.leastUpperBound x y
-  (Name.Lifted Builtin.MaxRepresentationName 0) [Representation x, y] | x == mempty -> Operand y
-  (Name.Lifted Builtin.MaxRepresentationName 0) [x, Representation y] | y == mempty -> Operand x
+  (Name.Lifted Builtin.MaxRepresentationName 0) [Representation Representation.Empty, y] -> Operand y
+  (Name.Lifted Builtin.MaxRepresentationName 0) [x, Representation Representation.Empty] -> Operand x
   name operands -> Call name operands
 
 mkLoad :: Operand -> Representation -> Value
@@ -168,7 +168,7 @@ addRepresentation x y =
 
 mkOffset :: Operand -> Operand -> Value
 mkOffset base = \case
-  Representation x | x == mempty -> Operand base
+  Representation Representation.Empty -> Operand base
   offset -> Offset base offset
 
 definition :: Name.Lifted -> CC.Syntax.Definition -> M (Maybe Low.Syntax.Definition)
