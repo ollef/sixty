@@ -265,13 +265,13 @@ forceValue dstRepr (OperandStorage src srcOperandRepr) =
     Reference _srcReprValue ->
       letValue dstRepr "loaded" $ mkLoad src dstRepr
 
-forceReference :: OperandStorage -> Collect Operand
-forceReference (OperandStorage src srcOperandRepr) =
+forceReference :: Maybe Name -> OperandStorage -> Collect Operand
+forceReference nameSuggestion (OperandStorage src srcOperandRepr) =
   case srcOperandRepr of
     Reference _ ->
       pure src
     Value srcRepr -> do
-      allocated <- letReference "allocated" $ StackAllocate $ Representation srcRepr
+      allocated <- letReference (fromMaybe "allocated" nameSuggestion) $ StackAllocate $ Representation srcRepr
       seq_ $ Copy allocated src $ Representation srcRepr
       pure allocated
 
@@ -308,9 +308,9 @@ storeTerm context indices dst = \case
         storeConstrArgs_ context indices constrDst (pure $ Representation mempty) args
         storeOperand dst $ OperandStorage pointer $ Value Representation.pointer
   CC.Syntax.Lit lit@(Literal.Integer _) -> storeOperand dst $ OperandStorage (Literal lit) $ Value Representation.int
-  CC.Syntax.Let _ term type_ body -> do
+  CC.Syntax.Let name term type_ body -> do
     typeValue <- lift $ CC.Domain.Lazy <$> lazy (Evaluation.evaluate (CC.toEnvironment context) type_)
-    termOperand <- generateTerm context indices term typeValue
+    termOperand <- generateTerm context (Just name) indices term typeValue
     (context', _) <- lift $ CC.extend context typeValue
     storeTerm context' (indices Index.Seq.:> termOperand) dst body
   CC.Syntax.Function _ ->
@@ -334,9 +334,9 @@ storeTerm context indices dst = \case
     branches' <- CC.Representation.compileBranches branches
     case branches' of
       CC.Representation.TaggedConstructorBranches Unboxed constrBranches -> do
-        scrutineeRef <- forceReference scrutinee'
+        scrutineeRef <- forceReference Nothing scrutinee'
         tag <- letValue Representation.int "tag" $ mkLoad scrutineeRef Representation.int
-        let payload = letReference "payload" $ mkOffset scrutineeRef $ Representation Representation.int
+        let payload name = letReference name $ mkOffset scrutineeRef $ Representation Representation.int
         constrBranches' <- forM constrBranches \(constr, constrBranch) ->
           map (ConstructorBranch constr) $
             lift $
@@ -349,18 +349,18 @@ storeTerm context indices dst = \case
       CC.Representation.TaggedConstructorBranches Boxed constrBranches -> do
         scrutineeValue <- forceValue Representation.pointer scrutinee'
         tag <- letValue Representation.int "tag" $ PointerTag scrutineeValue
-        let payload = letReference "payload" $ HeapPayload scrutineeValue
+        let payload name = letReference name $ HeapPayload scrutineeValue
         constrBranches' <- forM constrBranches \(constr, constrBranch) ->
           map (ConstructorBranch constr) $ lift $ runCollect do
             storeBranch context indices dst payload constrBranch
         defaultBranch <- forM maybeDefault $ lift . runCollect . storeTerm context indices dst
         letValue Representation.type_ "result" $ Case tag constrBranches' defaultBranch
       CC.Representation.UntaggedConstructorBranch Unboxed constrBranch -> do
-        let payload = forceReference scrutinee'
+        let payload name = forceReference (Just name) scrutinee'
         storeBranch context indices dst payload constrBranch
       CC.Representation.UntaggedConstructorBranch Boxed constrBranch -> do
         scrutineeValue <- forceValue Representation.pointer scrutinee'
-        let payload = letReference "payload" $ HeapPayload scrutineeValue
+        let payload name = letReference name $ HeapPayload scrutineeValue
         storeBranch context indices dst payload constrBranch
       CC.Representation.LiteralBranches litBranches -> do
         scrutineeValue <- forceValue Representation.int scrutinee'
@@ -412,21 +412,22 @@ generateTypeSize
   -> Collect Operand
 generateTypeSize context indices type_ =
   collectValue Representation.type_ "size" $ do
-    size <- generateTermWithType context indices type_ $ CC.Syntax.Global $ Name.Lifted Builtin.TypeName 0
+    size <- generateTermWithType context Nothing indices type_ $ CC.Syntax.Global $ Name.Lifted Builtin.TypeName 0
     forceValue Representation.type_ size
 
 generateTermWithType
   :: CC.Context v
+  -> Maybe Name
   -> Index.Seq v OperandStorage
   -> CC.Syntax.Term v
   -> CC.Syntax.Type v
   -> Collect OperandStorage
-generateTermWithType context indices term type_ = do
+generateTermWithType context nameSuggestion indices term type_ = do
   typeValue <-
     lift $
       CC.Domain.Lazy <$> lazy do
         Evaluation.evaluate (CC.toEnvironment context) type_
-  generateTerm context indices term typeValue
+  generateTerm context nameSuggestion indices term typeValue
 
 generateTermWithoutType
   :: CC.Context v
@@ -439,15 +440,16 @@ generateTermWithoutType context indices term = do
       CC.Domain.Lazy <$> lazy do
         value <- Evaluation.evaluate (CC.toEnvironment context) term
         TypeOf.typeOf context value
-  generateTerm context indices term typeValue
+  generateTerm context Nothing indices term typeValue
 
 generateTerm
   :: CC.Context v
+  -> Maybe Name
   -> Index.Seq v OperandStorage
   -> CC.Syntax.Term v
   -> CC.Domain.Type
   -> Collect OperandStorage
-generateTerm context indices term typeValue = case term of
+generateTerm context nameSuggestion indices term typeValue = case term of
   CC.Syntax.Var index -> pure $ Index.Seq.index indices index
   CC.Syntax.Global global -> do
     signature <- fetch $ Query.LowSignature global
@@ -464,22 +466,22 @@ generateTerm context indices term typeValue = case term of
       Unboxed -> do
         type_ <- lift $ Readback.readback (CC.toEnvironment context) typeValue
         size <- generateTypeSize context indices type_
-        unboxedCon <- letReference "unboxed_constr" $ StackAllocate size
+        unboxedCon <- letReference (fromMaybe "unboxed_constr" nameSuggestion) $ StackAllocate size
         storeConstrArgs_ context indices (pure unboxedCon) (pure $ Representation mempty) tagArgs
         pure $ OperandStorage unboxedCon $ Reference size
       Boxed -> do
         sizeTerm <- lift $ boxedConstructorSize (CC.toEnvironment context) con typeParams args
         size <- generateTypeSize context indices sizeTerm
-        pointer <- letValue Representation.pointer "boxed_constr" $ HeapAllocate con size
+        pointer <- letValue Representation.pointer (fromMaybe "boxed_constr" nameSuggestion) $ HeapAllocate con size
         let constrPayload = letReference "constr_payload" $ HeapPayload pointer
         storeConstrArgs_ context indices constrPayload (pure $ Representation mempty) args
         pure $ OperandStorage pointer $ Value Representation.pointer
   CC.Syntax.Lit lit@(Literal.Integer _) -> pure $ OperandStorage (Literal lit) $ Value Representation.int
-  CC.Syntax.Let _name _term type_ body -> do
+  CC.Syntax.Let name _term type_ body -> do
     type' <- lift $ CC.Domain.Lazy <$> lazy (Evaluation.evaluate (CC.toEnvironment context) type_)
-    termOperand <- generateTerm context indices term type'
+    termOperand <- generateTerm context (Just name) indices term type'
     (context', _) <- lift $ CC.extend context type'
-    generateTerm context' (indices Index.Seq.:> termOperand) body typeValue
+    generateTerm context' nameSuggestion (indices Index.Seq.:> termOperand) body typeValue
   CC.Syntax.Function _tele ->
     pure $ OperandStorage (Representation Representation.rawFunctionPointer) $ Value Representation.type_
   CC.Syntax.Apply function args -> do
@@ -489,20 +491,20 @@ generateTerm context indices term typeValue = case term of
         when (length passArgsBy /= length args) $ panic "arg length mismatch"
         let nonEmpty (PassBy.Value Representation.Empty) = False
             nonEmpty _ = True
-        callResult <- collectValue returnRepr "call_result" do
+        callResult <- collectValue returnRepr (fromMaybe "call_result" nameSuggestion) do
           callArgs <- forM (filter (nonEmpty . fst) $ zip passArgsBy args) \(passBy, arg) -> do
             operand <- generateTermWithoutType context indices arg
             case passBy of
               PassBy.Value repr ->
                 forceValue repr operand
               PassBy.Reference ->
-                forceReference operand
-          letValue returnRepr "call_result" $ mkCall function callArgs
+                forceReference Nothing operand
+          letValue returnRepr (fromMaybe "call_result" nameSuggestion) $ mkCall function callArgs
         pure $ OperandStorage callResult $ Value returnRepr
       Low.Syntax.FunctionSignature passArgsBy passReturnBy@PassBy.Reference -> do
         type_ <- lift $ Readback.readback (CC.toEnvironment context) typeValue
         size <- generateTypeSize context indices type_
-        callResult <- letReference "call_destination" $ StackAllocate size
+        callResult <- letReference (fromMaybe "call_destination" nameSuggestion) $ StackAllocate size
         _ <- collectValue Representation.type_ "store_call" $ storeCall context indices callResult function args passArgsBy passReturnBy
         pure $ OperandStorage callResult $ Reference size
       _ -> panic "Applying non-function"
@@ -538,7 +540,7 @@ storeCall context indices dst function args passArgsBy passReturnBy = do
         PassBy.Value repr ->
           forceValue repr operand
         PassBy.Reference ->
-          forceReference operand
+          forceReference Nothing operand
     case passReturnBy of
       PassBy.Value repr -> do
         callResult <- letValue repr "call_result" $ mkCall function callArgs
@@ -550,18 +552,18 @@ storeBranch
   :: CC.Context v
   -> Index.Seq v OperandStorage
   -> Operand
-  -> Collect Operand
+  -> (Name -> Collect Operand)
   -> Telescope Name CC.Syntax.Type CC.Syntax.Term v
   -> Collect Operand
 storeBranch context indices dst mpayload = \case
   Telescope.Empty term -> storeTerm context indices dst term
-  Telescope.Extend _name type_ _plicity tele -> do
-    payload <- mpayload
+  Telescope.Extend name type_ _plicity tele -> do
+    payload <- mpayload name
     size <- generateTypeSize context indices type_
     typeValue <- lift $ CC.Domain.Lazy <$> lazy (Evaluation.evaluate (CC.toEnvironment context) type_)
     (context', _) <- lift $ CC.extend context typeValue
     let indices' = indices Index.Seq.:> OperandStorage payload (Reference size)
-    let payload' = letReference "offset_payload" $ mkOffset payload size
+    let payload' name' = letReference name' $ mkOffset payload size
     storeBranch context' indices' dst payload' tele
 
 boxedConstructorSize
