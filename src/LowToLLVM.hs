@@ -275,7 +275,7 @@ assembleTerm env nameSuggestion passBy = \case
     mapM_ restoreStack stack1
     mapM_ restoreStack stack2
     pure (result, Nothing)
-  Syntax.Case scrutinee branches maybeDefault -> do
+  Syntax.Case scrutinee branches defaultBranch -> do
     scrutinee' <- assembleOperand env scrutinee
     branchLabels <- forM branches \case
       Syntax.ConstructorBranch constr _ -> do
@@ -302,7 +302,31 @@ assembleTerm env nameSuggestion passBy = \case
               | (i, l) <- branchLabels
               ]
           ]
-    _
+    branchResults <- forM (zip branchLabels branches) \((_, branchLabel), branch) -> do
+      startBlock branchLabel
+      (result, stack) <- assembleTerm env nameSuggestion passBy $ Syntax.branchTerm branch
+      mapM_ restoreStack stack
+      endBlock $ "br label " <> varName afterSwitchLabel
+      pure result
+    startBlock defaultLabel
+    maybeDefaultResult <- forM defaultBranch \branch -> do
+      (result, stack) <- assembleTerm env nameSuggestion passBy branch
+      mapM_ restoreStack stack
+      pure result
+    let defaultResult = fromMaybe (Constant "undef") maybeDefaultResult
+    endBlock $ "br label " <> varName afterSwitchLabel
+    startBlock afterSwitchLabel
+    phiResult <- freshVar $ fromMaybe "switch_result" nameSuggestion
+    emitInstruction $
+      varName phiResult
+        <> " = phi "
+        <> llvmType passBy
+        <> " "
+        <> commaSeparate
+          [ brackets [operand result, varName label]
+          | (label, result) <- (defaultLabel, defaultResult) : zip (snd <$> branchLabels) branchResults
+          ]
+    pure (Local phiResult, Nothing)
   Syntax.Call name args -> do
     declareGlobal name
     var <- freshVar $ fromMaybe "call_result" nameSuggestion
