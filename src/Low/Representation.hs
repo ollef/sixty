@@ -47,6 +47,9 @@ leastUpperBound repr1 repr2 =
 wordBytes :: Num a => a
 wordBytes = 8
 
+wordBits :: (Num a) => a
+wordBits = wordBytes * 8
+
 int :: Representation
 int = Representation {pointers = 0, nonPointerBytes = wordBytes}
 
