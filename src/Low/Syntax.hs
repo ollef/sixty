@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Low.Syntax where
 
@@ -40,6 +41,11 @@ data Branch v
   = ConstructorBranch !Name.QualifiedConstructor !(Term v)
   | LiteralBranch !Literal !(Term v)
   deriving (Eq, Show, Generic, Hashable)
+
+branchTerm :: Branch v -> Term v
+branchTerm = \case
+  ConstructorBranch _ t -> t
+  LiteralBranch _ t -> t
 
 data Function v
   = Body !PassBy !(Term v)
