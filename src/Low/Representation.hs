@@ -11,8 +11,8 @@ import Prettyprinter
 import Protolude hiding (repr)
 
 data Representation = Representation
-  { pointers :: !Int
-  , nonPointerBytes :: !Int
+  { pointers :: !Word32
+  , nonPointerBytes :: !Word32
   }
   deriving (Eq, Show, Generic, Hashable)
 
