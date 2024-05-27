@@ -2,12 +2,16 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
 
 module Compiler where
 
 import qualified Data.ByteString.Lazy as Lazy
+import qualified Data.OrderedHashSet as OrderedHashSet
 import Data.String (String)
 import Low.Pretty as Pretty
+import qualified LowToLLVM
+import Monad (runM)
 import qualified Name
 import qualified Paths_sixty as Paths
 import Prettyprinter
@@ -37,6 +41,13 @@ compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel pri
         maybeLoweredDef <- fetch $ Query.LoweredDefinition defName
         forM_ maybeLoweredDef \loweredDef ->
           liftIO $ putDocW 120 $ Pretty.prettyDefinition emptyPrettyEnv defName loweredDef <> line <> line
+
+      lowDefs <-
+        catMaybes <$> forM (OrderedHashSet.toList defNames) \defName -> do
+          maybeLoweredDef <- fetch $ Query.LoweredDefinition defName
+          pure $ (defName,) <$> maybeLoweredDef
+      llvmIR <- runM $ LowToLLVM.assembleModule lowDefs
+      putStrLn llvmIR
 
     llvmModule <- fetch $ Query.LLVMModule moduleName
     let llvmFileName = moduleAssemblyDir </> toS moduleNameText <.> "ll"
