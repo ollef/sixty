@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -42,6 +43,12 @@ data QualifiedConstructor = QualifiedConstructor
 
 data Lifted = Lifted !Qualified !Int
   deriving (Eq, Ord, Show, Generic)
+
+data Lowered = Lowered !Lifted !LoweredKind
+  deriving (Eq, Ord, Show, Generic)
+
+data LoweredKind = Original | Init | Inited
+  deriving (Eq, Ord, Show, Generic, Hashable)
 
 unqualifyConstructor :: QualifiedConstructor -> Constructor
 unqualifyConstructor (QualifiedConstructor _ c) = c
@@ -113,4 +120,18 @@ instance Hashable Lifted where
     defaultHashWithSalt
 
   hash (Lifted m n) =
+    hash m `hashWithSalt` n
+
+instance Pretty Lowered where
+  pretty (Lowered name loweredKind) =
+    case loweredKind of
+      Original -> pretty name
+      Init -> pretty name <> "$init"
+      Inited -> pretty name <> "$inited"
+
+instance Hashable Lowered where
+  hashWithSalt =
+    defaultHashWithSalt
+
+  hash (Lowered m n) =
     hash m `hashWithSalt` n
