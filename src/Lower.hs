@@ -272,7 +272,7 @@ forceReference nameSuggestion (OperandStorage src srcOperandRepr) =
       pure src
     Value srcRepr -> do
       allocated <- letReference (fromMaybe "allocated" nameSuggestion) $ StackAllocate $ Representation srcRepr
-      seq_ $ Copy allocated src $ Representation srcRepr
+      seq_ $ Store allocated src srcRepr
       pure allocated
 
 storeTerm
@@ -383,7 +383,7 @@ storeConstrArgs context indices mdst offset = \case
   [] -> pure offset
   arg : args -> do
     dst <- mdst
-    argDst <- letValue Representation.type_ "constr_arg_dst" $ mkOffset dst offset
+    argDst <- letReference "constr_arg_dst" $ mkOffset dst offset
     argSize <- storeTerm context indices argDst arg
     offset' <- letValue Representation.type_ "constr_arg_offset" $ addRepresentation offset argSize
     storeConstrArgs context indices (pure dst) offset' args
@@ -400,7 +400,7 @@ storeConstrArgs_ context indices mdst moffset = \case
   arg : args -> do
     dst <- mdst
     offset <- moffset
-    argDst <- letValue Representation.type_ "constr_arg_dst" $ mkOffset dst offset
+    argDst <- letReference "constr_arg_dst" $ mkOffset dst offset
     argSize <- storeTerm context indices argDst arg
     let offset' = letValue Representation.type_ "constr_arg_offset" $ addRepresentation offset argSize
     storeConstrArgs_ context indices (pure dst) offset' args
