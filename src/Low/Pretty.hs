@@ -204,7 +204,7 @@ prettyDefinition env name = \case
 
 prettyFunction :: Environment v -> Syntax.Function v -> Doc ann
 prettyFunction env = \case
-  Syntax.Body passReturnBy body -> " ->" <+> pretty passReturnBy <+> prettyTerm env body
+  Syntax.Body passReturnBy body -> "." <+> pretty passReturnBy <+> prettyTerm env body
   Syntax.Parameter name passArgBy function' -> do
     let (env', name') = extend env name
     "("
