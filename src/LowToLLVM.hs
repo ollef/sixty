@@ -644,25 +644,29 @@ extractParts = \case
     pure (Local pointerPointer, Local nonPointerPointer)
 
 extractSizeParts :: (PassBy, Operand) -> Assembler (Var, Var)
-extractSizeParts size = do
-  castSize <- freshVar "cast_size"
-  emitInstruction $
-    varName castSize
-      <> " = bitcast "
-      <> typedOperand size
-      <> " to {i32, i32}"
+extractSizeParts size@(passBy, _) = do
   pointers <- freshVar "pointers"
   nonPointerBytes <- freshVar "non_pointer_bytes"
+  shifted <- freshVar "shifted"
   emitInstruction $
     varName pointers
-      <> " = extractvalue {i32, i32} "
-      <> varName castSize
-      <> ", 0"
+      <> " = "
+      <> "trunc "
+      <> typedOperand size
+      <> " to i32"
+  emitInstruction $
+    varName shifted
+      <> " = "
+      <> "lshr "
+      <> typedOperand size
+      <> ", 32"
   emitInstruction $
     varName nonPointerBytes
-      <> " = extractvalue {i32, i32} "
-      <> varName castSize
-      <> ", 1"
+      <> " = "
+      <> "trunc "
+      <> typedOperand (passBy, Local shifted)
+      <> " to "
+      <> "i32"
   pure (pointers, nonPointerBytes)
 
 constructTuple :: Name -> Builder -> Var -> Builder -> Var -> Assembler Var
