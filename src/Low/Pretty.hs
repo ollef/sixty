@@ -90,7 +90,7 @@ prettyTerm env = \case
         2
         ( vcat $
             (prettyBranch env <$> branches)
-              <> [ "_" <+> "->" <> prettyTerm env branch
+              <> [ "_" <+> "->" <+> prettyTerm env branch
                  | Just branch <- [defaultBranch]
                  ]
         )
