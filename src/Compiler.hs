@@ -66,9 +66,9 @@ compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel pri
   garbageCollectorCFile <- liftIO $ Paths.getDataFileName "rts/garbage_collector.c"
   let llvmFiles =
         mainLLVMFile : builtinLLVMFile : moduleInitLLVMFile : moduleLLVMFiles
-  -- TODO configurable clang path
   let optimisationArgs =
         maybe [] (\o -> ["-O" <> o]) maybeOptimisationLevel
+  clang <- liftIO clangBinPath
   liftIO
     if saveAssembly
       then do
@@ -80,10 +80,53 @@ compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel pri
               assemblyDir </> "Sixten.Builtin" <.> "c" <.> "ll"
             garbageCollectorLLFile =
               assemblyDir </> "garbage_collector" <.> "ll"
-        callProcess "clang" $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-S", "-emit-llvm", "-o", builtinCLLFile, builtinCFile]
-        callProcess "clang" $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-S", "-emit-llvm", "-o", globalsLLFile, globalsCFile]
-        callProcess "clang" $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-S", "-emit-llvm", "-o", garbageCollectorLLFile, garbageCollectorCFile]
-        callProcess "llvm-link" $ ["-S", "-o", linkedProgramName, builtinCLLFile, globalsLLFile, garbageCollectorLLFile] <> llvmFiles
-        callProcess "opt" $ optimisationArgs <> ["-S", "-o", optimisedProgramName, linkedProgramName]
-        callProcess "clang" $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-o", outputExecutableFile, linkedProgramName]
-      else callProcess "clang" $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-o", outputExecutableFile, builtinCFile, globalsCFile, garbageCollectorCFile] <> llvmFiles
+        llvmBin <- liftIO llvmBinPath
+        callProcess clang $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-S", "-emit-llvm", "-o", builtinCLLFile, builtinCFile]
+        callProcess clang $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-S", "-emit-llvm", "-o", garbageCollectorLLFile, garbageCollectorCFile]
+        callProcess (llvmBin </> "llvm-link") $ ["-S", "-o", linkedProgramName, builtinCLLFile, garbageCollectorLLFile] <> llvmFiles
+        callProcess (llvmBin </> "opt") $ optimisationArgs <> ["-S", "-o", optimisedProgramName, linkedProgramName]
+        callProcess clang $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-o", outputExecutableFile, linkedProgramName]
+      else callProcess clang $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-o", outputExecutableFile, builtinCFile, garbageCollectorCFile] <> llvmFiles
+
+supportedLlvmVersions :: [Int]
+supportedLlvmVersions = [17, 16, 15]
+
+-- | llvm-config is not available in current LLVM distribution for windows, so we
+-- need use @clang -print-prog-name=clang@ to get the full path of @clang@.
+--
+-- We simply assume that @clang.exe@ already exists in @%PATH%@.
+--
+-- TODO configurable clang path
+clangBinPath :: IO FilePath
+clangBinPath = trim <$> checkClangExists
+  where
+    checkClangExists =
+      handle (\(_ :: IOException) -> panic "Couldn't find clang.") $
+        readProcess "clang" ["-print-prog-name=clang"] ""
+    trim = dropWhile isSpace . dropWhileEnd isSpace
+
+-- TODO configurable llvm bin path
+llvmBinPath :: IO FilePath
+llvmBinPath = trim <$> checkLlvmExists candidates
+  where
+    suffixes =
+      ""
+        -- The naming scheme on e.g. Ubuntu:
+        : fmap (('-' :) . show) supportedLlvmVersions
+    prefixes =
+      [ ""
+      , -- The installation path of Brew on Mac:
+        "/usr/local/opt/llvm/bin/"
+      ]
+    candidates =
+      ["llvm-config" <> suffix | suffix <- suffixes]
+        ++ [prefix <> "llvm-config" | prefix <- prefixes]
+
+    checkLlvmExists :: [String] -> IO FilePath
+    checkLlvmExists (path : xs) =
+      handle (\(_ :: IOException) -> checkLlvmExists xs) $
+        readProcess path ["--bindir"] ""
+    checkLlvmExists [] =
+      panic "Couldn't find llvm-config."
+
+    trim = dropWhile isSpace . dropWhileEnd isSpace
