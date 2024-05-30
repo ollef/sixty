@@ -4,7 +4,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module ClosureConverted.Representation2 where
+module ClosureConverted.Representation where
 
 import Boxity
 import qualified Builtin

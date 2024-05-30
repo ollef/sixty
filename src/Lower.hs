@@ -11,7 +11,7 @@ import qualified ClosureConverted.Context as CC
 import qualified ClosureConverted.Domain as CC.Domain
 import qualified ClosureConverted.Evaluation as Evaluation
 import qualified ClosureConverted.Readback as Readback
-import qualified ClosureConverted.Representation2 as CC.Representation
+import qualified ClosureConverted.Representation as CC.Representation
 import qualified ClosureConverted.Syntax as CC.Syntax
 import qualified ClosureConverted.TypeOf as TypeOf
 import qualified Data.OrderedHashMap as OrderedHashMap
