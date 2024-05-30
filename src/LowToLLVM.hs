@@ -468,7 +468,7 @@ assembleTerm env nameSuggestion passBy = \case
     pointer' <- assembleOperand env pointer
     emitInstruction $
       varName var
-        <> " = call i64 sixten_heap_tag"
+        <> " = call i64 @sixten_heap_tag"
         <> parens [typedOperand pointer']
     pure (Local var, Nothing)
   Syntax.Offset base size -> do
