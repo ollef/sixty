@@ -441,16 +441,18 @@ assembleTerm env nameSuggestion passBy = \case
     result <- constructTuple (fromMaybe "alloca_result" nameSuggestion) "ptr" allocaBytes "ptr" nonPointerPointer
     pure (Local result, Just stack)
   Syntax.HeapAllocate constr size -> do
-    declareLLVMGlobal "sixten_heap_allocate" "declare i64 @sixten_heap_allocate(i64, i64)"
+    declareLLVMGlobal "sixten_heap_allocate" "declare i64 @sixten_heap_allocate(i64, i32, i32)"
     var <- freshVar $ fromMaybe "heap_allocation" nameSuggestion
     (_, maybeTag) <- fetch $ Query.ConstructorRepresentation constr
     size' <- assembleOperand env size
+    (pointers, nonPointerBytes) <- extractSizeParts size'
     emitInstruction $
       varName var
         <> " = call i64 @sixten_heap_allocate"
         <> parens
           [ "i64 " <> Builder.intDec (fromMaybe 0 maybeTag)
-          , typedOperand size'
+          , "i32 " <> varName pointers
+          , "i32 " <> varName nonPointerBytes
           ]
     pure (Local var, Nothing)
   Syntax.HeapPayload pointer -> do

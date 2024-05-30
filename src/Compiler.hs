@@ -53,7 +53,7 @@ compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel pri
   builtinLLVMFile <- liftIO $ Paths.getDataFileName "rts/Sixten.Builtin.ll"
   builtinCFile <- liftIO $ Paths.getDataFileName "rts/Sixten.Builtin.c"
   mainLLVMFile <- liftIO $ Paths.getDataFileName "rts/main.ll"
-  garbageCollectorCFile <- liftIO $ Paths.getDataFileName "rts/garbage_collector.c"
+  memoryCFile <- liftIO $ Paths.getDataFileName "rts/memory.c"
   let llvmFiles =
         mainLLVMFile : builtinLLVMFile : moduleInitLLVMFile : moduleLLVMFiles
   let optimisationArgs =
@@ -68,15 +68,15 @@ compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel pri
               assemblyDir </> "program-opt" <.> "ll"
             builtinCLLFile =
               assemblyDir </> "Sixten.Builtin" <.> "c" <.> "ll"
-            garbageCollectorLLFile =
-              assemblyDir </> "garbage_collector" <.> "ll"
+            memoryLLFile =
+              assemblyDir </> "memory" <.> "ll"
         llvmBin <- liftIO llvmBinPath
         callProcess clang $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-S", "-emit-llvm", "-o", builtinCLLFile, builtinCFile]
-        callProcess clang $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-S", "-emit-llvm", "-o", garbageCollectorLLFile, garbageCollectorCFile]
-        callProcess (llvmBin </> "llvm-link") $ ["-S", "-o", linkedProgramName, builtinCLLFile, garbageCollectorLLFile] <> llvmFiles
+        callProcess clang $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-S", "-emit-llvm", "-o", memoryLLFile, memoryCFile]
+        callProcess (llvmBin </> "llvm-link") $ ["-S", "-o", linkedProgramName, builtinCLLFile, memoryLLFile] <> llvmFiles
         callProcess (llvmBin </> "opt") $ optimisationArgs <> ["-S", "-o", optimisedProgramName, linkedProgramName]
         callProcess clang $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-o", outputExecutableFile, linkedProgramName]
-      else callProcess clang $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-o", outputExecutableFile, builtinCFile, garbageCollectorCFile] <> llvmFiles
+      else callProcess clang $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-o", outputExecutableFile, builtinCFile, memoryCFile] <> llvmFiles
 
 supportedLlvmVersions :: [Int]
 supportedLlvmVersions = [17, 16, 15]

@@ -14,9 +14,9 @@ data-files:
 - builtin/Builtin.vix
 - rts/Sixten.Builtin.c
 - rts/Sixten.Builtin.ll
-- rts/garbage_collector.c
-- rts/garbage_collector.h
 - rts/main.ll
+- rts/memory.c
+- rts/memory.h
 
 ghc-options:
   - -Wall
