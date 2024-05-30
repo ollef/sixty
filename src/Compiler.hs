@@ -63,7 +63,6 @@ compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel pri
   builtinLLVMFile <- liftIO $ Paths.getDataFileName "rts/Sixten.Builtin.ll"
   builtinCFile <- liftIO $ Paths.getDataFileName "rts/Sixten.Builtin.c"
   mainLLVMFile <- liftIO $ Paths.getDataFileName "rts/main.ll"
-  globalsCFile <- liftIO $ Paths.getDataFileName "rts/globals.c"
   garbageCollectorCFile <- liftIO $ Paths.getDataFileName "rts/garbage_collector.c"
   let llvmFiles =
         mainLLVMFile : builtinLLVMFile : moduleInitLLVMFile : moduleLLVMFiles
@@ -79,8 +78,6 @@ compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel pri
               assemblyDir </> "program-opt" <.> "ll"
             builtinCLLFile =
               assemblyDir </> "Sixten.Builtin" <.> "c" <.> "ll"
-            globalsLLFile =
-              assemblyDir </> "globals" <.> "ll"
             garbageCollectorLLFile =
               assemblyDir </> "garbage_collector" <.> "ll"
         callProcess "clang" $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-S", "-emit-llvm", "-o", builtinCLLFile, builtinCFile]

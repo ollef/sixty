@@ -16,7 +16,6 @@ data-files:
 - rts/Sixten.Builtin.ll
 - rts/garbage_collector.c
 - rts/garbage_collector.h
-- rts/globals.c
 - rts/main.ll
 
 ghc-options:
