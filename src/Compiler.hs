@@ -2,16 +2,15 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 
 module Compiler where
 
 import qualified Data.ByteString.Lazy as Lazy
-import qualified Data.OrderedHashSet as OrderedHashSet
+import Data.List (dropWhileEnd)
 import Data.String (String)
 import Low.Pretty as Pretty
-import qualified LowToLLVM
-import Monad (runM)
 import qualified Name
 import qualified Paths_sixty as Paths
 import Prettyprinter
@@ -34,20 +33,11 @@ compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel pri
   moduleLLVMFiles <- forM (toList filePaths) \filePath -> do
     (moduleName@(Name.Module moduleNameText), _, _) <- fetch $ Query.ParsedFile filePath
     when printLowered do
-      liftIO $ putDocW 120 $ "module" <+> pretty moduleName <> line <> line
-      defNames <- fetch $ Query.LambdaLiftedModuleDefinitions moduleName
       emptyPrettyEnv <- Pretty.emptyM moduleName
-      forM_ defNames \defName -> do
-        maybeLoweredDef <- fetch $ Query.LoweredDefinition defName
-        forM_ maybeLoweredDef \loweredDef ->
-          liftIO $ putDocW 120 $ Pretty.prettyDefinition emptyPrettyEnv defName loweredDef <> line <> line
-
-      lowDefs <-
-        catMaybes <$> forM (OrderedHashSet.toList defNames) \defName -> do
-          maybeLoweredDef <- fetch $ Query.LoweredDefinition defName
-          pure $ (defName,) <$> maybeLoweredDef
-      llvmIR <- runM $ LowToLLVM.assembleModule lowDefs
-      putStrLn llvmIR
+      liftIO $ putDocW 120 $ "module" <+> pretty moduleName <> line <> line
+      defs <- fetch $ Query.LowModule moduleName
+      forM_ defs \(defName, def) ->
+        liftIO $ putDocW 120 $ Pretty.prettyDefinition emptyPrettyEnv defName def <> line <> line
 
     llvmModule <- fetch $ Query.LLVMModule moduleName
     let llvmFileName = moduleAssemblyDir </> toS moduleNameText <.> "ll"

@@ -17,7 +17,7 @@ data Term v
   | Let !PassBy !Name !(Term v) !(Scope Term v)
   | Seq !(Term v) !(Term v)
   | Case !(Operand v) [Branch v] (Maybe (Term v))
-  | Call !Name.Lifted [Operand v]
+  | Call !Name.Lowered [Operand v]
   | StackAllocate !(Operand v)
   | HeapAllocate !Name.QualifiedConstructor !(Operand v)
   | HeapPayload !(Operand v)
@@ -30,7 +30,7 @@ data Term v
 
 data Operand v
   = Var !(Index v)
-  | Global !Name.Lifted
+  | Global !Representation !Name.Lowered
   | Literal !Literal
   | Representation !Representation
   | Tag !Name.QualifiedConstructor
@@ -55,7 +55,7 @@ data Function v
 type Type = Term
 
 data Definition
-  = ConstantDefinition !Representation !(Term Void)
+  = ConstantDefinition !Representation
   | FunctionDefinition !(Function Void)
   deriving (Eq, Show, Generic, Hashable)
 

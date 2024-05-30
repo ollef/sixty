@@ -44,7 +44,7 @@ leastUpperBound repr1 repr2 =
         max repr1.nonPointerBytes repr2.nonPointerBytes
     }
 
-wordBytes :: Num a => a
+wordBytes :: (Num a) => a
 wordBytes = 8
 
 wordBits :: (Num a) => a

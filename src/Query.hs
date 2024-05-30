@@ -15,7 +15,6 @@
 
 module Query where
 
-import qualified Assembly
 import Boxity
 import qualified ClosureConverted.Syntax as ClosureConverted
 import Core.Binding (Binding)
@@ -35,6 +34,7 @@ import Extra
 import qualified FileSystem
 import qualified LambdaLifted.Syntax as LambdaLifted
 import qualified Low.Syntax
+import qualified Low.Syntax as Low
 import qualified Module
 import Name (Name)
 import qualified Name
@@ -42,7 +42,6 @@ import qualified Occurrences.Intervals as Occurrences
 import qualified Position
 import Protolude hiding (get, put)
 import qualified Query.Mapped as Mapped
-import qualified Representation
 import Rock
 import Scope (Scope)
 import qualified Scope
@@ -80,14 +79,12 @@ data Query a where
   ClosureConverted :: Name.Lifted -> Query ClosureConverted.Definition
   ClosureConvertedType :: Name.Lifted -> Query (ClosureConverted.Type Void)
   ClosureConvertedConstructorType :: Name.QualifiedConstructor -> Query (Telescope Name ClosureConverted.Type ClosureConverted.Type Void)
-  ClosureConvertedSignature :: Name.Lifted -> Query Representation.Signature
   LowSignature :: Name.Lifted -> Query Low.Syntax.Signature
-  LoweredDefinition :: Name.Lifted -> Query (Maybe Low.Syntax.Definition)
+  LoweredDefinitions :: Name.Lifted -> Query [(Name.Lowered, Low.Syntax.Definition)]
   ConstructorRepresentations :: Name.Qualified -> Query (Boxity, Maybe (HashMap Name.Constructor Int))
   ConstructorRepresentation :: Name.QualifiedConstructor -> Query (Boxity, Maybe Int)
-  Assembly :: Name.Lifted -> Query (Maybe Assembly.Definition)
-  HeapAllocates :: Name.Lifted -> Query Bool
-  AssemblyModule :: Name.Module -> Query [(Name.Lifted, Assembly.Definition)]
+  LowDefinitions :: Name.Lifted -> Query [(Name.Lowered, Low.Definition)]
+  LowModule :: Name.Module -> Query [(Name.Lowered, Low.Definition)]
   LLVMModule :: Name.Module -> Query Lazy.ByteString
   LLVMModuleInitModule :: Query Lazy.ByteString
 
@@ -143,16 +140,14 @@ instance Hashable (Query a) where
       ClosureConverted a -> h 26 a
       ClosureConvertedType a -> h 27 a
       ClosureConvertedConstructorType a -> h 28 a
-      ClosureConvertedSignature a -> h 29 a
-      LowSignature a -> h 30 a
-      LoweredDefinition a -> h 31 a
-      ConstructorRepresentations a -> h 32 a
-      ConstructorRepresentation a -> h 33 a
-      Assembly a -> h 34 a
-      HeapAllocates a -> h 35 a
-      AssemblyModule a -> h 36 a
-      LLVMModule a -> h 37 a
-      LLVMModuleInitModule -> h 38 ()
+      LowSignature a -> h 29 a
+      LoweredDefinitions a -> h 30 a
+      ConstructorRepresentations a -> h 31 a
+      ConstructorRepresentation a -> h 32 a
+      LowDefinitions a -> h 33 a
+      LowModule a -> h 34 a
+      LLVMModule a -> h 35 a
+      LLVMModuleInitModule -> h 36 ()
     where
       {-# INLINE h #-}
       h :: (Hashable b) => Int -> b -> Int

@@ -1,6 +1,7 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module Lower where
 
@@ -15,13 +16,13 @@ import qualified ClosureConverted.Syntax as CC.Syntax
 import qualified ClosureConverted.TypeOf as TypeOf
 import qualified Data.OrderedHashMap as OrderedHashMap
 import Data.Tsil (Tsil)
-import qualified Index.Seq as Index (Seq)
-import qualified Index.Seq
 import qualified Data.Tsil as Tsil
 import qualified Environment
 import Index (Index)
 import qualified Index.Map
 import qualified Index.Map as Index (Map)
+import qualified Index.Seq
+import qualified Index.Seq as Index (Seq)
 import Literal (Literal)
 import qualified Literal
 import Low.PassBy (PassBy)
@@ -33,7 +34,7 @@ import Monad
 import Name (Name)
 import qualified Name
 import Prettyprinter
-import Protolude hiding (nonEmpty, repr)
+import Protolude hiding (moduleName, nonEmpty, repr)
 import qualified Query
 import Rock.Core
 import Telescope (Telescope)
@@ -45,7 +46,7 @@ data Value
   | Let !PassBy !Name !Var !Value !Value
   | Seq !Value !Value
   | Case !Operand [Branch] (Maybe Value)
-  | Call !Name.Lifted [Operand]
+  | Call !Name.Lowered [Operand]
   | StackAllocate !Operand
   | HeapAllocate !Name.QualifiedConstructor !Operand
   | HeapPayload !Operand
@@ -58,7 +59,7 @@ data Value
 
 data Operand
   = Var !Var
-  | Global !Name.Lifted
+  | Global !Representation !Name.Lowered
   | Literal !Literal
   | Representation !Representation
   | Tag !Name.QualifiedConstructor
@@ -148,14 +149,17 @@ mkCall = \cases
   (Name.Lifted Builtin.MaxRepresentationName 0) [Representation x, Representation y] -> Operand $ Representation $ Representation.leastUpperBound x y
   (Name.Lifted Builtin.MaxRepresentationName 0) [Representation Representation.Empty, y] -> Operand y
   (Name.Lifted Builtin.MaxRepresentationName 0) [x, Representation Representation.Empty] -> Operand x
-  name operands -> Call name operands
+  name operands -> Call (Name.Lowered name Name.Original) operands
+
+pattern Original :: Name.Qualified -> Name.Lowered
+pattern Original qname = Name.Lowered (Name.Lifted qname 0) Name.Original
 
 mkLoad :: Operand -> Representation -> Value
 mkLoad = \cases
-  (Global (Name.Lifted Builtin.EmptyRepresentationName 0)) _ -> Operand $ Representation mempty
-  (Global (Name.Lifted Builtin.PointerRepresentationName 0)) _ -> Operand $ Representation Representation.pointer
-  (Global (Name.Lifted Builtin.UnitName 0)) _ -> Operand $ Representation mempty
-  (Global (Name.Lifted Builtin.IntName 0)) _ -> Operand $ Representation Representation.int
+  (Global _ (Original Builtin.EmptyRepresentationName)) _ -> Operand $ Representation mempty
+  (Global _ (Original Builtin.PointerRepresentationName)) _ -> Operand $ Representation Representation.pointer
+  (Global _ (Original Builtin.UnitName)) _ -> Operand $ Representation mempty
+  (Global _ (Original Builtin.IntName)) _ -> Operand $ Representation Representation.int
   _ Representation.Empty -> Operand $ Undefined Representation.Empty
   operand repr -> Load operand repr
 
@@ -173,9 +177,9 @@ mkOffset base = \case
   Representation Representation.Empty -> Operand base
   offset -> Offset base offset
 
-definition :: Name.Lifted -> CC.Syntax.Definition -> M (Maybe Low.Syntax.Definition)
+definition :: Name.Lifted -> CC.Syntax.Definition -> M [(Name.Lowered, Low.Syntax.Definition)]
 definition name = \case
-  CC.Syntax.TypeDeclaration _ -> pure Nothing
+  CC.Syntax.TypeDeclaration _ -> pure []
   CC.Syntax.ConstantDefinition term -> constantDefinition term
   CC.Syntax.FunctionDefinition tele -> functionDefinition tele
   CC.Syntax.DataDefinition _boxity constrDefs -> do
@@ -193,10 +197,23 @@ definition name = \case
       signature <- fetch $ Query.LowSignature name
       case signature of
         Low.Syntax.ConstantSignature repr -> do
-          value <- runCollect $ storeTerm CC.empty Index.Seq.Empty (Global name) term
-          let term' = readback Index.Map.Empty value
-          pure $ Just $ Low.Syntax.ConstantDefinition repr term'
+          initValue <- runCollect do
+            inited <- letValue Representation.int "inited" $ Load (Global Representation.int initedName) Representation.int
+            initBranch <- lift $ runCollect do
+              seq_ $ Store (Global Representation.int initedName) (Literal $ Literal.Integer 1) Representation.int
+              _ <- storeTerm CC.empty Index.Seq.Empty (Global repr (Name.Lowered name Name.Original)) term
+              pure $ Undefined Representation.Empty
+            seq_ $ Case inited [LiteralBranch (Literal.Integer 0) initBranch] $ Just $ Operand $ Undefined Representation.Empty
+            pure $ Undefined Representation.Empty
+          let init = readback Index.Map.Empty initValue
+          pure
+            [ (Name.Lowered name Name.Original, Low.Syntax.ConstantDefinition repr)
+            , (initedName, Low.Syntax.ConstantDefinition Representation.int)
+            , (constantInitName name, Low.Syntax.FunctionDefinition $ Low.Syntax.Body (PassBy.Value Representation.Empty) init)
+            ]
         _ -> panic "Constant without constant signature"
+      where
+        initedName = constantInitedName name
 
     functionDefinition tele = do
       signature <- fetch $ Query.LowSignature name
@@ -206,7 +223,7 @@ definition name = \case
             genRunCollect (\(_, _, _, result) -> Operand result) (\(params, returns, passReturnBy', _) body -> Function (returns <> params) passReturnBy' body) $
               lowerFunction CC.empty Index.Seq.Empty passArgsBy passReturnBy tele
           let function = readbackFunction Index.Map.Empty functionValue
-          pure $ Just $ Low.Syntax.FunctionDefinition function
+          pure [(Name.Lowered name Name.Original, Low.Syntax.FunctionDefinition function)]
         _ -> panic "Function without function signature"
 
 lowerFunction
@@ -289,7 +306,7 @@ storeTerm context indices dst = \case
     signature <- fetch $ Query.LowSignature global
     case signature of
       Low.Syntax.ConstantSignature repr -> do
-        seq_ $ Copy dst (Global global) $ Representation repr
+        seq_ $ Copy dst (Global repr $ Name.Lowered global Name.Original) $ Representation repr
         pure $ Representation repr
       _ -> panic "Global without constant signature"
   CC.Syntax.Con con typeParams args -> do
@@ -455,7 +472,7 @@ generateTerm context nameSuggestion indices term typeValue = case term of
     signature <- fetch $ Query.LowSignature global
     case signature of
       Low.Syntax.ConstantSignature repr ->
-        pure $ OperandStorage (Global global) $ Reference $ Representation repr
+        pure $ OperandStorage (Global repr $ Name.Lowered global Name.Original) $ Reference $ Representation repr
       _ -> panic "Global without constant signature"
   CC.Syntax.Con con typeParams args -> do
     (boxity, maybeTag) <- fetch $ Query.ConstructorRepresentation con
@@ -584,6 +601,56 @@ boxedConstructorSize env con params args = do
     Nothing -> panic "boxedConstructorSize: Data params length mismatch"
     Just result -> Readback.readback env result
 
+moduleInitName :: Name.Module -> Name.Lowered
+moduleInitName moduleName =
+  Name.Lowered (Name.Lifted (Name.Qualified moduleName "") 0) Name.Init
+
+moduleInitedName :: Name.Module -> Name.Lowered
+moduleInitedName moduleName =
+  Name.Lowered (Name.Lifted (Name.Qualified moduleName "") 0) Name.Inited
+
+constantInitName :: Name.Lifted -> Name.Lowered
+constantInitName l =
+  Name.Lowered l Name.Init
+
+constantInitedName :: Name.Lifted -> Name.Lowered
+constantInitedName l =
+  Name.Lowered l Name.Inited
+
+moduleInits :: [Name.Module] -> M Low.Syntax.Definition
+moduleInits moduleNames = do
+  value <- runCollect do
+    forM_ moduleNames \moduleName ->
+      seq_ $ Call (moduleInitName moduleName) []
+    pure $ Undefined Representation.Empty
+  let term = readback Index.Map.Empty value
+  pure $ Low.Syntax.FunctionDefinition $ Low.Syntax.Body (PassBy.Value Representation.Empty) term
+
+moduleInit
+  :: Name.Module
+  -> [Name.Lowered]
+  -> M [(Name.Lowered, Low.Syntax.Definition)]
+moduleInit moduleName definitions = do
+  initValue <- runCollect do
+    inited <- letValue Representation.int "inited" $ Load (Global Representation.int initedName) Representation.int
+    initBranch <- lift $ runCollect do
+      seq_ $ Store (Global Representation.int initedName) (Literal $ Literal.Integer 1) Representation.int
+      forM_ constantsToInitialize \defName ->
+        seq_ $ Call defName []
+      pure $ Undefined Representation.Empty
+    seq_ $ Case inited [LiteralBranch (Literal.Integer 0) initBranch] $ Just $ Operand $ Undefined Representation.Empty
+    pure $ Undefined Representation.Empty
+  let init = readback Index.Map.Empty initValue
+  pure
+    [ (initedName, Low.Syntax.ConstantDefinition Representation.int)
+    , (moduleInitName moduleName, Low.Syntax.FunctionDefinition $ Low.Syntax.Body (PassBy.Value Representation.Empty) init)
+    ]
+  where
+    constantsToInitialize =
+      [defName | defName@(Name.Lowered _ Name.Init) <- definitions] 
+
+    initedName = moduleInitedName moduleName
+
 -------------------------------------------------------------------------------
 
 readbackFunction :: Index.Map v Var -> Function -> Low.Syntax.Function v
@@ -631,7 +698,7 @@ readback env = \case
 readbackOperand :: Index.Map v Var -> Operand -> Low.Syntax.Operand v
 readbackOperand env = \case
   Var var -> Low.Syntax.Var $ readbackVar env var
-  Global global -> Low.Syntax.Global global
+  Global repr global -> Low.Syntax.Global repr global
   Literal lit -> Low.Syntax.Literal lit
   Representation repr -> Low.Syntax.Representation repr
   Tag tag -> Low.Syntax.Tag tag

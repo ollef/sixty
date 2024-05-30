@@ -42,16 +42,22 @@ nameBuilder (Var n) = encodeUtf8Builder n
 varName :: Var -> Builder
 varName n = "%" <> nameBuilder n
 
-liftedName :: Name.Lifted -> Builder
-liftedName = \case
-  Name.Lifted (Name.Qualified (Name.Module moduleName) (Name.Name name_)) 0 ->
-    "@" <> encodeUtf8Builder moduleName <> "." <> encodeUtf8Builder name_
-  Name.Lifted (Name.Qualified (Name.Module moduleName) (Name.Name name_)) i ->
-    "@" <> encodeUtf8Builder moduleName <> "." <> encodeUtf8Builder name_ <> "$" <> Builder.intDec i
-
-initName :: Name.Lifted -> Name.Lifted
-initName (Name.Lifted (Name.Qualified m (Name.Name n)) i) =
-  Name.Lifted (Name.Qualified m (Name.Name $ n <> "$init")) i
+loweredName :: Name.Lowered -> Builder
+loweredName = \case
+  Name.Lowered (Name.Lifted (Name.Qualified (Name.Module moduleName) (Name.Name name_)) i) kind ->
+    "@"
+      <> encodeUtf8Builder moduleName
+      <> "."
+      <> encodeUtf8Builder name_
+      <> ( case i of
+            0 -> mempty
+            _ -> "$" <> Builder.intDec i
+         )
+      <> ( case kind of
+            Name.Original -> mempty
+            Name.Init -> "$init"
+            Name.Inited -> "$inited"
+         )
 
 data Operand
   = Local !Var
@@ -90,7 +96,7 @@ wordSizedInt = "i" <> Builder.intDec Representation.wordBits
 type Assembler = StateT AssemblerState M
 
 data AssemblerState = AssemblerState
-  { usedGlobals :: HashSet Name.Lifted
+  { usedGlobals :: HashSet Name.Lowered
   , usedLLVMGlobals :: HashMap Text Builder
   , usedLocals :: HashMap Var Int
   , instructions :: Builder
@@ -98,7 +104,7 @@ data AssemblerState = AssemblerState
   , basicBlocks :: Builder
   }
 
-runAssembler :: Assembler a -> M (a, (HashSet Name.Lifted, HashMap Text Builder))
+runAssembler :: Assembler a -> M (a, (HashSet Name.Lowered, HashMap Text Builder))
 runAssembler =
   fmap (second (\s -> (s.usedGlobals, s.usedLLVMGlobals)))
     . flip
@@ -180,7 +186,7 @@ freshVar (Name.Name nameText) = do
   modify \s -> s {usedLocals = usedNames'}
   pure $ Var if i == 0 then nameText else nameText <> "$" <> (show i :: Text)
 
-declareGlobal :: Name.Lifted -> Assembler ()
+declareGlobal :: Name.Lowered -> Assembler ()
 declareGlobal name =
   modify \s ->
     s {usedGlobals = HashSet.insert name s.usedGlobals}
@@ -194,34 +200,36 @@ declareLLVMGlobal name decl =
 
 saveStack :: Assembler Var
 saveStack = do
-  declareLLVMGlobal "llvm.stackrestore" "declare void @llvm.stackrestore(ptr)"
+  declareLLVMGlobal "llvm.stacksave" "declare ptr @llvm.stacksave()"
   var <- freshVar "stack"
   emitInstruction $ varName var <> " = call ptr @llvm.stacksave()"
   pure var
 
 restoreStack :: Var -> Assembler ()
 restoreStack var = do
-  declareLLVMGlobal "llvm.stacksave" "declare ptr @llvm.stackesave()"
+  declareLLVMGlobal "llvm.stackrestore" "declare void @llvm.stackrestore(ptr)"
   emitInstruction $ "call void @llvm.stackrestore" <> parens ["ptr " <> varName var]
 
 -------------------------------------------------------------------------------
 
-assembleModule :: [(Name.Lifted, Syntax.Definition)] -> M Lazy.ByteString
+assembleModule :: [(Name.Lowered, Syntax.Definition)] -> M Lazy.ByteString
 assembleModule definitions = do
   (assembledDefinitions, allUsedGlobals) <-
     unzip <$> forM definitions (runAssembler . uncurry assembleDefinition)
   let (usedGlobals, usedLLVMGlobals) = bimap mconcat mconcat $ unzip allUsedGlobals
-      assembledDefinitions' = concat assembledDefinitions
-      externalGlobals = foldl' (flip HashSet.delete) usedGlobals $ fst <$> concat assembledDefinitions
+      externalGlobals = foldl' (flip HashSet.delete) usedGlobals $ fst <$> definitions
   externalGlobalDeclarations <- mapM declaration $ HashSet.toList externalGlobals
   pure $
     Builder.toLazyByteString $
       separate "\n\n" $
-        HashMap.elems usedLLVMGlobals <> externalGlobalDeclarations <> map snd assembledDefinitions'
+        HashMap.elems usedLLVMGlobals <> externalGlobalDeclarations <> assembledDefinitions
 
-declaration :: Name.Lifted -> M Builder
-declaration global = do
-  signature <- fetch $ Query.LowSignature global
+declaration :: Name.Lowered -> M Builder
+declaration global@(Name.Lowered liftedName kind) = do
+  signature <- case kind of
+    Name.Original -> fetch $ Query.LowSignature liftedName
+    Name.Init -> pure $ Syntax.FunctionSignature [] $ PassBy.Value Representation.Empty
+    Name.Inited -> pure $ Syntax.ConstantSignature Representation.Empty
   pure case signature of
     Syntax.FunctionSignature passParamsBy passReturnBy -> do
       let (passReturnBy', passParamsBy') = case passReturnBy of
@@ -230,26 +238,26 @@ declaration global = do
       "declare fastcc "
         <> llvmReturnType passReturnBy'
         <> " "
-        <> liftedName global
+        <> loweredName global
         <> parens (llvmType <$> passParamsBy')
     Syntax.ConstantSignature repr ->
-      liftedName global <> " = external global " <> llvmType (PassBy.Value repr)
+      loweredName global <> " = external global " <> llvmType (PassBy.Value repr)
 
 type Environment v = Index.Seq v (PassBy, Operand)
 
-assembleDefinition :: Name.Lifted -> Syntax.Definition -> Assembler [(Name.Lifted, Builder)]
+assembleDefinition :: Name.Lowered -> Syntax.Definition -> Assembler Builder
 assembleDefinition name definition =
   case definition of
     Syntax.FunctionDefinition function ->
-      pure <$> assembleFunction name Index.Seq.Empty function
-    Syntax.ConstantDefinition repr term ->
-      assembleConstant name repr term
+      assembleFunction name Index.Seq.Empty function
+    Syntax.ConstantDefinition repr ->
+      pure $ assembleConstant name repr
 
 assembleFunction
-  :: Name.Lifted
+  :: Name.Lowered
   -> Environment v
   -> Syntax.Function v
-  -> Assembler (Name.Lifted, Builder)
+  -> Assembler Builder
 assembleFunction functionName env = \case
   Syntax.Parameter name passBy function -> do
     var <- freshVar name
@@ -264,80 +272,50 @@ assembleFunction functionName env = \case
       PassBy.Value Representation.Empty -> "ret " <> llvmReturnType passReturnBy
       _ -> "ret " <> llvmReturnType passReturnBy <> " " <> operand result
     basicBlocks <- gets (.basicBlocks)
-    pure
-      ( functionName
-      , "define "
-          <> linkage
-          <> "fastcc "
-          <> llvmReturnType passReturnBy
-          <> " "
-          <> liftedName functionName
-          <> parens
-            [ llvmType passBy <> " " <> varName parameter
-            | (passBy, parameter) <- toList parameters
-            ]
-          <> " align "
-          <> Builder.intDec alignment
-          <> " {"
-          <> basicBlocks
-          <> "\n}"
-      )
+    pure $
+      "define "
+        <> linkage
+        <> "fastcc "
+        <> llvmReturnType passReturnBy
+        <> " "
+        <> loweredName functionName
+        <> parens
+          [ llvmType passBy <> " " <> varName parameter
+          | (passBy, parameter) <- toList parameters
+          ]
+        <> " align "
+        <> Builder.intDec alignment
+        <> " {"
+        <> basicBlocks
+        <> "\n}"
   where
     fromLocal (Local l) = l
     fromLocal _ = panic "non-local function parameter"
     linkage =
       case functionName of
-        Name.Lifted _ 0 ->
-          ""
-        _ ->
-          "private "
+        -- Hack to make module init functions non-private
+        Name.Lowered (Name.Lifted (Name.Qualified _ "") 0) Name.Init -> ""
+        Name.Lowered (Name.Lifted _ 0) Name.Original -> ""
+        _ -> "private "
     alignment :: (Num a) => a
     alignment = 8
 
 assembleConstant
-  :: Name.Lifted
+  :: Name.Lowered
   -> Representation
-  -> Syntax.Term Void
-  -> Assembler [(Name.Lifted, Builder)]
-assembleConstant constantName repr term = do
-  entry <- freshVar "entry"
-  startBlock entry
-  (_result, stack) <- assembleTerm Index.Seq.Empty Nothing (PassBy.Value mempty) term
-  mapM_ restoreStack stack
-  endBlock "ret void"
-  basicBlocks <- gets (.basicBlocks)
-  let init = initName constantName
-  pure
-    [
-      ( init
-      , "define "
-          <> linkage
-          <> "fastcc void "
-          <> liftedName init
-          <> "()"
-          <> " align "
-          <> Builder.intDec alignment
-          <> " {"
-          <> basicBlocks
-          <> "\n}"
-      )
-    ,
-      ( constantName
-      , liftedName constantName
-          <> " = global "
-          <> llvmType (PassBy.Value repr)
-          <> " zeroinitializer"
-      )
-    ]
+  -> Builder
+assembleConstant constantName repr =
+  loweredName constantName
+    <> " = "
+    <> linkage
+    <> "global "
+    <> llvmType (PassBy.Value repr)
+    <> " zeroinitializer"
   where
     linkage =
       case constantName of
-        Name.Lifted _ 0 ->
-          ""
-        _ ->
-          "private "
-    alignment :: (Num a) => a
-    alignment = 8
+        Name.Lowered (Name.Lifted _ 0) Name.Original -> ""
+        _ -> "private "
 
 assembleTerm
   :: Environment v
@@ -392,14 +370,16 @@ assembleTerm env nameSuggestion passBy = \case
       startBlock branchLabel
       (result, stack) <- assembleTerm env nameSuggestion passBy $ Syntax.branchTerm branch
       mapM_ restoreStack stack
+      afterBranchLabel <- gets (.basicBlockName)
       endBlock $ "br label " <> varName afterSwitchLabel
-      pure result
+      pure (afterBranchLabel, result)
     startBlock defaultLabel
     maybeDefaultResult <- forM defaultBranch \branch -> do
       (result, stack) <- assembleTerm env nameSuggestion passBy branch
       mapM_ restoreStack stack
-      pure result
-    let defaultResult = fromMaybe (Constant "undef") maybeDefaultResult
+      afterBranchLabel <- gets (.basicBlockName)
+      pure (afterBranchLabel, result)
+    let defaultResult = fromMaybe (defaultLabel, Constant "undef") maybeDefaultResult
     endBlock $ "br label " <> varName afterSwitchLabel
     startBlock afterSwitchLabel
     phiResult <- freshVar $ fromMaybe "switch_result" nameSuggestion
@@ -410,7 +390,7 @@ assembleTerm env nameSuggestion passBy = \case
         <> " "
         <> commaSeparate
           [ brackets [operand result, varName label]
-          | (label, result) <- (defaultLabel, defaultResult) : zip (snd <$> branchLabels) branchResults
+          | (label, result) <- defaultResult : branchResults
           ]
     pure (Local phiResult, Nothing)
   Syntax.Call name args -> do
@@ -422,7 +402,7 @@ assembleTerm env nameSuggestion passBy = \case
           "call fastcc "
             <> llvmReturnType passBy
             <> " "
-            <> liftedName name
+            <> loweredName name
             <> parens (typedOperand <$> args')
         pure (Constant "undef", Nothing)
       _ -> do
@@ -432,7 +412,7 @@ assembleTerm env nameSuggestion passBy = \case
             <> " = call fastcc "
             <> llvmReturnType passBy
             <> " "
-            <> liftedName name
+            <> loweredName name
             <> parens (typedOperand <$> args')
         pure (Local result, Nothing)
   Syntax.StackAllocate size -> do
@@ -450,11 +430,11 @@ assembleTerm env nameSuggestion passBy = \case
     emitInstruction $
       varName bytes <> " = add i32 " <> varName pointerBytes <> ", " <> varName nonPointerBytes
     allocaBytes <- freshVar "alloca_bytes"
-    emitInstruction $ varName allocaBytes <> " = alloca i32 " <> varName bytes
+    emitInstruction $ varName allocaBytes <> " = alloca i8, i32 " <> varName bytes
     nonPointerPointer <- freshVar "non_pointer_pointer"
     emitInstruction $
       varName nonPointerPointer
-        <> " = getelementptr ptr, i8 "
+        <> " = getelementptr i8, ptr "
         <> varName allocaBytes
         <> ", i32 "
         <> varName nonPointerBytes
@@ -506,7 +486,7 @@ assembleTerm env nameSuggestion passBy = \case
         <> varName pointers
     emitInstruction $
       varName updatedNonPointerPointer
-        <> " = getelementptr ptr, i8 "
+        <> " = getelementptr i8, ptr "
         <> operand nonPointerPointer
         <> ", i32 "
         <> varName nonPointerBytes
@@ -534,7 +514,7 @@ assembleTerm env nameSuggestion passBy = \case
         <> ", "
         <> Builder.intDec Representation.wordBytes
     emitInstruction $
-      "call void @llvm.memcpy.p0.p0"
+      "call void @llvm.memcpy.p0.p0.i32"
         <> parens
           [ "ptr " <> operand dstPointerPointer
           , "ptr " <> operand srcPointerPointer
@@ -542,7 +522,7 @@ assembleTerm env nameSuggestion passBy = \case
           , "i1 0" -- isvolatile
           ]
     emitInstruction $
-      "call void @llvm.memcpy.p0.p0"
+      "call void @llvm.memcpy.p0.p0.i32"
         <> parens
           [ "ptr " <> operand dstNonPointerPointer
           , "ptr " <> operand srcNonPointerPointer
@@ -589,30 +569,27 @@ assembleTerm env nameSuggestion passBy = \case
 assembleOperand :: Environment v -> Syntax.Operand v -> Assembler (PassBy, Operand)
 assembleOperand env = \case
   Syntax.Var index -> pure $ Index.Seq.index env index
-  Syntax.Global global -> do
-    signature <- fetch $ Query.LowSignature global
-    case signature of
-      Syntax.ConstantSignature repr ->
-        pure
-          ( PassBy.Reference
-          , case (pointerType repr.pointers, nonPointerType repr.nonPointerBytes) of
-              (Nothing, Nothing) -> ConstantReference "null" "null"
-              (Just _, Nothing) -> ConstantReference (liftedName global) "null"
-              (Nothing, Just _) -> ConstantReference "null" (liftedName global)
-              (Just _, Just _) -> do
-                let name = liftedName global
-                ConstantReference
-                  name
-                  ( "getelementptr"
-                      <> parens
-                        [ llvmType $ PassBy.Value repr
-                        , name
-                        , Builder.intDec 0
-                        , Builder.intDec 1
-                        ]
-                  )
-          )
-      _ -> panic "assembleOperand: global without constant signature"
+  Syntax.Global repr global -> do
+    declareGlobal global
+    pure
+      ( PassBy.Reference
+      , case (pointerType repr.pointers, nonPointerType repr.nonPointerBytes) of
+          (Nothing, Nothing) -> ConstantReference "null" "null"
+          (Just _, Nothing) -> ConstantReference (loweredName global) "null"
+          (Nothing, Just _) -> ConstantReference "null" (loweredName global)
+          (Just _, Just _) -> do
+            let name = loweredName global
+            ConstantReference
+              name
+              ( "getelementptr"
+                  <> parens
+                    [ llvmType $ PassBy.Value repr
+                    , name
+                    , Builder.intDec 0
+                    , Builder.intDec 1
+                    ]
+              )
+      )
   Syntax.Literal (Literal.Integer int) -> pure (PassBy.Value Representation.int, Constant $ Builder.integerDec int)
   Syntax.Representation repr ->
     pure

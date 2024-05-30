@@ -96,7 +96,7 @@ prettyTerm env = \case
         )
   Syntax.Call function args ->
     "call"
-      <+> prettyLiftedGlobal env function
+      <+> prettyLoweredGlobal env function
       <+> commaSep (prettyOperand env <$> args)
   Syntax.StackAllocate operand ->
     "stack_allocate" <+> prettyOperand env operand
@@ -140,7 +140,7 @@ prettyOperand env = \case
   Syntax.Var (Index i) ->
     pretty $
       Seq.index (varNames env) (Seq.length (varNames env) - i - 1)
-  Syntax.Global global -> prettyLiftedGlobal env global
+  Syntax.Global repr global -> pretty repr <+> prettyLoweredGlobal env global
   Syntax.Literal lit -> pretty lit
   Syntax.Representation repr -> pretty repr
   Syntax.Tag constr -> prettyConstr env constr
@@ -162,6 +162,12 @@ prettyLiftedGlobal :: Environment v -> Name.Lifted -> Doc ann
 prettyLiftedGlobal env = \case
   Name.Lifted global 0 -> prettyGlobal env global
   Name.Lifted global n -> prettyGlobal env global <> "$" <> pretty n
+
+prettyLoweredGlobal :: Environment v -> Name.Lowered -> Doc ann
+prettyLoweredGlobal env (Name.Lowered l k) = case k of
+  Name.Original -> prettyLiftedGlobal env l
+  Name.Init -> prettyLiftedGlobal env l <> "$init"
+  Name.Inited -> prettyLiftedGlobal env l <> "$inited"
 
 prettyConstr :: Environment v -> Name.QualifiedConstructor -> Doc ann
 prettyConstr env constr = do
@@ -195,12 +201,12 @@ prettyBranch env = \case
 
 -------------------------------------------------------------------------------
 
-prettyDefinition :: Environment Void -> Name.Lifted -> Syntax.Definition -> Doc ann
+prettyDefinition :: Environment Void -> Name.Lowered -> Syntax.Definition -> Doc ann
 prettyDefinition env name = \case
-  Syntax.ConstantDefinition repr term ->
-    prettyLiftedGlobal env name <+> pretty repr <+> "=" <+> prettyTerm env term
+  Syntax.ConstantDefinition repr ->
+    prettyLoweredGlobal env name <+> "global" <+> pretty repr
   Syntax.FunctionDefinition function ->
-    prettyLiftedGlobal env name <+> "=" <+> "\\" <> prettyFunction env function
+    prettyLoweredGlobal env name <+> "=" <+> "\\" <> prettyFunction env function
 
 prettyFunction :: Environment v -> Syntax.Function v -> Doc ann
 prettyFunction env = \case

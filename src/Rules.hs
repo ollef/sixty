@@ -12,17 +12,12 @@
 
 module Rules where
 
-import qualified Assembly.HeapAllocates
-import qualified Assembly.HeapAllocates as Assembly
-import qualified AssemblyToLLVM
 import qualified Builtin
 import qualified ClosureConversion
 import qualified ClosureConverted.Context
-import qualified ClosureConverted.Representation
 import qualified ClosureConverted.Representation2
 import qualified ClosureConverted.Syntax
 import qualified ClosureConverted.TypeOf as ClosureConverted
-import qualified ClosureConvertedToAssembly
 import Control.Exception.Lifted
 import Core.Binding (Binding)
 import qualified Core.Evaluation as Evaluation
@@ -45,6 +40,7 @@ import qualified Error
 import qualified LambdaLifted.Syntax as LambdaLifted
 import qualified LambdaLifting
 import qualified Lexer
+import qualified LowToLLVM
 import qualified Lower
 import qualified Module
 import Monad
@@ -452,61 +448,44 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             pure $ go tele
           _ ->
             panic "ClosureConvertedConstructorType: none-datatype"
-    ClosureConvertedSignature name ->
-      noError do
-        definition <- fetch $ ClosureConverted name
-        runM $ ClosureConverted.Representation.signature definition
     LowSignature name ->
       noError do
         definition <- fetch $ ClosureConverted name
         runM $ ClosureConverted.Representation2.signature definition
-    LoweredDefinition name ->
+    LoweredDefinitions name ->
       noError do
         definition <- fetch $ ClosureConverted name
         runM $ Lower.definition name definition
     ConstructorRepresentations dataTypeName ->
-      noError $ ClosureConverted.Representation.constructorRepresentations dataTypeName
+      noError $ ClosureConverted.Representation2.constructorRepresentations dataTypeName
     ConstructorRepresentation (Name.QualifiedConstructor dataTypeName constr) ->
       noError do
         (boxity, maybeTags) <- fetch $ ConstructorRepresentations dataTypeName
         pure (boxity, (HashMap.! constr) <$> maybeTags)
-    Assembly name ->
+    LowDefinitions name ->
       noError do
         definition <- fetch $ ClosureConverted name
-        runM $ ClosureConvertedToAssembly.generateDefinition name definition
-    HeapAllocates name ->
-      noError do
-        maybeAssembly <- fetch $ Assembly name
-        case maybeAssembly of
-          Nothing -> pure False
-          Just assembly ->
-            runM $ Assembly.HeapAllocates.run $ Assembly.definitionHeapAllocates assembly
-    AssemblyModule module_ ->
+        runM $ Lower.definition name definition
+    LowModule module_ ->
       noError do
         names <- fetch $ LambdaLiftedModuleDefinitions module_
-        assemblyDefinitions <-
+        lowDefinitions <-
           concat
-            <$> forM (toList names) \name -> do
-              maybeAssembly <- fetch $ Assembly name
-              pure $ toList $ (name,) <$> maybeAssembly
-        moduleInitDefs <-
-          runM $
-            ClosureConvertedToAssembly.generateModuleInit module_ assemblyDefinitions
-        pure $ moduleInitDefs <> assemblyDefinitions
+            <$> forM (toList names) (fetch . LowDefinitions)
+        moduleInitDefs <- runM $ Lower.moduleInit module_ $ fst <$> lowDefinitions
+        pure $ moduleInitDefs <> lowDefinitions
     LLVMModule module_ ->
       noError do
-        assemblyDefinitions <- fetch $ AssemblyModule module_
-        pure $ AssemblyToLLVM.assembleModule assemblyDefinitions
+        assemblyDefinitions <- fetch $ LowModule module_
+        runM $ LowToLLVM.assembleModule assemblyDefinitions
     LLVMModuleInitModule ->
       noError do
         inputFiles <- fetch Query.InputFiles
         moduleNames <- forM (toList inputFiles) \filePath -> do
           (moduleName, _, _) <- fetch $ Query.ParsedFile filePath
           pure moduleName
-
-        assemblyDefinition <- runM $ ClosureConvertedToAssembly.generateModuleInits moduleNames
-
-        pure $ AssemblyToLLVM.assembleModule [(Name.Lifted "$module_init" 0, assemblyDefinition)]
+        assemblyDefinition <- runM $ Lower.moduleInits moduleNames
+        runM $ LowToLLVM.assembleModule [(Name.Lowered (Name.Lifted "$module_init" 0) Name.Original, assemblyDefinition)]
   where
     input :: (Functor m) => m a -> m ((a, TaskKind), [Error])
     input = fmap ((,mempty) . (,Input))
