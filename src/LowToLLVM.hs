@@ -434,10 +434,10 @@ assembleTerm env nameSuggestion passBy = \case
     nonPointerPointer <- freshVar "non_pointer_pointer"
     emitInstruction $
       varName nonPointerPointer
-        <> " = getelementptr i8, ptr "
+        <> " = getelementptr ptr, ptr "
         <> varName allocaBytes
         <> ", i32 "
-        <> varName nonPointerBytes
+        <> varName pointers
     result <- constructTuple (fromMaybe "alloca_result" nameSuggestion) "ptr" allocaBytes "ptr" nonPointerPointer
     pure (Local result, Just stack)
   Syntax.HeapAllocate constr size -> do
