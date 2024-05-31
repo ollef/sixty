@@ -14,7 +14,7 @@ uintptr_t sixten_heap_allocate(uint64_t tag, uint32_t pointers, uint32_t non_poi
   uint8_t* pointer = 0;
 
   if (bytes > 0) {
-    pointer = malloc(sizeof(struct header) + bytes);
+    pointer = calloc(sizeof(struct header) + bytes, 1);
   }
 
   struct header* header = (struct header*)pointer;
