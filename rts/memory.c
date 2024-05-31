@@ -15,12 +15,12 @@ uintptr_t sixten_heap_allocate(uint64_t tag, uint32_t pointers, uint32_t non_poi
 
   if (bytes > 0) {
     pointer = calloc(sizeof(struct header) + bytes, 1);
+    struct header* header = (struct header*)pointer;
+    *header = (struct header) {
+      .pointers = pointers,
+    };
+    pointer += sizeof(struct header);
   }
-
-  struct header* header = (struct header*)pointer;
-  header->pointers = pointers;
-
-  pointer += sizeof(struct header);
 
   return (uintptr_t)pointer << TAG_BITS | (uintptr_t)(tag & TAG_MASK);
 }
