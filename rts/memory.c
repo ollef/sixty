@@ -1,6 +1,7 @@
 #include "memory.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 static const uintptr_t TAG_BITS = 16;
 static const uintptr_t TAG_MASK = ((uintptr_t)1 << TAG_BITS) - 1;
@@ -44,7 +45,7 @@ struct sixten_reference sixten_heap_payload(uintptr_t heap_object) {
   struct header* header = (struct header*)(pointer - sizeof(struct header));
 
   return (struct sixten_reference) {
-    .pointers = pointer,
+    .pointers = (uintptr_t*)pointer,
     .non_pointers = pointer + header->pointers * sizeof(void*),
   };
 }

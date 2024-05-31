@@ -3,7 +3,7 @@
 #include <stdint.h>
 
 struct sixten_reference {
-  uint8_t* pointers;
+  uintptr_t* pointers;
   uint8_t* non_pointers;
 };
 
