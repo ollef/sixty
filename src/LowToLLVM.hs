@@ -431,6 +431,15 @@ assembleTerm env nameSuggestion passBy = \case
       varName bytes <> " = add i32 " <> varName pointerBytes <> ", " <> varName nonPointerBytes
     allocaBytes <- freshVar "alloca_bytes"
     emitInstruction $ varName allocaBytes <> " = alloca i8, i32 " <> varName bytes
+    declareLLVMGlobal "llvm.memset.p0.i32" "declare void @llvm.memset.p0.i32(ptr, i8, i32, i1)"
+    emitInstruction $
+      "call void @llvm.memset.p0.i32"
+        <> parens
+          [ "ptr " <> varName allocaBytes
+          , "i8 0" -- val
+          , "i32 " <> varName pointerBytes
+          , "i1 0" -- isvolatile
+          ]
     nonPointerPointer <- freshVar "non_pointer_pointer"
     emitInstruction $
       varName nonPointerPointer
