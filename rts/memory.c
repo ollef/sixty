@@ -25,8 +25,13 @@ uintptr_t sixten_heap_allocate(uint64_t tag, uint32_t pointers, uint32_t non_poi
   return (uintptr_t)pointer << TAG_BITS | (uintptr_t)(tag & TAG_MASK);
 }
 
+static uint8_t* heap_object_pointer(uintptr_t heap_object) {
+  return (uint8_t*)((intptr_t)heap_object >> TAG_BITS);
+}
+
 struct sixten_reference sixten_heap_payload(uintptr_t heap_object) {
-  uint8_t* pointer = (uint8_t*)((intptr_t)heap_object >> TAG_BITS);
+  uint8_t* pointer = heap_object_pointer(heap_object);
+
   if (pointer == 0) {
     return (struct sixten_reference) {
       .pointers = 0,
