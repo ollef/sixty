@@ -6,6 +6,7 @@ static const uintptr_t TAG_BITS = 16;
 static const uintptr_t TAG_MASK = ((uintptr_t)1 << TAG_BITS) - 1;
 
 struct header {
+  uint32_t reference_count;
   uint32_t pointers;
 };
 
@@ -18,6 +19,7 @@ uintptr_t sixten_heap_allocate(uint64_t tag, uint32_t pointers, uint32_t non_poi
     struct header* header = (struct header*)pointer;
     *header = (struct header) {
       .pointers = pointers,
+      .reference_count = 1,
     };
     pointer += sizeof(struct header);
   }
