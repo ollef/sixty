@@ -86,9 +86,13 @@ void sixten_decrease_reference_count(uintptr_t heap_object) {
   struct header* header = (struct header*)(pointer - sizeof(struct header));
   --header->reference_count;
   if (header->reference_count == 0) {
-    for (uint32_t i = 0; i < header->pointers; ++i) {
-      sixten_decrease_reference_count(((uintptr_t*)pointer)[i]);
-    }
+    sixten_decrease_reference_counts((uintptr_t*)pointer, header->pointers);
     free(header);
+  }
+}
+
+void sixten_decrease_reference_counts(uintptr_t* data, uint32_t count) {
+  for (uint32_t i = 0; i < count; ++i) {
+    sixten_decrease_reference_count(data[i]);
   }
 }

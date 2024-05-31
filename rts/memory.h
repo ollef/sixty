@@ -18,3 +18,4 @@ void sixten_copy(
 );
 void sixten_increase_reference_count(uintptr_t heap_object);
 void sixten_decrease_reference_count(uintptr_t heap_object);
+void sixten_decrease_reference_counts(uintptr_t* data, uint32_t count);
