@@ -53,3 +53,42 @@ struct sixten_reference sixten_heap_payload(uintptr_t heap_object) {
 uint64_t sixten_heap_tag(uintptr_t heap_object) {
   return (uint64_t)(heap_object & TAG_MASK);
 }
+
+void sixten_copy(
+  struct sixten_reference dst,
+  struct sixten_reference src,
+  uint32_t pointers,
+  uint32_t non_pointer_bytes
+) {
+  for (uint32_t i = 0; i < pointers; ++i) {
+    sixten_increase_reference_count(src.pointers[i]);
+  }
+  memcpy(dst.pointers, src.pointers, sizeof(void*) * pointers);
+  memcpy(dst.non_pointers, src.non_pointers, non_pointer_bytes);
+}
+
+void sixten_increase_reference_count(uintptr_t heap_object) {
+  uint8_t* pointer = heap_object_pointer(heap_object);
+  if (pointer == 0) {
+    return;
+  }
+
+  struct header* header = (struct header*)(pointer - sizeof(struct header));
+  ++header->reference_count;
+}
+
+void sixten_decrease_reference_count(uintptr_t heap_object) {
+  uint8_t* pointer = heap_object_pointer(heap_object);
+  if (pointer == 0) {
+    return;
+  }
+
+  struct header* header = (struct header*)(pointer - sizeof(struct header));
+  --header->reference_count;
+  if (header->reference_count == 0) {
+    for (uint32_t i = 0; i < header->pointers; ++i) {
+      sixten_decrease_reference_count(((uintptr_t*)pointer)[i]);
+    }
+    free(header);
+  }
+}
