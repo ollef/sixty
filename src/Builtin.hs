@@ -96,10 +96,6 @@ pattern EmptyRepresentationName :: Name.Qualified
 pattern EmptyRepresentationName =
   "Sixten.Builtin.EmptyRepresentation"
 
-pattern WordRepresentationName :: Name.Qualified
-pattern WordRepresentationName =
-  "Sixten.Builtin.WordRepresentation"
-
 pattern PointerRepresentationName :: Name.Qualified
 pattern PointerRepresentationName =
   "Sixten.Builtin.PointerRepresentation"
