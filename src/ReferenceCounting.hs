@@ -20,20 +20,18 @@ import qualified Name
 import Protolude hiding (evaluate, repr)
 import Var (Var)
 
-type Occurrences = EnumSet Var
-
-data WithOccurrences a = WithOccurrences
-  { occurrences :: Occurrences
+data WithKeepAlives a = WithKeepAlives
+  { keepAlives :: EnumSet Var
   , payload :: a
   }
   deriving (Show, Functor, Foldable, Traversable)
 
-instance Applicative WithOccurrences where
-  pure = WithOccurrences mempty
+instance Applicative WithKeepAlives where
+  pure = WithKeepAlives mempty
+  WithKeepAlives kas1 f <*> WithKeepAlives kas2 x =
+    WithKeepAlives (kas1 <> kas2) (f x)
 
-  WithOccurrences occs1 f <*> WithOccurrences occs2 x = WithOccurrences (occs1 <> occs2) (f x)
-
-type Value = WithOccurrences InnerValue
+type Value = WithKeepAlives InnerValue
 
 data InnerValue
   = Operand !Operand
@@ -69,7 +67,7 @@ evaluate :: Index.Map v Var -> EnumMap Var (EnumSet Var) -> Syntax.Term v -> M (
 evaluate env parents = \case
   Syntax.Operand operand -> do
     let operand' = evaluateOperand env parents operand
-    pure (Operand <$> operand', operand'.occurrences)
+    pure (Operand <$> operand', operand'.keepAlives)
   Syntax.Let passBy name term body -> do
     var <- freshVar
     (term', termParents) <- evaluate env parents term
@@ -82,61 +80,62 @@ evaluate env parents = \case
         )
         body
     pure
-      ( WithOccurrences (term'.occurrences <> EnumSet.delete var body'.occurrences) $
+      ( WithKeepAlives (term'.keepAlives <> EnumSet.delete var body'.keepAlives) $
           Let passBy name var term' body'
       , EnumSet.delete var bodyParents
       )
   Syntax.Seq lhs rhs -> do
     (lhs', _) <- evaluate env parents lhs
     (rhs', rhsParents) <- evaluate env parents rhs
-    pure (WithOccurrences (lhs'.occurrences <> rhs'.occurrences) $ Seq lhs' rhs', rhsParents)
+    pure (WithKeepAlives (lhs'.keepAlives <> rhs'.keepAlives) $ Seq lhs' rhs', rhsParents)
   Syntax.Case scrutinee branches maybeDefaultBranch -> do
     let scrutinee' = evaluateOperand env parents scrutinee
     branches' <- mapM (evaluateBranch env parents) branches
     maybeDefaultBranch' <- mapM (evaluate env parents) maybeDefaultBranch
     pure
-      ( WithOccurrences
-          ( scrutinee'.occurrences
-              <> foldMap ((.occurrences) . fst) branches'
-              <> foldMap ((.occurrences) . fst) maybeDefaultBranch'
+      ( WithKeepAlives
+          ( scrutinee'.keepAlives
+              <> foldMap ((.keepAlives) . fst) branches'
+              <> foldMap ((.keepAlives) . fst) maybeDefaultBranch'
           )
           $ Case scrutinee'.payload (map ((.payload) . fst) branches') (fst <$> maybeDefaultBranch')
       , foldMap snd branches' <> foldMap snd maybeDefaultBranch'
       )
   Syntax.Call global args -> do
     let args' = map (evaluateOperand env parents) args
-    pure (WithOccurrences (foldMap (.occurrences) args') $ Call global (map (.payload) args'), mempty)
+    pure (WithKeepAlives (foldMap (.keepAlives) args') $ Call global (map (.payload) args'), mempty)
   Syntax.StackAllocate size ->
     pure (StackAllocate <$> evaluateOperand env parents size, mempty)
   Syntax.HeapAllocate constr size ->
     pure (HeapAllocate constr <$> evaluateOperand env parents size, mempty)
   Syntax.HeapPayload pointer -> do
     let pointer' = evaluateOperand env parents pointer
-    pure (HeapPayload <$> pointer', pointer'.occurrences)
+    pure (HeapPayload <$> pointer', pointer'.keepAlives)
   Syntax.PointerTag pointer ->
     pure (PointerTag <$> evaluateOperand env parents pointer, mempty)
   Syntax.Offset ref size -> do
     let ref' = evaluateOperand env parents ref
-    pure (Offset <$> ref' <*> evaluateOperand env parents size, ref'.occurrences)
+    pure (Offset <$> ref' <*> evaluateOperand env parents size, ref'.keepAlives)
   Syntax.Copy dst src size ->
     pure (Copy <$> evaluateOperand env parents dst <*> evaluateOperand env parents src <*> evaluateOperand env parents size, mempty)
   Syntax.Store dst src repr ->
     pure (Store <$> evaluateOperand env parents dst <*> evaluateOperand env parents src <*> pure repr, mempty)
-  Syntax.Load ref repr ->
-    pure (Load <$> evaluateOperand env parents ref <*> pure repr, mempty)
+  Syntax.Load ref repr -> do
+    let ref' = evaluateOperand env parents ref
+    pure (Load <$> ref' <*> pure repr, ref'.keepAlives)
 
-evaluateOperand :: Index.Map v Var -> EnumMap Var (EnumSet Var) -> Syntax.Operand v -> WithOccurrences Operand
+evaluateOperand :: Index.Map v Var -> EnumMap Var (EnumSet Var) -> Syntax.Operand v -> WithKeepAlives Operand
 evaluateOperand env parents = \case
   Syntax.Var index -> do
     let var = Index.Map.index env index
-    WithOccurrences (EnumMap.findWithDefault (EnumSet.singleton var) var parents) $ Var var
+    WithKeepAlives (EnumMap.findWithDefault (EnumSet.singleton var) var parents) $ Var var
   Syntax.Global repr global -> pure $ Global repr global
   Syntax.Literal lit -> pure $ Literal lit
   Syntax.Representation repr -> pure $ Representation repr
   Syntax.Tag constr -> pure $ Tag constr
   Syntax.Undefined repr -> pure $ Undefined repr
 
-evaluateBranch :: Index.Map v Var -> EnumMap Var (EnumSet Var) -> Syntax.Branch v -> M (WithOccurrences Branch, EnumSet Var)
+evaluateBranch :: Index.Map v Var -> EnumMap Var (EnumSet Var) -> Syntax.Branch v -> M (WithKeepAlives Branch, EnumSet Var)
 evaluateBranch env parents = \case
   Syntax.LiteralBranch lit branch -> do
     (branch', branchParents) <- evaluate env parents branch
@@ -160,7 +159,6 @@ type ReferenceCount = State ReferenceCountState
 data Provenance
   = Unmanaged
   | Managed !Ownership !Representation
-  | DerivedFrom !Var
 
 referenceCount :: Value -> ReferenceCount (Value, Provenance)
 referenceCount value = case value.payload of
@@ -169,19 +167,29 @@ referenceCount value = case value.payload of
       rc <- get
       case (EnumMap.lookup var rc.owned, EnumMap.lookup var rc.borrowed) of
         (Nothing, Nothing) -> pure (value, Unmanaged)
-        (Just repr, _) -> pure (value, Managed Owned var)
-        (Nothing, _) -> pure (value, DerivedFrom var)
+        (Just repr, _) -> pure (value, Managed Owned repr)
+        (_, Just repr) -> pure (value, Managed Borrowed repr)
     Global _ _ -> pure (value, Unmanaged)
     Literal _ -> pure (value, Unmanaged)
     Representation _ -> pure (value, Unmanaged)
     Tag _ -> pure (value, Unmanaged)
     Undefined _ -> pure (value, Unmanaged)
   Let passBy name var val body -> do
+    do
+      rc <- get
+      let keepAlives = EnumMap.fromSet (const ()) body.keepAlives
+      let valBorrowed = EnumMap.intersection rc.owned keepAlives <> rc.borrowed
+      let valOwned = rc.owned EnumMap.\\ keepAlives
+      put rc {borrowed = valBorrowed, owned = valOwned}
     (val', provenance) <- referenceCount val
-    _
+
+    case provenance of
+      Unmanaged -> _
+      Managed Borrowed repr -> _
+      Managed Owned repr -> _
   Seq lhs rhs -> do
     owned <- gets (.owned)
-    EnumMap.intersection rhs.occurrences
+    EnumMap.intersection rhs.keepAlives
   Case scrutinee branches maybeDefaultBranch -> _
   Call fun args -> _
   StackAllocate size -> _
