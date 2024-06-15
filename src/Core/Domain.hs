@@ -17,7 +17,7 @@ import qualified Data.Tsil as Tsil
 import qualified Environment
 import Flexibility (Flexibility)
 import qualified Flexibility
-import Index
+import Index (Scope)
 import Literal (Literal)
 import qualified Meta
 import Monad

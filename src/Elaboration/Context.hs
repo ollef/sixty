@@ -48,7 +48,8 @@ import qualified Environment
 import qualified Error
 import qualified Error.Hydrated as Error
 import qualified Error.Parsing as Error
-import Index
+import Index (Index)
+import qualified Index
 import qualified Index.Map
 import Literal (Literal)
 import qualified Meta
@@ -81,7 +82,7 @@ toEnvironment context =
     , glueableBefore = Index.Zero
     }
 
-empty :: (MonadBase IO m) => Scope.DefinitionKind -> Name.Qualified -> m (Context Void)
+empty :: (MonadBase IO m) => Scope.DefinitionKind -> Name.Qualified -> m (Context Index.Zero)
 empty definitionKind definitionName = do
   ms <- newIORef Meta.empty
   es <- newIORef mempty
@@ -107,7 +108,7 @@ empty definitionKind definitionName = do
       , errors = es
       }
 
-emptyFrom :: Context v -> Context Void
+emptyFrom :: Context v -> Context Index.Zero
 emptyFrom context =
   Context
     { definitionKind = context.definitionKind
@@ -179,7 +180,7 @@ extendSurface
   :: Context v
   -> Name.Surface
   -> Domain.Type
-  -> M (Context (Succ v), Var)
+  -> M (Context (Index.Succ v), Var)
 extendSurface context name@(Name.Surface nameText) type_ = do
   var <- freshVar
   pure
@@ -197,7 +198,7 @@ extend
   :: Context v
   -> Name
   -> Domain.Type
-  -> M (Context (Succ v), Var)
+  -> M (Context (Index.Succ v), Var)
 extend context name type_ = do
   var <- freshVar
   pure
@@ -215,7 +216,7 @@ extendSurfaceDef
   -> Name.Surface
   -> Domain.Value
   -> Domain.Type
-  -> M (Context (Succ v), Var)
+  -> M (Context (Index.Succ v), Var)
 extendSurfaceDef context surfaceName@(Name.Surface nameText) value type_ = do
   var <- freshVar
   pure
@@ -240,7 +241,7 @@ extendDef
   -> Name
   -> Domain.Value
   -> Domain.Type
-  -> M (Context (Succ v), Var)
+  -> M (Context (Index.Succ v), Var)
 extendDef context name value type_ = do
   var <- freshVar
   pure
@@ -258,7 +259,7 @@ extendBefore
   -> Var
   -> Bindings
   -> Domain.Type
-  -> M (Context (Succ v), Var)
+  -> M (Context (Index.Succ v), Var)
 extendBefore context beforeVar binding type_ = do
   var <- freshVar
   pure
@@ -306,7 +307,7 @@ define context (Domain.Var var) Domain.Empty value = do
 define context head_ spine value =
   pure $ rewrite context head_ spine value
 
-skip :: Context v -> M (Context (Succ v))
+skip :: Context v -> M (Context (Index.Succ v))
 skip context = do
   (context', _) <- extendDef context "skip" Builtin.Type Builtin.Type
   pure context'
@@ -502,7 +503,7 @@ toPrettyableValue context value = do
   term <- Readback.readback (toEnvironment context) value
   toPrettyableTerm context term
 
-toPrettyableClosedTerm :: Context v -> Syntax.Term Void -> M Error.PrettyableTerm
+toPrettyableClosedTerm :: Context v -> Syntax.Term Index.Zero -> M Error.PrettyableTerm
 toPrettyableClosedTerm context term = do
   term' <- zonk (emptyFrom context) term
   pure $ Error.PrettyableTerm (moduleName context) mempty (Syntax.coerce term')
@@ -533,7 +534,7 @@ newMetaReturningIndex context type_ = do
         (,) Explicit <$> IntSeq.toSeq context.boundVars
   pure (i, args, Domain.Neutral (Domain.Meta i) $ Domain.Apps (second Domain.var <$> args))
 
-piBoundVars :: Context v -> Domain.Type -> M (Syntax.Type Void, Int)
+piBoundVars :: Context v -> Domain.Type -> M (Syntax.Type Index.Zero, Int)
 piBoundVars context type_ = do
   let arity = IntSeq.length context.boundVars
   piType <-
@@ -581,7 +582,7 @@ lookupEagerMeta context i = do
 solveMeta
   :: Context v
   -> Meta.Index
-  -> Syntax.Term Void
+  -> Syntax.Term Index.Zero
   -> M ()
 solveMeta context meta term = do
   (arity, unblocked) <- atomicModifyIORef' context.metas $ Meta.solve meta term
@@ -600,7 +601,7 @@ solveMeta context meta term = do
 lazilySolveMeta
   :: Context v
   -> Meta.Index
-  -> Lazy (Syntax.Term Void)
+  -> Lazy (Syntax.Term Index.Zero)
   -> M ()
 lazilySolveMeta context meta lazyTerm = do
   (arity, unblocked) <- atomicModifyIORef' context.metas $ Meta.lazilySolve meta $ force lazyTerm
@@ -849,7 +850,7 @@ zonk
   -> M (Syntax.Term v)
 zonk context term = do
   metasRef <- newIORef mempty
-  postponedRef <- newIORef (mempty :: EnumMap Postponement.Index (Maybe (Syntax.Term Void)))
+  postponedRef <- newIORef (mempty :: EnumMap Postponement.Index (Maybe (Syntax.Term Index.Zero)))
   let zonkMeta index = do
         indexMap <- readIORef metasRef
         case EnumMap.lookup index indexMap of
@@ -889,7 +890,7 @@ zonk context term = do
                   (EnumMap.insert index (Just $ Syntax.coerce term'') indexMap', ())
                 pure $ Just term''
           Just solution ->
-            pure $ Syntax.fromVoid <$> solution
+            pure $ Syntax.fromZero <$> solution
   Zonking.zonkTerm (toEnvironment context) zonkMeta zonkPostponed term
 
 -------------------------------------------------------------------------------

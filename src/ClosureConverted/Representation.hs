@@ -141,7 +141,7 @@ passTypeBy env type_ =
           type' <- Evaluation.apply env value args
           passTypeBy env type'
         Syntax.FunctionDefinition tele -> do
-          maybeType' <- Evaluation.applyFunction env (Telescope.fromVoid tele) args
+          maybeType' <- Evaluation.applyFunction env (Telescope.fromZero tele) args
           case maybeType' of
             Nothing ->
               pure $ PassBy.Value Representation.pointer -- a closure
@@ -156,7 +156,7 @@ passTypeBy env type_ =
           pure $ PassBy.Value Representation.pointer
         Syntax.ParameterisedDataDefinition Unboxed tele -> do
           unless (liftedNameNumber == 0) $ panic "ClosureConverted.Representation. Data with name number /= 0"
-          maybeResult <- Evaluation.applyTelescope env (Telescope.fromVoid tele) args $ passUnboxedDataBy qualifiedName
+          maybeResult <- Evaluation.applyTelescope env (Telescope.fromZero tele) args $ passUnboxedDataBy qualifiedName
           pure $ fromMaybe PassBy.Reference maybeResult
 
 maxM :: (Monad m) => [m PassBy] -> m PassBy

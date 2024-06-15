@@ -10,7 +10,7 @@ import qualified Core.Domain as Domain
 import qualified Core.Syntax as Syntax
 import Data.Tsil (Tsil)
 import qualified Environment
-import Index
+import Index (Scope)
 import Literal (Literal)
 import Monad
 import qualified Name

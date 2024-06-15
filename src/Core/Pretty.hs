@@ -21,7 +21,8 @@ import qualified Data.Kind
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Data.Sequence as Seq
 import qualified Data.Text.Unsafe as Text
-import Index
+import Index (Index (Index))
+import qualified Index
 import Name (Name (Name))
 import qualified Name
 import Plicity
@@ -45,7 +46,7 @@ data Environment (v :: Data.Kind.Type) = Environment
   , importedAliases :: HashMap Name.Qualified (HashSet Name.Surface)
   }
 
-extend :: Environment v -> Name -> (Environment (Succ v), Name.Surface)
+extend :: Environment v -> Name -> (Environment (Index.Succ v), Name.Surface)
 extend env (Name name) =
   go (Name.Surface name : [Name.Surface $ name <> show (i :: Int) | i <- [0 ..]])
   where
@@ -62,15 +63,15 @@ extend env (Name name) =
     go [] =
       panic "Pretty.extend"
 
-extendBinding :: Environment v -> Binding -> (Environment (Succ v), Name.Surface)
+extendBinding :: Environment v -> Binding -> (Environment (Index.Succ v), Name.Surface)
 extendBinding env binding =
   extend env $ Binding.toName binding
 
-extendBindings :: Environment v -> Bindings -> (Environment (Succ v), Name.Surface)
+extendBindings :: Environment v -> Bindings -> (Environment (Index.Succ v), Name.Surface)
 extendBindings env binding =
   extend env $ Bindings.toName binding
 
-empty :: Environment Void
+empty :: Environment Index.Zero
 empty =
   Environment
     { varNames = mempty
@@ -79,7 +80,7 @@ empty =
     , importedAliases = mempty
     }
 
-emptyM :: (MonadFetch Query m) => Name.Module -> m (Environment Void)
+emptyM :: (MonadFetch Query m) => Name.Module -> m (Environment Index.Zero)
 emptyM module_ = do
   importedNames <- fetch $ Query.ImportedNames module_ Mapped.Map
   (localScope, _) <- fetch $ Query.ModuleScope module_
@@ -290,7 +291,7 @@ prettyBranch env tele =
 
 -------------------------------------------------------------------------------
 
-prettyDefinition :: Environment Void -> Name.Qualified -> Syntax.Definition -> Doc ann
+prettyDefinition :: Environment Index.Zero -> Name.Qualified -> Syntax.Definition -> Doc ann
 prettyDefinition env name def =
   case def of
     Syntax.TypeDeclaration type_ ->

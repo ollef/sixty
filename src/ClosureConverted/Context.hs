@@ -10,7 +10,8 @@ import qualified Data.EnumMap as EnumMap
 import qualified Data.Kind
 import Environment (Environment (Environment))
 import qualified Environment
-import Index
+import Index (Index)
+import qualified Index
 import qualified Index.Map
 import qualified Index.Map as Index
 import Monad
@@ -20,10 +21,10 @@ import Var (Var)
 data Context (v :: Data.Kind.Type) = Context
   { indices :: Index.Map v Var
   , types :: EnumMap Var Domain.Type
-  , glueableBefore :: !(Index (Succ v))
+  , glueableBefore :: !(Index (Index.Succ v))
   }
 
-empty :: Context Void
+empty :: Context Index.Zero
 empty =
   Context
     { indices = Index.Map.Empty
@@ -54,7 +55,7 @@ toEnvironment context =
 extend
   :: Context v
   -> Domain.Type
-  -> M (Context (Succ v), Var)
+  -> M (Context (Index.Succ v), Var)
 extend context type_ = do
   var <- freshVar
   pure

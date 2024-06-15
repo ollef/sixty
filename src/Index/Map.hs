@@ -7,16 +7,17 @@ module Index.Map where
 
 import Data.IntSeq (IntSeq)
 import qualified Data.IntSeq as IntSeq
-import Index
+import Index (Index (Index))
+import qualified Index
 import Protolude hiding (Map)
 
 newtype Map v a = Map (IntSeq a)
   deriving (Show, Foldable)
 
-pattern Empty :: (Enum a) => Map Void a
+pattern Empty :: (Enum a) => Map Index.Zero a
 pattern Empty = Map IntSeq.Empty
 
-pattern (:>) :: (Enum a) => Map v a -> a -> Map (Succ v) a
+pattern (:>) :: (Enum a) => Map v a -> a -> Map (Index.Succ v) a
 pattern as :> a <-
   Map ((Map -> as) IntSeq.:> a)
   where
@@ -24,7 +25,7 @@ pattern as :> a <-
 
 {-# COMPLETE Empty, (:>) #-}
 
-length :: Map v a -> Index (Succ v)
+length :: Map v a -> Index (Index.Succ v)
 length (Map m) = Index $ IntSeq.length m
 
 elemIndex :: (Enum a) => a -> Map v a -> Maybe (Index v)

@@ -76,7 +76,7 @@ inferTopLevelDefinition
   :: Scope.DefinitionKind
   -> Name.Qualified
   -> Surface.Definition
-  -> M ((Syntax.Definition, Syntax.Type Void, Meta.EagerState), [Error])
+  -> M ((Syntax.Definition, Syntax.Type Index.Zero, Meta.EagerState), [Error])
 inferTopLevelDefinition definitionKind defName def = do
   context <- Context.empty definitionKind defName
   (def', type_) <- inferDefinition context def
@@ -107,9 +107,9 @@ checkDefinitionMetaSolutions
   :: Scope.DefinitionKind
   -> Name.Qualified
   -> Syntax.Definition
-  -> Syntax.Type Void
+  -> Syntax.Type Index.Zero
   -> Meta.EagerState
-  -> M ((Syntax.Definition, Syntax.Type Void), [Error])
+  -> M ((Syntax.Definition, Syntax.Type Index.Zero), [Error])
 checkDefinitionMetaSolutions definitionKind defName def type_ metas = do
   context <- Context.empty definitionKind defName
   metasVar <- newIORef $ Meta.fromEagerState metas
@@ -122,7 +122,7 @@ checkDefinitionMetaSolutions definitionKind defName def type_ metas = do
   pure ((def'', type''), toList errors)
 
 checkDefinition
-  :: Context Void
+  :: Context Index.Zero
   -> Surface.Definition
   -> Domain.Type
   -> M Syntax.Definition
@@ -149,9 +149,9 @@ checkDefinition context def expectedType =
               Builtin.unknown expectedType'
 
 inferDefinition
-  :: Context Void
+  :: Context Index.Zero
   -> Surface.Definition
-  -> M (Syntax.Definition, Syntax.Type Void)
+  -> M (Syntax.Definition, Syntax.Type Index.Zero)
 inferDefinition context def =
   case def of
     Surface.TypeDeclaration _ type_ -> do
@@ -189,7 +189,7 @@ inferDataDefinition context surfaceParams constrs paramVars =
   case surfaceParams of
     [] -> do
       thisType <-
-        Syntax.fromVoid
+        Syntax.fromZero
           <$> Context.varPis
             context
             Environment.empty
@@ -231,9 +231,9 @@ inferDataDefinition context surfaceParams constrs paramVars =
         )
 
 postProcessDataDefinition
-  :: Context Void
+  :: Context Index.Zero
   -> Boxity.Boxity
-  -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions Void
+  -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions Index.Zero
   -> M Syntax.Definition
 postProcessDataDefinition outerContext boxity outerTele = do
   Context.inferAllPostponedChecks outerContext
@@ -559,7 +559,7 @@ elaborateWith context spannedTerm@(Surface.Term span term) mode canPostpone = do
                       Context.report context $ Error.NotInScope name
                       elaborationFailed context mode
                     Right type_ -> do
-                      type' <- evaluate context $ Syntax.fromVoid type_
+                      type' <- evaluate context $ Syntax.fromZero type_
                       result context mode (Syntax.Spanned span $ Syntax.Global qualifiedName) type'
             Just (Scope.Constructors constructorCandidates dataCandidates) -> do
               resolution <-
@@ -580,7 +580,7 @@ elaborateWith context spannedTerm@(Surface.Term span term) mode canPostpone = do
                   elaborationFailed context mode
                 Right (ResolvedConstructor constr) -> do
                   type_ <- fetch $ Query.ConstructorType constr
-                  type' <- evaluate context $ Syntax.fromVoid $ Telescope.fold Syntax.implicitPi type_
+                  type' <- evaluate context $ Syntax.fromZero $ Telescope.fold Syntax.implicitPi type_
                   result context mode (Syntax.Spanned span $ Syntax.Con constr) type'
                 Right (ResolvedData data_)
                   | data_ == context.definitionName
@@ -593,7 +593,7 @@ elaborateWith context spannedTerm@(Surface.Term span term) mode canPostpone = do
                           Context.report context $ Error.NotInScope name
                           elaborationFailed context mode
                         Right type_ -> do
-                          type' <- evaluate context $ Syntax.fromVoid type_
+                          type' <- evaluate context $ Syntax.fromZero type_
                           result context mode (Syntax.Spanned span $ Syntax.Global data_) type'
             Just (Scope.Ambiguous constrCandidates dataCandidates) -> do
               Context.report context $ Error.Ambiguous name constrCandidates dataCandidates
@@ -1119,7 +1119,7 @@ isSubtype context type1 type2 = do
 -- Meta solutions
 
 checkMetaSolutions
-  :: Context Void
+  :: Context Index.Zero
   -> Meta.EagerState
   -> M Syntax.MetaSolutions
 checkMetaSolutions context metaVars =

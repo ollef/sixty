@@ -6,18 +6,19 @@
 module Index.Seq where
 
 import qualified Data.Sequence as Seq
-import Index
+import Index (Index (Index))
+import qualified Index
 import Protolude hiding (Seq)
 
 newtype Seq v a = Seq {toSeq :: Seq.Seq a}
   deriving (Show, Foldable)
 
-pattern Empty :: Seq Void a
+pattern Empty :: Seq Index.Zero a
 pattern Empty <- Seq (Seq.null -> True)
   where
     Empty = Seq mempty
 
-pattern (:>) :: Seq v a -> a -> Seq (Succ v) a
+pattern (:>) :: Seq v a -> a -> Seq (Index.Succ v) a
 pattern as :> a <-
   Seq ((Seq -> as) Seq.:|> a)
   where
@@ -25,7 +26,7 @@ pattern as :> a <-
 
 {-# COMPLETE Empty, (:>) #-}
 
-length :: Seq v a -> Index (Succ v)
+length :: Seq v a -> Index (Index.Succ v)
 length (Seq m) = Index $ Seq.length m
 
 index :: Seq v a -> Index v -> a

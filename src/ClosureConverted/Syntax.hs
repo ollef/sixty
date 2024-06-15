@@ -7,7 +7,8 @@ module ClosureConverted.Syntax where
 
 import Boxity
 import Data.OrderedHashMap (OrderedHashMap)
-import Index
+import Index (Index, Scope)
+import qualified Index
 import Literal (Literal)
 import Name (Name)
 import qualified Name
@@ -51,7 +52,7 @@ data Term v
   | Lit !Literal
   | Let !Name !(Term v) !(Type v) !(Scope Term v)
   | -- | The type of a top-level function definition
-    Function !(Telescope Name Type Type Void)
+    Function !(Telescope Name Type Type Index.Zero)
   | -- | Saturated application of a top-level function
     Apply !Name.Lifted [Term v]
   | Pi !Name !(Type v) !(Scope Type v)
@@ -74,11 +75,11 @@ type LiteralBranches v =
   OrderedHashMap Literal (Term v)
 
 data Definition
-  = TypeDeclaration !(Type Void)
-  | ConstantDefinition !(Term Void)
-  | FunctionDefinition !(Telescope Name Type Term Void)
-  | DataDefinition !Boxity (ConstructorDefinitions Void)
-  | ParameterisedDataDefinition !Boxity !(Telescope Name Type ConstructorDefinitions Void)
+  = TypeDeclaration !(Type Index.Zero)
+  | ConstantDefinition !(Term Index.Zero)
+  | FunctionDefinition !(Telescope Name Type Term Index.Zero)
+  | DataDefinition !Boxity (ConstructorDefinitions Index.Zero)
+  | ParameterisedDataDefinition !Boxity !(Telescope Name Type ConstructorDefinitions Index.Zero)
   deriving (Eq, Show, Generic, Hashable)
 
 newtype ConstructorDefinitions v
@@ -86,6 +87,6 @@ newtype ConstructorDefinitions v
   deriving (Show, Generic)
   deriving newtype (Eq, Hashable)
 
-fromVoid :: Term Void -> Term v
-fromVoid =
+fromZero :: Term Index.Zero -> Term v
+fromZero =
   unsafeCoerce

@@ -28,6 +28,7 @@ import qualified Driver
 import qualified Error.Hydrated
 import qualified Error.Hydrated as Error (Hydrated)
 import qualified FileSystem
+import qualified Index
 import qualified Language.LSP.Diagnostics as LSP
 import qualified Language.LSP.Logging as LSP
 import qualified Language.LSP.Protocol.Lens as LSP hiding (rootPath)
@@ -138,7 +139,7 @@ options =
 type StateM = ReaderT State (LSP.LspT () IO)
 
 data State = State
-  { driverState :: !(Driver.State (Error.Hydrated, Doc Void))
+  { driverState :: !(Driver.State (Error.Hydrated, Doc Index.Zero))
   , diskStateVar :: !(TVar FileSystem.ProjectFiles)
   , dirtyVar :: !(TMVar ())
   }
@@ -389,7 +390,7 @@ runTask
   :: Colog.LogAction StateM (WithSeverity Text)
   -> Driver.Prune
   -> Task Query a
-  -> StateM (a, [(Error.Hydrated, Doc Void)], HashMap FilePath (Either Utf16.Rope Text))
+  -> StateM (a, [(Error.Hydrated, Doc Index.Zero)], HashMap FilePath (Either Utf16.Rope Text))
 runTask logger prune task = do
   state <- ask
   env <- LSP.getLspEnv

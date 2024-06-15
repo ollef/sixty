@@ -22,6 +22,7 @@ import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Environment
 import Extra
+import qualified Index
 import qualified Index.Map
 import qualified Index.Map as Index (Map)
 import Literal (Literal)
@@ -40,8 +41,8 @@ import Prelude (Show (showsPrec))
 inlineSolutions
   :: Syntax.MetaSolutions
   -> Syntax.Definition
-  -> Syntax.Type Void
-  -> M (Syntax.Definition, Syntax.Type Void)
+  -> Syntax.Type Index.Zero
+  -> M (Syntax.Definition, Syntax.Type Index.Zero)
 inlineSolutions solutions def type_ = do
   solutionValues <- forM solutions \(metaTerm, metaType, metaOccurrences) -> do
     metaValue <- evaluate Environment.empty metaTerm
@@ -96,7 +97,7 @@ inlineSolutions solutions def type_ = do
         pure $
           readback env.indices (lookupMetaIndex metaVars) inlinedValue
 
-      inlineDefSolutions :: Domain.Environment Void -> Syntax.Definition -> M Syntax.Definition
+      inlineDefSolutions :: Domain.Environment Index.Zero -> Syntax.Definition -> M Syntax.Definition
       inlineDefSolutions env def' =
         case def' of
           Syntax.TypeDeclaration declaredType -> do

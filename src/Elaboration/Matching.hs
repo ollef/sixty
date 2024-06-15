@@ -451,7 +451,7 @@ simplifyMatch context canPostpone match@(Match value forcedValue plicity pat typ
                 (patsType, patSpine) <-
                   instantiateConstructorType
                     (Context.toEnvironment context)
-                    (Telescope.fromVoid constrType)
+                    (Telescope.fromZero constrType)
                     (toList args)
 
                 (matches', type') <- matchSurfacePatterns context patSpine pats patsType

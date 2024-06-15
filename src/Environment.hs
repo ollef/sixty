@@ -5,7 +5,8 @@ module Environment where
 import Data.EnumMap (EnumMap)
 import qualified Data.EnumMap as EnumMap
 import Data.Kind
-import Index
+import Index (Index)
+import qualified Index
 import qualified Index.Map
 import qualified Index.Map as Index
 import Monad
@@ -15,11 +16,11 @@ import Var (Var)
 data Environment value (v :: Data.Kind.Type) = Environment
   { indices :: Index.Map v Var
   , values :: EnumMap Var value
-  , glueableBefore :: !(Index (Succ v))
+  , glueableBefore :: !(Index (Index.Succ v))
   }
   deriving (Show)
 
-empty :: Environment value Void
+empty :: Environment value Index.Zero
 empty =
   Environment
     { indices = Index.Map.Empty
@@ -29,7 +30,7 @@ empty =
 
 extend
   :: Environment value v
-  -> M (Environment value (Succ v), Var)
+  -> M (Environment value (Index.Succ v), Var)
 extend env = do
   var <- freshVar
   pure (extendVar env var, var)
@@ -37,7 +38,7 @@ extend env = do
 extendVar
   :: Environment value v
   -> Var
-  -> Environment value (Succ v)
+  -> Environment value (Index.Succ v)
 extendVar env v =
   env
     { indices = indices env Index.Map.:> v
@@ -47,7 +48,7 @@ extendVar env v =
 extendValue
   :: Environment value v
   -> value
-  -> M (Environment value (Succ v), Var)
+  -> M (Environment value (Index.Succ v), Var)
 extendValue env value = do
   var <- freshVar
   pure

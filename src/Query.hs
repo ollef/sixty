@@ -32,6 +32,7 @@ import Data.Text.Utf16.Rope (Rope)
 import qualified Elaboration.Meta
 import Extra
 import qualified FileSystem
+import qualified Index
 import qualified LambdaLifted.Syntax as LambdaLifted
 import qualified Low.Syntax
 import qualified Low.Syntax as Low
@@ -65,20 +66,20 @@ data Query a where
   ParsedDefinition :: Name.Module -> Mapped.Query (Scope.DefinitionKind, Name) Surface.Definition a -> Query a
   ModuleScope :: Name.Module -> Query (Scope, Scope)
   ResolvedName :: Name.Module -> Name.Surface -> Query (Maybe Scope.Entry)
-  ElaboratingDefinition :: Scope.DefinitionKind -> Name.Qualified -> Query (Maybe (Syntax.Definition, Syntax.Type Void, Elaboration.Meta.EagerState))
-  ElaboratedType :: Name.Qualified -> Query (Syntax.Type Void)
-  ElaboratedDefinition :: Name.Qualified -> Query (Syntax.Definition, Syntax.Type Void)
+  ElaboratingDefinition :: Scope.DefinitionKind -> Name.Qualified -> Query (Maybe (Syntax.Definition, Syntax.Type Index.Zero, Elaboration.Meta.EagerState))
+  ElaboratedType :: Name.Qualified -> Query (Syntax.Type Index.Zero)
+  ElaboratedDefinition :: Name.Qualified -> Query (Syntax.Definition, Syntax.Type Index.Zero)
   Dependencies :: Name.Qualified -> Mapped.Query Name.Qualified () a -> Query a
   TransitiveDependencies :: Name.Qualified -> Mapped.Query Name.Qualified () a -> Query a
-  ConstructorType :: Name.QualifiedConstructor -> Query (Telescope Binding Syntax.Type Syntax.Type Void)
+  ConstructorType :: Name.QualifiedConstructor -> Query (Telescope Binding Syntax.Type Syntax.Type Index.Zero)
   DefinitionPosition :: Scope.DefinitionKind -> Name.Qualified -> Query (FilePath, Maybe Position.Absolute)
   Occurrences :: Scope.DefinitionKind -> Name.Qualified -> Query Occurrences.Intervals
-  LambdaLifted :: Name.Qualified -> Query (LambdaLifted.Definition, EnumMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void))
+  LambdaLifted :: Name.Qualified -> Query (LambdaLifted.Definition, EnumMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Index.Zero))
   LambdaLiftedDefinition :: Name.Lifted -> Query LambdaLifted.Definition
   LambdaLiftedModuleDefinitions :: Name.Module -> Query (OrderedHashSet Name.Lifted)
   ClosureConverted :: Name.Lifted -> Query ClosureConverted.Definition
-  ClosureConvertedType :: Name.Lifted -> Query (ClosureConverted.Type Void)
-  ClosureConvertedConstructorType :: Name.QualifiedConstructor -> Query (Telescope Name ClosureConverted.Type ClosureConverted.Type Void)
+  ClosureConvertedType :: Name.Lifted -> Query (ClosureConverted.Type Index.Zero)
+  ClosureConvertedConstructorType :: Name.QualifiedConstructor -> Query (Telescope Name ClosureConverted.Type ClosureConverted.Type Index.Zero)
   LowSignature :: Name.Lifted -> Query Low.Syntax.Signature
   LoweredDefinitions :: Name.Lifted -> Query [(Name.Lowered, Low.Syntax.Definition)]
   ConstructorRepresentations :: Name.Qualified -> Query (Boxity, Maybe (HashMap Name.Constructor Int))

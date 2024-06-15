@@ -15,7 +15,8 @@ import qualified Data.HashSet as HashSet
 import Data.OrderedHashMap (OrderedHashMap)
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
-import Index
+import Index (Index, Scope)
+import qualified Index
 import Literal (Literal)
 import qualified Meta
 import qualified Name
@@ -109,12 +110,12 @@ funs :: (Foldable f) => f (Term v) -> Plicity -> Term v -> Term v
 funs args plicity res =
   foldr (`Fun` plicity) res args
 
-succ :: Term v -> Term (Succ v)
+succ :: Term v -> Term (Index.Succ v)
 succ =
   coerce
 
-fromVoid :: Term Void -> Term v
-fromVoid =
+fromZero :: Term Index.Zero -> Term v
+fromZero =
   coerce
 
 coerce :: Term v -> Term v'
@@ -123,12 +124,12 @@ coerce =
   unsafeCoerce
 
 type MetaSolutions =
-  EnumMap Meta.Index (Term Void, Type Void, EnumSet Meta.Index)
+  EnumMap Meta.Index (Term Index.Zero, Type Index.Zero, EnumSet Meta.Index)
 
 data Definition
-  = TypeDeclaration !(Type Void)
-  | ConstantDefinition !(Term Void)
-  | DataDefinition !Boxity !(Telescope Binding Type ConstructorDefinitions Void)
+  = TypeDeclaration !(Type Index.Zero)
+  | ConstantDefinition !(Term Index.Zero)
+  | DataDefinition !Boxity !(Telescope Binding Type ConstructorDefinitions Index.Zero)
   deriving (Eq, Show, Generic, Hashable)
 
 newtype ConstructorDefinitions v

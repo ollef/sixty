@@ -10,6 +10,7 @@ import qualified Core.Readback as Readback
 import qualified Core.Syntax as Syntax
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Environment
+import qualified Index
 import qualified Meta
 import Monad
 import qualified Postponement
@@ -18,8 +19,8 @@ import Telescope (Telescope)
 import qualified Telescope
 
 zonkDefinition
-  :: Domain.Environment Void
-  -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  :: Domain.Environment Index.Zero
+  -> (Meta.Index -> M (Maybe (Syntax.Term Index.Zero)))
   -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
   -> Syntax.Definition
   -> M Syntax.Definition
@@ -33,7 +34,7 @@ zonkDefinition env metas postponed definition = case definition of
 
 zonkDataDefinition
   :: Domain.Environment v
-  -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (Meta.Index -> M (Maybe (Syntax.Term Index.Zero)))
   -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
   -> Telescope Binding Syntax.Type Syntax.ConstructorDefinitions v
   -> M (Telescope Core.Binding.Binding Syntax.Type Syntax.ConstructorDefinitions v)
@@ -51,7 +52,7 @@ zonkDataDefinition env metas postponed tele =
 
 zonkTerm
   :: Domain.Environment v
-  -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (Meta.Index -> M (Maybe (Syntax.Term Index.Zero)))
   -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
   -> Syntax.Term v
   -> M (Syntax.Term v)
@@ -66,7 +67,7 @@ zonkTerm env metas postponed term = do
 
 zonkValue
   :: Domain.Environment v
-  -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (Meta.Index -> M (Maybe (Syntax.Term Index.Zero)))
   -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
   -> Syntax.Term v
   -> M Domain.Value
@@ -80,7 +81,7 @@ zonkValue env metas postponed term = do
 
 zonk
   :: Domain.Environment v
-  -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (Meta.Index -> M (Maybe (Syntax.Term Index.Zero)))
   -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
   -> Syntax.Term v
   -> M (Either Domain.Value (Syntax.Term v))
@@ -158,7 +159,7 @@ zonk env metas postponed term =
 
 zonkLets
   :: Domain.Environment v
-  -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (Meta.Index -> M (Maybe (Syntax.Term Index.Zero)))
   -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
   -> Syntax.Lets v
   -> M (Syntax.Lets v)
@@ -178,7 +179,7 @@ zonkLets env metas postponed lets =
 
 zonkBranches
   :: Domain.Environment v
-  -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (Meta.Index -> M (Maybe (Syntax.Term Index.Zero)))
   -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
   -> Syntax.Branches v
   -> M (Syntax.Branches v)
@@ -191,7 +192,7 @@ zonkBranches env metas postponed branches =
 
 zonkTelescope
   :: Domain.Environment v
-  -> (Meta.Index -> M (Maybe (Syntax.Term Void)))
+  -> (Meta.Index -> M (Maybe (Syntax.Term Index.Zero)))
   -> (forall v'. Domain.Environment v' -> Postponement.Index -> M (Maybe (Syntax.Term v')))
   -> Telescope Bindings Syntax.Type Syntax.Term v
   -> M (Telescope Bindings Syntax.Type Syntax.Term v)

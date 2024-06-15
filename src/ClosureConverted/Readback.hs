@@ -9,7 +9,7 @@ import qualified ClosureConverted.Evaluation as Evaluation
 import qualified ClosureConverted.Syntax as Syntax
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Environment
-import Index
+import Index (Scope)
 import Monad
 import qualified Name
 import Protolude hiding (IntMap, Seq, evaluate, force, head)

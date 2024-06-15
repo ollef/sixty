@@ -14,6 +14,7 @@ import qualified Data.EnumMap as EnumMap
 import Data.EnumSet (EnumSet)
 import qualified Data.EnumSet as EnumSet
 import Data.List (partition)
+import qualified Index
 import qualified Meta
 import Orphans ()
 import qualified Postponement
@@ -23,9 +24,9 @@ import Telescope (Telescope)
 import qualified Telescope
 
 data Entry m
-  = Unsolved (Syntax.Type Void) !Int (EnumSet Postponement.Index) !Span.Relative
-  | Solved (Syntax.Term Void) !CachedMetas (Syntax.Type Void)
-  | LazilySolved !(m (Syntax.Term Void)) (Syntax.Type Void)
+  = Unsolved (Syntax.Type Index.Zero) !Int (EnumSet Postponement.Index) !Span.Relative
+  | Solved (Syntax.Term Index.Zero) !CachedMetas (Syntax.Type Index.Zero)
+  | LazilySolved !(m (Syntax.Term Index.Zero)) (Syntax.Type Index.Zero)
 
 data CachedMetas = CachedMetas
   { direct :: EnumSet Meta.Index
@@ -41,7 +42,7 @@ instance Semigroup CachedMetas where
 instance Monoid CachedMetas where
   mempty = CachedMetas mempty mempty mempty
 
-entryType :: Entry m -> Syntax.Type Void
+entryType :: Entry m -> Syntax.Type Index.Zero
 entryType entry =
   case entry of
     Unsolved type_ _ _ _ ->
@@ -67,7 +68,7 @@ lookup :: Meta.Index -> State m -> Entry m
 lookup index state =
   state.entries EnumMap.! index
 
-new :: Syntax.Term Void -> Int -> Span.Relative -> State m -> (State m, Meta.Index)
+new :: Syntax.Term Index.Zero -> Int -> Span.Relative -> State m -> (State m, Meta.Index)
 new type_ arity span state =
   let index = state.nextIndex
    in ( State
@@ -77,7 +78,7 @@ new type_ arity span state =
       , index
       )
 
-solve :: Meta.Index -> Syntax.Term Void -> State m -> (State m, (Int, EnumSet Postponement.Index))
+solve :: Meta.Index -> Syntax.Term Index.Zero -> State m -> (State m, (Int, EnumSet Postponement.Index))
 solve index term state =
   (state {entries = entries'}, data_)
   where
@@ -97,7 +98,7 @@ solve index term state =
         Just LazilySolved {} ->
           panic "Solving an already solved meta variable"
 
-lazilySolve :: Meta.Index -> m (Syntax.Term Void) -> State m -> (State m, (Int, EnumSet Postponement.Index))
+lazilySolve :: Meta.Index -> m (Syntax.Term Index.Zero) -> State m -> (State m, (Int, EnumSet Postponement.Index))
 lazilySolve index mterm state =
   (state {entries = entries'}, data_)
   where
@@ -145,8 +146,8 @@ addPostponedIndices index postponementIndices state =
 -- Eager entries
 
 data EagerEntry
-  = EagerUnsolved (Syntax.Type Void) !Int (EnumSet Postponement.Index) !Span.Relative
-  | EagerSolved (Syntax.Term Void) CachedMetas (Syntax.Type Void)
+  = EagerUnsolved (Syntax.Type Index.Zero) !Int (EnumSet Postponement.Index) !Span.Relative
+  | EagerSolved (Syntax.Term Index.Zero) CachedMetas (Syntax.Type Index.Zero)
   deriving (Eq, Generic, Hashable)
 
 data EagerState = EagerState
@@ -183,7 +184,7 @@ toEagerEntry entry =
             termMetas solution <> termMetas type_
       pure $ EagerSolved solution mempty {direct = metas, unsolved = metas} type_
 
-toEagerState :: (Monad m) => State m -> Syntax.Definition -> Maybe (Syntax.Type Void) -> m EagerState
+toEagerState :: (Monad m) => State m -> Syntax.Definition -> Maybe (Syntax.Type Index.Zero) -> m EagerState
 toEagerState state definition maybeType = do
   entries_ <- go (definitionMetas definition <> foldMap termMetas maybeType) mempty
   pure

@@ -36,7 +36,8 @@ import Extra
 import Flexibility (Flexibility)
 import qualified Flexibility
 import GHC.Exts (fromList)
-import Index
+import Index (Index (Index), Scope)
+import qualified Index
 import qualified Index.Map as Index
 import Literal (Literal)
 import qualified Meta
@@ -650,7 +651,7 @@ fullyApplyToMetas context constr type_ = do
       constrType' <-
         Evaluation.evaluate
           Environment.empty
-          (Syntax.fromVoid $ Telescope.fold Syntax.Pi constrType)
+          (Syntax.fromZero $ Telescope.fold Syntax.Pi constrType)
       instantiatedConstrType <- Context.instantiateType context constrType' typeArgs
       (metas, _) <- Elaboration.insertMetas context Elaboration.UntilTheEnd instantiatedConstrType
       pure $ Domain.Con constr $ Tsil.fromSeq typeArgs <> fromList metas
@@ -700,7 +701,7 @@ checkSolution
   -> Meta.Index
   -> Seq (Plicity, Var)
   -> Domain.Value
-  -> M (Syntax.Term Void)
+  -> M (Syntax.Term Index.Zero)
 checkSolution outerContext meta vars value = do
   let indices = IntSeq.fromSeq $ snd <$> vars
       renaming =
