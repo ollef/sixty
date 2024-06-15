@@ -11,6 +11,7 @@ import qualified ClosureConverted.Evaluation as Evaluation
 import qualified ClosureConverted.Readback as Readback
 import qualified ClosureConverted.Syntax as Syntax
 import qualified Environment
+import qualified Index
 import qualified Literal
 import Monad
 import qualified Name
@@ -20,7 +21,7 @@ import Rock
 import Telescope (Telescope)
 import qualified Telescope
 
-typeOfDefinition :: Context Void -> Syntax.Definition -> M (Syntax.Type Void)
+typeOfDefinition :: Context Index.Zero -> Syntax.Definition -> M (Syntax.Type Index.Zero)
 typeOfDefinition context definition = do
   let env =
         Context.toEnvironment context
@@ -74,7 +75,7 @@ typeOf context value =
         Evaluation.evaluate (Context.toEnvironment context) $
           Telescope.fold
             (\name domain _ -> Syntax.Pi name domain)
-            (Telescope.fromVoid conType)
+            (Telescope.fromZero conType)
       typeOfApplications conType' $ params <> args
     Domain.Lit lit ->
       case lit of
@@ -100,13 +101,13 @@ typeOfHead context head =
       pure $ Context.lookupVarType var context
     Domain.Global global -> do
       type_ <- fetch $ Query.ClosureConvertedType global
-      type' <- Evaluation.evaluate (Context.toEnvironment context) $ Syntax.fromVoid type_
+      type' <- Evaluation.evaluate (Context.toEnvironment context) $ Syntax.fromZero type_
       case type' of
         Domain.Function tele ->
           Evaluation.evaluate (Context.toEnvironment context) $
             Telescope.fold
               (\name domain _ -> Syntax.Pi name domain)
-              (Telescope.fromVoid tele)
+              (Telescope.fromZero tele)
         _ ->
           pure type'
 

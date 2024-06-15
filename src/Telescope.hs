@@ -6,7 +6,8 @@
 
 module Telescope where
 
-import Index
+import Index (Scope)
+import qualified Index
 import Plicity
 import Protolude
 import Unsafe.Coerce
@@ -82,8 +83,8 @@ foldMap f g tele =
     Extend _ t _ scope ->
       f t <> Telescope.foldMap f g scope
 
-fromVoid :: Telescope n t k Void -> Telescope n t k v
-fromVoid = unsafeCoerce
+fromZero :: Telescope n t k Index.Zero -> Telescope n t k v
+fromZero = unsafeCoerce
 
 length :: Telescope n t k v -> Int
 length tele =

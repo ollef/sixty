@@ -136,7 +136,7 @@ apply env fun args =
       maybeDefinition <- fetchVisibleDefinition global
       case maybeDefinition of
         Just (Syntax.FunctionDefinition tele) -> do
-          maybeResult <- applyFunction env (Telescope.fromVoid tele) (funArgs <> args)
+          maybeResult <- applyFunction env (Telescope.fromZero tele) (funArgs <> args)
           pure $ fromMaybe neutral maybeResult
         _ ->
           pure neutral

@@ -40,7 +40,7 @@ import Var (Var)
 liftDefinition
   :: Name.Qualified
   -> Syntax.Definition
-  -> M (LambdaLifted.Definition, EnumMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void))
+  -> M (LambdaLifted.Definition, EnumMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Index.Zero))
 liftDefinition name def = do
   let env = Environment.empty
   case def of
@@ -165,7 +165,7 @@ telescopeOccurrences tele body =
 
 data LiftState = LiftState
   { nextIndex :: !Int
-  , liftedDefinitions :: EnumMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Void)
+  , liftedDefinitions :: EnumMap Int (Telescope Name LambdaLifted.Type LambdaLifted.Term Index.Zero)
   }
   deriving (Show)
 
@@ -303,7 +303,7 @@ saturatedConstructorApp baseName env con args = do
   if length args < arity
     then do
       lambdas <- lift $ makeConstructorFunction con emptyEnv constructorTypeValue mempty
-      evaluate baseName env (Syntax.fromVoid lambdas) args
+      evaluate baseName env (Syntax.fromZero lambdas) args
     else do
       args' <- mapM (\(_, arg) -> evaluate baseName env arg []) args
       let (params, args'') =
@@ -400,7 +400,7 @@ liftLambda
   :: Name.Qualified
   -> Environment v
   -> Syntax.Term v
-  -> Lift ([Var], Telescope Name LambdaLifted.Type LambdaLifted.Term Void)
+  -> Lift ([Var], Telescope Name LambdaLifted.Type LambdaLifted.Term Index.Zero)
 liftLambda baseName env term = do
   (tele, body) <- evaluateLambdaTelescope baseName env term
 

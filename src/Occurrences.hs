@@ -48,7 +48,7 @@ extend =
   M . Environment.extend
 
 definitionOccurrences
-  :: Domain.Environment Void
+  :: Domain.Environment Index.Zero
   -> Scope.DefinitionKind
   -> Name.Qualified
   -> M Intervals

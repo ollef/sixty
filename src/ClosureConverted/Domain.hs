@@ -6,7 +6,8 @@ import qualified ClosureConverted.Syntax as Syntax
 import Data.Tsil (Tsil)
 import qualified Data.Tsil as Tsil
 import qualified Environment
-import Index
+import Index (Scope)
+import qualified Index
 import Literal (Literal)
 import Monad
 import Name (Name)
@@ -22,7 +23,7 @@ data Value
   | Glued !Head Spine !Value
   | Lazy !(Lazy Value)
   | Pi !Name !Type !Closure
-  | Function !(Telescope Name Syntax.Type Syntax.Type Void)
+  | Function !(Telescope Name Syntax.Type Syntax.Type Index.Zero)
 
 data Head
   = Var !Var

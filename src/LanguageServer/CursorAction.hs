@@ -163,7 +163,7 @@ type RelativeCallback a =
 definitionAction
   :: forall a
    . RelativeCallback a
-  -> Environment Void
+  -> Environment Index.Zero
   -> Scope.DefinitionKind
   -> Name.Qualified
   -> MaybeT M a

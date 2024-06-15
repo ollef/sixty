@@ -4,7 +4,8 @@
 
 module Low.Syntax where
 
-import Index
+import Index (Index, Scope)
+import qualified Index
 import Literal (Literal)
 import Low.PassBy (PassBy)
 import Low.Representation (Representation)
@@ -56,7 +57,7 @@ type Type = Term
 
 data Definition
   = ConstantDefinition !Representation
-  | FunctionDefinition !(Function Void)
+  | FunctionDefinition !(Function Index.Zero)
   deriving (Eq, Show, Generic, Hashable)
 
 data Signature

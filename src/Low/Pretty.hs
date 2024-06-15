@@ -13,7 +13,8 @@ import qualified Data.HashSet as HashSet
 import qualified Data.Kind
 import qualified Data.Sequence as Seq
 import qualified Data.Text.Unsafe as Text
-import Index
+import Index (Index (Index))
+import qualified Index
 import qualified Low.Syntax as Syntax
 import Name (Name (Name))
 import qualified Name
@@ -35,7 +36,7 @@ data Environment (v :: Data.Kind.Type) = Environment
   , importedAliases :: HashMap Name.Qualified (HashSet Name.Surface)
   }
 
-extend :: Environment v -> Name -> (Environment (Succ v), Name.Surface)
+extend :: Environment v -> Name -> (Environment (Index.Succ v), Name.Surface)
 extend env (Name name) =
   go (Name.Surface name : [Name.Surface $ name <> show (i :: Int) | i <- [0 ..]])
   where
@@ -50,7 +51,7 @@ extend env (Name name) =
           )
     go [] = panic "Pretty.extend"
 
-empty :: Environment Void
+empty :: Environment Index.Zero
 empty =
   Environment
     { varNames = mempty
@@ -59,7 +60,7 @@ empty =
     , importedAliases = mempty
     }
 
-emptyM :: (MonadFetch Query m) => Name.Module -> m (Environment Void)
+emptyM :: (MonadFetch Query m) => Name.Module -> m (Environment Index.Zero)
 emptyM module_ = do
   importedNames <- fetch $ Query.ImportedNames module_ Mapped.Map
   (localScope, _) <- fetch $ Query.ModuleScope module_
@@ -201,7 +202,7 @@ prettyBranch env = \case
 
 -------------------------------------------------------------------------------
 
-prettyDefinition :: Environment Void -> Name.Lowered -> Syntax.Definition -> Doc ann
+prettyDefinition :: Environment Index.Zero -> Name.Lowered -> Syntax.Definition -> Doc ann
 prettyDefinition env name = \case
   Syntax.ConstantDefinition repr ->
     prettyLoweredGlobal env name <+> "global" <+> pretty repr

@@ -9,7 +9,7 @@ import qualified Core.Evaluation as Evaluation
 import qualified Core.Syntax as Syntax
 import qualified Data.OrderedHashMap as OrderedHashMap
 import qualified Environment
-import Index
+import Index (Scope)
 import Monad
 import Protolude hiding (IntMap, Seq, evaluate, force, head)
 import Telescope (Telescope)

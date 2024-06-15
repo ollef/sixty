@@ -8,7 +8,8 @@ module LambdaLifted.Syntax where
 
 import Boxity
 import Data.OrderedHashMap (OrderedHashMap)
-import Index
+import Index (Index, Scope)
+import qualified Index
 import Literal (Literal)
 import Name (Name)
 import qualified Name
@@ -53,9 +54,9 @@ data Branches v
   deriving (Eq, Show, Generic, Hashable)
 
 data Definition
-  = TypeDeclaration !(Type Void)
-  | ConstantDefinition !(Telescope Name Type Term Void)
-  | DataDefinition !Boxity !(Telescope Name Type ConstructorDefinitions Void)
+  = TypeDeclaration !(Type Index.Zero)
+  | ConstantDefinition !(Telescope Name Type Term Index.Zero)
+  | DataDefinition !Boxity !(Telescope Name Type ConstructorDefinitions Index.Zero)
   deriving (Eq, Show, Generic, Hashable)
 
 newtype ConstructorDefinitions v

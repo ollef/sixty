@@ -5,6 +5,7 @@ module ClosureConversion where
 
 import qualified ClosureConverted.Syntax as ClosureConverted
 import qualified Data.OrderedHashMap as OrderedHashMap
+import qualified Index
 import qualified LambdaLifted.Syntax as LambdaLifted
 import Name (Name)
 import qualified Name
@@ -133,7 +134,7 @@ convertGlobal global args = do
     LambdaLifted.DataDefinition _ tele ->
       functionCase tele
 
-convertTypeDeclaration :: (MonadFetch Query m) => LambdaLifted.Type Void -> m (ClosureConverted.Type Void)
+convertTypeDeclaration :: (MonadFetch Query m) => LambdaLifted.Type Index.Zero -> m (ClosureConverted.Type Index.Zero)
 convertTypeDeclaration type_ =
   case LambdaLifted.pisView identity type_ of
     Telescope.Empty _ ->

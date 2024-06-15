@@ -593,7 +593,7 @@ boxedConstructorSize env con params args = do
   tele <- fetch $ Query.ClosureConvertedConstructorType con
   params' <- mapM (Evaluation.evaluate env) params
   args' <- mapM (Evaluation.evaluate env) args
-  maybeResult <- Evaluation.applyTelescope env (Telescope.fromVoid tele) params' \env' type_ -> do
+  maybeResult <- Evaluation.applyTelescope env (Telescope.fromZero tele) params' \env' type_ -> do
     type' <- Evaluation.evaluate env' type_
     size <- CC.Representation.compileBoxedConstructorFields env' type' args'
     Evaluation.evaluate env' size
@@ -647,7 +647,7 @@ moduleInit moduleName definitions = do
     ]
   where
     constantsToInitialize =
-      [defName | defName@(Name.Lowered _ Name.Init) <- definitions] 
+      [defName | defName@(Name.Lowered _ Name.Init) <- definitions]
 
     initedName = moduleInitedName moduleName
 
