@@ -683,10 +683,10 @@ readback env = \case
   HeapAllocate con repr -> Low.Syntax.HeapAllocate con $ readbackOperand env repr
   HeapPayload operand -> Low.Syntax.HeapPayload $ readbackOperand env operand
   PointerTag operand -> Low.Syntax.PointerTag $ readbackOperand env operand
-  Offset offset operand ->
+  Offset base offset ->
     Low.Syntax.Offset
+      (readbackOperand env base)
       (readbackOperand env offset)
-      (readbackOperand env operand)
   Copy dst src size ->
     Low.Syntax.Copy
       (readbackOperand env dst)
