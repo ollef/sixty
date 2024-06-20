@@ -86,15 +86,15 @@ prettyTerm env = \case
     "case"
       <+> prettyOperand env scrutinee
       <+> "of"
-      <> line
-      <> indent
-        2
-        ( vcat $
-            (prettyBranch env <$> branches)
-              <> [ "_" <+> "->" <+> prettyTerm env branch
-                 | Just branch <- [defaultBranch]
-                 ]
-        )
+        <> line
+        <> indent
+          2
+          ( vcat $
+              (prettyBranch env <$> branches)
+                <> [ "_" <+> "->" <+> prettyTerm env branch
+                   | Just branch <- [defaultBranch]
+                   ]
+          )
   Syntax.Call function args ->
     "call"
       <+> prettyLoweredGlobal env function
@@ -115,6 +115,10 @@ prettyTerm env = \case
     "store" <+> commaSep [prettyOperand env dst, pretty repr <+> prettyOperand env src]
   Syntax.Load src repr ->
     "load" <+> pretty repr <+> prettyOperand env src
+  Syntax.IncreaseReferenceCount operand repr ->
+    "increase_reference_count" <+> pretty repr <+> prettyOperand env operand
+  Syntax.DecreaseReferenceCount operand repr ->
+    "decrease_reference_count" <+> pretty repr <+> prettyOperand env operand
 
 prettySeq :: Environment v -> Syntax.Term v -> Doc ann
 prettySeq env = \case
@@ -125,8 +129,8 @@ prettySeq env = \case
       <+> pretty name'
       <+> "="
       <+> prettyTerm env term
-      <> line
-      <> prettySeq env' body
+        <> line
+        <> prettySeq env' body
   Syntax.Seq term1 term2 ->
     prettyTerm env term1
       <> line
@@ -217,5 +221,5 @@ prettyFunction env = \case
     "("
       <> pretty passArgBy
       <+> pretty name'
-      <> ")"
-      <> prettyFunction env' function'
+        <> ")"
+        <> prettyFunction env' function'

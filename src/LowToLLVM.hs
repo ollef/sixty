@@ -409,17 +409,11 @@ assembleTerm
   -> Assembler (Operand, Maybe StackAllocation)
 assembleTerm env nameSuggestion passBy = \case
   Syntax.Operand o -> do
-    (passOperandBy, o') <- assembleOperand env o
-    case passOperandBy of
-      PassBy.Value repr -> increaseReferenceCount repr o'
-      PassBy.Reference -> pure ()
+    (_, o') <- assembleOperand env o
     pure (o', Nothing)
   Syntax.Let passLetBy name term body -> do
     (termResult, termStack) <- assembleTerm env (Just name) passLetBy term
     (bodyResult, bodyStack) <- assembleTerm (env Index.Seq.:> (passLetBy, termResult)) nameSuggestion passBy body
-    case passLetBy of
-      PassBy.Value repr -> decreaseReferenceCount repr termResult
-      PassBy.Reference -> pure ()
     mapM_ restoreStack termStack
     mapM_ restoreStack bodyStack
     pure (bodyResult, Nothing)
@@ -625,7 +619,6 @@ assembleTerm env nameSuggestion passBy = \case
   Syntax.Store dst src repr -> do
     dst' <- assembleOperand env dst
     src' <- assembleOperand env src
-    increaseReferenceCount repr $ snd src'
     (dstPointerPointer, dstNonPointerPointer) <- extractParts dst'
     case (pointerType repr.pointers, nonPointerType repr.nonPointerBytes) of
       (Nothing, Nothing) -> pure ()
@@ -659,8 +652,15 @@ assembleTerm env nameSuggestion passBy = \case
         result <- constructTuple (fromMaybe "load_result" nameSuggestion) p pointers np nonPointers
         pure $ Local result
 
-    increaseReferenceCount repr result
     pure (result, Nothing)
+  Syntax.IncreaseReferenceCount val repr -> do
+    (_, val') <- assembleOperand env val
+    increaseReferenceCount repr val'
+    pure (Constant "undef", Nothing)
+  Syntax.DecreaseReferenceCount val repr -> do
+    (_, val') <- assembleOperand env val
+    decreaseReferenceCount repr val'
+    pure (Constant "undef", Nothing)
 
 assembleOperand :: Environment v -> Syntax.Operand v -> Assembler (PassBy, Operand)
 assembleOperand env = \case

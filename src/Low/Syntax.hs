@@ -27,6 +27,8 @@ data Term v
   | Copy !(Operand v) !(Operand v) !(Operand v)
   | Store !(Operand v) !(Operand v) !Representation
   | Load !(Operand v) !Representation
+  | IncreaseReferenceCount !(Operand v) !Representation
+  | DecreaseReferenceCount !(Operand v) !Representation
   deriving (Eq, Show, Generic, Hashable)
 
 data Operand v

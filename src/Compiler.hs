@@ -39,6 +39,11 @@ compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel pri
       forM_ defs \(defName, def) ->
         liftIO $ putDocW 120 $ Pretty.prettyDefinition emptyPrettyEnv defName def <> line <> line
 
+      liftIO $ putDocW 120 $ "rc module" <+> pretty moduleName <> line <> line
+      rcDefs <- fetch $ Query.ReferenceCountedLowModule moduleName
+      forM_ rcDefs \(defName, def) ->
+        liftIO $ putDocW 120 $ Pretty.prettyDefinition emptyPrettyEnv defName def <> line <> line
+
     llvmModule <- fetch $ Query.LLVMModule moduleName
     let llvmFileName = moduleAssemblyDir </> toS moduleNameText <.> "ll"
     liftIO $ Lazy.writeFile llvmFileName llvmModule

@@ -10,6 +10,7 @@ import Data.EnumMap (EnumMap)
 import qualified Data.EnumMap as EnumMap
 import Data.EnumSet (EnumSet)
 import qualified Data.EnumSet as EnumSet
+import Index (Index)
 import qualified Index.Map
 import qualified Index.Map as Index (Map)
 import Literal (Literal)
@@ -44,6 +45,8 @@ data Value
   | Copy !Operand !Operand !Operand
   | Store !Operand !Operand !Representation
   | Load !Operand !Representation
+  | IncreaseReferenceCount !Operand !Representation
+  | DecreaseReferenceCount !Operand !Representation
   deriving (Show)
 
 data Operand
@@ -59,6 +62,38 @@ data Branch
   = ConstructorBranch !Name.QualifiedConstructor !Value
   | LiteralBranch !Literal !Value
   deriving (Show)
+
+referenceCountDefinition :: Syntax.Definition -> M Syntax.Definition
+referenceCountDefinition = \case
+  def@(Syntax.ConstantDefinition _) -> pure def
+  Syntax.FunctionDefinition function ->
+    Syntax.FunctionDefinition <$> referenceCountFunction Index.Map.Empty mempty function
+
+referenceCountFunction :: Index.Map v Var -> EnumSet Var -> Syntax.Function v -> M (Syntax.Function v)
+referenceCountFunction env liveOut = \case
+  Syntax.Body passBy term -> do
+    (value, liveIn) <- evaluate env liveOut term
+    when (liveIn /= liveOut) $ panic "liveIn liveOut mismatch"
+    value' <-
+      flip
+        evalStateT
+        ReferenceCountState
+          { provenances = mempty
+          , children = mempty
+          }
+        $ do
+          (value', valueProvenance) <- referenceCount passBy value
+          case valueProvenance of
+            Nothing -> case passBy of
+              PassBy.Reference -> pure value'
+              PassBy.Value repr -> increase value' repr
+            Just (Owned _) -> pure value'
+            Just (Child _) -> panic "Returning child"
+    pure $ Syntax.Body passBy $ readback env value'
+  Syntax.Parameter name passBy function -> do
+    var <- freshVar
+    function' <- referenceCountFunction (env Index.Map.:> var) (EnumSet.insert var liveOut) function
+    pure $ Syntax.Parameter name passBy function'
 
 evaluate :: Index.Map v Var -> EnumSet Var -> Syntax.Term v -> M (Value, EnumSet Var)
 evaluate env liveOut = \case
@@ -124,6 +159,8 @@ evaluate env liveOut = \case
   Syntax.Load ref repr -> do
     let (ref', liveIn) = evaluateOperand env liveOut ref
     pure (Load ref' repr, liveIn)
+  Syntax.IncreaseReferenceCount {} -> panic "RC operations before reference counting"
+  Syntax.DecreaseReferenceCount {} -> panic "RC operations before reference counting"
 
 evaluateOperand :: Index.Map v Var -> EnumSet Var -> Syntax.Operand v -> (Operand, EnumSet Var)
 evaluateOperand env liveOut = \case
@@ -151,7 +188,7 @@ data ReferenceCountState = ReferenceCountState
   }
   deriving (Show)
 
-type ReferenceCount = State ReferenceCountState
+type ReferenceCount = StateT ReferenceCountState M
 
 data Provenance
   = Owned !Representation
@@ -174,23 +211,54 @@ referenceCount passBy value = case value of
     Undefined _ -> pure (value, Nothing)
   Let passValBy name var dead val body -> do
     (val', maybeValProvenance) <- referenceCount passValBy val
-    undefined dead
     forM_ maybeValProvenance \valProvenance ->
       modify \s -> s {provenances = EnumMap.insert var valProvenance s.provenances}
+    val'' <- case dead of
+      NotDead ->
+        pure val'
+      Dead -> do
+        decrease <- referenceCountOperand $ Var Killed var
+        decreaseAfter decrease val' passValBy
     (body', bodyProvenance) <- referenceCount passBy body
-    pure (Let passValBy name var dead val' body', bodyProvenance)
+    pure (Let passValBy name var dead val'' body', bodyProvenance)
   Seq lhs rhs -> do
-    (lhs', _lhsProvenance) <- referenceCount (PassBy.Value mempty) lhs
+    (lhs', lhsProvenance) <- referenceCount (PassBy.Value mempty) lhs
+    when (isJust lhsProvenance) $ panic $ "Seq with provenance " <> show lhs'
     (rhs', rhsProvenance) <- referenceCount passBy rhs
     pure (Seq lhs' rhs', rhsProvenance)
-  Case scrutinee branches maybeDefaultBranch -> undefined
+  Case scrutinee branches maybeDefaultBranch -> do
+    decreaseScrutinee <- referenceCountOperand scrutinee
+    startingState <- get
+    branches' <- forM branches \(killedVars, branch) -> do
+      put startingState
+      decreases <- catMaybes <$> forM (EnumSet.toList killedVars) kill
+      branch' <- case branch of
+        ConstructorBranch constr branchValue -> do
+          (branchValue', provenance) <- referenceCount passBy branchValue
+          when (isJust provenance) $ panic $ "Branch with provenance " <> show branchValue'
+          pure $ ConstructorBranch constr $ decreaseBefore decreases branchValue'
+        LiteralBranch lit branchValue -> do
+          (branchValue', provenance) <- referenceCount passBy branchValue
+          when (isJust provenance) $ panic $ "Branch with provenance " <> show branchValue'
+          pure $ LiteralBranch lit $ decreaseBefore decreases branchValue'
+      pure (killedVars, branch')
+    maybeDefaultBranch' <- forM maybeDefaultBranch \(killedVars, branch) -> do
+      put startingState
+      decreases <- catMaybes <$> forM (EnumSet.toList killedVars) kill
+      (branch', provenance) <- referenceCount passBy branch
+      when (isJust provenance) $ panic $ "Branch with provenance " <> show branch'
+      pure (killedVars, decreaseBefore decreases branch')
+    value' <- decreaseAfter decreaseScrutinee (Case scrutinee branches' maybeDefaultBranch') passBy
+    pure (value', Nothing)
   Call _ args -> do
-    decreases <- catMaybes <$> mapM (referenceCountOperand kill) args
-    value' <- decreaseAfter decreases value
+    decreases <- catMaybes <$> mapM referenceCountOperand args
+    value' <- decreaseAfter decreases value passBy
     pure
       ( value'
       , case passBy of
-          PassBy.Value repr -> Just $ Owned repr
+          PassBy.Value repr
+            | needsReferenceCounting repr -> Just $ Owned repr
+            | otherwise -> Nothing
           PassBy.Reference -> Nothing
       )
   StackAllocate _ ->
@@ -201,54 +269,104 @@ referenceCount passBy value = case value of
     maybeParent <- tryMakeParent pointer
     pure (value, Child <$> maybeParent)
   PointerTag operand -> do
-    decrease <- referenceCountOperand kill operand
-    value' <- decreaseAfter decrease value
+    decrease <- referenceCountOperand operand
+    value' <- decreaseAfter decrease value passBy
     pure (value', Nothing)
   Offset base _ -> do
     maybeParent <- tryMakeParent base
     pure (value, Child <$> maybeParent)
   Copy dst src _ -> do
-    decreaseDst <- referenceCountOperand kill dst
-    decreaseSrc <- referenceCountOperand kill src
-    value' <- decreaseAfter decreaseDst value
-    value'' <- decreaseAfter decreaseSrc value'
+    decreaseDst <- referenceCountOperand dst
+    decreaseSrc <- referenceCountOperand src
+    value' <- decreaseAfter decreaseDst value passBy
+    value'' <- decreaseAfter decreaseSrc value' passBy
     pure (value'', Nothing)
   Store dst (Var Killed src) _ -> do
-    decreaseDst <- referenceCountOperand kill dst
+    decreaseDst <- referenceCountOperand dst
     decreaseSrc <- kill src
-    value' <- decreaseAfter decreaseDst value
+    value' <- decreaseAfter decreaseDst value passBy
     case decreaseSrc of
       Just (var, _) | var == src -> do
         pure (value', Nothing)
       _ -> do
-        value'' <- decreaseAfter decreaseSrc value'
+        value'' <- decreaseAfter decreaseSrc value' passBy
         pure (value'', Nothing)
   Store dst src repr -> do
-    decreaseDst <- referenceCountOperand kill dst
-    decreaseSrc <- referenceCountOperand kill src
-    value' <- increaseBefore src repr value
-    value'' <- decreaseAfter decreaseDst value'
-    value''' <- decreaseAfter decreaseSrc value''
+    decreaseDst <- referenceCountOperand dst
+    decreaseSrc <- referenceCountOperand src
+    let value' = increaseBefore src repr value
+    value'' <- decreaseAfter decreaseDst value' passBy
+    value''' <- decreaseAfter decreaseSrc value'' passBy
     pure (value''', Nothing)
-  Load src repr -> do
-    maybeParent <- tryMakeParent src
-    case maybeParent of
-      Nothing -> do
-        decrease <- referenceCountOperand kill src
-        value' <- increase value repr
-        value'' <- decreaseAfter decrease value'
-        pure (value'', Just $ Owned repr)
-      Just parent -> do
-        pure (value, Just $ Child parent)
+  Load src repr
+    | needsReferenceCounting repr -> do
+        maybeParent <- tryMakeParent src
+        case maybeParent of
+          Nothing -> do
+            decrease <- referenceCountOperand src
+            value' <- decreaseAfter decrease value passBy
+            pure (value', Nothing)
+          Just parent -> do
+            pure (value, Just $ Child parent)
+    | otherwise -> do
+        decreaseSrc <- referenceCountOperand src
+        value' <- decreaseAfter decreaseSrc value passBy
+        pure (value', Nothing)
+  IncreaseReferenceCount {} -> panic "RC operations before reference counting"
+  DecreaseReferenceCount {} -> panic "RC operations before reference counting"
 
-increaseBefore :: Operand -> Representation -> Value -> ReferenceCount Value
-increaseBefore = undefined
+needsReferenceCounting :: Representation -> Bool
+needsReferenceCounting repr = repr.pointers > 0
+
+increaseBefore :: Operand -> Representation -> Value -> Value
+increaseBefore operand repr value
+  | needsReferenceCounting repr = Seq (IncreaseReferenceCount operand repr) value
+  | otherwise = value
 
 increase :: Value -> Representation -> ReferenceCount Value
-increase = undefined
+increase value repr
+  | needsReferenceCounting repr = do
+      var <- lift freshVar
+      pure $
+        Let (PassBy.Value repr) "temp" var NotDead value $
+          Seq (IncreaseReferenceCount (Var Killed var) repr) $
+            Operand $
+              Var Killed var
+  | otherwise = pure value
 
-decreaseAfter :: f (Var, Representation) -> Value -> ReferenceCount Value
-decreaseAfter = undefined
+decreaseBefore
+  :: Foldable f
+  => f (Var, Representation)
+  -> Value
+  -> Value
+decreaseBefore vars value =
+  foldr
+    ( \(v, repr) ->
+        if needsReferenceCounting repr
+          then Seq $ DecreaseReferenceCount (Var Killed v) repr
+          else identity
+    )
+    value
+    vars
+
+decreaseAfter
+  :: Foldable f
+  => f (Var, Representation)
+  -> Value
+  -> PassBy
+  -> ReferenceCount Value
+decreaseAfter vars value passBy =
+  case vars' of
+    [] -> pure value
+    _ -> do
+      var <- lift freshVar
+      pure $
+        Let passBy "temp" var NotDead value $
+          decreaseBefore vars' $
+            Operand $
+              Var Killed var
+  where
+    vars' = filter (needsReferenceCounting . snd) $ toList vars
 
 tryMakeParent :: Operand -> ReferenceCount (Maybe Var)
 tryMakeParent = \case
@@ -268,9 +386,9 @@ tryMakeParent = \case
   Tag _ -> pure Nothing
   Undefined _ -> pure Nothing
 
-referenceCountOperand :: (Var -> ReferenceCount (Maybe a)) -> Operand -> ReferenceCount (Maybe a)
-referenceCountOperand onKilled = \case
-  Var Killed var -> onKilled var
+referenceCountOperand :: Operand -> ReferenceCount (Maybe (Var, Representation))
+referenceCountOperand = \case
+  Var Killed var -> kill var
   Var NotKilled _ -> pure Nothing
   Global _ _ -> pure Nothing
   Literal _ -> pure Nothing
@@ -309,60 +427,58 @@ kill var = do
         (0, _) -> panic "Non-owned variable with children"
         _ -> pure Nothing
 
--- data Ownership
---   = Borrowed
---   | Owned
---   deriving (Show)
+-------------------------------------------------------------------------------
 
--- data ReferenceCountState = ReferenceCountState
---   { owned :: EnumMap Var Representation
---   , borrowed :: EnumMap Var Representation
---   }
+readback :: Index.Map v Var -> Value -> Syntax.Term v
+readback env = \case
+  Operand operand -> Syntax.Operand $ readbackOperand env operand
+  Let passBy name var _dead value value' ->
+    Syntax.Let
+      passBy
+      name
+      (readback env value)
+      (readback (env Index.Map.:> var) value')
+  Seq value value' ->
+    Syntax.Seq (readback env value) (readback env value')
+  Case scrutinee branches maybeDefaultBranch ->
+    Syntax.Case
+      (readbackOperand env scrutinee)
+      (readbackBranch env . snd <$> branches)
+      (readback env . snd <$> maybeDefaultBranch)
+  Call fun args -> Syntax.Call fun $ readbackOperand env <$> args
+  StackAllocate repr -> Syntax.StackAllocate $ readbackOperand env repr
+  HeapAllocate con repr -> Syntax.HeapAllocate con $ readbackOperand env repr
+  HeapPayload operand -> Syntax.HeapPayload $ readbackOperand env operand
+  PointerTag operand -> Syntax.PointerTag $ readbackOperand env operand
+  Offset base offset ->
+    Syntax.Offset
+      (readbackOperand env base)
+      (readbackOperand env offset)
+  Copy dst src size ->
+    Syntax.Copy
+      (readbackOperand env dst)
+      (readbackOperand env src)
+      (readbackOperand env size)
+  Store dst value repr -> Syntax.Store (readbackOperand env dst) (readbackOperand env value) repr
+  Load src repr -> Syntax.Load (readbackOperand env src) repr
+  IncreaseReferenceCount operand repr -> Syntax.IncreaseReferenceCount (readbackOperand env operand) repr
+  DecreaseReferenceCount operand repr -> Syntax.DecreaseReferenceCount (readbackOperand env operand) repr
 
--- type ReferenceCount = State ReferenceCountState
+readbackOperand :: Index.Map v Var -> Operand -> Syntax.Operand v
+readbackOperand env = \case
+  Var _ var -> Syntax.Var $ readbackVar env var
+  Global repr global -> Syntax.Global repr global
+  Literal lit -> Syntax.Literal lit
+  Representation repr -> Syntax.Representation repr
+  Tag tag -> Syntax.Tag tag
+  Undefined repr -> Syntax.Undefined repr
 
--- data Provenance
---   = Unmanaged
---   | Managed !Ownership !Representation
+readbackVar :: Index.Map v Var -> Var -> Index v
+readbackVar env var =
+  fromMaybe (panic "Lower.readbackVar") $
+    Index.Map.elemIndex var env
 
--- referenceCount :: Value -> ReferenceCount (Value, Provenance)
--- referenceCount value = case value.payload of
---   Operand operand -> case operand of
---     Var var -> do
---       rc <- get
---       case (EnumMap.lookup var rc.owned, EnumMap.lookup var rc.borrowed) of
---         (Nothing, Nothing) -> pure (value, Unmanaged)
---         (Just repr, _) -> pure (value, Managed Owned repr)
---         (_, Just repr) -> pure (value, Managed Borrowed repr)
---     Global _ _ -> pure (value, Unmanaged)
---     Literal _ -> pure (value, Unmanaged)
---     Representation _ -> pure (value, Unmanaged)
---     Tag _ -> pure (value, Unmanaged)
---     Undefined _ -> pure (value, Unmanaged)
---   Let passBy name var val body -> do
---     do
---       rc <- get
---       let keepAlives = EnumMap.fromSet (const ()) body.keepAlives
---       let valBorrowed = EnumMap.intersection rc.owned keepAlives <> rc.borrowed
---       let valOwned = rc.owned EnumMap.\\ keepAlives
---       put rc {borrowed = valBorrowed, owned = valOwned}
---     (val', provenance) <- referenceCount val
-
---     case provenance of
---       Unmanaged -> undefined
---       Managed Borrowed repr -> undefined
---       Managed Owned repr -> undefined
---   Seq lhs rhs -> do
---     owned <- gets (.owned)
---     -- EnumMap.intersection rhs.keepAlives
---     undefined
---   Case scrutinee branches maybeDefaultBranch -> undefined
---   Call fun args -> undefined
---   StackAllocate size -> undefined
---   HeapAllocate con size -> undefined
---   HeapPayload operand -> undefined
---   PointerTag operand -> undefined
---   Offset offset operand -> undefined
---   Copy dst src size -> undefined
---   Store dst src repr -> undefined
---   Load src repr -> undefined
+readbackBranch :: Index.Map v Var -> Branch -> Syntax.Branch v
+readbackBranch env = \case
+  ConstructorBranch con value -> Syntax.ConstructorBranch con $ readback env value
+  LiteralBranch lit value -> Syntax.LiteralBranch lit $ readback env value

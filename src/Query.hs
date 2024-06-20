@@ -86,6 +86,7 @@ data Query a where
   ConstructorRepresentation :: Name.QualifiedConstructor -> Query (Boxity, Maybe Int)
   LowDefinitions :: Name.Lifted -> Query [(Name.Lowered, Low.Definition)]
   LowModule :: Name.Module -> Query [(Name.Lowered, Low.Definition)]
+  ReferenceCountedLowModule :: Name.Module -> Query [(Name.Lowered, Low.Definition)]
   LLVMModule :: Name.Module -> Query Lazy.ByteString
   LLVMModuleInitModule :: Query Lazy.ByteString
 
@@ -147,8 +148,9 @@ instance Hashable (Query a) where
       ConstructorRepresentation a -> h 32 a
       LowDefinitions a -> h 33 a
       LowModule a -> h 34 a
-      LLVMModule a -> h 35 a
-      LLVMModuleInitModule -> h 36 ()
+      ReferenceCountedLowModule a -> h 35 a
+      LLVMModule a -> h 36 a
+      LLVMModuleInitModule -> h 37 ()
     where
       {-# INLINE h #-}
       h :: (Hashable b) => Int -> b -> Int
