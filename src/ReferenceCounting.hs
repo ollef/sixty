@@ -79,7 +79,6 @@ referenceCountFunction env liveOut = \case
         evalStateT
         ReferenceCountState
           { provenances = mempty
-          , children = mempty
           }
         $ do
           (value', valueProvenance) <- referenceCount passBy value
@@ -87,7 +86,7 @@ referenceCountFunction env liveOut = \case
             Nothing -> case passBy of
               PassBy.Reference -> pure value'
               PassBy.Value repr -> increase value' repr
-            Just (Owned _) -> pure value'
+            Just (Owned _ _) -> pure value'
             Just (Child _) -> panic "Returning child"
     pure $ Syntax.Body passBy $ readback env value'
   Syntax.Parameter name passBy function -> do
@@ -184,14 +183,13 @@ evaluateBranch env liveOut = \case
 
 data ReferenceCountState = ReferenceCountState
   { provenances :: EnumMap Var Provenance
-  , children :: EnumMap Var Int
   }
   deriving (Show)
 
 type ReferenceCount = StateT ReferenceCountState M
 
 data Provenance
-  = Owned !Representation
+  = Owned !PassBy !Int
   | Child !Var
   deriving (Show)
 
@@ -220,7 +218,17 @@ referenceCount passBy value = case value of
         decrease <- referenceCountOperand $ Var Killed var
         decreaseAfter decrease val' passValBy
     (body', bodyProvenance) <- referenceCount passBy body
-    pure (Let passValBy name var dead val'' body', bodyProvenance)
+    modify \s -> s {provenances = EnumMap.delete var s.provenances}
+    case bodyProvenance of
+      Just (Child var') | var == var' ->
+        case passBy of
+          PassBy.Reference -> panic "Returning reference to value going out of scope"
+          PassBy.Value repr -> do
+            decreaseVar <- kill var
+            body'' <- increase body' repr
+            val''' <- decreaseAfter decreaseVar val'' passValBy
+            pure (Let passValBy name var dead val''' body'', Just $ Owned (PassBy.Value repr) 1)
+      _ -> pure (Let passValBy name var dead val'' body', bodyProvenance)
   Seq lhs rhs -> do
     (lhs', lhsProvenance) <- referenceCount (PassBy.Value mempty) lhs
     when (isJust lhsProvenance) $ panic $ "Seq with provenance " <> show lhs'
@@ -257,14 +265,14 @@ referenceCount passBy value = case value of
       ( value'
       , case passBy of
           PassBy.Value repr
-            | needsReferenceCounting repr -> Just $ Owned repr
+            | needsReferenceCounting repr -> Just $ Owned (PassBy.Value repr) 1
             | otherwise -> Nothing
           PassBy.Reference -> Nothing
       )
   StackAllocate _ ->
-    pure (value, Nothing)
+    pure (value, Just $ Owned PassBy.Reference 1)
   HeapAllocate _ _ ->
-    pure (value, Just $ Owned Representation.pointer)
+    pure (value, Just $ Owned (PassBy.Value Representation.pointer) 1)
   HeapPayload pointer -> do
     maybeParent <- tryMakeParent pointer
     pure (value, Child <$> maybeParent)
@@ -281,7 +289,7 @@ referenceCount passBy value = case value of
     value' <- decreaseAfter decreaseDst value passBy
     value'' <- decreaseAfter decreaseSrc value' passBy
     pure (value'', Nothing)
-  Store dst (Var Killed src) _ -> do
+  Store dst (Var Killed src) repr -> do
     decreaseDst <- referenceCountOperand dst
     decreaseSrc <- kill src
     value' <- decreaseAfter decreaseDst value passBy
@@ -289,8 +297,9 @@ referenceCount passBy value = case value of
       Just (var, _) | var == src -> do
         pure (value', Nothing)
       _ -> do
-        value'' <- decreaseAfter decreaseSrc value' passBy
-        pure (value'', Nothing)
+        let value'' = increaseBefore (Var Killed src) repr value'
+        value''' <- decreaseAfter decreaseSrc value'' passBy
+        pure (value''', Nothing)
   Store dst src repr -> do
     decreaseDst <- referenceCountOperand dst
     decreaseSrc <- referenceCountOperand src
@@ -373,11 +382,22 @@ tryMakeParent = \case
   Var _ var -> do
     provenances <- gets (.provenances)
     case EnumMap.lookup var provenances of
-      Just (Owned _) -> do
-        modify \s -> s {children = EnumMap.insertWith (\_ old -> old + 1) var 1 s.children}
+      Just (Owned repr rc) -> do
+        modify \s -> s {provenances = EnumMap.insert var (Owned repr $ rc + 1) s.provenances}
         pure $ Just var
       Just (Child parent) -> do
-        modify \s -> s {children = EnumMap.insertWith (\_ old -> old + 1) parent 1 s.children}
+        modify \s ->
+          s
+            { provenances =
+                EnumMap.alter
+                  ( \case
+                      Nothing -> panic "Child without live parent"
+                      Just (Owned repr rc) -> Just $ Owned repr $ rc + 1
+                      Just (Child _) -> panic "Child without owned parent"
+                  )
+                  parent
+                  s.provenances
+            }
         pure $ Just parent
       _ -> pure Nothing
   Global _ _ -> pure Nothing
@@ -401,31 +421,25 @@ kill var = do
   provenances <- gets (.provenances)
   case EnumMap.lookup var provenances of
     Nothing -> pure Nothing
-    Just (Owned repr) -> do
-      modify \s -> s {children = EnumMap.insertWith (\_ old -> old - 1) var 0 s.children}
-      children <- gets (.children)
-      case EnumMap.findWithDefault (panic "no entry") var children of
-        0 -> do
-          modify \s ->
-            s
-              { provenances = EnumMap.delete var s.provenances
-              , children = EnumMap.delete var s.children
-              }
-          pure $ Just (var, repr)
-        _ -> pure Nothing
+    Just (Owned passBy 1) -> do
+      modify \s -> s {provenances = EnumMap.delete var s.provenances}
+      pure case passBy of
+        PassBy.Value repr -> Just (var, repr)
+        PassBy.Reference -> Nothing
+    Just (Owned passBy rc) -> do
+      modify \s -> s {provenances = EnumMap.insert var (Owned passBy $ rc - 1) s.provenances}
+      pure Nothing
     Just (Child parent) -> do
-      modify \s -> s {children = EnumMap.adjust (subtract 1) parent s.children}
-      children <- gets (.children)
-      case (EnumMap.findWithDefault (panic "no entry") parent children, EnumMap.findWithDefault (panic "no entry") parent provenances) of
-        (0, Owned repr) -> do
-          modify \s ->
-            s
-              { provenances = EnumMap.delete parent s.provenances
-              , children = EnumMap.delete parent s.children
-              }
-          pure $ Just (parent, repr)
-        (0, _) -> panic "Non-owned variable with children"
-        _ -> pure Nothing
+      case EnumMap.findWithDefault (panic "no entry") parent provenances of
+        Owned passBy 1 -> do
+          modify \s -> s {provenances = EnumMap.delete var s.provenances}
+          pure case passBy of
+            PassBy.Value repr -> Just (parent, repr)
+            PassBy.Reference -> Nothing
+        Owned repr rc -> do
+          modify \s -> s {provenances = EnumMap.insert parent (Owned repr $ rc - 1) s.provenances}
+          pure Nothing
+        Child _ -> panic "non-owned parent"
 
 -------------------------------------------------------------------------------
 
