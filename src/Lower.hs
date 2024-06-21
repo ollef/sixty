@@ -43,18 +43,26 @@ import Var (Var)
 
 data Value
   = Operand !Operand
-  | Let !PassBy !Name !Var !Value !Value
-  | Seq !Value !Value
+  | Let !PassBy !Name !Var !LetOperation !Value
+  | Seq !SeqOperation !Value
   | Case !Operand [Branch] (Maybe Value)
-  | Call !Name.Lowered [Operand]
+  deriving (Show)
+
+data LetOperation
+  = Call !Name.Lowered [Operand ]
   | StackAllocate !Operand
   | HeapAllocate !Name.QualifiedConstructor !Operand
   | HeapPayload !Operand
   | PointerTag !Operand
   | Offset !Operand !Operand
-  | Copy !Operand !Operand !Operand
-  | Store !Operand !Operand !Representation
   | Load !Operand !Representation
+  deriving (Show)
+
+data SeqOperation 
+  = Store !Operand !Operand !Representation
+  | Copy !Operand !Operand !Operand
+  | IncreaseReferenceCount !Operand !Representation
+  | DecreaseReferenceCount !Operand !Representation
   deriving (Show)
 
 data Operand
