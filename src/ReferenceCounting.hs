@@ -33,18 +33,24 @@ data Dead = NotDead | Dead
 
 data Value
   = Operand !Operand
-  | Let !PassBy !Name !Var !Dead !Value !Value
-  | Seq !Value !Value
-  | Case !Operand [(EnumSet Var, Branch)] (Maybe (EnumSet Var, Value))
+  | Let !PassBy !Name !Var !Dead !LetOperation !Value
+  | Seq !SeqOperation !Value
+  deriving (Show)
+
+data LetOperation
+  = Case !Operand [(EnumSet Var, Branch)] (Maybe (EnumSet Var, Value))
   | Call !Name.Lowered [Operand]
   | StackAllocate !Operand
   | HeapAllocate !Name.QualifiedConstructor !Operand
   | HeapPayload !Operand
   | PointerTag !Operand
   | Offset !Operand !Operand
-  | Copy !Operand !Operand !Operand
-  | Store !Operand !Operand !Representation
   | Load !Operand !Representation
+  deriving (Show)
+
+data SeqOperation
+  = Store !Operand !Operand !Representation
+  | Copy !Operand !Operand !Operand
   | IncreaseReferenceCount !Operand !Representation
   | DecreaseReferenceCount !Operand !Representation
   deriving (Show)
@@ -94,23 +100,34 @@ referenceCountFunction env liveOut = \case
     function' <- referenceCountFunction (env Index.Map.:> var) (EnumSet.insert var liveOut) function
     pure $ Syntax.Parameter name passBy function'
 
-evaluate :: Index.Map v Var -> EnumSet Var -> Syntax.Term v -> M (Value, EnumSet Var)
+evaluate
+  :: Index.Map v Var
+  -> EnumSet Var
+  -> Syntax.Term v
+  -> M (Value, EnumSet Var)
 evaluate env liveOut = \case
   Syntax.Operand operand -> do
     let (operand', liveIn) = evaluateOperand env liveOut operand
     pure (Operand operand', liveIn)
-  Syntax.Let passBy name term body -> do
+  Syntax.Let passBy name operation body -> do
     var <- freshVar
     (body', bodyLiveIn) <- evaluate (env Index.Map.:> var) liveOut body
-    (term', liveIn) <- evaluate env bodyLiveIn term
+    (operation', liveIn) <- evaluateLetOperation env bodyLiveIn operation
     pure
-      ( Let passBy name var (if EnumSet.member var bodyLiveIn then NotDead else Dead) term' body'
+      ( Let passBy name var (if EnumSet.member var bodyLiveIn then NotDead else Dead) operation' body'
       , EnumSet.delete var liveIn
       )
   Syntax.Seq lhs rhs -> do
     (rhs', rhsLiveIn) <- evaluate env liveOut rhs
-    (lhs', liveIn) <- evaluate env rhsLiveIn lhs
+    (lhs', liveIn) <- evaluateSeqOperation env rhsLiveIn lhs
     pure (Seq lhs' rhs', liveIn)
+
+evaluateLetOperation
+  :: Index.Map v Var
+  -> EnumSet Var
+  -> Syntax.LetOperation v
+  -> M (LetOperation, EnumSet Var)
+evaluateLetOperation env liveOut = \case
   Syntax.Case scrutinee branches maybeDefaultBranch -> do
     branches' <- mapM (evaluateBranch env liveOut) branches
     maybeDefaultBranch' <- mapM (evaluate env liveOut) maybeDefaultBranch
@@ -146,6 +163,16 @@ evaluate env liveOut = \case
     let (size', sizeLiveIn) = evaluateOperand env liveOut size
     let (ref', liveIn) = evaluateOperand env sizeLiveIn ref
     pure (Offset ref' size', liveIn)
+  Syntax.Load ref repr -> do
+    let (ref', liveIn) = evaluateOperand env liveOut ref
+    pure (Load ref' repr, liveIn)
+
+evaluateSeqOperation
+  :: Index.Map v Var
+  -> EnumSet Var
+  -> Syntax.SeqOperation v
+  -> M (SeqOperation, EnumSet Var)
+evaluateSeqOperation env liveOut = \case
   Syntax.Copy dst src size -> do
     let (size', sizeLiveIn) = evaluateOperand env liveOut size
     let (src', srcLiveIn) = evaluateOperand env sizeLiveIn src
@@ -155,9 +182,6 @@ evaluate env liveOut = \case
     let (src', srcLiveIn) = evaluateOperand env liveOut src
     let (dst', liveIn) = evaluateOperand env srcLiveIn dst
     pure (Store dst' src' repr, liveIn)
-  Syntax.Load ref repr -> do
-    let (ref', liveIn) = evaluateOperand env liveOut ref
-    pure (Load ref' repr, liveIn)
   Syntax.IncreaseReferenceCount {} -> panic "RC operations before reference counting"
   Syntax.DecreaseReferenceCount {} -> panic "RC operations before reference counting"
 
@@ -207,16 +231,13 @@ referenceCount passBy value = case value of
     Representation _ -> pure (value, Nothing)
     Tag _ -> pure (value, Nothing)
     Undefined _ -> pure (value, Nothing)
-  Let passValBy name var dead val body -> do
-    (val', maybeValProvenance) <- referenceCount passValBy val
-    forM_ maybeValProvenance \valProvenance ->
+  Let passValBy name var dead operation body -> do
+    (operation', maybeOperationProvenance, decreaseAfters) <- referenceCountLetOperation passValBy val
+    forM_ maybeOperationProvenance \valProvenance ->
       modify \s -> s {provenances = EnumMap.insert var valProvenance s.provenances}
-    val'' <- case dead of
-      NotDead ->
-        pure val'
-      Dead -> do
-        decrease <- referenceCountOperand $ Var Killed var
-        decreaseAfter decrease val' passValBy
+    decreaseVar <- case dead of
+      NotDead -> pure Nothing
+      Dead -> referenceCountOperand $ Var Killed var
     (body', bodyProvenance) <- referenceCount passBy body
     modify \s -> s {provenances = EnumMap.delete var s.provenances}
     case bodyProvenance of
@@ -234,6 +255,12 @@ referenceCount passBy value = case value of
     when (isJust lhsProvenance) $ panic $ "Seq with provenance " <> show lhs'
     (rhs', rhsProvenance) <- referenceCount passBy rhs
     pure (Seq lhs' rhs', rhsProvenance)
+
+referenceCountLetOperation
+  :: PassBy
+  -> LetOperation
+  -> ReferenceCount (LetOperation, Maybe Provenance, [(Var, Representation)])
+referenceCountLetOperation passBy operation = case operation of
   Case scrutinee branches maybeDefaultBranch -> do
     decreaseScrutinee <- referenceCountOperand scrutinee
     startingState <- get
@@ -256,71 +283,58 @@ referenceCount passBy value = case value of
       (branch', provenance) <- referenceCount passBy branch
       when (isJust provenance) $ panic $ "Branch with provenance " <> show branch'
       pure (killedVars, decreaseBefore decreases branch')
-    value' <- decreaseAfter decreaseScrutinee (Case scrutinee branches' maybeDefaultBranch') passBy
-    pure (value', Nothing)
+    pure (Case scrutinee branches' maybeDefaultBranch', Nothing, maybeToList decreaseScrutinee)
   Call _ args -> do
     decreases <- catMaybes <$> mapM referenceCountOperand args
-    value' <- decreaseAfter decreases value passBy
     pure
-      ( value'
+      ( operation
       , case passBy of
           PassBy.Value repr
             | needsReferenceCounting repr -> Just $ Owned (PassBy.Value repr) 1
             | otherwise -> Nothing
           PassBy.Reference -> Nothing
+      , decreases
       )
   StackAllocate _ ->
-    pure (value, Just $ Owned PassBy.Reference 1)
+    pure (operation, Just $ Owned PassBy.Reference 1, [])
   HeapAllocate _ _ ->
-    pure (value, Just $ Owned (PassBy.Value Representation.pointer) 1)
+    pure (operation, Just $ Owned (PassBy.Value Representation.pointer) 1, [])
   HeapPayload pointer -> do
+    decrease <- referenceCountOperand pointer
     maybeParent <- tryMakeParent pointer
-    pure (value, Child <$> maybeParent)
+    pure (operation, Child <$> maybeParent, maybeToList decrease)
   PointerTag operand -> do
     decrease <- referenceCountOperand operand
-    value' <- decreaseAfter decrease value passBy
-    pure (value', Nothing)
+    pure (operation, Nothing, maybeToList decrease)
   Offset base _ -> do
     maybeParent <- tryMakeParent base
-    pure (value, Child <$> maybeParent)
+    pure (operation, Child <$> maybeParent, [])
+  Load src repr -> do
+    maybeParent <-
+      if needsReferenceCounting repr
+        then tryMakeParent src
+        else pure Nothing
+    decreaseSrc <- referenceCountOperand src
+    pure (operation, Child <$> maybeParent, maybeToList decreaseSrc)
+
+referenceCountSeqOperation
+  :: PassBy
+  -> SeqOperation
+  -> ReferenceCount ([(Var, Representation)], [(Var, Representation)])
+referenceCountSeqOperation passBy operation = case operation of
   Copy dst src _ -> do
     decreaseDst <- referenceCountOperand dst
     decreaseSrc <- referenceCountOperand src
-    value' <- decreaseAfter decreaseDst value passBy
-    value'' <- decreaseAfter decreaseSrc value' passBy
-    pure (value'', Nothing)
-  Store dst (Var Killed src) repr -> do
-    decreaseDst <- referenceCountOperand dst
-    decreaseSrc <- kill src
-    value' <- decreaseAfter decreaseDst value passBy
-    case decreaseSrc of
-      Just (var, _) | var == src -> do
-        pure (value', Nothing)
-      _ -> do
-        let value'' = increaseBefore (Var Killed src) repr value'
-        value''' <- decreaseAfter decreaseSrc value'' passBy
-        pure (value''', Nothing)
+    -- TODO
+    pure ([], catMaybes [decreaseDst decreaseSrc])
   Store dst src repr -> do
     decreaseDst <- referenceCountOperand dst
     decreaseSrc <- referenceCountOperand src
-    let value' = increaseBefore src repr value
-    value'' <- decreaseAfter decreaseDst value' passBy
-    value''' <- decreaseAfter decreaseSrc value'' passBy
-    pure (value''', Nothing)
-  Load src repr
-    | needsReferenceCounting repr -> do
-        maybeParent <- tryMakeParent src
-        case maybeParent of
-          Nothing -> do
-            decrease <- referenceCountOperand src
-            value' <- decreaseAfter decrease value passBy
-            pure (value', Nothing)
-          Just parent -> do
-            pure (value, Just $ Child parent)
-    | otherwise -> do
-        decreaseSrc <- referenceCountOperand src
-        value' <- decreaseAfter decreaseSrc value passBy
-        pure (value', Nothing)
+    pure case (src, decreaseSrc) of
+      (Var Killed srcVar, Just (srcVar', _))
+        | srcVar == srcVar' ->
+            ([], maybeToList decreaseDst)
+      _ -> ([(src, repr)], catMaybes [decreaseDst, decreaseSrc])
   IncreaseReferenceCount {} -> panic "RC operations before reference counting"
   DecreaseReferenceCount {} -> panic "RC operations before reference counting"
 

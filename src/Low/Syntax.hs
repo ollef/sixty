@@ -17,11 +17,11 @@ data Term v
   = Operand !(Operand v)
   | Let !PassBy !Name !(LetOperation v) !(Scope Term v)
   | Seq !(SeqOperation v) !(Term v)
-  | Case !(Operand v) [Branch v] (Maybe (Term v))
   deriving (Eq, Show, Generic, Hashable)
 
 data LetOperation v
-  = Call !Name.Lowered [Operand v]
+  = Case !(Operand v) [Branch v] (Maybe (Term v))
+  | Call !Name.Lowered [Operand v]
   | StackAllocate !(Operand v)
   | HeapAllocate !Name.QualifiedConstructor !(Operand v)
   | HeapPayload !(Operand v)
