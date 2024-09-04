@@ -77,6 +77,12 @@ void sixten_increase_reference_count(uintptr_t heap_object) {
   ++header->reference_count;
 }
 
+void sixten_increase_reference_counts(uintptr_t* data, uint32_t count) {
+  for (uint32_t i = 0; i < count; ++i) {
+    sixten_increase_reference_count(data[i]);
+  }
+}
+
 void sixten_decrease_reference_count(uintptr_t heap_object) {
   uint8_t* pointer = heap_object_pointer(heap_object);
   if (pointer == 0) {
