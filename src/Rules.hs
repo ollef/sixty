@@ -53,6 +53,7 @@ import qualified Position
 import Protolude hiding (force, moduleName, try, (<.>))
 import Query
 import qualified Query.Mapped as Mapped
+import qualified ReferenceCounting
 import qualified Resolution
 import Rock
 import qualified Scope
@@ -474,9 +475,13 @@ rules sourceDirectories files readFile_ (Writer (Writer query)) =
             <$> forM (toList names) (fetch . LowDefinitions)
         moduleInitDefs <- runM $ Lower.moduleInit module_ $ fst <$> lowDefinitions
         pure $ moduleInitDefs <> lowDefinitions
+    ReferenceCountedLowModule module_ ->
+      noError do
+        definitions <- fetch $ LowModule module_
+        forM definitions $ mapM $ runM . ReferenceCounting.referenceCountDefinition
     LLVMModule module_ ->
       noError do
-        assemblyDefinitions <- fetch $ LowModule module_
+        assemblyDefinitions <- fetch $ ReferenceCountedLowModule module_
         runM $ LowToLLVM.assembleModule assemblyDefinitions
     LLVMModuleInitModule ->
       noError do

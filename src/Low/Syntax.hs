@@ -15,18 +15,27 @@ import Protolude
 
 data Term v
   = Operand !(Operand v)
-  | Let !PassBy !Name !(Term v) !(Scope Term v)
-  | Seq !(Term v) !(Term v)
-  | Case !(Operand v) [Branch v] (Maybe (Term v))
+  | Let !PassBy !Name !(LetOperation v) !(Scope Term v)
+  | Seq !(SeqOperation v) !(Term v)
+  deriving (Eq, Show, Generic, Hashable)
+
+data LetOperation v
+  = Case !(Operand v) [Branch v] (Maybe (Term v))
   | Call !Name.Lowered [Operand v]
   | StackAllocate !(Operand v)
   | HeapAllocate !Name.QualifiedConstructor !(Operand v)
   | HeapPayload !(Operand v)
   | PointerTag !(Operand v)
   | Offset !(Operand v) !(Operand v)
-  | Copy !(Operand v) !(Operand v) !(Operand v)
-  | Store !(Operand v) !(Operand v) !Representation
   | Load !(Operand v) !Representation
+  deriving (Eq, Show, Generic, Hashable)
+
+data SeqOperation v
+  = Store !(Operand v) !(Operand v) !Representation
+  | Copy !(Operand v) !(Operand v) !(Operand v)
+  | IncreaseReferenceCount !(Operand v) !Representation
+  | IncreaseReferenceCounts !(Operand v) !(Operand v)
+  | DecreaseReferenceCount !(Operand v) !Representation
   deriving (Eq, Show, Generic, Hashable)
 
 data Operand v

@@ -43,18 +43,24 @@ import Var (Var)
 
 data Value
   = Operand !Operand
-  | Let !PassBy !Name !Var !Value !Value
-  | Seq !Value !Value
-  | Case !Operand [Branch] (Maybe Value)
+  | Let !PassBy !Name !Var !LetOperation !Value
+  | Seq !SeqOperation !Value
+  deriving (Show)
+
+data LetOperation
+  = Case !Operand [Branch] (Maybe Value)
   | Call !Name.Lowered [Operand]
   | StackAllocate !Operand
   | HeapAllocate !Name.QualifiedConstructor !Operand
   | HeapPayload !Operand
   | PointerTag !Operand
   | Offset !Operand !Operand
-  | Copy !Operand !Operand !Operand
-  | Store !Operand !Operand !Representation
   | Load !Operand !Representation
+  deriving (Show)
+
+data SeqOperation
+  = Store !Operand !Operand !Representation
+  | Copy !Operand !Operand !Operand
   deriving (Show)
 
 data Operand
@@ -80,50 +86,31 @@ data OperandStorage = OperandStorage !Operand !OperandRepresentation
   deriving (Show)
 
 data Collectible
-  = CollectibleLet !PassBy !Name !Var !Value
-  | CollectibleSeq !Value
+  = CollectibleLet !PassBy !Name !Var !LetOperation
+  | CollectibleSeq !SeqOperation
   deriving (Show)
 
 data Function = Function [(Name, PassBy, Var)] !PassBy !Value
 
 type Collect = StateT (Tsil Collectible) M
 
-let_ :: PassBy -> Name -> Value -> Collect Operand
-let_ repr name = \case
-  Operand operand -> pure operand
-  value -> do
-    var <- lift freshVar
-    modify (Tsil.:> CollectibleLet repr name var value)
-    pure $ Var var
+let_ :: PassBy -> Name -> LetOperation -> Collect Operand
+let_ repr name operation = do
+  var <- lift freshVar
+  modify (Tsil.:> CollectibleLet repr name var operation)
+  pure $ Var var
 
-letReference :: Name -> Value -> Collect Operand
+letReference :: Name -> LetOperation -> Collect Operand
 letReference = let_ PassBy.Reference
 
-letValue :: Representation -> Name -> Value -> Collect Operand
-letValue repr name value = case repr of
-  Representation.Empty -> case value of
-    Operand _ -> pure $ Undefined repr
-    _ -> do
-      seq_ value
-      pure $ Undefined repr
-  _ -> let_ (PassBy.Value repr) name value
+letValue :: Representation -> Name -> LetOperation -> Collect Operand
+letValue = let_ . PassBy.Value
 
-seq_ :: Value -> Collect ()
+seq_ :: SeqOperation -> Collect ()
 seq_ value = modify (Tsil.:> CollectibleSeq value)
 
-collect :: PassBy -> Name -> Collect Operand -> Collect Operand
-collect repr name m = do
-  result <- lift $ runCollect m
-  let_ repr name result
-
-collectReference :: Name -> Collect Operand -> Collect Operand
-collectReference = collect PassBy.Reference
-
-collectValue :: Representation -> Name -> Collect Operand -> Collect Operand
-collectValue = collect . PassBy.Value
-
-runCollect :: Collect Operand -> M Value
-runCollect = genRunCollect Operand (\_ v -> v)
+collect :: Collect Operand -> M Value
+collect = genRunCollect Operand (\_ v -> v)
 
 genRunCollect :: (a -> Value) -> (a -> Value -> b) -> Collect a -> M b
 genRunCollect f g m = do
@@ -132,50 +119,47 @@ genRunCollect f g m = do
     g result $
       foldr
         ( \case
-            CollectibleLet repr n var value -> mkLet repr n var value
-            CollectibleSeq value -> Seq value
+            CollectibleLet repr n var operation -> Let repr n var operation
+            CollectibleSeq operation -> Seq operation
         )
         (f result)
         collectibles
-  where
-    mkLet _repr _name var value (Operand (Var var')) | var == var' = value
-    mkLet repr name var value body = Let repr name var value body
 
-mkCall :: Name.Lifted -> [Operand] -> Value
-mkCall = \cases
-  (Name.Lifted Builtin.AddRepresentationName 0) [Representation x, Representation y] -> Operand $ Representation $ x <> y
-  (Name.Lifted Builtin.AddRepresentationName 0) [Representation Representation.Empty, y] -> Operand y
-  (Name.Lifted Builtin.AddRepresentationName 0) [x, Representation Representation.Empty] -> Operand x
-  (Name.Lifted Builtin.MaxRepresentationName 0) [Representation x, Representation y] -> Operand $ Representation $ Representation.leastUpperBound x y
-  (Name.Lifted Builtin.MaxRepresentationName 0) [Representation Representation.Empty, y] -> Operand y
-  (Name.Lifted Builtin.MaxRepresentationName 0) [x, Representation Representation.Empty] -> Operand x
-  name operands -> Call (Name.Lowered name Name.Original) operands
+letCall :: PassBy -> Name -> Name.Lifted -> [Operand] -> Collect Operand
+letCall passBy name = \cases
+  (Name.Lifted Builtin.AddRepresentationName 0) [Representation x, Representation y] -> pure $ Representation $ x <> y
+  (Name.Lifted Builtin.AddRepresentationName 0) [Representation Representation.Empty, y] -> pure y
+  (Name.Lifted Builtin.AddRepresentationName 0) [x, Representation Representation.Empty] -> pure x
+  (Name.Lifted Builtin.MaxRepresentationName 0) [Representation x, Representation y] -> pure $ Representation $ Representation.leastUpperBound x y
+  (Name.Lifted Builtin.MaxRepresentationName 0) [Representation Representation.Empty, y] -> pure y
+  (Name.Lifted Builtin.MaxRepresentationName 0) [x, Representation Representation.Empty] -> pure x
+  global operands -> let_ passBy name $ Call (Name.Lowered global Name.Original) operands
 
 pattern Original :: Name.Qualified -> Name.Lowered
 pattern Original qname = Name.Lowered (Name.Lifted qname 0) Name.Original
 
-mkLoad :: Operand -> Representation -> Value
-mkLoad = \cases
-  (Global _ (Original Builtin.EmptyRepresentationName)) _ -> Operand $ Representation mempty
-  (Global _ (Original Builtin.PointerRepresentationName)) _ -> Operand $ Representation Representation.pointer
-  (Global _ (Original Builtin.UnitName)) _ -> Operand $ Representation mempty
-  (Global _ (Original Builtin.IntName)) _ -> Operand $ Representation Representation.int
-  _ Representation.Empty -> Operand $ Undefined Representation.Empty
-  operand repr -> Load operand repr
+letLoad :: Name -> Operand -> Representation -> Collect Operand
+letLoad name = \cases
+  (Global _ (Original Builtin.EmptyRepresentationName)) _ -> pure $ Representation mempty
+  (Global _ (Original Builtin.PointerRepresentationName)) _ -> pure $ Representation Representation.pointer
+  (Global _ (Original Builtin.UnitName)) _ -> pure $ Representation mempty
+  (Global _ (Original Builtin.IntName)) _ -> pure $ Representation Representation.int
+  _ Representation.Empty -> pure $ Undefined Representation.Empty
+  operand repr -> letValue repr name $ Load operand repr
 
-mkStore :: Operand -> Operand -> Representation -> Maybe Value
+mkStore :: Operand -> Operand -> Representation -> Maybe SeqOperation
 mkStore dst src = \case
   Representation.Empty -> Nothing
   repr -> Just $ Store dst src repr
 
-addRepresentation :: Operand -> Operand -> Value
-addRepresentation x y =
-  mkCall (Name.Lifted Builtin.AddRepresentationName 0) [x, y]
+letAddRepresentation :: Name -> Operand -> Operand -> Collect Operand
+letAddRepresentation name x y =
+  letCall (PassBy.Value Representation.type_) name (Name.Lifted Builtin.AddRepresentationName 0) [x, y]
 
-mkOffset :: Operand -> Operand -> Value
-mkOffset base = \case
-  Representation Representation.Empty -> Operand base
-  offset -> Offset base offset
+letOffset :: Name -> Operand -> Operand -> Collect Operand
+letOffset name base = \case
+  Representation Representation.Empty -> pure base
+  offset -> letReference name $ Offset base offset
 
 definition :: Name.Lifted -> CC.Syntax.Definition -> M [(Name.Lowered, Low.Syntax.Definition)]
 definition name = \case
@@ -197,13 +181,13 @@ definition name = \case
       signature <- fetch $ Query.LowSignature name
       case signature of
         Low.Syntax.ConstantSignature repr -> do
-          initValue <- runCollect do
+          initValue <- collect do
             inited <- letValue Representation.int "inited" $ Load (Global Representation.int initedName) Representation.int
-            initBranch <- lift $ runCollect do
+            initBranch <- lift $ collect do
               seq_ $ Store (Global Representation.int initedName) (Literal $ Literal.Integer 1) Representation.int
               _ <- storeTerm CC.empty Index.Seq.Empty (Global repr (Name.Lowered name Name.Original)) term
               pure $ Undefined Representation.Empty
-            seq_ $ Case inited [LiteralBranch (Literal.Integer 0) initBranch] $ Just $ Operand $ Undefined Representation.Empty
+            _ <- letValue Representation.Empty "case_result" $ Case inited [LiteralBranch (Literal.Integer 0) initBranch] $ Just $ Operand $ Undefined Representation.Empty
             pure $ Undefined Representation.Empty
           let init = readback Index.Map.Empty initValue
           pure
@@ -280,7 +264,7 @@ forceValue dstRepr (OperandStorage src srcOperandRepr) =
       when (dstRepr /= srcRepr) $ panic "repr mismatch"
       pure src
     Reference _srcReprValue ->
-      letValue dstRepr "loaded" $ mkLoad src dstRepr
+      letLoad "loaded" src dstRepr
 
 forceReference :: Maybe Name -> OperandStorage -> Collect Operand
 forceReference nameSuggestion (OperandStorage src srcOperandRepr) =
@@ -352,25 +336,25 @@ storeTerm context indices dst = \case
     case branches' of
       CC.Representation.TaggedConstructorBranches Unboxed constrBranches -> do
         scrutineeRef <- forceReference Nothing scrutinee'
-        tag <- letValue Representation.int "tag" $ mkLoad scrutineeRef Representation.int
-        let payload name = letReference name $ mkOffset scrutineeRef $ Representation Representation.int
+        tag <- letLoad "tag" scrutineeRef Representation.int
+        let payload name = letOffset name scrutineeRef $ Representation Representation.int
         constrBranches' <- forM constrBranches \(constr, constrBranch) ->
           map (ConstructorBranch constr) $
             lift $
-              runCollect $
+              collect $
                 storeBranch context indices dst payload constrBranch
         defaultBranch <-
           forM maybeDefault $
-            lift . runCollect . storeTerm context indices dst
+            lift . collect . storeTerm context indices dst
         letValue Representation.type_ "result" $ Case tag constrBranches' defaultBranch
       CC.Representation.TaggedConstructorBranches Boxed constrBranches -> do
         scrutineeValue <- forceValue Representation.pointer scrutinee'
         tag <- letValue Representation.int "tag" $ PointerTag scrutineeValue
         let payload name = letReference name $ HeapPayload scrutineeValue
         constrBranches' <- forM constrBranches \(constr, constrBranch) ->
-          map (ConstructorBranch constr) $ lift $ runCollect do
+          map (ConstructorBranch constr) $ lift $ collect do
             storeBranch context indices dst payload constrBranch
-        defaultBranch <- forM maybeDefault $ lift . runCollect . storeTerm context indices dst
+        defaultBranch <- forM maybeDefault $ lift . collect . storeTerm context indices dst
         letValue Representation.type_ "result" $ Case tag constrBranches' defaultBranch
       CC.Representation.UntaggedConstructorBranch Unboxed constrBranch -> do
         let payload name = forceReference (Just name) scrutinee'
@@ -384,9 +368,9 @@ storeTerm context indices dst = \case
         litBranches' <- forM (OrderedHashMap.toList litBranches) \(lit, litBranch) ->
           map (LiteralBranch lit) $
             lift $
-              runCollect $
+              collect $
                 storeTerm context indices dst litBranch
-        defaultBranch <- forM maybeDefault $ lift . runCollect . storeTerm context indices dst
+        defaultBranch <- forM maybeDefault $ lift . collect . storeTerm context indices dst
         letValue Representation.type_ "result" $ Case scrutineeValue litBranches' defaultBranch
 
 storeConstrArgs
@@ -400,9 +384,9 @@ storeConstrArgs context indices mdst offset = \case
   [] -> pure offset
   arg : args -> do
     dst <- mdst
-    argDst <- letReference "constr_arg_dst" $ mkOffset dst offset
+    argDst <- letOffset "constr_arg_dst" dst offset
     argSize <- storeTerm context indices argDst arg
-    offset' <- letValue Representation.type_ "constr_arg_offset" $ addRepresentation offset argSize
+    offset' <- letAddRepresentation "constr_arg_offset" offset argSize
     storeConstrArgs context indices (pure dst) offset' args
 
 storeConstrArgs_
@@ -417,9 +401,9 @@ storeConstrArgs_ context indices mdst moffset = \case
   arg : args -> do
     dst <- mdst
     offset <- moffset
-    argDst <- letReference "constr_arg_dst" $ mkOffset dst offset
+    argDst <- letOffset "constr_arg_dst" dst offset
     argSize <- storeTerm context indices argDst arg
-    let offset' = letValue Representation.type_ "constr_arg_offset" $ addRepresentation offset argSize
+    let offset' = letAddRepresentation "constr_arg_offset" offset argSize
     storeConstrArgs_ context indices (pure dst) offset' args
 
 generateTypeSize
@@ -427,10 +411,9 @@ generateTypeSize
   -> Index.Seq v OperandStorage
   -> CC.Syntax.Type v
   -> Collect Operand
-generateTypeSize context indices type_ =
-  collectValue Representation.type_ "size" $ do
-    size <- generateTermWithType context Nothing indices type_ $ CC.Syntax.Global $ Name.Lifted Builtin.TypeName 0
-    forceValue Representation.type_ size
+generateTypeSize context indices type_ = do
+  size <- generateTermWithType context Nothing indices type_ $ CC.Syntax.Global $ Name.Lifted Builtin.TypeName 0
+  forceValue Representation.type_ size
 
 generateTermWithType
   :: CC.Context v
@@ -504,11 +487,11 @@ generateTerm context nameSuggestion indices term typeValue = case term of
   CC.Syntax.Apply function args -> do
     signature <- fetch $ Query.LowSignature function
     case signature of
-      Low.Syntax.FunctionSignature passArgsBy (PassBy.Value returnRepr) -> do
+      Low.Syntax.FunctionSignature passArgsBy passReturnBy@(PassBy.Value returnRepr) -> do
         when (length passArgsBy /= length args) $ panic "arg length mismatch"
         let nonEmpty (PassBy.Value Representation.Empty) = False
             nonEmpty _ = True
-        callResult <- collectValue returnRepr (fromMaybe "call_result" nameSuggestion) do
+        callResult <- do
           callArgs <- forM (filter (nonEmpty . fst) $ zip passArgsBy args) \(passBy, arg) -> do
             operand <- generateTermWithoutType context indices arg
             case passBy of
@@ -516,13 +499,13 @@ generateTerm context nameSuggestion indices term typeValue = case term of
                 forceValue repr operand
               PassBy.Reference ->
                 forceReference Nothing operand
-          letValue returnRepr (fromMaybe "call_result" nameSuggestion) $ mkCall function callArgs
+          letCall passReturnBy (fromMaybe "call_result" nameSuggestion) function callArgs
         pure $ OperandStorage callResult $ Value returnRepr
       Low.Syntax.FunctionSignature passArgsBy passReturnBy@PassBy.Reference -> do
         type_ <- lift $ Readback.readback (CC.toEnvironment context) typeValue
         size <- generateTypeSize context indices type_
         callResult <- letReference (fromMaybe "call_destination" nameSuggestion) $ StackAllocate size
-        _ <- collectValue Representation.type_ "store_call" $ storeCall context indices callResult function args passArgsBy passReturnBy
+        _ <- storeCall context indices callResult function args passArgsBy passReturnBy
         pure $ OperandStorage callResult $ Reference size
       _ -> panic "Applying non-function"
   CC.Syntax.Pi _name _domain _target ->
@@ -531,11 +514,64 @@ generateTerm context nameSuggestion indices term typeValue = case term of
         Value Representation.type_
   CC.Syntax.Closure {} -> panic "TODO closure"
   CC.Syntax.ApplyClosure {} -> panic "TODO closure"
-  CC.Syntax.Case _scrutinee type_ _branches _maybeDefault -> do
-    size <- generateTypeSize context indices type_
-    dst <- letReference "case_dst" $ StackAllocate size
-    _ <- storeTerm context indices dst term
-    pure $ OperandStorage dst $ Reference size
+  CC.Syntax.Case scrutinee type_ branches maybeDefault -> do
+    passTypeBy <- lift $ CC.Representation.passTypeBy (CC.toEnvironment context) typeValue
+    case passTypeBy of
+      PassBy.Reference -> do
+        size <- generateTypeSize context indices type_
+        dst <- letReference "case_dst" $ StackAllocate size
+        _ <- storeTerm context indices dst term
+        pure $ OperandStorage dst $ Reference size
+      PassBy.Value repr -> do
+        scrutinee' <- generateTermWithoutType context indices scrutinee
+        branches' <- CC.Representation.compileBranches branches
+        result <- case branches' of
+          CC.Representation.TaggedConstructorBranches Unboxed constrBranches -> do
+            scrutineeRef <- forceReference Nothing scrutinee'
+            tag <- letLoad "tag" scrutineeRef Representation.int
+            let payload name = letOffset name scrutineeRef $ Representation Representation.int
+            constrBranches' <- forM constrBranches \(constr, constrBranch) ->
+              map (ConstructorBranch constr) $
+                lift $
+                  collect $ 
+                    generateBranch context indices payload repr typeValue constrBranch
+            defaultBranch <-
+              forM maybeDefault $ \branch ->
+                lift $ collect $ do
+                  branch' <- generateTerm context Nothing indices branch typeValue
+                  forceValue repr branch'
+            letValue repr "result" $ Case tag constrBranches' defaultBranch
+          CC.Representation.TaggedConstructorBranches Boxed constrBranches -> do
+            scrutineeValue <- forceValue Representation.pointer scrutinee'
+            tag <- letValue Representation.int "tag" $ PointerTag scrutineeValue
+            let payload name = letReference name $ HeapPayload scrutineeValue
+            constrBranches' <- forM constrBranches \(constr, constrBranch) ->
+              map (ConstructorBranch constr) $ lift $ collect do
+                generateBranch context indices payload repr typeValue constrBranch
+            defaultBranch <- forM maybeDefault $ \branch -> lift $ collect $ do
+              branch' <- generateTerm context Nothing indices branch typeValue
+              forceValue repr branch'
+            letValue repr "result" $ Case tag constrBranches' defaultBranch
+          CC.Representation.UntaggedConstructorBranch Unboxed constrBranch -> do
+            let payload name = forceReference (Just name) scrutinee'
+            generateBranch context indices payload repr typeValue constrBranch
+          CC.Representation.UntaggedConstructorBranch Boxed constrBranch -> do
+            scrutineeValue <- forceValue Representation.pointer scrutinee'
+            let payload name = letReference name $ HeapPayload scrutineeValue
+            generateBranch context indices payload repr typeValue constrBranch
+          CC.Representation.LiteralBranches litBranches -> do
+            scrutineeValue <- forceValue Representation.int scrutinee'
+            litBranches' <- forM (OrderedHashMap.toList litBranches) \(lit, litBranch) ->
+              map (LiteralBranch lit) $
+                lift $
+                  collect $ do
+                    litBranch' <- generateTerm context Nothing indices litBranch typeValue
+                    forceValue repr litBranch'
+            defaultBranch <- forM maybeDefault $ \branch -> lift $ collect $ do
+              branch' <- generateTerm context Nothing indices branch typeValue
+              forceValue repr branch'
+            letValue repr "result" $ Case scrutineeValue litBranches' defaultBranch
+        pure $ OperandStorage result $ Value repr
 
 storeCall
   :: CC.Context v
@@ -550,20 +586,40 @@ storeCall context indices dst function args passArgsBy passReturnBy = do
   when (length passArgsBy /= length args) $ panic "arg length mismatch"
   let nonEmpty (PassBy.Value Representation.Empty) = False
       nonEmpty _ = True
-  collectValue Representation.type_ "call_result" do
-    callArgs <- forM (filter (nonEmpty . fst) $ zip passArgsBy args) \(passBy, arg) -> do
-      operand <- generateTermWithoutType context indices arg
-      case passBy of
-        PassBy.Value repr ->
-          forceValue repr operand
-        PassBy.Reference ->
-          forceReference Nothing operand
-    case passReturnBy of
-      PassBy.Value repr -> do
-        callResult <- letValue repr "call_result" $ mkCall function callArgs
-        storeOperand dst $ OperandStorage callResult $ Value repr
+  callArgs <- forM (filter (nonEmpty . fst) $ zip passArgsBy args) \(passBy, arg) -> do
+    operand <- generateTermWithoutType context indices arg
+    case passBy of
+      PassBy.Value repr ->
+        forceValue repr operand
       PassBy.Reference ->
-        letValue Representation.type_ "call_result_size" $ mkCall function (dst : callArgs)
+        forceReference Nothing operand
+  case passReturnBy of
+    PassBy.Value repr -> do
+      callResult <- letCall passReturnBy "call_result" function callArgs
+      storeOperand dst $ OperandStorage callResult $ Value repr
+    PassBy.Reference ->
+      letCall (PassBy.Value Representation.type_) "call_result_size" function (dst : callArgs)
+
+generateBranch
+  :: CC.Context v
+  -> Index.Seq v OperandStorage
+  -> (Name -> Collect Operand)
+  -> Representation
+  -> CC.Domain.Type
+  -> Telescope Name CC.Syntax.Type CC.Syntax.Term v
+  -> Collect Operand
+generateBranch context indices mpayload repr typeValue = \case
+  Telescope.Empty term -> do
+    term' <- generateTerm context Nothing indices term typeValue
+    forceValue repr term'
+  Telescope.Extend name type_ _plicity tele -> do
+    payload <- mpayload name
+    size <- generateTypeSize context indices type_
+    fieldTypeValue <- lift $ CC.Domain.Lazy <$> lazy (Evaluation.evaluate (CC.toEnvironment context) type_)
+    (context', _) <- lift $ CC.extend context fieldTypeValue
+    let indices' = indices Index.Seq.:> OperandStorage payload (Reference size)
+    let payload' name' = letOffset name' payload size
+    generateBranch context' indices' payload' repr typeValue tele
 
 storeBranch
   :: CC.Context v
@@ -580,7 +636,7 @@ storeBranch context indices dst mpayload = \case
     typeValue <- lift $ CC.Domain.Lazy <$> lazy (Evaluation.evaluate (CC.toEnvironment context) type_)
     (context', _) <- lift $ CC.extend context typeValue
     let indices' = indices Index.Seq.:> OperandStorage payload (Reference size)
-    let payload' name' = letReference name' $ mkOffset payload size
+    let payload' name' = letOffset name' payload size
     storeBranch context' indices' dst payload' tele
 
 boxedConstructorSize
@@ -619,9 +675,9 @@ constantInitedName l =
 
 moduleInits :: [Name.Module] -> M Low.Syntax.Definition
 moduleInits moduleNames = do
-  value <- runCollect do
+  value <- collect do
     forM_ moduleNames \moduleName ->
-      seq_ $ Call (moduleInitName moduleName) []
+      letValue Representation.Empty "init-result" $ Call (moduleInitName moduleName) []
     pure $ Undefined Representation.Empty
   let term = readback Index.Map.Empty value
   pure $ Low.Syntax.FunctionDefinition $ Low.Syntax.Body (PassBy.Value Representation.Empty) term
@@ -631,14 +687,14 @@ moduleInit
   -> [Name.Lowered]
   -> M [(Name.Lowered, Low.Syntax.Definition)]
 moduleInit moduleName definitions = do
-  initValue <- runCollect do
+  initValue <- collect do
     inited <- letValue Representation.int "inited" $ Load (Global Representation.int initedName) Representation.int
-    initBranch <- lift $ runCollect do
+    initBranch <- lift $ collect do
       seq_ $ Store (Global Representation.int initedName) (Literal $ Literal.Integer 1) Representation.int
       forM_ constantsToInitialize \defName ->
-        seq_ $ Call defName []
+        letValue Representation.Empty "init-result" $ Call defName []
       pure $ Undefined Representation.Empty
-    seq_ $ Case inited [LiteralBranch (Literal.Integer 0) initBranch] $ Just $ Operand $ Undefined Representation.Empty
+    _ <- letValue Representation.Empty "case-result" $ Case inited [LiteralBranch (Literal.Integer 0) initBranch] $ Just $ Operand $ Undefined Representation.Empty
     pure $ Undefined Representation.Empty
   let init = readback Index.Map.Empty initValue
   pure
@@ -665,14 +721,17 @@ readbackFunction outerEnv (Function params returnRepr body) =
 readback :: Index.Map v Var -> Value -> Low.Syntax.Term v
 readback env = \case
   Operand operand -> Low.Syntax.Operand $ readbackOperand env operand
-  Let passBy name var value value' ->
+  Let passBy name var operation value' ->
     Low.Syntax.Let
       passBy
       name
-      (readback env value)
+      (readbackLetOperation env operation)
       (readback (env Index.Map.:> var) value')
-  Seq value value' ->
-    Low.Syntax.Seq (readback env value) (readback env value')
+  Seq operation value' ->
+    Low.Syntax.Seq (readbackSeqOperation env operation) (readback env value')
+
+readbackLetOperation :: Index.Map v Var -> LetOperation -> Low.Syntax.LetOperation v
+readbackLetOperation env = \case
   Case scrutinee branches maybeDefaultBranch ->
     Low.Syntax.Case
       (readbackOperand env scrutinee)
@@ -683,17 +742,20 @@ readback env = \case
   HeapAllocate con repr -> Low.Syntax.HeapAllocate con $ readbackOperand env repr
   HeapPayload operand -> Low.Syntax.HeapPayload $ readbackOperand env operand
   PointerTag operand -> Low.Syntax.PointerTag $ readbackOperand env operand
-  Offset offset operand ->
+  Offset base offset ->
     Low.Syntax.Offset
+      (readbackOperand env base)
       (readbackOperand env offset)
-      (readbackOperand env operand)
+  Load src repr -> Low.Syntax.Load (readbackOperand env src) repr
+
+readbackSeqOperation :: Index.Map v Var -> SeqOperation -> Low.Syntax.SeqOperation v
+readbackSeqOperation env = \case
   Copy dst src size ->
     Low.Syntax.Copy
       (readbackOperand env dst)
       (readbackOperand env src)
       (readbackOperand env size)
   Store dst value repr -> Low.Syntax.Store (readbackOperand env dst) (readbackOperand env value) repr
-  Load src repr -> Low.Syntax.Load (readbackOperand env src) repr
 
 readbackOperand :: Index.Map v Var -> Operand -> Low.Syntax.Operand v
 readbackOperand env = \case

@@ -251,13 +251,13 @@ increaseReferenceCount repr o =
               "call void @sixten_increase_reference_count"
                 <> parens ["i64 " <> varName extractedPointer]
 
-decreaseReferenceCounts :: Operand -> Var -> Assembler ()
-decreaseReferenceCounts size reference = do
-  declareLLVMGlobal "sixten_decrease_reference_counts" "declare void @sixten_decrease_reference_counts(ptr, i32)"
+increaseReferenceCounts :: Operand -> Operand -> Assembler ()
+increaseReferenceCounts size reference = do
+  declareLLVMGlobal "sixten_increase_reference_counts" "declare void @sixten_increase_reference_counts(ptr, i32)"
   (pointers, _) <- extractSizeParts (PassBy.Value Representation.type_, size)
-  (pointersPointer, _) <- extractParts (PassBy.Reference, Local reference)
+  (pointersPointer, _) <- extractParts (PassBy.Reference, reference)
   emitInstruction $
-    "call void @sixten_decrease_reference_counts"
+    "call void @sixten_increase_reference_counts"
       <> parens ["ptr " <> operand pointersPointer, "i32 " <> varName pointers]
 
 decreaseReferenceCount :: Representation -> Operand -> Assembler ()
@@ -293,6 +293,15 @@ decreaseReferenceCount repr o =
             emitInstruction $
               "call void @sixten_decrease_reference_count"
                 <> parens ["i64 " <> varName extractedPointer]
+
+decreaseReferenceCounts :: Operand -> Var -> Assembler ()
+decreaseReferenceCounts size reference = do
+  declareLLVMGlobal "sixten_decrease_reference_counts" "declare void @sixten_decrease_reference_counts(ptr, i32)"
+  (pointers, _) <- extractSizeParts (PassBy.Value Representation.type_, size)
+  (pointersPointer, _) <- extractParts (PassBy.Reference, Local reference)
+  emitInstruction $
+    "call void @sixten_decrease_reference_counts"
+      <> parens ["ptr " <> operand pointersPointer, "i32 " <> varName pointers]
 
 -------------------------------------------------------------------------------
 
@@ -350,8 +359,7 @@ assembleFunction functionName env = \case
     let parameters = second fromLocal <$> Index.Seq.toSeq env
     entry <- freshVar "entry"
     startBlock entry
-    (result, stack) <- assembleTerm env Nothing passReturnBy term
-    mapM_ restoreStack stack
+    result <- assembleTerm env Nothing passReturnBy term
     endBlock case passReturnBy of
       PassBy.Value Representation.Empty -> "ret " <> llvmReturnType passReturnBy
       _ -> "ret " <> llvmReturnType passReturnBy <> " " <> operand result
@@ -406,29 +414,27 @@ assembleTerm
   -> Maybe Name
   -> PassBy
   -> Syntax.Term v
-  -> Assembler (Operand, Maybe StackAllocation)
+  -> Assembler Operand
 assembleTerm env nameSuggestion passBy = \case
   Syntax.Operand o -> do
-    (passOperandBy, o') <- assembleOperand env o
-    case passOperandBy of
-      PassBy.Value repr -> increaseReferenceCount repr o'
-      PassBy.Reference -> pure ()
-    pure (o', Nothing)
-  Syntax.Let passLetBy name term body -> do
-    (termResult, termStack) <- assembleTerm env (Just name) passLetBy term
-    (bodyResult, bodyStack) <- assembleTerm (env Index.Seq.:> (passLetBy, termResult)) nameSuggestion passBy body
-    case passLetBy of
-      PassBy.Value repr -> decreaseReferenceCount repr termResult
-      PassBy.Reference -> pure ()
-    mapM_ restoreStack termStack
-    mapM_ restoreStack bodyStack
-    pure (bodyResult, Nothing)
-  Syntax.Seq term1 term2 -> do
-    (_, stack1) <- assembleTerm env Nothing (PassBy.Value Representation.Empty) term1
-    (result, stack2) <- assembleTerm env nameSuggestion passBy term2
-    mapM_ restoreStack stack1
-    mapM_ restoreStack stack2
-    pure (result, Nothing)
+    (_, o') <- assembleOperand env o
+    pure o'
+  Syntax.Let passLetBy name operation body -> do
+    (operationResult, operationStack) <- assembleLetOperation env (Just name) passLetBy operation
+    bodyResult <- assembleTerm (env Index.Seq.:> (passLetBy, operationResult)) nameSuggestion passBy body
+    mapM_ restoreStack operationStack
+    pure bodyResult
+  Syntax.Seq operation body -> do
+    assembleSeqOperation env operation
+    assembleTerm env nameSuggestion passBy body
+
+assembleLetOperation
+  :: Environment v
+  -> Maybe Name
+  -> PassBy
+  -> Syntax.LetOperation v
+  -> Assembler (Operand, Maybe StackAllocation)
+assembleLetOperation env nameSuggestion passBy = \case
   Syntax.Case scrutinee branches defaultBranch -> do
     scrutinee' <- assembleOperand env scrutinee
     branchLabels <- forM branches \case
@@ -458,15 +464,13 @@ assembleTerm env nameSuggestion passBy = \case
           ]
     branchResults <- forM (zip branchLabels branches) \((_, branchLabel), branch) -> do
       startBlock branchLabel
-      (result, stack) <- assembleTerm env nameSuggestion passBy $ Syntax.branchTerm branch
-      mapM_ restoreStack stack
+      result <- assembleTerm env nameSuggestion passBy $ Syntax.branchTerm branch
       afterBranchLabel <- gets (.basicBlockName)
       endBlock $ "br label " <> varName afterSwitchLabel
       pure (afterBranchLabel, result)
     startBlock defaultLabel
     maybeDefaultResult <- forM defaultBranch \branch -> do
-      (result, stack) <- assembleTerm env nameSuggestion passBy branch
-      mapM_ restoreStack stack
+      result <- assembleTerm env nameSuggestion passBy branch
       afterBranchLabel <- gets (.basicBlockName)
       pure (afterBranchLabel, result)
     let defaultResult = fromMaybe (defaultLabel, Constant "undef") maybeDefaultResult
@@ -607,37 +611,6 @@ assembleTerm env nameSuggestion passBy = \case
         "ptr"
         updatedNonPointerPointer
     pure (Local result, Nothing)
-  Syntax.Copy dst src size -> do
-    dst' <- assembleOperand env dst
-    src' <- assembleOperand env src
-    size' <- assembleOperand env size
-    (pointers, nonPointerBytes) <- extractSizeParts size'
-    declareLLVMGlobal "sixten_copy" "declare void @sixten_copy({ptr, ptr}, {ptr, ptr}, i32, i32)"
-    emitInstruction $
-      "call void @sixten_copy"
-        <> parens
-          [ typedOperand dst'
-          , typedOperand src'
-          , "i32 " <> varName pointers
-          , "i32 " <> varName nonPointerBytes
-          ]
-    pure (Constant "undef", Nothing)
-  Syntax.Store dst src repr -> do
-    dst' <- assembleOperand env dst
-    src' <- assembleOperand env src
-    increaseReferenceCount repr $ snd src'
-    (dstPointerPointer, dstNonPointerPointer) <- extractParts dst'
-    case (pointerType repr.pointers, nonPointerType repr.nonPointerBytes) of
-      (Nothing, Nothing) -> pure ()
-      (Just _, Nothing) ->
-        emitInstruction $ "store " <> typedOperand src' <> ", ptr " <> operand dstPointerPointer
-      (Nothing, Just _) ->
-        emitInstruction $ "store " <> typedOperand src' <> ", ptr " <> operand dstNonPointerPointer
-      (Just p, Just np) -> do
-        (pointerSrc, nonPointerSrc) <- extractParts src'
-        emitInstruction $ "store " <> p <> " " <> operand pointerSrc <> ", ptr " <> operand dstPointerPointer
-        emitInstruction $ "store " <> np <> " " <> operand nonPointerSrc <> ", ptr " <> operand dstNonPointerPointer
-    pure (Constant "undef", Nothing)
   Syntax.Load src repr -> do
     src' <- assembleOperand env src
     (srcPointerPointer, srcNonPointerPointer) <- extractParts src'
@@ -659,8 +632,51 @@ assembleTerm env nameSuggestion passBy = \case
         result <- constructTuple (fromMaybe "load_result" nameSuggestion) p pointers np nonPointers
         pure $ Local result
 
-    increaseReferenceCount repr result
     pure (result, Nothing)
+
+assembleSeqOperation
+  :: Environment v
+  -> Syntax.SeqOperation v
+  -> Assembler ()
+assembleSeqOperation env = \case
+  Syntax.Store dst src repr -> do
+    dst' <- assembleOperand env dst
+    src' <- assembleOperand env src
+    (dstPointerPointer, dstNonPointerPointer) <- extractParts dst'
+    case (pointerType repr.pointers, nonPointerType repr.nonPointerBytes) of
+      (Nothing, Nothing) -> pure ()
+      (Just _, Nothing) ->
+        emitInstruction $ "store " <> typedOperand src' <> ", ptr " <> operand dstPointerPointer
+      (Nothing, Just _) ->
+        emitInstruction $ "store " <> typedOperand src' <> ", ptr " <> operand dstNonPointerPointer
+      (Just p, Just np) -> do
+        (pointerSrc, nonPointerSrc) <- extractParts src'
+        emitInstruction $ "store " <> p <> " " <> operand pointerSrc <> ", ptr " <> operand dstPointerPointer
+        emitInstruction $ "store " <> np <> " " <> operand nonPointerSrc <> ", ptr " <> operand dstNonPointerPointer
+  Syntax.Copy dst src size -> do
+    dst' <- assembleOperand env dst
+    src' <- assembleOperand env src
+    size' <- assembleOperand env size
+    (pointers, nonPointerBytes) <- extractSizeParts size'
+    declareLLVMGlobal "sixten_copy" "declare void @sixten_copy({ptr, ptr}, {ptr, ptr}, i32, i32)"
+    emitInstruction $
+      "call void @sixten_copy"
+        <> parens
+          [ typedOperand dst'
+          , typedOperand src'
+          , "i32 " <> varName pointers
+          , "i32 " <> varName nonPointerBytes
+          ]
+  Syntax.IncreaseReferenceCount val repr -> do
+    (_, val') <- assembleOperand env val
+    increaseReferenceCount repr val'
+  Syntax.IncreaseReferenceCounts val repr -> do
+    (_, val') <- assembleOperand env val
+    (_, repr') <- assembleOperand env repr
+    increaseReferenceCounts repr' val'
+  Syntax.DecreaseReferenceCount val repr -> do
+    (_, val') <- assembleOperand env val
+    decreaseReferenceCount repr val'
 
 assembleOperand :: Environment v -> Syntax.Operand v -> Assembler (PassBy, Operand)
 assembleOperand env = \case

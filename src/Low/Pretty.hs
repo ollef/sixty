@@ -78,23 +78,35 @@ emptyM module_ = do
 prettyTerm :: Environment v -> Syntax.Term v -> Doc ann
 prettyTerm env = \case
   Syntax.Operand operand -> prettyOperand env operand
-  term@Syntax.Let {} ->
-    line <> indent 2 (prettySeq env term)
-  term@Syntax.Seq {} ->
-    line <> indent 2 (prettySeq env term)
+  Syntax.Let passBy name operation body -> do
+    let (env', name') = extend env name
+    "let"
+      <+> pretty passBy
+      <+> pretty name'
+      <+> "="
+      <+> prettyLetOperation env operation
+        <> line
+        <> prettyTerm env' body
+  Syntax.Seq operation body ->
+    prettySeqOperation env operation
+      <> line
+      <> prettyTerm env body
+
+prettyLetOperation :: Environment v -> Syntax.LetOperation v -> Doc ann
+prettyLetOperation env = \case
   Syntax.Case scrutinee branches defaultBranch ->
     "case"
       <+> prettyOperand env scrutinee
       <+> "of"
-      <> line
-      <> indent
-        2
-        ( vcat $
-            (prettyBranch env <$> branches)
-              <> [ "_" <+> "->" <+> prettyTerm env branch
-                 | Just branch <- [defaultBranch]
-                 ]
-        )
+        <> line
+        <> indent
+          2
+          ( vcat $
+              (prettyBranch env <$> branches)
+                <> [ "_" <+> "->" <> line <> indent 2 (prettyTerm env branch)
+                   | Just branch <- [defaultBranch]
+                   ]
+          )
   Syntax.Call function args ->
     "call"
       <+> prettyLoweredGlobal env function
@@ -109,29 +121,21 @@ prettyTerm env = \case
     "pointer_tag" <+> prettyOperand env operand
   Syntax.Offset operand1 operand2 ->
     prettyOperand env operand1 <+> "+" <+> prettyOperand env operand2
-  Syntax.Copy dst src size ->
-    "copy" <+> commaSep [prettyOperand env dst, prettyOperand env src, prettyOperand env size]
-  Syntax.Store dst src repr ->
-    "store" <+> commaSep [prettyOperand env dst, pretty repr <+> prettyOperand env src]
   Syntax.Load src repr ->
     "load" <+> pretty repr <+> prettyOperand env src
 
-prettySeq :: Environment v -> Syntax.Term v -> Doc ann
-prettySeq env = \case
-  Syntax.Let passBy name term body -> do
-    let (env', name') = extend env name
-    "let"
-      <+> pretty passBy
-      <+> pretty name'
-      <+> "="
-      <+> prettyTerm env term
-      <> line
-      <> prettySeq env' body
-  Syntax.Seq term1 term2 ->
-    prettyTerm env term1
-      <> line
-      <> prettySeq env term2
-  term -> prettyTerm env term
+prettySeqOperation :: Environment v -> Syntax.SeqOperation v -> Doc ann
+prettySeqOperation env = \case
+  Syntax.Store dst src repr ->
+    "store" <+> commaSep [prettyOperand env dst, pretty repr <+> prettyOperand env src]
+  Syntax.Copy dst src size ->
+    "copy" <+> commaSep [prettyOperand env dst, prettyOperand env src, prettyOperand env size]
+  Syntax.IncreaseReferenceCount operand repr ->
+    "increase_reference_count" <+> pretty repr <+> prettyOperand env operand
+  Syntax.IncreaseReferenceCounts operand repr ->
+    "increase_reference_counts" <+> prettyOperand env repr <+> prettyOperand env operand
+  Syntax.DecreaseReferenceCount operand repr ->
+    "decrease_reference_count" <+> pretty repr <+> prettyOperand env operand
 
 commaSep :: [Doc ann] -> Doc ann
 commaSep = hcat . punctuate (comma <> space)
@@ -196,9 +200,9 @@ prettyBranch
   -> Doc ann
 prettyBranch env = \case
   Syntax.ConstructorBranch constr body ->
-    prettyConstr env constr <+> "->" <> prettyTerm env body
+    prettyConstr env constr <+> "->" <> line <> indent 2 (prettyTerm env body)
   Syntax.LiteralBranch lit body ->
-    pretty lit <+> "->" <> prettyTerm env body
+    pretty lit <+> "->" <> line <> indent 2 (prettyTerm env body)
 
 -------------------------------------------------------------------------------
 
@@ -211,11 +215,11 @@ prettyDefinition env name = \case
 
 prettyFunction :: Environment v -> Syntax.Function v -> Doc ann
 prettyFunction env = \case
-  Syntax.Body passReturnBy body -> "." <+> pretty passReturnBy <+> prettyTerm env body
+  Syntax.Body passReturnBy body -> "." <+> pretty passReturnBy <> line <> indent 2 (prettyTerm env body)
   Syntax.Parameter name passArgBy function' -> do
     let (env', name') = extend env name
     "("
       <> pretty passArgBy
       <+> pretty name'
-      <> ")"
-      <> prettyFunction env' function'
+        <> ")"
+        <> prettyFunction env' function'
