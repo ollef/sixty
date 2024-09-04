@@ -79,7 +79,7 @@ compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel pri
       else callProcess clang $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-o", outputExecutableFile, builtinCFile, memoryCFile] <> llvmFiles
 
 supportedLlvmVersions :: [Int]
-supportedLlvmVersions = [17, 16, 15]
+supportedLlvmVersions = [18, 17, 16, 15]
 
 -- | llvm-config is not available in current LLVM distribution for windows, so we
 -- need use @clang -print-prog-name=clang@ to get the full path of @clang@.
