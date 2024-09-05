@@ -261,7 +261,12 @@ referenceCountLetOperation passBy operation = case operation of
       kills <- catMaybes <$> forM (EnumSet.toList killedVars) kill
       branch' <- referenceCount passBy branch
       pure (killedVars, decreases kills branch')
-    pure (Case scrutinee branches' maybeDefaultBranch', Nothing, maybeToList decreaseScrutinee)
+    let provenance = case passBy of
+          PassBy.Value repr
+            | needsReferenceCounting repr -> Just (Owned passBy 1)
+            | otherwise -> Nothing
+          PassBy.Reference -> Nothing
+    pure (Case scrutinee branches' maybeDefaultBranch', provenance, maybeToList decreaseScrutinee)
   Call _ args -> do
     decreaseArgs <- catMaybes <$> mapM referenceCountOperand args
     pure
