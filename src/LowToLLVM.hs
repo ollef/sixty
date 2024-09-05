@@ -655,15 +655,19 @@ assembleSeqOperation env = \case
         emitInstruction $ "store " <> np <> " " <> operand nonPointerSrc <> ", ptr " <> operand dstNonPointerPointer
   Syntax.Copy dst src size -> do
     dst' <- assembleOperand env dst
+    (dstPointerPointer, dstNonPointerPointer) <- extractParts dst'
     src' <- assembleOperand env src
+    (srcPointerPointer, srcNonPointerPointer) <- extractParts src'
     size' <- assembleOperand env size
     (pointers, nonPointerBytes) <- extractSizeParts size'
-    declareLLVMGlobal "sixten_copy" "declare void @sixten_copy({ptr, ptr}, {ptr, ptr}, i32, i32)"
+    declareLLVMGlobal "sixten_copy" "declare void @sixten_copy(ptr, ptr, ptr, ptr, i32, i32)"
     emitInstruction $
       "call void @sixten_copy"
         <> parens
-          [ typedOperand dst'
-          , typedOperand src'
+          [ "ptr " <> operand dstPointerPointer
+          , "ptr " <> operand dstNonPointerPointer
+          , "ptr " <> operand srcPointerPointer
+          , "ptr " <> operand srcNonPointerPointer
           , "i32 " <> varName pointers
           , "i32 " <> varName nonPointerBytes
           ]
