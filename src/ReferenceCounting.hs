@@ -273,10 +273,12 @@ referenceCountLetOperation passBy operation = case operation of
           PassBy.Reference -> Nothing
       , decreaseArgs
       )
-  StackAllocate _ ->
-    pure (operation, Just $ Owned PassBy.Reference 1, [])
-  HeapAllocate _ _ ->
-    pure (operation, Just $ Owned (PassBy.Value Representation.pointer) 1, [])
+  StackAllocate size -> do
+    decreaseSize <- referenceCountOperand size
+    pure (StackAllocate size, Just $ Owned PassBy.Reference 1, maybeToList decreaseSize)
+  HeapAllocate _ repr -> do
+    decreaseRepr <- referenceCountOperand repr
+    pure (operation, Just $ Owned (PassBy.Value Representation.pointer) 1, maybeToList decreaseRepr)
   HeapPayload pointer -> do
     decrease <- referenceCountOperand pointer
     maybeParent <- tryMakeParent pointer
@@ -284,9 +286,11 @@ referenceCountLetOperation passBy operation = case operation of
   PointerTag operand -> do
     decrease <- referenceCountOperand operand
     pure (operation, Nothing, maybeToList decrease)
-  Offset base _ -> do
+  Offset base offset -> do
     maybeParent <- tryMakeParent base
-    pure (operation, Child <$> maybeParent, [])
+    decreaseBase <- referenceCountOperand base
+    decreaseOffset <- referenceCountOperand offset
+    pure (operation, Child <$> maybeParent, catMaybes [decreaseBase, decreaseOffset])
   Load src repr -> do
     maybeParent <-
       if needsReferenceCounting repr
@@ -302,10 +306,11 @@ referenceCountSeqOperation operation = case operation of
   Copy dst src repr -> do
     decreaseDst <- referenceCountOperand dst
     decreaseSrc <- referenceCountOperand src
+    decreaseRepr <- referenceCountOperand repr
     pure
       if cancelOut src decreaseSrc
         then (Nothing, Nothing, maybeToList decreaseDst)
-        else (Nothing, Just (src, repr), catMaybes [decreaseDst, decreaseSrc])
+        else (Nothing, Just (src, repr), catMaybes [decreaseDst, decreaseSrc, decreaseRepr])
   Store dst src repr -> do
     decreaseDst <- referenceCountOperand dst
     decreaseSrc <- referenceCountOperand src
