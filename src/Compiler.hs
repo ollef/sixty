@@ -63,6 +63,9 @@ compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel pri
         mainLLVMFile : builtinLLVMFile : moduleInitLLVMFile : moduleLLVMFiles
   let optimisationArgs =
         maybe [] (\o -> ["-O" <> o]) maybeOptimisationLevel
+  let optOptimisationArgs =
+        maybe [] (\o -> ["-passes=default<O" <> o <> ">"]) maybeOptimisationLevel
+
   clang <- liftIO clangBinPath
   liftIO
     if saveAssembly
@@ -79,7 +82,7 @@ compile assemblyDir saveAssembly outputExecutableFile maybeOptimisationLevel pri
         callProcess clang $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-S", "-emit-llvm", "-o", builtinCLLFile, builtinCFile]
         callProcess clang $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-S", "-emit-llvm", "-o", memoryLLFile, memoryCFile]
         callProcess (llvmBin </> "llvm-link") $ ["-S", "-o", linkedProgramName, builtinCLLFile, memoryLLFile] <> llvmFiles
-        callProcess (llvmBin </> "opt") $ optimisationArgs <> ["-S", "-o", optimisedProgramName, linkedProgramName]
+        callProcess (llvmBin </> "opt") $ optOptimisationArgs <> ["-S", "-o", optimisedProgramName, linkedProgramName]
         callProcess clang $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-o", outputExecutableFile, linkedProgramName]
       else callProcess clang $ optimisationArgs <> ["-fPIC", "-Wno-override-module", "-o", outputExecutableFile, builtinCFile, memoryCFile] <> llvmFiles
 
